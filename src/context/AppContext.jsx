@@ -49,6 +49,9 @@ const INITIAL_STATE = {
   // Weeks shown up tracking (week numbers where user took action)
   weeksShownUp: [],             // [1, 2, 3, ...] — week numbers
 
+  // Diagnostic seen
+  diagnosticSeen: false,
+
   // Pause mode
   isPaused: false,
 
@@ -148,6 +151,9 @@ function reducer(state, action) {
       }
     }
 
+    case 'MARK_DIAGNOSTIC_SEEN':
+      return { ...state, diagnosticSeen: true }
+
     case 'DISMISS_MONTH_END':
       return { ...state, monthEndDismissed: true }
 
@@ -163,6 +169,7 @@ function reducer(state, action) {
         hasJoined: false,
         identityMirrorCompleted: false,
         questionnaireCompleted: false,
+        diagnosticSeen: false,
         questionnaireAnswers: undefined,
         aiPartnerMessage: undefined,
         identityPastLife: null,

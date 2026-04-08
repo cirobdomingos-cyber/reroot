@@ -6,6 +6,7 @@ import BottomNav from './components/BottomNav'
 import Onboarding     from './screens/Onboarding'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
+import Diagnostic     from './screens/Diagnostic'
 import Home           from './screens/Home'
 import Events         from './screens/Events'
 import Journey        from './screens/Journey'
@@ -37,7 +38,7 @@ export default function App() {
   const { state } = useApp()
   const location = useLocation()
 
-  const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro'].includes(location.pathname)
+  const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro', '/diagnostic'].includes(location.pathname)
   const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
 
   return (
@@ -57,6 +58,8 @@ export default function App() {
                   ? <Navigate to="/identity-mirror" replace />
                   : !state.questionnaireCompleted
                   ? <Navigate to="/partner-intro" replace />
+                  : !state.diagnosticSeen
+                  ? <Navigate to="/diagnostic" replace />
                   : <Navigate to="/home" replace />
               }
             />
@@ -80,6 +83,16 @@ export default function App() {
                   : state.questionnaireCompleted
                   ? <Navigate to="/home" replace />
                   : <AnimatedPage><PartnerIntro /></AnimatedPage>
+              }
+            />
+            <Route
+              path="/diagnostic"
+              element={
+                !state.questionnaireCompleted
+                  ? <Navigate to="/" replace />
+                  : state.diagnosticSeen
+                  ? <Navigate to="/home" replace />
+                  : <AnimatedPage><Diagnostic /></AnimatedPage>
               }
             />
             <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />

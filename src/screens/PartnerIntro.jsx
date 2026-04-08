@@ -178,7 +178,7 @@ export default function PartnerIntro() {
             {step < STEPS.length - 1 ? t.partner_continue : t.partner_build}
           </button>
         ) : step === 4 ? (
-          <button className="btn btn--primary" onClick={() => navigate('/home')}>{t.partner_begin}</button>
+          <button className="btn btn--primary" onClick={() => navigate('/diagnostic')}>{t.partner_begin}</button>
         ) : (
           <button className="btn btn--primary" disabled style={{ opacity: 0.45 }}>{t.partner_building_btn}</button>
         )}
