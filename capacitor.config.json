@@ -3,7 +3,8 @@
   "appName": "Reroot",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "url": "https://reroot-production.up.railway.app"
   },
   "plugins": {
     "SplashScreen": {
