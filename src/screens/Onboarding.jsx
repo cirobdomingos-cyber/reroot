@@ -5,9 +5,9 @@ import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 
 const ALL_INTERESTS = [
-  'Coffee & Conversation', 'Hiking', 'Creative Writing', 'Yoga',
-  'Book Clubs', 'Art & Museums', 'Cooking', 'Live Music',
-  'Board Games', 'Photography',
+  'Café & Conversa', 'Caminhadas', 'Escrita Criativa', 'Yoga',
+  'Clube do Livro', 'Arte & Museus', 'Culinária', 'Música ao Vivo',
+  'Jogos de Mesa', 'Fotografia',
 ]
 
 const COHORT_AVATARS = [

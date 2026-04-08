@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, getProfile } from '../context/AppContext'
+import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
@@ -26,6 +27,7 @@ function EventCardSkeleton() {
 
 export default function Events() {
   const { state, dispatch } = useApp()
+  const t = useT()
   const profile = getProfile(state.userSituation)
   const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
   const [activeFilter, setActiveFilter] = useState(defaultFilter)
@@ -109,17 +111,15 @@ export default function Events() {
       <div className="screen-header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="screen-header__title">Events</div>
-            <div className="screen-header__sub">
-              Curitiba · Spring Cohort · 24 members
-            </div>
+            <div className="screen-header__title">{t.events_title}</div>
+            <div className="screen-header__sub">{t.events_sub}</div>
           </div>
           <div style={{
             fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
             padding: '3px 8px', borderRadius: 6,
             background: 'var(--sage-pale)', color: 'var(--sage)',
           }}>
-            {dataSource === 'live' ? '🟢 Live' : '🌿 Curitiba'}
+            {dataSource === 'live' ? t.events_live : t.events_static}
           </div>
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function Events() {
           <input
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search events or venues..."
+            placeholder={t.events_search}
             style={{
               flex: 1, border: 'none', outline: 'none',
               fontSize: 13, color: 'var(--charcoal)', background: 'transparent',
@@ -209,8 +209,8 @@ export default function Events() {
               style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--charcoal-mid)', fontSize: 14 }}
             >
               {searchQuery
-                ? `No events found for "${searchQuery}"`
-                : 'No events found for this filter.'}
+                ? `${t.events_empty_search} "${searchQuery}"`
+                : t.events_empty_cat}
             </motion.div>
           )}
 
@@ -286,7 +286,7 @@ export default function Events() {
                       fontSize: 9, background: 'rgba(122,158,126,0.85)', color: 'white',
                       padding: '2px 7px', borderRadius: 6, fontWeight: 700,
                     }}>
-                      {ev.expectedSize === 'small' ? 'SMALL GROUP' : ev.expectedSize === 'medium' ? 'MEDIUM GROUP' : 'LARGE EVENT'}
+                      {ev.expectedSize === 'small' ? t.events_small : ev.expectedSize === 'medium' ? t.events_medium : t.events_large}
                     </span>
                   )}
                 </div>
@@ -324,7 +324,7 @@ export default function Events() {
                         handleRsvpToggle(ev)
                       }}
                     >
-                      {rsvped ? 'Going ✓' : isVenue ? 'Save' : 'RSVP'}
+                      {rsvped ? t.events_rsvped : isVenue ? t.events_save : t.events_rsvp}
                     </button>
                   </div>
                 </div>
@@ -374,7 +374,7 @@ export default function Events() {
           >
             {detailLoading || !detailEvent ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>Loading...</div>
+                <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>{t.events_loading}</div>
               </div>
             ) : (
               <DetailPanel
@@ -387,6 +387,7 @@ export default function Events() {
                   closeDetail()
                 }}
                 userNeighborhood={state.neighborhood}
+                t={t}
               />
             )}
           </motion.div>
@@ -396,7 +397,7 @@ export default function Events() {
   )
 }
 
-function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood }) {
+function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood, t }) {
   const count = (ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0) + (rsvped ? 1 : 0)
   const isVenue = ev.category === 'bars_cafes'
 
@@ -418,7 +419,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             fontSize: 10, background: 'rgba(122,158,126,0.9)', color: 'white',
             padding: '4px 10px', borderRadius: 8, fontWeight: 700,
           }}>
-            🌿 Low pressure
+            🌿 {t.events_low_pressure}
           </div>
         )}
       </div>
@@ -434,16 +435,16 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             fontSize: 10, fontWeight: 700, color: 'var(--terra)',
             textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
           }}>
-            Sempre aberto · Venha quando quiser
+            {t.events_venue_open}
           </div>
         )}
 
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
           📍 {ev.venue}<br/>
-          🗓 {isVenue ? `Horário: ${ev.duration || ev.time}` : `${ev.date} · ${ev.duration || ev.time}`}<br/>
+          🗓 {isVenue ? `${t.events_venue_hours}: ${ev.duration || ev.time}` : `${ev.date} · ${ev.duration || ev.time}`}<br/>
           {ev.categoryEmoji} {ev.categoryLabel}
           {ev.price && <><br/>💰 {ev.price}</>}
-          {ev.hasFood && <><br/>🍽️ Food & drinks included</>}
+          {ev.hasFood && <><br/>{t.events_food_drink}</>}
         </div>
 
         {ev.description && (
@@ -459,7 +460,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             borderLeft: '3px solid var(--sage)',
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 4 }}>
-              Why this is good for you now
+              {t.events_why_good}
             </div>
             <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.rerootReason}</div>
           </div>
@@ -468,15 +469,15 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         {/* Cohort members */}
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
           {isVenue
-            ? (ev.cohortGoing?.length > 0 ? `${ev.cohortGoing.length} cohort members frequent this spot` : 'No cohort members here yet')
-            : (count === 0 ? 'Be first in your cohort' : `${count} going`)
+            ? (ev.cohortGoing?.length > 0 ? `${ev.cohortGoing.length} ${t.events_venue_frequent}` : t.events_venue_no_members)
+            : (count === 0 ? t.events_be_first : `${count} ${t.events_going}`)
           }
         </div>
 
         <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', marginBottom: 20 }}>
           {(ev.cohortGoing?.length === 0 && !rsvped) ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
-              {isVenue ? 'Be the first cohort member to save this spot.' : 'No cohort members yet. Be the first to RSVP.'}
+              {isVenue ? t.events_venue_save_first : t.events_no_members}
             </div>
           ) : (
             <>
@@ -491,12 +492,12 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
               ))}
               {rsvped && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
-                  <div className="avatar" style={{ background: 'var(--terra)' }}>S</div>
+                  <div className="avatar" style={{ background: 'var(--terra)' }}>V</div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>
-                      You <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· {isVenue ? 'Saved ✓' : 'Going ✓'}</span>
+                      {t.events_you} <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· {isVenue ? t.events_saved_check : t.events_going_check}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>Week 3 · {userNeighborhood}</div>
+                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>{t.events_week} 3 · {userNeighborhood}</div>
                   </div>
                 </div>
               )}
@@ -506,8 +507,8 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
 
         <button className="btn btn--primary" onClick={onRsvp}>
           {rsvped
-            ? (isVenue ? 'Remove from saved' : 'Cancel RSVP')
-            : (isVenue ? 'Save this spot' : 'RSVP to this event')
+            ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
+            : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
           }
         </button>
 
@@ -517,7 +518,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             style={{ marginTop: 10, background: 'var(--sage-pale)', color: 'var(--sage)', fontWeight: 600, fontSize: 14 }}
             onClick={onAttended}
           >
-            Mark as attended ✓
+            {t.events_attended_btn}
           </button>
         )}
 
@@ -528,7 +529,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--charcoal-light)', textDecoration: 'underline' }}
           >
-            View original event →
+            {t.events_view_original}
           </a>
         )}
       </div>
