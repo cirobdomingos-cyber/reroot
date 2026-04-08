@@ -63,6 +63,11 @@ export default function Onboarding() {
     setName(MOCK_GOOGLE_USER.givenName)
   }
 
+  function handleClearGoogle() {
+    dispatch({ type: 'SET_GOOGLE_USER', payload: null })
+    setName('')
+  }
+
   function handleJoin() {
     if (name.trim()) dispatch({ type: 'SET_NAME', payload: name.trim() })
     dispatch({ type: 'SET_NEIGHBORHOOD', payload: neighborhood })
@@ -152,7 +157,12 @@ export default function Onboarding() {
                 {state.googleUser.email}
               </div>
             </div>
-            <span style={{ fontSize: 14, color: 'var(--sage-light)' }}>✓</span>
+            <button
+              onClick={handleClearGoogle}
+              style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+            >
+              Trocar ×
+            </button>
           </div>
         ) : (
           <div style={{ marginBottom: 14 }}>

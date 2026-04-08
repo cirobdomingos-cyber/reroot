@@ -178,11 +178,11 @@ function reducer(state, action) {
       return { ...state, language: action.payload }
 
     case 'SET_GOOGLE_USER': {
+      if (!action.payload) return { ...state, googleUser: null }
       const { id, name, givenName, email, picture } = action.payload
       return {
         ...state,
         googleUser: { id, name, givenName, email, picture },
-        // Pre-fill first name only if user hasn't manually set one yet
         userName: state.userName === 'Ana' ? (givenName || name.split(' ')[0]) : state.userName,
       }
     }
