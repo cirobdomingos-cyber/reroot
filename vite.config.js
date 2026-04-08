@@ -38,7 +38,7 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
-            urlPattern: /^http:\/\/localhost:8000\/.*/i,
+            urlPattern: /.*\/(events|health).*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

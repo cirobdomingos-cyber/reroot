@@ -1,0 +1,12 @@
+node_modules
+dist
+ios
+android
+.git
+.env
+backend/.env
+backend/reroot_events.db
+backend/__pycache__
+*.pyc
+.streamlit
+pages

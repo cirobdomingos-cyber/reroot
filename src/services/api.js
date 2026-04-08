@@ -7,7 +7,10 @@
  */
 import { EVENTS } from '../data/events'
 
-const BASE_URL = 'http://localhost:8000'
+// In production (single-service deploy), API is same-origin → empty string.
+// In local dev, frontend runs on :5173 and backend on :8000.
+const BASE_URL = import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? 'http://localhost:8000' : '')
 const TIMEOUT_MS = 2000
 
 async function fetchWithTimeout(url, options = {}) {

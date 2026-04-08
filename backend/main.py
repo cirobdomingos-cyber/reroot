@@ -2,18 +2,26 @@
 Reroot Backend — FastAPI
 Serve eventos reais de Curitiba enriquecidos com Claude.
 
-Rodar: uvicorn main:app --reload --port 8000
+Local:  uvicorn main:app --reload --port 8000
+Deploy: Railway runs this via Dockerfile (PORT injected by Railway)
 """
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import database as db
 from scheduler import start_scheduler, stop_scheduler, run_refresh
+
+# Static files directory (built React app, copied by Dockerfile)
+STATIC_DIR = Path(__file__).parent / "static"
 
 # ── Logging ──
 logging.basicConfig(
@@ -68,7 +76,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],  # Capacitor native apps send requests from arbitrary origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -211,3 +219,18 @@ def _duration(ev) -> str:
 
 def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
+
+
+# ── Static files + SPA fallback ──
+# Must be registered AFTER all API routes so /events, /health etc. take priority
+
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @app.get("/{path:path}")
+    async def spa_fallback(request: Request, path: str):
+        """Serve static files or fall back to index.html for SPA routing."""
+        file_path = STATIC_DIR / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(STATIC_DIR / "index.html")
