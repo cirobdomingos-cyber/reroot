@@ -5,17 +5,21 @@ Serve eventos reais de Curitiba enriquecidos com Claude.
 Local:  uvicorn main:app --reload --port 8000
 Deploy: Railway runs this via Dockerfile (PORT injected by Railway)
 """
+import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 import httpx
+from anthropic import Anthropic
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import database as db
@@ -362,6 +366,131 @@ def _duration(ev) -> str:
 
 def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
+
+
+# ── AI Companion ──
+
+class CompanionRequest(BaseModel):
+    message: str
+    situation: str | None = None
+    goal: str | None = None
+    week: int = 1
+    language: str = "pt"
+    history: list[dict] = []  # previous messages for context
+
+
+# Compact event catalog for Claude context — keep token usage low
+def _build_event_catalog() -> str:
+    events = db.get_events(city=settings.city, good_only=True, limit=50)
+    if not events:
+        return "(no live events available)"
+
+    lines = []
+    for ev in events:
+        price = _format_price(ev.price_min, ev.price_max, ev.currency)
+        lines.append(
+            f"- [{ev.id}] {ev.name} | {ev.reroot_category} | {ev.venue_name} | "
+            f"{ev.date_start.strftime('%d/%m %H:%M')} | {price} | "
+            f"low_pressure={ev.is_low_pressure} | vibe: {ev.vibe_summary}"
+        )
+    return "\n".join(lines)
+
+
+COMPANION_SYSTEM_PROMPT = """\
+You are the Reroot Companion — a warm, grounded AI guide embedded in a social \
+re-entry app for people rebuilding their social life after isolation (divorce, \
+burnout, relocation, grief, remote work).
+
+YOUR ROLE:
+- Be a supportive companion, not a therapist. Think wise friend who's been there.
+- Give practical, actionable suggestions when the user describes how they feel.
+- When they mention activities, moods, or desires, recommend specific events from \
+  the AVAILABLE EVENTS catalog below.
+- When they need encouragement or advice, provide it warmly and concisely.
+- Keep responses short (2-4 sentences). You're a mobile app companion, not a chatbot.
+- Never be preachy. Never use corporate wellness language.
+- Match the user's energy — if they're excited, be excited. If they're scared, be gentle.
+
+USER CONTEXT:
+- Situation: {situation}
+- Goal: {goal}
+- Current week: {week}/12
+- Language: {language}
+
+AVAILABLE EVENTS:
+{events}
+
+RESPONSE FORMAT — return ONLY valid JSON (no markdown, no extra text):
+{{
+  "message": "<your response in {language_name}>",
+  "event_ids": ["id1", "id2"],
+  "tone": "encouraging" | "gentle" | "excited" | "practical"
+}}
+
+RULES:
+- Recommend 0-3 events. Only recommend if relevant to what the user said.
+- If no events match, give advice/encouragement without event recommendations.
+- Always respond in {language_name}.
+- event_ids must be exact IDs from the catalog above, or empty list if none match.
+- The message should naturally weave in why the recommended events fit their mood.
+"""
+
+
+@app.post("/companion")
+async def companion_chat(req: CompanionRequest):
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
+
+    event_catalog = _build_event_catalog()
+    language_name = "Portuguese" if req.language == "pt" else "English"
+
+    system = COMPANION_SYSTEM_PROMPT.format(
+        situation=req.situation or "unknown",
+        goal=req.goal or "general wellbeing",
+        week=req.week,
+        language=req.language,
+        language_name=language_name,
+        events=event_catalog,
+    )
+
+    # Build message history for multi-turn context
+    messages = []
+    for msg in req.history[-6:]:  # keep last 6 messages for context window
+        messages.append({"role": msg.get("role", "user"), "content": msg["content"]})
+    messages.append({"role": "user", "content": req.message})
+
+    try:
+        client = Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=system,
+            messages=messages,
+        )
+        raw_text = response.content[0].text.strip()
+        # Strip markdown fences if present
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        # Claude returned non-JSON — use raw text as message
+        data = {"message": raw_text, "event_ids": [], "tone": "encouraging"}
+    except Exception as e:
+        log.error(f"Companion API error: {e}")
+        raise HTTPException(status_code=502, detail="AI companion unavailable")
+
+    # Resolve event IDs to full frontend objects
+    recommended_events = []
+    for eid in data.get("event_ids", []):
+        ev = db.get_event_by_id(eid)
+        if ev:
+            recommended_events.append(_to_frontend(ev))
+
+    return {
+        "message": data.get("message", ""),
+        "events": recommended_events,
+        "tone": data.get("tone", "encouraging"),
+    }
 
 
 # ── Static files + SPA fallback ──
