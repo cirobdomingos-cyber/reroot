@@ -6,6 +6,20 @@ import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 
+const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+
+const VENUE_SUBTYPES = [
+  { id: 'all',  label: 'Todos' },
+  { id: 'cafe', label: '☕ Cafés' },
+  { id: 'bar',  label: '🍺 Bares' },
+]
+
+function getSubtype(ev) {
+  if (ev.placeSubtype) return ev.placeSubtype
+  // Infer from static data icon
+  return ev.icon === '☕' ? 'cafe' : 'bar'
+}
+
 function EventCardSkeleton() {
   return (
     <div style={{
@@ -25,6 +39,23 @@ function EventCardSkeleton() {
   )
 }
 
+function VenueSkeletonRow() {
+  return (
+    <div style={{
+      background: 'white', borderRadius: 16, margin: '0 16px 8px',
+      padding: '13px 14px', border: '1px solid var(--border)',
+      display: 'flex', alignItems: 'center', gap: 12,
+    }}>
+      <div style={{ width: 44, height: 44, borderRadius: 12, background: '#f0ede8', flexShrink: 0, animation: 'shimmer 1.4s infinite', backgroundSize: '200% 100%' }}/>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 14, width: '60%', background: '#f0ede8', borderRadius: 6, marginBottom: 7 }}/>
+        <div style={{ height: 11, width: '40%', background: '#f0ede8', borderRadius: 6 }}/>
+      </div>
+      <div style={{ height: 32, width: 64, background: '#f0ede8', borderRadius: 10 }}/>
+    </div>
+  )
+}
+
 export default function Events() {
   const { state, dispatch } = useApp()
   const t = useT()
@@ -32,6 +63,7 @@ export default function Events() {
   const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
   const [activeFilter, setActiveFilter] = useState(defaultFilter)
   const [dateFilter, setDateFilter] = useState('all')
+  const [venueSubFilter, setVenueSubFilter] = useState('all')
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [dataSource, setDataSource] = useState('static')
@@ -40,6 +72,8 @@ export default function Events() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [notifToast, setNotifToast] = useState(null)
+
+  const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
   const loadEvents = useCallback(async (category) => {
     setLoading(true)
@@ -51,6 +85,7 @@ export default function Events() {
 
   useEffect(() => {
     loadEvents(activeFilter)
+    setVenueSubFilter('all')
   }, [activeFilter, loadEvents])
 
   async function openDetail(eventId) {
@@ -66,7 +101,7 @@ export default function Events() {
     setDetailEvent(null)
   }
 
-  // Apply search + date filter
+  // Apply search + date/venue filter
   let filteredEvents = events
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
@@ -75,19 +110,22 @@ export default function Events() {
       ev.venue?.toLowerCase().includes(q)
     )
   }
-  if (dateFilter !== 'all') {
+  if (!isVenueMode && dateFilter !== 'all') {
     filteredEvents = filteredEvents.filter(ev => ev.dateTag === dateFilter)
+  }
+  if (isVenueMode && venueSubFilter !== 'all') {
+    filteredEvents = filteredEvents.filter(ev => getSubtype(ev) === venueSubFilter)
   }
 
   function getMemberCount(ev) {
-    const base = ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0
+    const base = ev.cohortGoing?.length ?? 0
     return base + (state.rsvps[ev.id] ? 1 : 0)
   }
 
   async function handleRsvpToggle(ev) {
     const wasRsvped = !!state.rsvps[ev.id]
     dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
-    if (!wasRsvped && ev.category !== 'bars_cafes') {
+    if (!wasRsvped && !isVenueMode) {
       const ok = await scheduleEventReminder(ev)
       if (ok) {
         setNotifToast(ev.name)
@@ -117,9 +155,10 @@ export default function Events() {
           <div style={{
             fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
             padding: '3px 8px', borderRadius: 6,
-            background: 'var(--sage-pale)', color: 'var(--sage)',
+            background: dataSource === 'places' ? 'rgba(196,114,74,0.12)' : 'var(--sage-pale)',
+            color: dataSource === 'places' ? 'var(--terra)' : 'var(--sage)',
           }}>
-            {dataSource === 'live' ? t.events_live : t.events_static}
+            {dataSource === 'live' ? t.events_live : dataSource === 'places' ? '📍 Google' : t.events_static}
           </div>
         </div>
       </div>
@@ -171,36 +210,64 @@ export default function Events() {
         ))}
       </div>
 
-      {/* Date filter chips */}
-      <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {DATE_FILTERS.map(df => (
-          <button
-            key={df.id}
-            onClick={() => setDateFilter(df.id)}
-            style={{
-              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-              transition: 'all 0.15s',
-              border: dateFilter === df.id ? 'none' : '1px solid var(--border)',
-              background: dateFilter === df.id ? 'var(--terra)' : 'transparent',
-              color: dateFilter === df.id ? 'white' : 'var(--charcoal-light)',
-            }}
-          >
-            {df.label}
-          </button>
-        ))}
-      </div>
+      {/* Date filter or venue sub-filter */}
+      {isVenueMode ? (
+        <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {VENUE_SUBTYPES.map(sub => (
+            <button
+              key={sub.id}
+              onClick={() => setVenueSubFilter(sub.id)}
+              style={{
+                padding: '5px 14px', borderRadius: 16, whiteSpace: 'nowrap',
+                fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                transition: 'all 0.15s',
+                border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
+                background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
+                color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
+              }}
+            >
+              {sub.label}
+            </button>
+          ))}
+          {dataSource === 'places' && (
+            <span style={{
+              marginLeft: 'auto', flexShrink: 0, alignSelf: 'center',
+              fontSize: 10, color: 'var(--charcoal-light)',
+              paddingRight: 4,
+            }}>
+              {filteredEvents.length} locais
+            </span>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {DATE_FILTERS.map(df => (
+            <button
+              key={df.id}
+              onClick={() => setDateFilter(df.id)}
+              style={{
+                padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                transition: 'all 0.15s',
+                border: dateFilter === df.id ? 'none' : '1px solid var(--border)',
+                background: dateFilter === df.id ? 'var(--terra)' : 'transparent',
+                color: dateFilter === df.id ? 'white' : 'var(--charcoal-light)',
+              }}
+            >
+              {df.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Loading skeletons */}
       {loading && (
-        <>
-          <EventCardSkeleton />
-          <EventCardSkeleton />
-          <EventCardSkeleton />
-        </>
+        isVenueMode
+          ? <>{[0,1,2,3,4].map(i => <VenueSkeletonRow key={i} />)}</>
+          : <>{[0,1,2].map(i => <EventCardSkeleton key={i} />)}</>
       )}
 
-      {/* Event list */}
+      {/* List */}
       {!loading && (
         <AnimatePresence mode="popLayout">
           {filteredEvents.length === 0 && (
@@ -216,8 +283,30 @@ export default function Events() {
 
           {filteredEvents.map(ev => {
             const rsvped = !!state.rsvps[ev.id]
+            const isVenue = VENUE_CATEGORIES.has(ev.category)
+
+            if (isVenue) {
+              return (
+                <motion.div
+                  key={ev.id}
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <VenueRow
+                    ev={ev}
+                    saved={rsvped}
+                    onSave={() => handleRsvpToggle(ev)}
+                    onOpen={() => openDetail(ev.id)}
+                    t={t}
+                  />
+                </motion.div>
+              )
+            }
+
             const count = getMemberCount(ev)
-            const isVenue = ev.category === 'bars_cafes'
 
             return (
               <motion.div
@@ -245,29 +334,18 @@ export default function Events() {
                     {ev.categoryEmoji} {ev.categoryLabel}
                   </span>
 
-                  {isVenue && (
-                    <span style={{
-                      position: 'absolute', top: 10, right: 12,
-                      fontSize: 9, fontWeight: 700,
-                      background: 'rgba(196,114,74,0.85)', color: 'white',
-                      padding: '3px 8px', borderRadius: 6,
-                    }}>
-                      SEMPRE ABERTO
-                    </span>
-                  )}
-
-                  {!isVenue && count === 0 && (
+                  {count === 0 && (
                     <span style={{
                       position: 'absolute', top: 10, right: 12,
                       fontSize: 10, fontWeight: 700,
                       background: 'rgba(255,255,255,0.85)', color: 'var(--charcoal-mid)',
                       padding: '4px 10px', borderRadius: 8,
                     }}>
-                      Be first in your cohort
+                      {t.events_be_first}
                     </span>
                   )}
 
-                  {!isVenue && count > 0 && (
+                  {count > 0 && (
                     <span style={{
                       position: 'absolute', top: 10, right: 12,
                       fontSize: 10, fontWeight: 700,
@@ -276,11 +354,11 @@ export default function Events() {
                       display: 'flex', alignItems: 'center', gap: 4,
                     }}>
                       <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--sage-light)', display: 'block' }}/>
-                      {count} going
+                      {count} {t.events_going}
                     </span>
                   )}
 
-                  {ev.expectedSize && !isVenue && (
+                  {ev.expectedSize && (
                     <span style={{
                       position: 'absolute', bottom: 10, right: 12,
                       fontSize: 9, background: 'rgba(122,158,126,0.85)', color: 'white',
@@ -307,12 +385,12 @@ export default function Events() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--terra)' }}>
-                        {isVenue ? ev.time : `${ev.date} · ${ev.time}`}
+                        {`${ev.date} · ${ev.time}`}
                       </div>
                       {ev.price && (
                         <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 1 }}>
                           {ev.price}
-                          {ev.hasFood && <span style={{ marginLeft: 6 }}>🍽️ includes food</span>}
+                          {ev.hasFood && <span style={{ marginLeft: 6 }}>🍽️ {t.events_has_food}</span>}
                         </div>
                       )}
                     </div>
@@ -324,7 +402,7 @@ export default function Events() {
                         handleRsvpToggle(ev)
                       }}
                     >
-                      {rsvped ? t.events_rsvped : isVenue ? t.events_save : t.events_rsvp}
+                      {rsvped ? t.events_rsvped : t.events_rsvp}
                     </button>
                   </div>
                 </div>
@@ -397,9 +475,81 @@ export default function Events() {
   )
 }
 
+function VenueRow({ ev, saved, onSave, onOpen, t }) {
+  const subtype = getSubtype(ev)
+  const neighborhood = ev.venue?.split(' · ')[1] || ev.venue || ''
+
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        background: 'white', borderRadius: 16, margin: '0 16px 8px',
+        padding: '13px 14px', border: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+        transition: 'box-shadow 0.15s',
+      }}
+    >
+      {/* Icon */}
+      <div style={{
+        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+        background: subtype === 'cafe' ? '#F5DDD1' : '#2C2C2C',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 20,
+      }}>
+        {ev.icon || (subtype === 'cafe' ? '☕' : '🍺')}
+      </div>
+
+      {/* Info */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {ev.name}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+          📍 {neighborhood}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          {ev.rating > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--terra)' }}>
+              ⭐ {ev.rating}
+            </span>
+          )}
+          {ev.price && (
+            <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{ev.price}</span>
+          )}
+          {ev.isLowPressure && (
+            <span style={{
+              fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
+              padding: '1px 7px', borderRadius: 6, fontWeight: 600,
+            }}>
+              {t.events_low_pressure}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Save button */}
+      <button
+        onClick={e => { e.stopPropagation(); onSave() }}
+        style={{
+          flexShrink: 0, padding: '7px 14px', borderRadius: 10,
+          fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+          border: saved ? 'none' : '1.5px solid var(--border)',
+          background: saved ? 'var(--sage)' : 'transparent',
+          color: saved ? 'white' : 'var(--charcoal-mid)',
+        }}
+      >
+        {saved ? `✓ ${t.events_saved_check}` : t.events_save}
+      </button>
+    </div>
+  )
+}
+
 function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood, t }) {
-  const count = (ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0) + (rsvped ? 1 : 0)
-  const isVenue = ev.category === 'bars_cafes'
+  const count = (ev.cohortGoing?.length ?? 0) + (rsvped ? 1 : 0)
+  const isVenue = VENUE_CATEGORIES.has(ev.category)
 
   return (
     <>
@@ -439,9 +589,24 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           </div>
         )}
 
+        {/* Rating row for venues */}
+        {isVenue && ev.rating > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--terra)' }}>⭐ {ev.rating}</div>
+            {ev.attendeesConfirmed > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
+                {ev.attendeesConfirmed.toLocaleString('pt-BR')} avaliações no Google
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
           📍 {ev.venue}<br/>
-          🗓 {isVenue ? `${t.events_venue_hours}: ${ev.duration || ev.time}` : `${ev.date} · ${ev.duration || ev.time}`}<br/>
+          {isVenue
+            ? `🕐 ${t.events_venue_open}`
+            : `🗓 ${ev.date} · ${ev.duration || ev.time}`
+          }<br/>
           {ev.categoryEmoji} {ev.categoryLabel}
           {ev.price && <><br/>💰 {ev.price}</>}
           {ev.hasFood && <><br/>{t.events_food_drink}</>}
@@ -529,7 +694,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--charcoal-light)', textDecoration: 'underline' }}
           >
-            {t.events_view_original}
+            {isVenue ? '📍 Ver no Google Maps →' : t.events_view_original}
           </a>
         )}
       </div>

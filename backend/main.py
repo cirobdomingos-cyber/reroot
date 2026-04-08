@@ -212,7 +212,7 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
         for place_type in place_types:
             params = {
                 "location": f"{_CURITIBA_LAT},{_CURITIBA_LNG}",
-                "radius": 5000,
+                "radius": 8000,
                 "type": place_type,
                 "key": settings.google_places_api_key,
                 "language": "pt-BR",
@@ -282,6 +282,7 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
         "source": "places",
         "isReal": True,
         "rating": rating,
+        "placeSubtype": "cafe" if is_cafe else "bar",
     }
 
 
