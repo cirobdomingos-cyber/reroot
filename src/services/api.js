@@ -141,18 +141,32 @@ export async function triggerRefresh() {
 
 /**
  * AI Companion — send a message and get back a response with optional event suggestions.
- * Uses a longer timeout since Claude needs time to think.
+ * Sends the full event catalog so the LLM always has events to recommend
+ * (works even when the scraper DB is empty — offline-first pattern).
  */
-export async function askCompanion({ message, situation, goal, week, language, history = [] }) {
+export async function askCompanion({ message, situation, goal, week, language, history = [], eventsContext = [] }) {
   const controller = new AbortController()
-  const id = setTimeout(() => controller.abort(), 10_000) // 10s timeout for LLM
+  const id = setTimeout(() => controller.abort(), 15_000) // 15s timeout for LLM
+
+  // Send compact event data — only fields the LLM needs for matching + display
+  const compactEvents = eventsContext.map(ev => ({
+    id: ev.id, name: ev.name, category: ev.category,
+    categoryLabel: ev.categoryLabel, categoryEmoji: ev.categoryEmoji,
+    venue: ev.venue, date: ev.date, time: ev.time,
+    price: ev.price, isLowPressure: ev.isLowPressure,
+    vibeSummary: ev.vibeSummary, headerBg: ev.headerBg,
+    icon: ev.icon, url: ev.url,
+  }))
 
   try {
     const res = await fetch(`${BASE_URL}/companion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      body: JSON.stringify({ message, situation, goal, week, language, history }),
+      body: JSON.stringify({
+        message, situation, goal, week, language, history,
+        events_context: compactEvents,
+      }),
     })
     clearTimeout(id)
     if (!res.ok) throw new Error(`Companion error: ${res.status}`)

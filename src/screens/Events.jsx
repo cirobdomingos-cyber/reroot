@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
@@ -58,6 +59,7 @@ function VenueSkeletonRow() {
 
 export default function Events() {
   const { state, dispatch } = useApp()
+  const location = useLocation()
   const t = useT()
   const profile = getProfile(state.userSituation)
   const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
@@ -87,6 +89,16 @@ export default function Events() {
     loadEvents(activeFilter)
     setVenueSubFilter('all')
   }, [activeFilter, loadEvents])
+
+  // Open event detail when navigated from companion chat
+  useEffect(() => {
+    const openId = location.state?.openEventId
+    if (openId && !loading) {
+      openDetail(openId)
+      // Clear the navigation state so it doesn't re-trigger
+      window.history.replaceState({}, '')
+    }
+  }, [location.state?.openEventId, loading])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)

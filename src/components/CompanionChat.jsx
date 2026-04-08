@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeCurrentWeek, getChapter } from '../context/AppContext'
 import { useT } from '../i18n'
-import { askCompanion } from '../services/api'
+import { askCompanion, fetchEvents } from '../services/api'
+import { EVENTS } from '../data/events'
 
 const SUGGESTIONS = {
   pt: [
@@ -46,7 +48,7 @@ function TypingIndicator() {
   )
 }
 
-function CompanionMessage({ msg }) {
+function CompanionMessage({ msg, onEventClick }) {
   return (
     <div style={{ display: 'flex', gap: 8, padding: '6px 16px', alignItems: 'flex-start' }}>
       <div style={{
@@ -64,20 +66,18 @@ function CompanionMessage({ msg }) {
         }}>
           {msg.message}
         </div>
-        {/* Recommended events */}
+        {/* Recommended events — clickable cards that navigate to event detail */}
         {msg.events?.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {msg.events.map(ev => (
-              <a
+              <div
                 key={ev.id}
-                href={ev.url || '#'}
-                target={ev.url ? '_blank' : undefined}
-                rel="noopener noreferrer"
+                onClick={() => onEventClick?.(ev)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   background: 'white', borderRadius: 14, padding: '10px 12px',
                   border: '1.5px solid var(--sage-pale)', textDecoration: 'none',
-                  cursor: 'pointer', transition: 'border-color 0.15s',
+                  cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
                 <div style={{
@@ -96,11 +96,20 @@ function CompanionMessage({ msg }) {
                     {ev.name}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
+                    📍 {ev.venue}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--terra)', marginTop: 2, fontWeight: 600 }}>
                     {ev.date} {ev.time && `· ${ev.time}`} {ev.price && `· ${ev.price}`}
                   </div>
                 </div>
-                <span style={{ fontSize: 14, color: 'var(--charcoal-light)', flexShrink: 0 }}>→</span>
-              </a>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: 'var(--sage)',
+                  padding: '4px 10px', borderRadius: 8,
+                  background: 'var(--sage-pale)', flexShrink: 0,
+                }}>
+                  Ver →
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -126,16 +135,38 @@ function UserMessage({ text }) {
 
 export default function CompanionChat({ open, onClose }) {
   const { state } = useApp()
+  const navigate = useNavigate()
   const t = useT()
   const lang = state.language ?? 'pt'
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [allEvents, setAllEvents] = useState([])
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
+
+  // Load all available events once (static + live) so we can send them as context
+  useEffect(() => {
+    async function loadEvents() {
+      // Start with static embedded events (always available)
+      let events = [...EVENTS]
+      // Try to fetch live events as bonus
+      try {
+        const { events: liveEvents } = await fetchEvents('all')
+        if (liveEvents?.length > 0) {
+          const ids = new Set(events.map(e => e.id))
+          for (const ev of liveEvents) {
+            if (!ids.has(ev.id)) events.push(ev)
+          }
+        }
+      } catch { /* static events are enough */ }
+      setAllEvents(events)
+    }
+    if (open && allEvents.length === 0) loadEvents()
+  }, [open, allEvents.length])
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -150,6 +181,13 @@ export default function CompanionChat({ open, onClose }) {
       setTimeout(() => inputRef.current?.focus(), 300)
     }
   }, [open])
+
+  function handleEventClick(ev) {
+    // Close companion and navigate to events page
+    // The event ID is stored so Events screen can open its detail
+    onClose()
+    navigate('/events', { state: { openEventId: ev.id } })
+  }
 
   async function handleSend(text) {
     const msg = text || input.trim()
@@ -172,6 +210,7 @@ export default function CompanionChat({ open, onClose }) {
         week: currentWeek,
         language: lang,
         history,
+        eventsContext: allEvents,
       })
 
       setMessages(prev => [...prev, {
@@ -303,7 +342,7 @@ export default function CompanionChat({ open, onClose }) {
             {messages.map((msg, i) => (
               msg.role === 'user'
                 ? <UserMessage key={i} text={msg.content} />
-                : <CompanionMessage key={i} msg={msg} />
+                : <CompanionMessage key={i} msg={msg} onEventClick={handleEventClick} />
             ))}
 
             {loading && <TypingIndicator />}
