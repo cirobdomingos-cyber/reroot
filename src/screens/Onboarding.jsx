@@ -44,7 +44,7 @@ export default function Onboarding() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
-  const [name, setName] = useState(state.googleUser?.givenName ?? '')
+  const [name, setName] = useState(state.googleUser?.givenName ?? state.userName ?? '')
   const [neighborhood, setNeighborhood] = useState(state.neighborhood)
   const googleBtnRef = useRef(null)
   const googleConfigured = isGoogleConfigured()

@@ -222,7 +222,7 @@ export default function Home() {
       <div style={{ padding: '14px 20px 4px' }}>
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)' }}>{t[getGreetingKey()]},</div>
         <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--charcoal)' }}>
-          {state.userName} 👋
+          {state.userName || t.home_default_name} 👋
         </div>
       </div>
 
@@ -538,9 +538,9 @@ export default function Home() {
         </div>
         <div className="divider"/>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="avatar" style={{ background: '#5B8DD9', width: 30, height: 30, fontSize: 11 }}>J</div>
+          <div className="avatar" style={{ background: '#5B8DD9', width: 30, height: 30, fontSize: 11 }}>M</div>
           <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4 }}>
-            <strong style={{ color: 'var(--charcoal)' }}>Jamie</strong>{' '}{t.home_cohort_completed}
+            <strong style={{ color: 'var(--charcoal)' }}>Marcos</strong>{' '}{t.home_cohort_completed}
           </div>
         </div>
       </div>

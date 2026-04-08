@@ -76,8 +76,8 @@ const INITIAL_STATE = {
   identityMirrorCompleted: false,
   questionnaireCompleted: false,
   joinedAt: null,               // timestamp — drives week computation
-  userName: 'Ana',
-  neighborhood: 'Água Verde · Curitiba',
+  userName: '',
+  neighborhood: '',
   interests: ['Coffee & Conversation', 'Creative Writing', 'Book Clubs'],
   totalWeeks: 12,
   language: 'pt',               // 'pt' | 'en'
@@ -239,7 +239,7 @@ function reducer(state, action) {
       return {
         ...state,
         googleUser: { id, name, givenName, email, picture },
-        userName: state.userName === 'Ana' ? (givenName || name.split(' ')[0]) : state.userName,
+        userName: !state.userName ? (givenName || name.split(' ')[0]) : state.userName,
       }
     }
 
@@ -257,7 +257,7 @@ function reducer(state, action) {
         userSituation: null,
         userGoal: null,
         googleUser: null,
-        userName: 'Ana',
+        userName: '',
       }
 
     case 'RESET':

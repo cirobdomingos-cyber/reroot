@@ -89,7 +89,7 @@ export default function Profile() {
           />
         ) : (
           <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
-            {state.userName.charAt(0).toUpperCase()}
+            {(state.userName || '?').charAt(0).toUpperCase()}
           </div>
         )}
 

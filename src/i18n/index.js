@@ -28,6 +28,7 @@ export const T = {
     onboarding_privacy:               '🔒 Só primeiro nome · Sem redes sociais · Não é app de namoro',
 
     // ── Home ─────────────────────────────────────────────
+    home_default_name:      'você',
     greeting_morning:       'Bom dia',
     greeting_afternoon:     'Boa tarde',
     greeting_evening:       'Boa noite',
@@ -443,6 +444,7 @@ export const T = {
     onboarding_privacy:               '🔒 First names only · No social media linking · Not a dating app',
 
     // ── Home ─────────────────────────────────────────────
+    home_default_name:      'there',
     greeting_morning:       'Good morning',
     greeting_afternoon:     'Good afternoon',
     greeting_evening:       'Good evening',
