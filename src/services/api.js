@@ -55,7 +55,32 @@ function normalizeBackendEvent(ev) {
   }
 }
 
+// Categories backed by Google Places instead of the events DB
+const PLACES_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+
+async function fetchPlaces(type) {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/places?type=${type}&limit=20`)
+    if (res.ok) {
+      const data = await res.json()
+      const places = data.places || []
+      if (places.length > 0) {
+        return { events: places, source: 'places', city: 'Curitiba' }
+      }
+    }
+  } catch {
+    // Backend unavailable or Places key not configured — fall through to static data
+  }
+  return null
+}
+
 export async function fetchEvents(category = 'all') {
+  // For venue-type categories, try Google Places first
+  if (category && PLACES_CATEGORIES.has(category)) {
+    const result = await fetchPlaces(category)
+    if (result) return result
+  }
+
   // Always start with embedded data (works offline, in native app, etc.)
   const filtered = category && category !== 'all'
     ? EVENTS.filter(e => e.category === category)

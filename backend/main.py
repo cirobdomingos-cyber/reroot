@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     eventbrite_token: str = ""
     instagram_user: str = ""
     instagram_pass: str = ""
+    google_places_api_key: str = ""
     city: str = "Curitiba"
     refresh_interval_hours: int = 6
 
@@ -94,6 +96,7 @@ def health():
         "sympla_configured": bool(settings.sympla_token),
         "eventbrite_configured": bool(settings.eventbrite_token),
         "instagram_configured": bool(settings.instagram_user and settings.instagram_pass),
+        "google_places_configured": bool(settings.google_places_api_key),
     }
 
 
@@ -155,6 +158,145 @@ def stats():
             for src in ["sympla", "eventbrite", "meetup"]
         },
     }
+
+
+# ── Google Places ──
+
+_CURITIBA_LAT = -25.4290
+_CURITIBA_LNG = -49.2671
+_PLACES_BASE = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+
+_PLACES_TYPE_MAP: dict[str, list[str]] = {
+    "bars_cafes": ["bar", "cafe"],
+    "parks":      ["park"],
+    "cinema":     ["movie_theater"],
+    "bookstore":  ["book_store"],
+}
+
+_PLACES_META: dict[str, dict] = {
+    "bars_cafes": {
+        "label": "Bares & Cafés", "emoji": "🍺", "icon": "🍺",
+        "headerBg": "linear-gradient(135deg, #3d2d25 0%, #7a4e3a 100%)",
+    },
+    "parks": {
+        "label": "Parques", "emoji": "🌿", "icon": "🌿",
+        "headerBg": "linear-gradient(135deg, #2d3d25 0%, #4e7a3a 100%)",
+    },
+    "cinema": {
+        "label": "Cinema", "emoji": "🎬", "icon": "🎬",
+        "headerBg": "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+    },
+    "bookstore": {
+        "label": "Livrarias", "emoji": "📚", "icon": "📚",
+        "headerBg": "linear-gradient(135deg, #2d2520 0%, #5c3d2e 100%)",
+    },
+}
+
+
+@app.get("/places")
+async def list_places(type: str = "bars_cafes", limit: int = 20):
+    """
+    Busca locais reais no Google Places por tipo e retorna no formato frontend.
+    type: bars_cafes | parks | cinema | bookstore
+    """
+    if not settings.google_places_api_key:
+        raise HTTPException(status_code=503, detail="GOOGLE_PLACES_API_KEY não configurada")
+
+    place_types = _PLACES_TYPE_MAP.get(type, ["bar"])
+    meta = _PLACES_META.get(type, _PLACES_META["bars_cafes"])
+
+    all_places: list[dict] = []
+    seen_ids: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        for place_type in place_types:
+            params = {
+                "location": f"{_CURITIBA_LAT},{_CURITIBA_LNG}",
+                "radius": 5000,
+                "type": place_type,
+                "key": settings.google_places_api_key,
+                "language": "pt-BR",
+            }
+            r = await client.get(_PLACES_BASE, params=params)
+            if r.status_code != 200:
+                log.warning(f"Places API erro {r.status_code} para type={place_type}")
+                continue
+            for place in r.json().get("results", []):
+                pid = place["place_id"]
+                if pid not in seen_ids:
+                    seen_ids.add(pid)
+                    all_places.append(_place_to_frontend(place, type, meta))
+
+    # Sort by number of ratings (popularity proxy), cap at limit
+    all_places.sort(key=lambda p: p["attendeesConfirmed"], reverse=True)
+    top = all_places[:limit]
+
+    return {"places": top, "total": len(all_places), "type": type}
+
+
+def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
+    rating = place.get("rating", 0)
+    ratings_total = place.get("user_ratings_total", 0)
+    price_level = place.get("price_level", 1)
+    vicinity = place.get("vicinity", "Curitiba")
+    name = place["name"]
+    place_id = place["place_id"]
+    types = place.get("types", [])
+
+    _price_labels = {0: "Gratuito", 1: "R$ até 30", 2: "R$ 30–60", 3: "R$ 60–100", 4: "R$ 100+"}
+    _price_tiers  = {0: "free", 1: "low", 2: "mid", 3: "high", 4: "high"}
+
+    has_food = any(t in types for t in ["restaurant", "food", "meal_takeaway", "bakery", "cafe"])
+    is_cafe = "cafe" in types or "café" in name.lower() or "coffee" in name.lower()
+    is_low_pressure = is_cafe or price_level <= 1
+
+    vibe = f"⭐ {rating}" if rating else ""
+    if ratings_total:
+        vibe += f" · {ratings_total:,} avaliações".replace(",", ".")
+
+    reroot_reason = _places_reroot_reason(category, is_cafe)
+    maps_url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+
+    return {
+        "id": place_id,
+        "name": name,
+        "category": category,
+        "categoryLabel": meta["label"],
+        "categoryEmoji": meta["emoji"],
+        "venue": f"{name} · {vicinity}",
+        "date": "Sempre disponível",
+        "time": "",
+        "duration": "",
+        "headerBg": meta["headerBg"],
+        "icon": meta["icon"],
+        "price": _price_labels.get(price_level, "R$ 30–60"),
+        "priceTier": _price_tiers.get(price_level, "mid"),
+        "hasFood": has_food,
+        "isLowPressure": is_low_pressure,
+        "attendeesConfirmed": ratings_total,
+        "expectedSize": "intimate" if price_level <= 1 else "medium",
+        "vibeSummary": vibe.strip(" ·"),
+        "rerootReason": reroot_reason,
+        "url": maps_url,
+        "cohortGoing": [],
+        "source": "places",
+        "isReal": True,
+        "rating": rating,
+    }
+
+
+def _places_reroot_reason(category: str, is_cafe: bool) -> str:
+    reasons = {
+        "bars_cafes": (
+            "Um café solo é o primeiro passo. Lugar com movimento, sem compromisso."
+            if is_cafe else
+            "Ambiente animado, fácil de entrar e sair. Bom para quebrar o isolamento."
+        ),
+        "parks": "Contato com natureza reduz cortisol. Caminhada solo ou com alguém — ambos valem.",
+        "cinema": "Programa solo sem pressão social. Ótimo para sair de casa com propósito claro.",
+        "bookstore": "Livraria é espaço de pertencimento silencioso. Fácil de ficar, fácil de ir.",
+    }
+    return reasons.get(category, "Lugar real, energia real.")
 
 
 # ── Serialização para o frontend ──
