@@ -60,10 +60,10 @@ export function getProfile(situation) {
 
 // ── Chapter system ─────────────────────────────────────────
 export const CHAPTERS = [
-  { id: 'reentry', name: 'Re-entry',  weeks: [1, 2, 3],    color: '#C4724A', pale: '#F5DDD1', desc: 'Easing back in. Showing your nervous system it\'s safe to show up again.' },
-  { id: 'roots',   name: 'Roots',     weeks: [4, 5, 6],    color: '#7A9E7E', pale: '#E4EFE5', desc: 'Building consistency. The people and places that start to feel familiar.' },
-  { id: 'reach',   name: 'Reach',     weeks: [7, 8, 9],    color: '#D4A256', pale: '#FFF3E0', desc: 'Expanding your range. Saying yes to things that used to feel impossible.' },
-  { id: 'thrive',  name: 'Thrive',    weeks: [10, 11, 12], color: '#9B7EB8', pale: '#EDE7F6', desc: 'Living it. Social life isn\'t a project anymore — it\'s just life.' },
+  { id: 'reentry', name: 'Reentrada',   weeks: [1, 2, 3],    color: '#C4724A', pale: '#F5DDD1', desc: 'Voltando aos poucos. Mostrando ao seu sistema nervoso que é seguro aparecer de novo.' },
+  { id: 'roots',   name: 'Raízes',     weeks: [4, 5, 6],    color: '#7A9E7E', pale: '#E4EFE5', desc: 'Construindo consistência. As pessoas e lugares que começam a parecer familiares.' },
+  { id: 'reach',   name: 'Expansão',   weeks: [7, 8, 9],    color: '#D4A256', pale: '#FFF3E0', desc: 'Ampliando seu alcance. Dizendo sim para coisas que antes pareciam impossíveis.' },
+  { id: 'thrive',  name: 'Florescer',  weeks: [10, 11, 12], color: '#9B7EB8', pale: '#EDE7F6', desc: 'Vivendo. A vida social não é mais um projeto — é só vida.' },
 ]
 
 export function getChapter(week) {

@@ -4,126 +4,126 @@
 
 export const FRAMEWORKS = {
   1: {
-    title: 'The Ground Beneath You',
-    subtitle: 'Before showing up for others, you need to know where you\'re standing. This week is about orientation — not performance.',
-    methodology: 'AI-generated with therapist-reviewed methodology · Not a substitute for therapy',
+    title: 'O Chão Sob Seus Pés',
+    subtitle: 'Antes de aparecer para os outros, você precisa saber onde está pisando. Esta semana é sobre orientação — não performance.',
+    methodology: 'Gerado por IA com metodologia revisada por terapeutas · Não substitui terapia',
     prompts: [
       {
         num: '01',
-        question: 'What does your ideal social life look like in 12 weeks — not perfect, just better than now?',
-        hint: 'Be specific. One person, one setting, one feeling.',
+        question: 'Como seria sua vida social ideal em 12 semanas — não perfeita, apenas melhor do que agora?',
+        hint: 'Seja específico. Uma pessoa, um lugar, um sentimento.',
       },
       {
         num: '02',
-        question: 'When did you last feel genuinely comfortable around other people? What made that possible?',
-        hint: 'The conditions matter more than the event.',
+        question: 'Quando foi a última vez que você se sentiu genuinamente confortável perto de outras pessoas? O que tornou isso possível?',
+        hint: 'As condições importam mais do que o evento.',
       },
       {
         num: '03',
-        question: 'What\'s the one social situation you\'ve been avoiding the longest?',
-        hint: 'Name it. You don\'t have to face it this week — just name it.',
+        question: 'Qual é a situação social que você vem evitando há mais tempo?',
+        hint: 'Dê um nome. Você não precisa enfrentá-la esta semana — só nomear.',
       },
     ],
     reframes: [
       {
-        label: 'Reframe 01 — The Starting Line',
-        from: '"I\'m so far behind. Everyone else has this figured out."',
-        to: '"Everyone starts somewhere. My somewhere is here, this week."',
+        label: 'Reframe 01 — A Linha de Partida',
+        from: '"Estou tão atrás. Todo mundo já tem isso resolvido."',
+        to: '"Todo mundo começa em algum lugar. O meu é aqui, esta semana."',
       },
       {
-        label: 'Reframe 02 — The Pressure Trap',
-        from: '"I need to be social all the time to get better."',
-        to: '"One small interaction per week moves the needle. That\'s enough."',
+        label: 'Reframe 02 — A Armadilha da Pressão',
+        from: '"Preciso ser social o tempo todo pra melhorar."',
+        to: '"Uma pequena interação por semana já faz diferença. Isso basta."',
       },
     ],
     actions: [
-      { step: 1, text: '**Read your cohort intro** and notice one person whose situation sounds familiar.' },
-      { step: 2, text: '**Attend one event** from your list — even if you leave early. Arriving counts.' },
-      { step: 3, text: '**Write three sentences** about how you felt before, during, and after.' },
+      { step: 1, text: '**Leia a apresentação do seu cohort** e note uma pessoa cuja situação parece familiar.' },
+      { step: 2, text: '**Vá a um evento** da sua lista — mesmo que saia mais cedo. Chegar já conta.' },
+      { step: 3, text: '**Escreva três frases** sobre como se sentiu antes, durante e depois.' },
     ],
-    note: 'Week 1 is not about results — it\'s about **showing your nervous system that nothing catastrophic happens** when you show up. Repetition builds safety. Safety builds connection.',
+    note: 'A Semana 1 não é sobre resultados — é sobre **mostrar ao seu sistema nervoso que nada catastrófico acontece** quando você aparece. Repetição constrói segurança. Segurança constrói conexão.',
   },
 
   2: {
-    title: 'The First Yes',
-    subtitle: 'Saying yes is harder than it looks. This week is about the gap between "I should go" and "I\'m going."',
-    methodology: 'AI-generated with therapist-reviewed methodology · Not a substitute for therapy',
+    title: 'O Primeiro Sim',
+    subtitle: 'Dizer sim é mais difícil do que parece. Esta semana é sobre o espaço entre "eu deveria ir" e "eu vou."',
+    methodology: 'Gerado por IA com metodologia revisada por terapeutas · Não substitui terapia',
     prompts: [
       {
         num: '01',
-        question: 'What happened in your body the last time you said yes to something social and it went okay?',
-        hint: 'Notice the physical memory — shoulders, chest, breath.',
+        question: 'O que aconteceu no seu corpo da última vez que você disse sim para algo social e deu certo?',
+        hint: 'Perceba a memória física — ombros, peito, respiração.',
       },
       {
         num: '02',
-        question: 'What\'s your most common exit strategy, and what does it protect you from?',
-        hint: 'There\'s no judgment here. Exit strategies exist for a reason.',
+        question: 'Qual é a sua estratégia de saída mais comum, e do que ela te protege?',
+        hint: 'Sem julgamento aqui. Estratégias de saída existem por uma razão.',
       },
       {
         num: '03',
-        question: 'If a close friend described your social self at your best, what would they say?',
-        hint: 'This version of you still exists. We\'re just rebuilding access.',
+        question: 'Se um amigo próximo descrevesse seu melhor lado social, o que diria?',
+        hint: 'Essa versão de você ainda existe. Estamos apenas reconstruindo o acesso.',
       },
     ],
     reframes: [
       {
-        label: 'Reframe 01 — The Decision Window',
-        from: '"I\'ll decide if I feel like going on the day."',
-        to: '"I decide now. Feelings are consulted, not in charge."',
+        label: 'Reframe 01 — A Janela de Decisão',
+        from: '"Vou decidir se estou a fim no dia."',
+        to: '"Eu decido agora. Sentimentos são consultados, não estão no comando."',
       },
       {
-        label: 'Reframe 02 — The Good Enough Bar',
-        from: '"If it\'s not a great event, it wasn\'t worth going."',
-        to: '"Neutral is a win. Slightly uncomfortable means growth."',
+        label: 'Reframe 02 — O Suficientemente Bom',
+        from: '"Se não for um evento incrível, não valeu a pena ir."',
+        to: '"Neutro já é uma vitória. Levemente desconfortável significa crescimento."',
       },
     ],
     actions: [
-      { step: 1, text: '**RSVP to one event** before Friday — committing in advance changes the calculus.' },
-      { step: 2, text: '**Set a minimum**: you only need to stay 20 minutes. Let yourself exceed that.' },
-      { step: 3, text: '**Text one person** in your cohort after the event. One line is enough.' },
+      { step: 1, text: '**Confirme presença em um evento** antes de sexta — se comprometer antecipadamente muda o jogo.' },
+      { step: 2, text: '**Defina um mínimo**: você só precisa ficar 20 minutos. Deixe-se ultrapassar esse limite.' },
+      { step: 3, text: '**Mande uma mensagem** para alguém do cohort após o evento. Uma frase basta.' },
     ],
-    note: 'The research on social anxiety consistently shows that **avoidance maintains fear**. You don\'t wait to feel brave — you act, and bravery follows. This week\'s single job: one yes.',
+    note: 'A pesquisa sobre ansiedade social mostra consistentemente que **a evitação mantém o medo**. Você não espera se sentir corajoso — você age, e a coragem vem depois. O único trabalho desta semana: um sim.',
   },
 
   3: {
-    title: 'The Re-entry Ritual',
-    subtitle: 'A structured guide for showing up socially after a long pause — without pressure, performance, or pretending.',
-    methodology: 'AI-generated with therapist-reviewed methodology · Not a substitute for therapy',
+    title: 'O Ritual de Reentrada',
+    subtitle: 'Um guia estruturado para aparecer socialmente após uma longa pausa — sem pressão, performance ou fingimento.',
+    methodology: 'Gerado por IA com metodologia revisada por terapeutas · Não substitui terapia',
     prompts: [
       {
         num: '01',
-        question: 'What does "showing up" mean to you right now — and how is that different from what it meant two years ago?',
-        hint: 'Take 5 minutes. Write freely. Don\'t edit.',
+        question: 'O que "aparecer" significa pra você agora — e como isso é diferente do que significava dois anos atrás?',
+        hint: 'Reserve 5 minutos. Escreva livremente. Não edite.',
       },
       {
         num: '02',
-        question: 'Name one small moment from this week where you felt genuinely yourself — even briefly.',
-        hint: 'It doesn\'t have to be social. A walk counts.',
+        question: 'Cite um pequeno momento desta semana em que você se sentiu genuinamente você — mesmo que brevemente.',
+        hint: 'Não precisa ser social. Uma caminhada conta.',
       },
       {
         num: '03',
-        question: 'What\'s the specific story you tell yourself before you decline an invitation?',
-        hint: 'Naming the story is the first step to changing it.',
+        question: 'Qual é a história que você conta para si mesmo antes de recusar um convite?',
+        hint: 'Dar nome à história é o primeiro passo para mudá-la.',
       },
     ],
     reframes: [
       {
-        label: 'Reframe 01 — The Expectation Trap',
-        from: '"I need to be interesting / funny / \'on\' when I go out."',
-        to: '"My only job is to show up. The rest is optional."',
+        label: 'Reframe 01 — A Armadilha da Expectativa',
+        from: '"Preciso ser interessante / engraçado / estar \'ligado\' quando saio."',
+        to: '"Meu único trabalho é aparecer. O resto é opcional."',
       },
       {
-        label: 'Reframe 02 — The Energy Myth',
-        from: '"I\'ll go when I feel ready / have more energy."',
-        to: '"Energy follows action, not the other way around. Small steps first."',
+        label: 'Reframe 02 — O Mito da Energia',
+        from: '"Vou quando me sentir pronto / tiver mais energia."',
+        to: '"Energia vem depois da ação, não antes. Pequenos passos primeiro."',
       },
     ],
     actions: [
-      { step: 1, text: 'Attend **one event** from your prescription. Not two. One.' },
-      { step: 2, text: '**Say your name first** to one person you haven\'t met. That\'s the whole goal.' },
-      { step: 3, text: '**Journal for 5 minutes** after the event. Not what happened — how you felt walking in.' },
+      { step: 1, text: 'Vá a **um evento** da sua prescrição. Não dois. Um.' },
+      { step: 2, text: '**Diga seu nome primeiro** para alguém que você não conhece. Esse é o objetivo inteiro.' },
+      { step: 3, text: '**Escreva por 5 minutos** após o evento. Não o que aconteceu — como você se sentiu ao entrar.' },
     ],
-    note: 'Research on social re-entry consistently shows the threshold moment is **walking through the door** — not how the event goes. Your nervous system needs repetition, not perfection.',
+    note: 'Pesquisas sobre reentrada social mostram consistentemente que o momento decisivo é **atravessar a porta** — não como o evento vai. Seu sistema nervoso precisa de repetição, não perfeição.',
   },
 }
 
@@ -135,9 +135,9 @@ export function getFramework(week) {
 // ── Journey timeline ───────────────────────────────────────
 // States are computed dynamically in Profile.jsx based on currentWeek
 export const TIMELINE = [
-  { week: 1,  label: 'Week 1',             event: 'Orientation & First Framework',   note: 'Framework: The Ground Beneath You' },
-  { week: 2,  label: 'Week 2',             event: 'First Event',                     note: 'Framework: The First Yes' },
-  { week: 3,  label: 'Week 3',             event: 'The Re-entry Ritual',             note: 'Framework: The Re-entry Ritual' },
-  { week: 6,  label: 'Week 6 · Milestone', event: 'Cohort Gathering',                note: 'In-person meetup for all cohort members' },
-  { week: 12, label: 'Week 12 · Finale',   event: 'Roots Established 🌱',            note: 'Complete your 12-week arc' },
+  { week: 1,  label: 'Semana 1',              event: 'Orientação & Primeiro Framework',  note: 'Framework: O Chão Sob Seus Pés' },
+  { week: 2,  label: 'Semana 2',              event: 'Primeiro Evento',                  note: 'Framework: O Primeiro Sim' },
+  { week: 3,  label: 'Semana 3',              event: 'O Ritual de Reentrada',            note: 'Framework: O Ritual de Reentrada' },
+  { week: 6,  label: 'Semana 6 · Marco',      event: 'Encontro do Cohort',               note: 'Encontro presencial de todo o cohort' },
+  { week: 12, label: 'Semana 12 · Final',     event: 'Raízes Estabelecidas 🌱',          note: 'Complete seu arco de 12 semanas' },
 ]
