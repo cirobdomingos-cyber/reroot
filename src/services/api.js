@@ -55,7 +55,32 @@ function normalizeBackendEvent(ev) {
   }
 }
 
+// Categories backed by Google Places instead of the events DB
+const PLACES_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+
+async function fetchPlaces(type) {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/places?type=${type}&limit=20`)
+    if (res.ok) {
+      const data = await res.json()
+      const places = data.places || []
+      if (places.length > 0) {
+        return { events: places, source: 'places', city: 'Curitiba' }
+      }
+    }
+  } catch {
+    // Backend unavailable or Places key not configured — fall through to static data
+  }
+  return null
+}
+
 export async function fetchEvents(category = 'all') {
+  // For venue-type categories, try Google Places first
+  if (category && PLACES_CATEGORIES.has(category)) {
+    const result = await fetchPlaces(category)
+    if (result) return result
+  }
+
   // Always start with embedded data (works offline, in native app, etc.)
   const filtered = category && category !== 'all'
     ? EVENTS.filter(e => e.category === category)
@@ -112,4 +137,42 @@ export async function triggerRefresh() {
   const res = await fetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
   if (!res.ok) throw new Error('Refresh falhou')
   return res.json()
+}
+
+/**
+ * AI Companion — send a message and get back a response with optional event suggestions.
+ * Sends the full event catalog so the LLM always has events to recommend
+ * (works even when the scraper DB is empty — offline-first pattern).
+ */
+export async function askCompanion({ message, situation, goal, week, language, history = [], eventsContext = [] }) {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), 15_000) // 15s timeout for LLM
+
+  // Send compact event data — only fields the LLM needs for matching + display
+  const compactEvents = eventsContext.map(ev => ({
+    id: ev.id, name: ev.name, category: ev.category,
+    categoryLabel: ev.categoryLabel, categoryEmoji: ev.categoryEmoji,
+    venue: ev.venue, date: ev.date, time: ev.time,
+    price: ev.price, isLowPressure: ev.isLowPressure,
+    vibeSummary: ev.vibeSummary, headerBg: ev.headerBg,
+    icon: ev.icon, url: ev.url,
+  }))
+
+  try {
+    const res = await fetch(`${BASE_URL}/companion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        message, situation, goal, week, language, history,
+        events_context: compactEvents,
+      }),
+    })
+    clearTimeout(id)
+    if (!res.ok) throw new Error(`Companion error: ${res.status}`)
+    return await res.json()
+  } catch (err) {
+    clearTimeout(id)
+    throw err
+  }
 }
