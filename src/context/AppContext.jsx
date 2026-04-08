@@ -58,6 +58,9 @@ const INITIAL_STATE = {
   // Month-end card dismissed
   monthEndDismissed: false,
 
+  // Google account linked
+  googleUser: null, // { id, name, givenName, email, picture }
+
   // Weekly check-ins: { [week]: { emoji, timestamp } }
   weeklyCheckIns: {},
 }
@@ -173,6 +176,16 @@ function reducer(state, action) {
 
     case 'SET_LANGUAGE':
       return { ...state, language: action.payload }
+
+    case 'SET_GOOGLE_USER': {
+      const { id, name, givenName, email, picture } = action.payload
+      return {
+        ...state,
+        googleUser: { id, name, givenName, email, picture },
+        // Pre-fill first name only if user hasn't manually set one yet
+        userName: state.userName === 'Ana' ? (givenName || name.split(' ')[0]) : state.userName,
+      }
+    }
 
     case 'REDO_ONBOARDING':
       return {

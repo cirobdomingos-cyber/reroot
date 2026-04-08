@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
+import { mountGoogleButton } from '../lib/google-auth'
 
 const ALL_INTERESTS = [
   'Coffee & Conversation', 'Hiking', 'Creative Writing', 'Yoga',
@@ -43,8 +44,17 @@ export default function Onboarding() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
-  const [name, setName] = useState('')
+  const [name, setName] = useState(state.googleUser?.givenName ?? '')
   const [neighborhood, setNeighborhood] = useState(state.neighborhood)
+  const googleBtnRef = useRef(null)
+
+  useEffect(() => {
+    const cleanup = mountGoogleButton(googleBtnRef, (googleUser) => {
+      dispatch({ type: 'SET_GOOGLE_USER', payload: googleUser })
+      setName(googleUser.givenName || googleUser.name.split(' ')[0])
+    })
+    return cleanup
+  }, [dispatch])
 
   function handleJoin() {
     if (name.trim()) dispatch({ type: 'SET_NAME', payload: name.trim() })
@@ -114,6 +124,43 @@ export default function Onboarding() {
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{t.onboarding_closes}</div>
           </div>
         </div>
+
+        {/* Google Sign-In */}
+        {state.googleUser ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            background: 'rgba(255,255,255,0.1)', borderRadius: 12,
+            padding: '10px 14px', marginBottom: 14,
+          }}>
+            <img
+              src={state.googleUser.picture}
+              alt=""
+              style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }}
+            />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>
+                {state.googleUser.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>
+                {state.googleUser.email}
+              </div>
+            </div>
+            <span style={{ fontSize: 14, color: 'var(--sage-light)' }}>✓</span>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 14 }}>
+            <div ref={googleBtnRef} style={{ borderRadius: 12, overflow: 'hidden' }} />
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0',
+            }}>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.12)' }}/>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>
+                {t.onboarding_or ?? 'ou continue manualmente'}
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.12)' }}/>
+            </div>
+          </div>
+        )}
 
         {/* Name input */}
         <div style={{ marginBottom: 10 }}>

@@ -24,6 +24,7 @@ export const T = {
     onboarding_neighborhood_placeholder: 'ex: Batel, Centro, Água Verde',
     onboarding_interests_label:       'Escolha seus interesses',
     onboarding_join_btn:              'Entrar no Cohort Primavera →',
+    onboarding_or:                    'ou continue manualmente',
     onboarding_privacy:               '🔒 Só primeiro nome · Sem redes sociais · Não é app de namoro',
 
     // ── Home ─────────────────────────────────────────────
@@ -351,6 +352,7 @@ export const T = {
     onboarding_neighborhood_placeholder: 'e.g. Batel, Centro, Água Verde',
     onboarding_interests_label:       'Pick your interests',
     onboarding_join_btn:              'Join the Curitiba Spring Cohort →',
+    onboarding_or:                    'or continue manually',
     onboarding_privacy:               '🔒 First names only · No social media linking · Not a dating app',
 
     // ── Home ─────────────────────────────────────────────

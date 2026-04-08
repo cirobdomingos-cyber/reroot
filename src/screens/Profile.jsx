@@ -76,9 +76,22 @@ export default function Profile() {
           }}
         >⚙️</button>
 
-        <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
-          {state.userName.charAt(0).toUpperCase()}
-        </div>
+        {state.googleUser?.picture ? (
+          <img
+            src={state.googleUser.picture}
+            alt={state.userName}
+            style={{
+              width: 72, height: 72, borderRadius: '50%',
+              margin: '0 auto 12px', display: 'block',
+              border: '3px solid rgba(255,255,255,0.2)',
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
+            {state.userName.charAt(0).toUpperCase()}
+          </div>
+        )}
 
         {editingName ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
@@ -107,6 +120,11 @@ export default function Profile() {
           </div>
         )}
 
+        {state.googleUser?.email && (
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+            {state.googleUser.email}
+          </div>
+        )}
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
           {t.profile_cohort}
         </div>
