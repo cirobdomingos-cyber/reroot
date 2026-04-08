@@ -1,19 +1,26 @@
 import { useState } from 'react'
-import { useApp, computeBadges, computeCurrentWeek } from '../context/AppContext'
+import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useApp, computeBadges, computeCurrentWeek, getChapter, CHAPTERS } from '../context/AppContext'
 import { useT } from '../i18n'
 import { TIMELINE } from '../data/framework'
 
 export default function Profile() {
   const { state, dispatch } = useApp()
+  const navigate = useNavigate()
   const t = useT()
   const [referralCode, setReferralCode] = useState('')
   const [referralApplied, setReferralApplied] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(state.userName)
+  const [showPauseSheet, setShowPauseSheet] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [paused, setPaused] = useState(state.isPaused)
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
   const currentWeek = computeCurrentWeek(state.joinedAt)
+  const chapter = getChapter(currentWeek)
 
   function saveName() {
     if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
@@ -26,6 +33,17 @@ export default function Profile() {
     window.location.reload()
   }
 
+  function handlePause() {
+    dispatch({ type: 'SET_PAUSED', payload: true })
+    setPaused(true)
+    setShowPauseSheet(false)
+  }
+
+  function handleCancelTap() {
+    setShowPauseSheet(false)
+    setShowCancelConfirm(true)
+  }
+
   const enrichedTimeline = TIMELINE.map(item => {
     const itemState = item.week < currentWeek ? 'done'
       : item.week === currentWeek ? 'current'
@@ -36,13 +54,28 @@ export default function Profile() {
     return { ...item, state: itemState, note }
   })
 
+  // 12-week grid for "weeks shown up"
+  const weeksShownUp = state.weeksShownUp ?? []
+
   return (
     <div>
       {/* Hero */}
       <div style={{
         background: 'linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%)',
         padding: '16px 24px 28px', textAlign: 'center', color: 'white',
+        position: 'relative',
       }}>
+        {/* Gear icon */}
+        <button
+          onClick={() => setShowPauseSheet(true)}
+          style={{
+            position: 'absolute', top: 16, right: 20,
+            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
+            width: 34, height: 34, cursor: 'pointer', fontSize: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >⚙️</button>
+
         <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
           {state.userName.charAt(0).toUpperCase()}
         </div>
@@ -79,11 +112,87 @@ export default function Profile() {
         </div>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: 'var(--terra)', padding: '5px 14px',
+          background: paused ? 'rgba(255,255,255,0.15)' : 'var(--terra)', padding: '5px 14px',
           borderRadius: 20, fontSize: 11, fontWeight: 700, marginTop: 10,
         }}>
-          {t.profile_member_badge}
+          {paused ? t.profile_paused_badge : t.profile_member_badge}
         </div>
+      </div>
+
+      {/* Weeks shown up — 12-week grid */}
+      <div className="section-label">{t.profile_weeks_shown}</div>
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+          {Array.from({ length: 12 }, (_, i) => {
+            const week = i + 1
+            const shown = weeksShownUp.includes(week)
+            const isCurrent = week === currentWeek
+            const isPast = week < currentWeek
+            const chapterForWeek = CHAPTERS.find(c => c.weeks.includes(week))
+            return (
+              <div key={week} style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: '100%', aspectRatio: '1', borderRadius: 10,
+                  background: shown ? chapterForWeek?.color ?? 'var(--sage)' : 'transparent',
+                  border: shown ? 'none'
+                    : isCurrent ? `2px solid ${chapter.color}`
+                    : isPast ? '2px dashed var(--border)'
+                    : '2px solid var(--border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: shown ? 12 : 11,
+                  color: shown ? 'white' : 'var(--charcoal-light)',
+                  fontWeight: 700,
+                  opacity: !isPast && !isCurrent ? 0.5 : 1,
+                }}>
+                  {shown ? '✓' : week}
+                </div>
+                <div style={{
+                  fontSize: 9, marginTop: 3,
+                  color: isCurrent ? 'var(--charcoal)' : 'var(--charcoal-light)',
+                  fontWeight: isCurrent ? 700 : 400,
+                }}>
+                  W{week}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'center', fontSize: 12, color: 'var(--charcoal-mid)' }}>
+          <strong style={{ color: 'var(--charcoal)' }}>{weeksShownUp.length}</strong> {t.profile_weeks_shown?.toLowerCase?.() ?? 'weeks shown up'}
+        </div>
+      </div>
+
+      {/* Reflections journal */}
+      <div className="section-label">{t.profile_journal_label}</div>
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        {state.reflections.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', padding: '8px 0', fontStyle: 'italic' }}>
+            {t.profile_journal_empty}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {state.reflections.map((r, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px',
+                background: 'var(--cream)', borderRadius: 12,
+              }}>
+                <div style={{
+                  width: 3, height: 24, borderRadius: 2,
+                  background: 'var(--sage-light)', flexShrink: 0,
+                }}/>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', fontStyle: 'italic' }}>
+                    "{r.word}"
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                    {new Date(r.date).toLocaleDateString(state.language === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Timeline */}
@@ -171,6 +280,13 @@ export default function Profile() {
           {t.profile_feature_3}<br/>
           {t.profile_feature_4}
         </div>
+        <div className="divider"/>
+        <button
+          onClick={() => setShowPauseSheet(true)}
+          style={{ fontSize: 12, color: 'var(--charcoal-mid)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+        >
+          {t.profile_pause_btn} →
+        </button>
       </div>
 
       {/* Referral */}
@@ -237,12 +353,141 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Reset */}
-      <div style={{ padding: '4px 16px 20px', textAlign: 'center' }}>
+      {/* Redo onboarding + Reset */}
+      <div style={{ padding: '4px 16px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => {
+            dispatch({ type: 'REDO_ONBOARDING' })
+            navigate('/')
+          }}
+          style={{ fontSize: 12, color: 'var(--terra)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+        >
+          {t.profile_redo_onboarding ?? 'Redo onboarding'}
+        </button>
         <button onClick={handleReset} style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}>
           {t.profile_reset}
         </button>
       </div>
+
+      {/* Pause/Cancel sheet */}
+      <AnimatePresence>
+        {showPauseSheet && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'flex-end', zIndex: 200,
+            }}
+            onClick={e => { if (e.target === e.currentTarget) setShowPauseSheet(false) }}
+          >
+            <motion.div
+              initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
+              transition={{ type: 'spring', damping: 25 }}
+              style={{
+                background: 'white', borderRadius: '24px 24px 0 0',
+                padding: '24px 20px 44px', width: '100%',
+              }}
+            >
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 20px' }}/>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 20 }}>
+                {t.profile_pause_title}
+              </div>
+
+              {/* Pause option — primary */}
+              <button
+                onClick={handlePause}
+                style={{
+                  width: '100%', background: 'var(--sage-pale)', border: 'none',
+                  borderRadius: 16, padding: '16px', marginBottom: 10,
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--sage)', marginBottom: 4 }}>
+                  ⏸ {t.profile_pause_option}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>{t.profile_pause_sub}</div>
+              </button>
+
+              {/* Cancel option — secondary, smaller */}
+              <button
+                onClick={handleCancelTap}
+                style={{
+                  width: '100%', background: 'transparent', border: 'none',
+                  padding: '10px 16px', marginBottom: 10,
+                  cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
+                  {t.profile_cancel_option}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setShowPauseSheet(false)}
+                style={{ width: '100%', padding: '10px', fontSize: 13, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                {t.profile_close}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Cancel confirmation — retention message */}
+      <AnimatePresence>
+        {showCancelConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'flex-end', zIndex: 200,
+            }}
+            onClick={e => { if (e.target === e.currentTarget) setShowCancelConfirm(false) }}
+          >
+            <motion.div
+              initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
+              transition={{ type: 'spring', damping: 25 }}
+              style={{
+                background: 'white', borderRadius: '24px 24px 0 0',
+                padding: '28px 24px 44px', width: '100%',
+              }}
+            >
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 24px' }}/>
+
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>🌿</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.4, marginBottom: 8 }}>
+                  {t.profile_cancel_msg_pre} {currentWeek} {t.profile_cancel_msg_of}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.6 }}>
+                  {t.profile_cancel_msg_post}
+                </div>
+              </div>
+
+              {/* Pause instead — primary offer */}
+              <button
+                onClick={() => { handlePause(); setShowCancelConfirm(false) }}
+                className="btn btn--sage"
+                style={{ marginBottom: 10 }}
+              >
+                ⏸ {t.profile_pause_offer}
+              </button>
+
+              {/* Final cancel */}
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                style={{
+                  width: '100%', padding: '12px', fontSize: 12,
+                  color: 'var(--charcoal-light)', background: 'none',
+                  border: 'none', cursor: 'pointer',
+                }}
+              >
+                {t.profile_go_back}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

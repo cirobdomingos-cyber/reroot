@@ -8,9 +8,22 @@ export function computeCurrentWeek(joinedAt) {
   return Math.min(Math.max(Math.floor(elapsed / MS_PER_WEEK) + 1, 1), 12)
 }
 
+// ── Chapter system ─────────────────────────────────────────
+export const CHAPTERS = [
+  { id: 'reentry', name: 'Re-entry',  weeks: [1, 2, 3],    color: '#C4724A', pale: '#F5DDD1', desc: 'Easing back in. Showing your nervous system it\'s safe to show up again.' },
+  { id: 'roots',   name: 'Roots',     weeks: [4, 5, 6],    color: '#7A9E7E', pale: '#E4EFE5', desc: 'Building consistency. The people and places that start to feel familiar.' },
+  { id: 'reach',   name: 'Reach',     weeks: [7, 8, 9],    color: '#D4A256', pale: '#FFF3E0', desc: 'Expanding your range. Saying yes to things that used to feel impossible.' },
+  { id: 'thrive',  name: 'Thrive',    weeks: [10, 11, 12], color: '#9B7EB8', pale: '#EDE7F6', desc: 'Living it. Social life isn\'t a project anymore — it\'s just life.' },
+]
+
+export function getChapter(week) {
+  return CHAPTERS.find(c => c.weeks.includes(week)) ?? CHAPTERS[0]
+}
+
 // ── Initial state ──────────────────────────────────────────
 const INITIAL_STATE = {
   hasJoined: false,
+  identityMirrorCompleted: false,
   questionnaireCompleted: false,
   joinedAt: null,               // timestamp — drives week computation
   userName: 'Ana',
@@ -21,6 +34,26 @@ const INITIAL_STATE = {
   rsvps: {},            // eventId → true
   eventsAttended: 0,    // incremented via "Mark attended"
   frameworkRead: false,
+
+  // Identity mirror onboarding
+  identityPastLife: null,       // e.g. 'gallery_openings'
+  identityCurrentFeel: null,    // e.g. 'hopeful'
+
+  // Day-zero: first event saved
+  dayZeroSaved: false,
+  dayZeroEventId: null,
+
+  // Reflections journal
+  reflections: [],              // [{ date: ISO, word: string, eventId?: string }]
+
+  // Weeks shown up tracking (week numbers where user took action)
+  weeksShownUp: [],             // [1, 2, 3, ...] — week numbers
+
+  // Pause mode
+  isPaused: false,
+
+  // Month-end card dismissed
+  monthEndDismissed: false,
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -28,6 +61,14 @@ function reducer(state, action) {
   switch (action.type) {
     case 'JOIN_COHORT':
       return { ...state, hasJoined: true, joinedAt: state.joinedAt ?? Date.now() }
+
+    case 'COMPLETE_IDENTITY_MIRROR':
+      return {
+        ...state,
+        identityMirrorCompleted: true,
+        identityPastLife: action.payload.pastLife,
+        identityCurrentFeel: action.payload.currentFeel,
+      }
 
     case 'COMPLETE_QUESTIONNAIRE':
       return {
@@ -57,20 +98,76 @@ function reducer(state, action) {
     case 'TOGGLE_RSVP': {
       const { eventId } = action.payload
       const current = !!state.rsvps[eventId]
+      const currentWeek = computeCurrentWeek(state.joinedAt)
+      const weeksShownUp = !current && !state.weeksShownUp.includes(currentWeek)
+        ? [...state.weeksShownUp, currentWeek]
+        : state.weeksShownUp
       return {
         ...state,
         rsvps: { ...state.rsvps, [eventId]: !current },
+        weeksShownUp,
       }
     }
 
-    case 'MARK_ATTENDED':
-      return { ...state, eventsAttended: state.eventsAttended + 1 }
+    case 'SAVE_DAY_ZERO': {
+      const { eventId } = action.payload
+      const currentWeek = computeCurrentWeek(state.joinedAt)
+      const weeksShownUp = !state.weeksShownUp.includes(currentWeek)
+        ? [...state.weeksShownUp, currentWeek]
+        : state.weeksShownUp
+      return {
+        ...state,
+        dayZeroSaved: true,
+        dayZeroEventId: eventId,
+        rsvps: { ...state.rsvps, [eventId]: true },
+        weeksShownUp,
+      }
+    }
 
-    case 'SET_FRAMEWORK_READ':
-      return { ...state, frameworkRead: true }
+    case 'MARK_ATTENDED': {
+      const currentWeek = computeCurrentWeek(state.joinedAt)
+      const weeksShownUp = !state.weeksShownUp.includes(currentWeek)
+        ? [...state.weeksShownUp, currentWeek]
+        : state.weeksShownUp
+      return { ...state, eventsAttended: state.eventsAttended + 1, weeksShownUp }
+    }
+
+    case 'SET_FRAMEWORK_READ': {
+      const currentWeek = computeCurrentWeek(state.joinedAt)
+      const weeksShownUp = !state.weeksShownUp.includes(currentWeek)
+        ? [...state.weeksShownUp, currentWeek]
+        : state.weeksShownUp
+      return { ...state, frameworkRead: true, weeksShownUp }
+    }
+
+    case 'SAVE_REFLECTION': {
+      const { word, eventId } = action.payload
+      return {
+        ...state,
+        reflections: [...state.reflections, { date: new Date().toISOString(), word, eventId }],
+      }
+    }
+
+    case 'DISMISS_MONTH_END':
+      return { ...state, monthEndDismissed: true }
+
+    case 'SET_PAUSED':
+      return { ...state, isPaused: action.payload }
 
     case 'SET_LANGUAGE':
       return { ...state, language: action.payload }
+
+    case 'REDO_ONBOARDING':
+      return {
+        ...state,
+        hasJoined: false,
+        identityMirrorCompleted: false,
+        questionnaireCompleted: false,
+        questionnaireAnswers: undefined,
+        aiPartnerMessage: undefined,
+        identityPastLife: null,
+        identityCurrentFeel: null,
+      }
 
     case 'RESET':
       return { ...INITIAL_STATE }

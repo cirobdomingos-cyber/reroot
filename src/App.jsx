@@ -3,12 +3,13 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from './context/AppContext'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
-import Onboarding    from './screens/Onboarding'
-import PartnerIntro  from './screens/PartnerIntro'
-import Home          from './screens/Home'
-import Events        from './screens/Events'
-import Journey       from './screens/Journey'
-import Profile       from './screens/Profile'
+import Onboarding     from './screens/Onboarding'
+import IdentityMirror from './screens/IdentityMirror'
+import PartnerIntro   from './screens/PartnerIntro'
+import Home           from './screens/Home'
+import Events         from './screens/Events'
+import Journey        from './screens/Journey'
+import Profile        from './screens/Profile'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -36,7 +37,7 @@ export default function App() {
   const { state } = useApp()
   const location = useLocation()
 
-  const isOnboarding = ['/', '/onboarding', '/partner-intro'].includes(location.pathname)
+  const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro'].includes(location.pathname)
   const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
 
   return (
@@ -52,9 +53,21 @@ export default function App() {
               element={
                 !state.hasJoined
                   ? <AnimatedPage><Onboarding /></AnimatedPage>
+                  : !state.identityMirrorCompleted
+                  ? <Navigate to="/identity-mirror" replace />
                   : !state.questionnaireCompleted
                   ? <Navigate to="/partner-intro" replace />
                   : <Navigate to="/home" replace />
+              }
+            />
+            <Route
+              path="/identity-mirror"
+              element={
+                !state.hasJoined
+                  ? <Navigate to="/" replace />
+                  : state.identityMirrorCompleted
+                  ? <Navigate to="/partner-intro" replace />
+                  : <AnimatedPage><IdentityMirror /></AnimatedPage>
               }
             />
             <Route
@@ -62,6 +75,8 @@ export default function App() {
               element={
                 !state.hasJoined
                   ? <Navigate to="/" replace />
+                  : !state.identityMirrorCompleted
+                  ? <Navigate to="/identity-mirror" replace />
                   : state.questionnaireCompleted
                   ? <Navigate to="/home" replace />
                   : <AnimatedPage><PartnerIntro /></AnimatedPage>

@@ -1,4 +1,4 @@
-import { useApp, computeCurrentWeek } from '../context/AppContext'
+import { useApp, computeCurrentWeek, getChapter } from '../context/AppContext'
 import { useT } from '../i18n'
 import { getFramework } from '../data/framework'
 
@@ -13,6 +13,7 @@ export default function Journey() {
   const { state, dispatch } = useApp()
   const t = useT()
   const currentWeek = computeCurrentWeek(state.joinedAt)
+  const chapter = getChapter(currentWeek)
   const framework = getFramework(currentWeek)
   const alreadyRead = state.frameworkRead
 
@@ -23,6 +24,41 @@ export default function Journey() {
         <div className="screen-header__title">{t.journey_title}</div>
         <div className="screen-header__sub">
           {t.journey_framework_badge} {currentWeek} {t.journey_of} 12 {t.journey_sub}
+        </div>
+      </div>
+
+      {/* Chapter card */}
+      <div style={{ margin: '4px 16px 4px' }}>
+        <div style={{
+          background: chapter.pale,
+          border: `1.5px solid ${chapter.color}22`,
+          borderRadius: 18, padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: chapter.color }}/>
+            <span style={{ fontSize: 11, fontWeight: 700, color: chapter.color, textTransform: 'uppercase', letterSpacing: 1 }}>
+              {chapter.name}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
+              · {t.journey_of} {chapter.weeks[0]}–{chapter.weeks[chapter.weeks.length - 1]}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>
+            {chapter.desc}
+          </div>
+          {/* Chapter progress bar */}
+          <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: `${chapter.color}22`, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${((currentWeek - chapter.weeks[0]) / chapter.weeks.length) * 100}%`,
+              borderRadius: 2, background: chapter.color,
+              transition: 'width 0.6s ease',
+            }}/>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>W{chapter.weeks[0]}</span>
+            <span style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>W{chapter.weeks[chapter.weeks.length - 1]}</span>
+          </div>
         </div>
       </div>
 
@@ -54,7 +90,7 @@ export default function Journey() {
       {/* Hero card */}
       <div style={{
         margin: '10px 16px 0',
-        background: 'linear-gradient(135deg, var(--sage) 0%, #5d8861 100%)',
+        background: `linear-gradient(135deg, ${chapter.color} 0%, ${chapter.color}bb 100%)`,
         borderRadius: 24, padding: 24, color: 'white',
         position: 'relative', overflow: 'hidden',
       }}>
