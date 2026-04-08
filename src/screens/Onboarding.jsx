@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useT } from '../i18n'
 
 const ALL_INTERESTS = [
   'Coffee & Conversation', 'Hiking', 'Creative Writing', 'Yoga',
@@ -16,9 +17,32 @@ const COHORT_AVATARS = [
   { initial: 'R', color: '#E08D5E' },
 ]
 
+function LangToggle({ language, dispatch }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: 3 }}>
+      {['pt', 'en'].map(lang => (
+        <button
+          key={lang}
+          onClick={() => dispatch({ type: 'SET_LANGUAGE', payload: lang })}
+          style={{
+            padding: '4px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700,
+            cursor: 'pointer', border: 'none', transition: 'all 0.15s',
+            background: language === lang ? 'white' : 'transparent',
+            color: language === lang ? 'var(--charcoal)' : 'rgba(255,255,255,0.5)',
+            textTransform: 'uppercase', letterSpacing: 0.5,
+          }}
+        >
+          {lang}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function Onboarding() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
+  const t = useT()
   const [name, setName] = useState('')
   const [neighborhood, setNeighborhood] = useState(state.neighborhood)
 
@@ -39,26 +63,26 @@ export default function Onboarding() {
       flexDirection: 'column',
     }}>
 
-      {/* Logo */}
-      <div style={{ textAlign: 'center', padding: '10px 28px 0', color: 'white' }}>
-        <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: -0.5 }}>
-          re<span style={{ color: 'var(--terra-light)' }}>root</span>
+      {/* Logo + lang toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px 0', color: 'white' }}>
+        <div>
+          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
+            re<span style={{ color: 'var(--terra-light)' }}>root</span>
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 2, marginTop: 1 }}>
+            {t.onboarding_tagline}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 2, marginTop: 2 }}>
-          Your recovery journey
-        </div>
+        <LangToggle language={state.language} dispatch={dispatch} />
       </div>
 
       {/* Cohort card */}
       <div style={{
-        margin: '16px 20px 0',
+        margin: '14px 20px 0',
         background: 'rgba(255,255,255,0.07)',
         border: '1px solid rgba(255,255,255,0.12)',
-        borderRadius: 24,
-        padding: 22,
-        color: 'white',
+        borderRadius: 24, padding: 20, color: 'white',
       }}>
-
         {/* Live badge */}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -67,85 +91,72 @@ export default function Onboarding() {
           textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12,
         }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'white', display: 'block' }}/>
-          Spring 2026 Cohort — Live Now
+          {t.onboarding_cohort_badge}
         </div>
 
-        <div style={{ fontSize: 21, fontWeight: 700, lineHeight: 1.3, marginBottom: 6 }}>
-          You're joining the<br />
-          <span style={{ color: 'var(--terra-light)' }}>Curitiba Spring Cohort</span>
+        <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3, marginBottom: 6 }}>
+          {t.onboarding_headline}<br />
+          <span style={{ color: 'var(--terra-light)' }}>{t.onboarding_cohort_name}</span>
         </div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 18, lineHeight: 1.5 }}>
-          A small, curated group of people in the same chapter of life — not thousands of strangers.
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 16, lineHeight: 1.5 }}>
+          {t.onboarding_subtitle}
         </div>
 
         {/* Member row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <div className="avatar-stack">
             {COHORT_AVATARS.map(({ initial, color }) => (
-              <div key={initial} className="avatar" style={{ background: color }}>
-                {initial}
-              </div>
+              <div key={initial} className="avatar" style={{ background: color }}>{initial}</div>
             ))}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>24 members in your cohort</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
-              Same chapter of life · Cohort closes in 3 days
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{t.onboarding_members}</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{t.onboarding_closes}</div>
           </div>
         </div>
 
         {/* Name input */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Your first name
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 1 }}>
+            {t.onboarding_name_label}
           </div>
           <input
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Ana"
+            placeholder={t.onboarding_name_placeholder}
             maxLength={30}
             style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.08)',
+              width: '100%', background: 'rgba(255,255,255,0.08)',
               border: `1px solid ${name.trim() ? 'rgba(122,158,126,0.6)' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: 12,
-              padding: '11px 14px',
-              color: 'white',
-              fontSize: 14,
-              outline: 'none',
-              transition: 'border-color 0.2s',
+              borderRadius: 12, padding: '10px 14px',
+              color: 'white', fontSize: 14, outline: 'none', transition: 'border-color 0.2s',
             }}
           />
         </div>
 
         {/* Neighborhood input */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
-            Your neighborhood
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 1 }}>
+            {t.onboarding_neighborhood_label}
           </div>
           <input
             value={neighborhood}
             onChange={e => setNeighborhood(e.target.value)}
-            placeholder="e.g. Batel, Centro, Água Verde"
+            placeholder={t.onboarding_neighborhood_placeholder}
             style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.08)',
+              width: '100%', background: 'rgba(255,255,255,0.08)',
               border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 12,
-              padding: '11px 14px',
-              color: 'white',
-              fontSize: 14,
-              outline: 'none',
+              borderRadius: 12, padding: '10px 14px',
+              color: 'white', fontSize: 14, outline: 'none',
             }}
           />
         </div>
 
-        {/* Interest tags */}
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
-          Pick your interests
+        {/* Interests */}
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+          {t.onboarding_interests_label}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 4 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
           {ALL_INTERESTS.map(interest => {
             const selected = state.interests.includes(interest)
             return (
@@ -153,15 +164,12 @@ export default function Onboarding() {
                 key={interest}
                 onClick={() => dispatch({ type: 'TOGGLE_INTEREST', payload: { interest } })}
                 style={{
-                  padding: '6px 12px',
-                  borderRadius: 20,
-                  fontSize: 12,
+                  padding: '6px 12px', borderRadius: 20, fontSize: 12,
                   fontWeight: selected ? 600 : 400,
                   border: `1px solid ${selected ? 'var(--sage)' : 'rgba(255,255,255,0.2)'}`,
                   background: selected ? 'var(--sage)' : 'transparent',
                   color: selected ? 'white' : 'rgba(255,255,255,0.8)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
+                  cursor: 'pointer', transition: 'all 0.15s',
                 }}
               >
                 {interest}
@@ -171,29 +179,18 @@ export default function Onboarding() {
         </div>
       </div>
 
-      {/* Bottom CTA */}
-      <div style={{
-        background: 'var(--cream)',
-        borderRadius: '28px 28px 0 0',
-        padding: '22px 22px 36px',
-        marginTop: 20,
-      }}>
+      {/* CTA */}
+      <div style={{ background: 'var(--cream)', borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', marginTop: 16 }}>
         <button
           className="btn btn--primary"
           onClick={handleJoin}
           disabled={!canJoin}
           style={{ opacity: canJoin ? 1 : 0.45 }}
         >
-          Join the Curitiba Spring Cohort →
+          {t.onboarding_join_btn}
         </button>
-        <div style={{
-          textAlign: 'center',
-          fontSize: 11,
-          color: 'var(--charcoal-light)',
-          marginTop: 12,
-          lineHeight: 1.6,
-        }}>
-          🔒 First names only · No social media linking · Not a dating app
+        <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--charcoal-light)', marginTop: 10, lineHeight: 1.6 }}>
+          {t.onboarding_privacy}
         </div>
       </div>
     </div>

@@ -17,6 +17,7 @@ const INITIAL_STATE = {
   neighborhood: 'Água Verde · Curitiba',
   interests: ['Coffee & Conversation', 'Creative Writing', 'Book Clubs'],
   totalWeeks: 12,
+  language: 'pt',               // 'pt' | 'en'
   rsvps: {},            // eventId → true
   eventsAttended: 0,    // incremented via "Mark attended"
   frameworkRead: false,
@@ -67,6 +68,9 @@ function reducer(state, action) {
 
     case 'SET_FRAMEWORK_READ':
       return { ...state, frameworkRead: true }
+
+    case 'SET_LANGUAGE':
+      return { ...state, language: action.payload }
 
     case 'RESET':
       return { ...INITIAL_STATE }

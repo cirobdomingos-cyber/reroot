@@ -1,4 +1,5 @@
 import { useApp, computeCurrentWeek } from '../context/AppContext'
+import { useT } from '../i18n'
 import { getFramework } from '../data/framework'
 
 function bold(text) {
@@ -10,6 +11,7 @@ function bold(text) {
 
 export default function Journey() {
   const { state, dispatch } = useApp()
+  const t = useT()
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const framework = getFramework(currentWeek)
   const alreadyRead = state.frameworkRead
@@ -18,11 +20,13 @@ export default function Journey() {
     <div>
       {/* Header */}
       <div className="screen-header">
-        <div className="screen-header__title">Weekly Framework</div>
-        <div className="screen-header__sub">Week {currentWeek} of 12 · Updated every Monday</div>
+        <div className="screen-header__title">{t.journey_title}</div>
+        <div className="screen-header__sub">
+          {t.journey_framework_badge} {currentWeek} {t.journey_of} 12 {t.journey_sub}
+        </div>
       </div>
 
-      {/* ── AI Companion message ── */}
+      {/* AI Companion message */}
       {state.aiPartnerMessage && (
         <div style={{ margin: '8px 16px 0' }}>
           <div style={{
@@ -33,12 +37,11 @@ export default function Journey() {
             <div style={{
               width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
               background: 'linear-gradient(135deg, #7A9E7E, #9EC9A2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
             }}>🌿</div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'rgba(158,201,162,0.7)', marginBottom: 5 }}>
-                Your Companion
+                {t.journey_companion_label}
               </div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.6 }}>
                 {state.aiPartnerMessage}
@@ -60,24 +63,19 @@ export default function Journey() {
           width: 120, height: 120, borderRadius: '50%',
           background: 'rgba(255,255,255,0.07)', pointerEvents: 'none',
         }}/>
-
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: 'rgba(255,255,255,0.18)',
-          padding: '4px 10px', borderRadius: 20,
-          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
-          marginBottom: 10,
+          background: 'rgba(255,255,255,0.18)', padding: '4px 10px', borderRadius: 20,
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10,
         }}>
-          📖 Week {currentWeek} Framework
+          📖 {t.journey_framework_badge} {currentWeek}
         </div>
-
         <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, marginBottom: 8 }}>
           {framework.title}
         </div>
         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', lineHeight: 1.5 }}>
           {framework.subtitle}
         </div>
-
         <div style={{
           marginTop: 14, background: 'rgba(255,255,255,0.12)',
           borderRadius: 10, padding: '8px 12px',
@@ -88,9 +86,8 @@ export default function Journey() {
         </div>
       </div>
 
-      {/* ── Reflection prompts ── */}
-      <div className="section-label">Reflection prompts</div>
-
+      {/* Reflection prompts */}
+      <div className="section-label">{t.journey_prompts_label}</div>
       {framework.prompts.map(p => (
         <div key={p.num} style={{
           margin: '0 16px 10px', background: 'white',
@@ -98,7 +95,7 @@ export default function Journey() {
           boxShadow: 'var(--shadow-sm)', borderLeft: '3px solid var(--terra)',
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--terra)', marginBottom: 6 }}>
-            Prompt {p.num}
+            {t.journey_prompt_prefix} {p.num}
           </div>
           <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, fontWeight: 500 }}>
             {p.question}
@@ -109,9 +106,8 @@ export default function Journey() {
         </div>
       ))}
 
-      {/* ── Reframe exercises ── */}
-      <div className="section-label">Reframe exercises</div>
-
+      {/* Reframe exercises */}
+      <div className="section-label">{t.journey_reframes_label}</div>
       {framework.reframes.map((r, i) => (
         <div key={i} style={{
           margin: '0 16px 10px',
@@ -129,9 +125,8 @@ export default function Journey() {
         </div>
       ))}
 
-      {/* ── Action steps ── */}
-      <div className="section-label">This week's actions</div>
-
+      {/* Actions */}
+      <div className="section-label">{t.journey_actions_label}</div>
       {framework.actions.map(a => (
         <div key={a.step} style={{
           display: 'flex', alignItems: 'flex-start', gap: 12,
@@ -144,24 +139,21 @@ export default function Journey() {
             background: 'var(--terra)', color: 'white',
             fontSize: 12, fontWeight: 700, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            {a.step}
-          </div>
+          }}>{a.step}</div>
           <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.55, paddingTop: 4 }}>
             {bold(a.text)}
           </div>
         </div>
       ))}
 
-      {/* ── Methodology note ── */}
+      {/* Methodology note */}
       <div style={{ margin: '12px 16px 0' }}>
         <div style={{
-          background: 'white', borderRadius: 16,
-          padding: '15px 16px', boxShadow: 'var(--shadow-sm)',
-          borderLeft: '3px solid var(--sage)',
+          background: 'white', borderRadius: 16, padding: '15px 16px',
+          boxShadow: 'var(--shadow-sm)', borderLeft: '3px solid var(--sage)',
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 6 }}>
-            A note from the methodology
+            {t.journey_note_label}
           </div>
           <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.6 }}>
             {bold(framework.note)}
@@ -169,7 +161,7 @@ export default function Journey() {
         </div>
       </div>
 
-      {/* ── Mark as read ── */}
+      {/* Mark as read */}
       <div style={{ padding: '20px 16px 0' }}>
         {alreadyRead ? (
           <div style={{
@@ -177,11 +169,11 @@ export default function Journey() {
             background: 'var(--sage-pale)', borderRadius: 16,
             color: 'var(--sage)', fontSize: 14, fontWeight: 600,
           }}>
-            📖 Framework complete — Badge earned!
+            {t.journey_completed_msg}
           </div>
         ) : (
           <button className="btn btn--sage" onClick={() => dispatch({ type: 'SET_FRAMEWORK_READ' })}>
-            Mark framework as complete
+            {t.journey_complete_btn}
           </button>
         )}
       </div>
