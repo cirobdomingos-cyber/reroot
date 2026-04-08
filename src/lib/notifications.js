@@ -9,7 +9,7 @@ import { Capacitor } from '@capacitor/core'
 async function getLocalNotifications() {
   if (!Capacitor.isNativePlatform()) return null
   try {
-    const mod = await import('@capacitor/local-notifications')
+    const mod = await import(/* @vite-ignore */ '@capacitor/local-notifications')
     return mod.LocalNotifications
   } catch {
     return null
