@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useApp, getChapter } from '../context/AppContext'
+import { useApp, getChapter, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 
 const fadeUp = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } }
@@ -45,12 +45,20 @@ export default function Diagnostic() {
   const answers = state.questionnaireAnswers ?? {}
   const pastLife = state.identityPastLife
   const currentFeel = state.identityCurrentFeel
+  const profile = getProfile(state.userSituation)
+  const profileCopy = t.profiles?.[state.userSituation]
+  const goalCopy = t.goals?.[state.userGoal]
 
   const pastLabel = t.diag_past_labels?.[pastLife] ?? pastLife
   const feelLabel = t.diag_feel_labels?.[currentFeel] ?? currentFeel
   const reasonLabel = t.diag_reason_labels?.[answers.reason] ?? answers.reason
   const challengeLabel = t.diag_challenge_labels?.[answers.challenge] ?? answers.challenge
   const goalLabel = t.diag_goal_labels?.[answers.goal] ?? answers.goal
+
+  // Profile-specific prescription lines (fallback to generic)
+  const rxLines = profileCopy
+    ? [profileCopy.rx1, profileCopy.rx2, profileCopy.rx3]
+    : [t.diag_rx_line1, t.diag_rx_line2, t.diag_rx_line3]
 
   function handleBegin() {
     dispatch({ type: 'MARK_DIAGNOSTIC_SEEN' })
@@ -79,20 +87,20 @@ export default function Diagnostic() {
         </motion.div>
 
         {/* Diagnostic rows */}
+        {profileCopy && (
+          <DiagRow icon={profile?.emoji ?? '🧭'} label={t.diag_profile_label} value={profileCopy.name} color="rgba(196,114,74,0.25)" delay={0.1} />
+        )}
+        {goalCopy && (
+          <DiagRow icon={goalCopy.emoji} label={t.diag_goal_label} value={goalCopy.label} color="rgba(155,126,184,0.2)" delay={0.2} />
+        )}
         {pastLife && (
-          <DiagRow icon="🪞" label={t.diag_social_before} value={pastLabel} color="rgba(196,114,74,0.25)" delay={0.15} />
+          <DiagRow icon="🪞" label={t.diag_social_before} value={pastLabel} color="rgba(122,158,126,0.2)" delay={0.3} />
         )}
         {currentFeel && (
-          <DiagRow icon="💭" label={t.diag_feeling_now} value={feelLabel} color="rgba(122,158,126,0.25)" delay={0.25} />
-        )}
-        {answers.reason && (
-          <DiagRow icon="🌀" label={t.diag_reason} value={reasonLabel} color="rgba(196,114,74,0.2)" delay={0.35} />
+          <DiagRow icon="💭" label={t.diag_feeling_now} value={feelLabel} color="rgba(122,158,126,0.25)" delay={0.4} />
         )}
         {answers.challenge && (
-          <DiagRow icon="⚡" label={t.diag_challenge} value={challengeLabel} color="rgba(212,162,86,0.2)" delay={0.45} />
-        )}
-        {answers.goal && (
-          <DiagRow icon="🎯" label={t.diag_goal} value={goalLabel} color="rgba(155,126,184,0.2)" delay={0.55} />
+          <DiagRow icon="⚡" label={t.diag_challenge} value={challengeLabel} color="rgba(212,162,86,0.2)" delay={0.5} />
         )}
 
         {/* Prescription card */}
@@ -112,7 +120,7 @@ export default function Diagnostic() {
               </div>
             </div>
 
-            {[t.diag_rx_line1, t.diag_rx_line2, t.diag_rx_line3].map((line, i) => (
+            {rxLines.map((line, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8,
               }}>
@@ -145,6 +153,11 @@ export default function Diagnostic() {
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>
               {chapter.desc}
             </div>
+            {profileCopy?.tag && (
+              <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: chapter.color, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                {profileCopy.tag}
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp } from '../context/AppContext'
+import { useApp, getProfile } from '../context/AppContext'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
@@ -26,7 +26,9 @@ function EventCardSkeleton() {
 
 export default function Events() {
   const { state, dispatch } = useApp()
-  const [activeFilter, setActiveFilter] = useState('all')
+  const profile = getProfile(state.userSituation)
+  const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
+  const [activeFilter, setActiveFilter] = useState(defaultFilter)
   const [dateFilter, setDateFilter] = useState('all')
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)

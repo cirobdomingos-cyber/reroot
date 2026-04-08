@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useApp, computeCurrentWeek, getChapter } from '../context/AppContext'
+import { useApp, computeCurrentWeek, getChapter, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { EVENTS } from '../data/events'
 import { ACTIVITIES } from '../data/activities'
@@ -63,6 +63,9 @@ export default function Home() {
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
   const progressPct = Math.round((currentWeek / state.totalWeeks) * 100)
+  const profile = getProfile(state.userSituation)
+  const profileCopy = t.profiles?.[state.userSituation]
+  const prescriptionCount = profile?.prescriptionIntensity ?? 1
 
   // First event pick: lowest-pressure event not yet RSVPd
   const dayZeroEvent = EVENTS.find(e => e.isLowPressure && !state.rsvps[e.id]) ?? EVENTS[0]
@@ -237,7 +240,7 @@ export default function Home() {
           }}/>
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: chapter.color }}>
-              {t.home_chapter_label}
+              {profileCopy ? profileCopy.tag : t.home_chapter_label}
             </div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', marginTop: 1 }}>
               {chapter.name} — {chapter.desc.split('.')[0]}.
@@ -470,7 +473,15 @@ export default function Home() {
         </div>
 
         <div style={{ background: 'var(--terra-pale)', borderRadius: '0 0 16px 16px', padding: '10px 12px 12px' }}>
-          {EVENTS.slice(0, 2).map(ev => {
+          {(() => {
+            const priorityCats = profile?.priorityCategories ?? []
+            const sorted = [...EVENTS].sort((a, b) => {
+              const ai = priorityCats.indexOf(a.category)
+              const bi = priorityCats.indexOf(b.category)
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+            })
+            return sorted.slice(0, prescriptionCount)
+          })().map(ev => {
             const rsvped = !!state.rsvps[ev.id]
             const going = ev.cohortGoing.length + (rsvped ? 1 : 0)
             return (

@@ -235,6 +235,8 @@ export const T = {
 
     // ── Identity Mirror ───────────────────────────────────
     mirror_header:      'Antes de começar',
+    mirror_step_situation_q: 'O que te trouxe até aqui?',
+    mirror_step_goal_q:      'O que você quer construir?',
     mirror_step1_q:     'Antes da pausa, sua vida social era...',
     mirror_step2_q:     'Chegando aqui hoje, você se sente...',
     mirror_continue:    'Continuar →',
@@ -242,6 +244,30 @@ export const T = {
     mirror_question_of: 'Passo',
     mirror_affirmation_label: 'Seu ponto de partida',
     mirror_next_btn:    'Começar minha jornada →',
+    mirror_step_situation_opts: [
+      { id: 'heartbroken',  label: 'Fim de relacionamento — perdi meu círculo junto', emoji: '💔' },
+      { id: 'transplant',   label: 'Me mudei de cidade — começo do zero',             emoji: '📦' },
+      { id: 'burnout',      label: 'Burnout — me afastei de tudo',                    emoji: '🔋' },
+      { id: 'remote',       label: 'Trabalho remoto me isolou aos poucos',             emoji: '💻' },
+      { id: 'reconnector',  label: 'Passei por algo difícil e me fechei',             emoji: '🌀' },
+      { id: 'introvert',    label: 'Nunca foi bem assim — quero mudar isso',          emoji: '🌱' },
+      { id: 'grief',        label: 'Perdi alguém importante e me afastei',            emoji: '🕊️' },
+    ],
+    mirror_step_goal_opts: [
+      { id: 'friends',   label: 'Fazer amigos de verdade',       emoji: '🤝' },
+      { id: 'partner',   label: 'Conhecer alguém especial',      emoji: '💛' },
+      { id: 'community', label: 'Encontrar minha comunidade',    emoji: '🏡' },
+      { id: 'self',      label: 'Me redescobrir antes de tudo',  emoji: '🌿' },
+    ],
+    mirror_situation_affirmations: {
+      heartbroken:  'Perder o círculo junto com o relacionamento é uma das rupturas mais subestimadas. Vamos reconstruir — devagar e com intenção.',
+      transplant:   'Cidade nova, página em branco. Você não carrega o peso de velhos padrões aqui — isso é uma vantagem real.',
+      burnout:      'A vida social que você tinha pode ter sido parte do problema. Vamos construir algo diferente — menor, mais intencional.',
+      remote:       'O isolamento do home office cresce silenciosamente. Reconhecer isso já é o primeiro e mais difícil passo.',
+      reconnector:  'Você recuou porque fazia sentido recuar. Agora faz sentido voltar — no seu ritmo, não no de ninguém mais.',
+      introvert:    'Não precisamos construir uma vida social barulhenta. Precisamos construir uma que funcione para quem você é.',
+      grief:        'Re-entrar no mundo depois de uma perda não é seguir em frente. É trazer quem você ama com você.',
+    },
     mirror_step1_opts: [
       { id: 'gallery_openings', label: 'Muito ativa — eventos, amigos, saídas', emoji: '✨' },
       { id: 'close_friends',    label: 'Alguns amigos próximos, raramente saía', emoji: '☕' },
@@ -305,6 +331,67 @@ export const T = {
     profile_paused_badge:  '⏸ Pausado — retoma em 2 semanas',
     profile_close:         'Fechar',
     profile_redo_onboarding: '↺ Refazer onboarding',
+
+    // ── User profiles ─────────────────────────────────────
+    diag_profile_label: 'Seu perfil',
+    diag_goal_label:    'Seu objetivo',
+    profiles: {
+      heartbroken: {
+        name: 'Recomeçando', tag: 'Reconstruindo seu mundo',
+        rx1: 'Um evento por semana — tranquilo, sem pressão de estar "ligado".',
+        rx2: 'Foco em você agora. O social orgânico vem depois.',
+        rx3: 'Metodologia de transição emocional revisada por terapeutas.',
+        companion: 'Perder o círculo junto com o relacionamento é uma das rupturas mais subestimadas. Vamos devagar.',
+      },
+      transplant: {
+        name: 'Transplantado', tag: 'Construindo do zero',
+        rx1: 'Dois eventos por semana — você está aqui para conhecer gente.',
+        rx2: 'Prioridade: eventos comunitários onde nomes viram rostos.',
+        rx3: 'O cohort é seu ponto de partida — pessoas na mesma fase.',
+        companion: 'Cidade nova, página em branco. Você não carrega o peso de velhos padrões aqui — isso é vantagem.',
+      },
+      burnout: {
+        name: 'Em Recuperação', tag: 'Seletivo, não antissocial',
+        rx1: 'Uma coisa, escolhida com cuidado. Qualidade sobre volume.',
+        rx2: 'Você não precisa voltar ao nível de antes. Pode redefinir.',
+        rx3: 'Framework baseado em regulação do sistema nervoso pós-burnout.',
+        companion: 'O modo de vida social que você tinha pode ter sido parte do problema. Vamos construir algo diferente.',
+      },
+      remote: {
+        name: 'Saindo da Bolha', tag: 'Só estar por perto já é progresso',
+        rx1: 'Esta semana: só estar em algum lugar. Um café, um parque. Sem agenda social.',
+        rx2: 'Reacostumar o corpo com espaços públicos vem antes dos eventos.',
+        rx3: 'Exposição gradual — o método comprovado de reverter isolamento.',
+        companion: 'O isolamento do home office cresce silenciosamente. Reconhecer isso já é o passo mais difícil.',
+      },
+      reconnector: {
+        name: 'Reconectando', tag: 'Voltando para você mesmo',
+        rx1: 'Dois eventos por semana — você já sabe como isso funciona.',
+        rx2: 'Prioridade: eventos variados para lembrar o que te anima.',
+        rx3: 'Metodologia de reconexão intencional revisada por terapeutas.',
+        companion: 'Você recuou porque fazia sentido. Agora faz sentido voltar — no seu ritmo.',
+      },
+      introvert: {
+        name: 'Crescendo', tag: 'Profundidade sobre volume',
+        rx1: 'Um evento por semana. A meta é uma conexão real — não muitas superficiais.',
+        rx2: 'Ambientes menores e mais tranquilos, onde conversas de verdade acontecem.',
+        rx3: 'Framework de desenvolvimento social para introvertidos.',
+        companion: 'Não precisamos criar uma vida social barulhenta. Precisamos construir uma que funcione para você.',
+      },
+      grief: {
+        name: 'Caminhando', tag: 'Reentrada gentil',
+        rx1: 'Um passo suave. Você define o ritmo — sem pressa nenhuma.',
+        rx2: 'Atividades ao ar livre e criativas — sem necessidade de conversa.',
+        rx3: 'Metodologia de reintegração após luto revisada por terapeutas.',
+        companion: 'Re-entrar no mundo depois de uma perda não é seguir em frente. É trazer quem você ama com você.',
+      },
+    },
+    goals: {
+      friends:   { label: 'Amizades de verdade',      emoji: '🤝' },
+      partner:   { label: 'Conhecer alguém especial', emoji: '💛' },
+      community: { label: 'Minha comunidade',          emoji: '🏡' },
+      self:      { label: 'Me redescobrir',            emoji: '🌿' },
+    },
 
     // ── Weekly check-in ───────────────────────────────────
     home_checkin_label:   'Check-in da semana passada',
@@ -563,6 +650,8 @@ export const T = {
 
     // ── Identity Mirror ───────────────────────────────────
     mirror_header:      'Before we begin',
+    mirror_step_situation_q: 'What brought you here?',
+    mirror_step_goal_q:      'What do you want to build?',
     mirror_step1_q:     'Before the pause, your social life was...',
     mirror_step2_q:     'Arriving here today, you feel...',
     mirror_continue:    'Continue →',
@@ -570,6 +659,30 @@ export const T = {
     mirror_question_of: 'Step',
     mirror_affirmation_label: 'Your starting point',
     mirror_next_btn:    'Begin my journey →',
+    mirror_step_situation_opts: [
+      { id: 'heartbroken',  label: 'End of a relationship — lost my circle with it', emoji: '💔' },
+      { id: 'transplant',   label: 'Moved to a new city — starting from zero',       emoji: '📦' },
+      { id: 'burnout',      label: 'Burnout — I pulled away from everything',        emoji: '🔋' },
+      { id: 'remote',       label: 'Remote work slowly isolated me',                 emoji: '💻' },
+      { id: 'reconnector',  label: 'Went through something hard and closed off',     emoji: '🌀' },
+      { id: 'introvert',    label: 'It was never quite right — I want to change that', emoji: '🌱' },
+      { id: 'grief',        label: 'Lost someone important and withdrew',             emoji: '🕊️' },
+    ],
+    mirror_step_goal_opts: [
+      { id: 'friends',   label: 'Make real friendships',        emoji: '🤝' },
+      { id: 'partner',   label: 'Meet someone special',         emoji: '💛' },
+      { id: 'community', label: 'Find my community',            emoji: '🏡' },
+      { id: 'self',      label: 'Rediscover myself first',      emoji: '🌿' },
+    ],
+    mirror_situation_affirmations: {
+      heartbroken:  'Losing your circle alongside a relationship is one of the most underestimated ruptures. We go slowly, with intention.',
+      transplant:   "New city, fresh slate. You don't carry the weight of old social patterns here — that's a real advantage.",
+      burnout:      'The social life you had may have been part of the problem. We build something different — smaller, more intentional.',
+      remote:       'Remote work isolation grows quietly. Recognizing it is already the hardest step.',
+      reconnector:  'You pulled back because it made sense to pull back. Now it makes sense to return — at your pace, not anyone else\'s.',
+      introvert:    "We don't need to build a loud social life. We need to build one that works for who you actually are.",
+      grief:        "Re-entering the world after a loss isn't moving on. It's bringing who you loved with you.",
+    },
     mirror_step1_opts: [
       { id: 'gallery_openings', label: 'Very active — events, friends, outings', emoji: '✨' },
       { id: 'close_friends',    label: 'A few close friends, rarely went out',   emoji: '☕' },
@@ -633,6 +746,67 @@ export const T = {
     profile_paused_badge:  '⏸ Paused — resumes in 2 weeks',
     profile_close:         'Close',
     profile_redo_onboarding: '↺ Redo onboarding',
+
+    // ── User profiles ─────────────────────────────────────
+    diag_profile_label: 'Your profile',
+    diag_goal_label:    'Your goal',
+    profiles: {
+      heartbroken: {
+        name: 'Starting Over', tag: 'Rebuilding your world',
+        rx1: 'One event per week — gentle, no pressure to be "on".',
+        rx2: 'Focus on you right now. Organic social comes after.',
+        rx3: 'Therapist-reviewed emotional transition methodology.',
+        companion: "Losing your circle alongside a relationship is one of the most underestimated ruptures. We go slowly.",
+      },
+      transplant: {
+        name: 'The Transplant', tag: 'Building from scratch',
+        rx1: 'Two events this week — you\'re here to meet people.',
+        rx2: 'Priority: community events where names become faces.',
+        rx3: 'The cohort is your starting point — people in the same chapter.',
+        companion: "New city, fresh slate. You don't carry the weight of old social patterns here — that's an advantage.",
+      },
+      burnout: {
+        name: 'In Recovery', tag: 'Selective, not antisocial',
+        rx1: 'One thing, chosen carefully. Quality over volume.',
+        rx2: "You don't need to go back to before. You get to redefine.",
+        rx3: 'Framework built on nervous system regulation post-burnout.',
+        companion: 'The social life you had may have been part of the problem. We build something different.',
+      },
+      remote: {
+        name: 'Breaking the Bubble', tag: 'Just being around people is progress',
+        rx1: 'This week: just be somewhere. A café, a park. No social agenda.',
+        rx2: 'Re-acclimating to public spaces comes before events.',
+        rx3: 'Gradual exposure — the proven way to reverse isolation.',
+        companion: 'Remote work isolation grows quietly. Recognizing it is already the hardest step.',
+      },
+      reconnector: {
+        name: 'Reconnecting', tag: 'Coming back to yourself',
+        rx1: 'Two events this week — you remember how this works.',
+        rx2: 'Mix of categories to rediscover what excites you.',
+        rx3: 'Therapist-reviewed intentional reconnection methodology.',
+        companion: 'You pulled back because it made sense. Now it makes sense to return — at your pace.',
+      },
+      introvert: {
+        name: 'Leveling Up', tag: 'Depth over volume',
+        rx1: 'One event per week. One real connection — not many shallow ones.',
+        rx2: 'Smaller, quieter settings where real conversations happen.',
+        rx3: 'Social skill-building framework for introverts.',
+        companion: "We don't need to build a loud social life. We need to build one that works for who you are.",
+      },
+      grief: {
+        name: 'Walking Through', tag: 'Gentle re-entry',
+        rx1: 'One soft step. You set the pace — no rush at all.',
+        rx2: 'Outdoor and creative activities — no conversation required.',
+        rx3: 'Therapist-reviewed grief and social reintegration methodology.',
+        companion: "Re-entering the world after a loss isn't moving on. It's bringing who you loved with you.",
+      },
+    },
+    goals: {
+      friends:   { label: 'Real friendships',      emoji: '🤝' },
+      partner:   { label: 'Meet someone special',  emoji: '💛' },
+      community: { label: 'My community',           emoji: '🏡' },
+      self:      { label: 'Rediscover myself',      emoji: '🌿' },
+    },
 
     // ── Weekly check-in ───────────────────────────────────
     home_checkin_label:   'Last week check-in',

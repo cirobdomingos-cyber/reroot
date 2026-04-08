@@ -8,6 +8,56 @@ export function computeCurrentWeek(joinedAt) {
   return Math.min(Math.max(Math.floor(elapsed / MS_PER_WEEK) + 1, 1), 12)
 }
 
+// ── Profile system ─────────────────────────────────────────
+export const PROFILES = {
+  heartbroken: {
+    id: 'heartbroken', emoji: '💔',
+    prescriptionIntensity: 1,
+    priorityCategories: ['quiet_social', 'creative'],
+    activityFirst: false,
+  },
+  transplant: {
+    id: 'transplant', emoji: '📦',
+    prescriptionIntensity: 2,
+    priorityCategories: ['community', 'active', 'bars_cafes'],
+    activityFirst: false,
+  },
+  burnout: {
+    id: 'burnout', emoji: '🔋',
+    prescriptionIntensity: 1,
+    priorityCategories: ['quiet_social', 'active'],
+    activityFirst: true,
+  },
+  remote: {
+    id: 'remote', emoji: '💻',
+    prescriptionIntensity: 1,
+    priorityCategories: ['bars_cafes', 'quiet_social'],
+    activityFirst: true,
+  },
+  reconnector: {
+    id: 'reconnector', emoji: '🌀',
+    prescriptionIntensity: 2,
+    priorityCategories: ['community', 'active', 'creative'],
+    activityFirst: false,
+  },
+  introvert: {
+    id: 'introvert', emoji: '🌱',
+    prescriptionIntensity: 1,
+    priorityCategories: ['quiet_social', 'creative'],
+    activityFirst: false,
+  },
+  grief: {
+    id: 'grief', emoji: '🕊️',
+    prescriptionIntensity: 1,
+    priorityCategories: ['quiet_social', 'active'],
+    activityFirst: true,
+  },
+}
+
+export function getProfile(situation) {
+  return PROFILES[situation] ?? null
+}
+
 // ── Chapter system ─────────────────────────────────────────
 export const CHAPTERS = [
   { id: 'reentry', name: 'Re-entry',  weeks: [1, 2, 3],    color: '#C4724A', pale: '#F5DDD1', desc: 'Easing back in. Showing your nervous system it\'s safe to show up again.' },
@@ -49,6 +99,10 @@ const INITIAL_STATE = {
   // Weeks shown up tracking (week numbers where user took action)
   weeksShownUp: [],             // [1, 2, 3, ...] — week numbers
 
+  // User profile (from IdentityMirror steps 0+1)
+  userSituation: null,  // 'heartbroken' | 'transplant' | 'burnout' | 'remote' | 'reconnector' | 'introvert' | 'grief'
+  userGoal: null,       // 'friends' | 'partner' | 'community' | 'self'
+
   // Diagnostic seen
   diagnosticSeen: false,
 
@@ -77,6 +131,8 @@ function reducer(state, action) {
         identityMirrorCompleted: true,
         identityPastLife: action.payload.pastLife,
         identityCurrentFeel: action.payload.currentFeel,
+        userSituation: action.payload.situation ?? state.userSituation,
+        userGoal: action.payload.goal ?? state.userGoal,
       }
 
     case 'COMPLETE_QUESTIONNAIRE':
@@ -198,6 +254,8 @@ function reducer(state, action) {
         aiPartnerMessage: undefined,
         identityPastLife: null,
         identityCurrentFeel: null,
+        userSituation: null,
+        userGoal: null,
         googleUser: null,
         userName: 'Ana',
       }
