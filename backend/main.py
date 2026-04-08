@@ -377,62 +377,40 @@ class CompanionRequest(BaseModel):
     week: int = 1
     language: str = "pt"
     history: list[dict] = []  # previous messages for context
-
-
-# Compact event catalog for Claude context — keep token usage low
-def _build_event_catalog() -> str:
-    events = db.get_events(city=settings.city, good_only=True, limit=50)
-    if not events:
-        return "(no live events available)"
-
-    lines = []
-    for ev in events:
-        price = _format_price(ev.price_min, ev.price_max, ev.currency)
-        lines.append(
-            f"- [{ev.id}] {ev.name} | {ev.reroot_category} | {ev.venue_name} | "
-            f"{ev.date_start.strftime('%d/%m %H:%M')} | {price} | "
-            f"low_pressure={ev.is_low_pressure} | vibe: {ev.vibe_summary}"
-        )
-    return "\n".join(lines)
+    events_context: list[dict] = []  # compact event catalog sent by frontend
 
 
 COMPANION_SYSTEM_PROMPT = """\
-You are the Reroot Companion — a warm, grounded AI guide embedded in a social \
-re-entry app for people rebuilding their social life after isolation (divorce, \
-burnout, relocation, grief, remote work).
+You are the Reroot Companion — a warm, direct AI guide inside a social re-entry \
+app for people rebuilding their social life after isolation.
 
-YOUR ROLE:
-- Be a supportive companion, not a therapist. Think wise friend who's been there.
-- Give practical, actionable suggestions when the user describes how they feel.
-- When they mention activities, moods, or desires, recommend specific events from \
-  the AVAILABLE EVENTS catalog below.
-- When they need encouragement or advice, provide it warmly and concisely.
-- Keep responses short (2-4 sentences). You're a mobile app companion, not a chatbot.
-- Never be preachy. Never use corporate wellness language.
-- Match the user's energy — if they're excited, be excited. If they're scared, be gentle.
+CRITICAL RULES:
+1. ALWAYS recommend events from the catalog when remotely relevant. Be generous \
+   with matching — yoga request matches any active/wellness event, "board games" \
+   matches quiet_social/community events, "dancing" matches active events, etc.
+2. NEVER ask follow-up questions. NEVER say "what kind of X do you prefer?" — \
+   just pick the best matches and recommend them immediately.
+3. Keep it SHORT: 1-2 sentences max, then the events speak for themselves.
+4. Be warm but brief. Think friendly text message, not therapy session.
+5. If truly nothing matches, say so in one sentence and suggest what's closest.
 
 USER CONTEXT:
 - Situation: {situation}
 - Goal: {goal}
-- Current week: {week}/12
+- Week {week}/12
 - Language: {language}
 
 AVAILABLE EVENTS:
 {events}
 
-RESPONSE FORMAT — return ONLY valid JSON (no markdown, no extra text):
+RESPONSE FORMAT — return ONLY valid JSON (no markdown):
 {{
-  "message": "<your response in {language_name}>",
+  "message": "<1-2 sentences in {language_name}, warm and direct>",
   "event_ids": ["id1", "id2"],
   "tone": "encouraging" | "gentle" | "excited" | "practical"
 }}
 
-RULES:
-- Recommend 0-3 events. Only recommend if relevant to what the user said.
-- If no events match, give advice/encouragement without event recommendations.
-- Always respond in {language_name}.
-- event_ids must be exact IDs from the catalog above, or empty list if none match.
-- The message should naturally weave in why the recommended events fit their mood.
+event_ids MUST be exact IDs from the catalog. Always respond in {language_name}.
 """
 
 
@@ -441,7 +419,21 @@ async def companion_chat(req: CompanionRequest):
     if not settings.anthropic_api_key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not configured")
 
-    event_catalog = _build_event_catalog()
+    # Build compact event catalog from frontend-provided events
+    # This ensures static/embedded events are always available, not just DB events
+    event_lines = []
+    events_by_id: dict[str, dict] = {}
+    for ev in req.events_context[:60]:
+        eid = ev.get("id", "")
+        events_by_id[eid] = ev
+        event_lines.append(
+            f"- [{eid}] {ev.get('name', '')} | {ev.get('category', '')} | "
+            f"{ev.get('venue', '')} | {ev.get('date', '')} {ev.get('time', '')} | "
+            f"{ev.get('price', '')} | low_pressure={ev.get('isLowPressure', False)} | "
+            f"vibe: {ev.get('vibeSummary', '')}"
+        )
+    event_catalog = "\n".join(event_lines) if event_lines else "(no events available)"
+
     language_name = "Portuguese" if req.language == "pt" else "English"
 
     system = COMPANION_SYSTEM_PROMPT.format(
@@ -479,12 +471,11 @@ async def companion_chat(req: CompanionRequest):
         log.error(f"Companion API error: {e}")
         raise HTTPException(status_code=502, detail="AI companion unavailable")
 
-    # Resolve event IDs to full frontend objects
+    # Resolve event IDs back to full frontend objects (from what frontend sent)
     recommended_events = []
     for eid in data.get("event_ids", []):
-        ev = db.get_event_by_id(eid)
-        if ev:
-            recommended_events.append(_to_frontend(ev))
+        if eid in events_by_id:
+            recommended_events.append(events_by_id[eid])
 
     return {
         "message": data.get("message", ""),
