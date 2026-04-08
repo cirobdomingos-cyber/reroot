@@ -462,11 +462,11 @@ export const EVENTS = [
 
 export const CATEGORIES = [
   { id: 'all',          label: 'Todos' },
+  { id: 'bars_cafes',   label: '🍺 Bares & Cafés' },
   { id: 'quiet_social', label: '🌿 Tranquilo' },
   { id: 'active',       label: '🏃 Ativo' },
   { id: 'creative',     label: '🎨 Criativo' },
   { id: 'community',    label: '🤝 Comunidade' },
-  { id: 'bars_cafes',   label: '🍺 Bares & Cafés' },
 ]
 
 export const DATE_FILTERS = [
