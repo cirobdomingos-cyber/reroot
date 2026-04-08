@@ -1,7 +1,24 @@
 // ── Google Identity Services (GSI) helper ──────────────────
 // No backend required — client-side only OAuth via Google's GSI library.
 // The library is loaded in index.html via <script src="...gsi/client" async>.
-// Requires: VITE_GOOGLE_CLIENT_ID env var.
+//
+// Two modes:
+//   REAL  — VITE_GOOGLE_CLIENT_ID is set → renders Google's official button
+//   MOCK  — env var not set → renders a custom button with demo user data
+//           so the full UI flow is always testable without Google Cloud setup.
+
+export function isGoogleConfigured() {
+  return !!import.meta.env.VITE_GOOGLE_CLIENT_ID
+}
+
+// Demo user returned when no Client ID is configured
+export const MOCK_GOOGLE_USER = {
+  id: 'mock_google_user',
+  name: 'Ciro Domingos',
+  givenName: 'Ciro',
+  email: 'ciro@gmail.com',
+  picture: 'https://ui-avatars.com/api/?name=Ciro+Domingos&background=C4724A&color=fff&size=128&rounded=true',
+}
 
 /**
  * Parse the credential JWT returned by Google.
@@ -26,27 +43,19 @@ export function parseGoogleCredential(credential) {
 }
 
 /**
- * Initialize GSI and render Google's sign-in button into a DOM element.
- * Safe to call before the GSI script has loaded — polls until ready.
+ * Initialize GSI and render Google's official sign-in button.
+ * Polls until the GSI script is loaded (loaded async in index.html).
+ * Only call this when isGoogleConfigured() === true.
  * Returns a cleanup function.
  */
 export function mountGoogleButton(containerRef, onSuccess) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-  if (!clientId) {
-    console.warn('[Reroot] VITE_GOOGLE_CLIENT_ID not set — Google Sign-In disabled')
-    return () => {}
-  }
+  if (!clientId) return () => {}
 
   let attempts = 0
-  const maxAttempts = 20
-  const intervalMs = 300
-
   const poll = setInterval(() => {
     attempts++
-    if (attempts > maxAttempts) {
-      clearInterval(poll)
-      return
-    }
+    if (attempts > 20) { clearInterval(poll); return }
     if (!window.google?.accounts?.id) return
     clearInterval(poll)
 
@@ -71,7 +80,7 @@ export function mountGoogleButton(containerRef, onSuccess) {
         width: containerRef.current.offsetWidth || 320,
       })
     }
-  }, intervalMs)
+  }, 300)
 
   return () => clearInterval(poll)
 }
