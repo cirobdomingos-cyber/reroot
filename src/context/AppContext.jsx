@@ -198,6 +198,8 @@ function reducer(state, action) {
         aiPartnerMessage: undefined,
         identityPastLife: null,
         identityCurrentFeel: null,
+        googleUser: null,
+        userName: 'Ana',
       }
 
     case 'RESET':
