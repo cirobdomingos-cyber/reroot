@@ -6,6 +6,8 @@ export default function Profile() {
   const { state, dispatch } = useApp()
   const [referralCode, setReferralCode] = useState('')
   const [referralApplied, setReferralApplied] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState(state.userName)
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
@@ -21,12 +23,20 @@ export default function Profile() {
     window.location.reload()
   }
 
-  // Enrich timeline with dynamic note for current week
+  function saveName() {
+    if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
+    setEditingName(false)
+  }
+
+  // Compute timeline states dynamically from currentWeek
   const enrichedTimeline = TIMELINE.map(item => {
-    if (item.week === currentWeek) {
-      return { ...item, note: `${rsvpCount} events RSVP'd · ${state.eventsAttended} attended` }
-    }
-    return item
+    const itemState = item.week < currentWeek ? 'done'
+      : item.week === currentWeek ? 'current'
+      : 'locked'
+    const note = item.week === currentWeek
+      ? `${rsvpCount} events RSVP'd · ${state.eventsAttended} attended`
+      : item.note
+    return { ...item, state: itemState, note }
   })
 
   return (
@@ -38,9 +48,37 @@ export default function Profile() {
         textAlign: 'center', color: 'white',
       }}>
         <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
-          {state.userName.charAt(0)}
+          {state.userName.charAt(0).toUpperCase()}
         </div>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>{state.userName}</div>
+
+        {editingName ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+            <input
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveName()}
+              autoFocus
+              maxLength={30}
+              style={{
+                fontSize: 18, fontWeight: 700, color: 'white',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1.5px solid rgba(255,255,255,0.3)',
+                borderRadius: 10, padding: '5px 12px',
+                outline: 'none', textAlign: 'center', width: 160,
+              }}
+            />
+            <button onClick={saveName} style={{ fontSize: 18, color: 'var(--sage-light)', background: 'none', border: 'none', cursor: 'pointer' }}>✓</button>
+          </div>
+        ) : (
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', cursor: 'pointer' }}
+            onClick={() => { setNameInput(state.userName); setEditingName(true) }}
+          >
+            <span style={{ fontSize: 20, fontWeight: 700 }}>{state.userName}</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>✎</span>
+          </div>
+        )}
+
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
           Curitiba Spring Cohort · 24 members
         </div>

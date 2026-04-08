@@ -89,9 +89,9 @@ export default function Events() {
       <div className="screen-header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="screen-header__title">Eventos</div>
+            <div className="screen-header__title">Events</div>
             <div className="screen-header__sub">
-              Curitiba · Cohort Primavera · 24 membros
+              Curitiba · Spring Cohort · 24 members
             </div>
           </div>
           {/* Badge de fonte dos dados */}
@@ -101,7 +101,7 @@ export default function Events() {
             background: dataSource === 'live' ? 'var(--sage-pale)' : 'var(--sage-pale)',
             color: 'var(--sage)',
           }}>
-            {dataSource === 'live' ? '🟢 Ao vivo' : '🌿 Curitiba'}
+            {dataSource === 'live' ? '🟢 Live' : '🌿 Curitiba'}
           </div>
         </div>
       </div>
@@ -216,7 +216,7 @@ export default function Events() {
                       background: 'rgba(255,255,255,0.85)', color: 'var(--charcoal-mid)',
                       padding: '4px 10px', borderRadius: 8,
                     }}>
-                      Seja o primeiro do cohort
+                      Be first in your cohort
                     </span>
                   ) : (
                     <span style={{
@@ -227,7 +227,7 @@ export default function Events() {
                       display: 'flex', alignItems: 'center', gap: 4,
                     }}>
                       <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--sage-light)', display: 'block' }}/>
-                      {count} {count === 1 ? 'pessoa confirmada' : 'pessoas confirmadas'}
+                      {count} {count === 1 ? 'going' : 'going'}
                     </span>
                   )}
 
@@ -238,7 +238,7 @@ export default function Events() {
                       fontSize: 9, background: 'rgba(122,158,126,0.85)', color: 'white',
                       padding: '2px 7px', borderRadius: 6, fontWeight: 700,
                     }}>
-                      {ev.expectedSize === 'small' ? 'GRUPO PEQUENO' : ev.expectedSize === 'medium' ? 'GRUPO MÉDIO' : 'EVENTO GRANDE'}
+                      {ev.expectedSize === 'small' ? 'SMALL GROUP' : ev.expectedSize === 'medium' ? 'MEDIUM GROUP' : 'LARGE EVENT'}
                     </span>
                   )}
                 </div>
@@ -265,7 +265,7 @@ export default function Events() {
                       {ev.price && (
                         <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 1 }}>
                           {ev.price}
-                          {ev.hasFood && <span style={{ marginLeft: 6 }}>🍽️ tem comida</span>}
+                          {ev.hasFood && <span style={{ marginLeft: 6 }}>🍽️ includes food</span>}
                         </div>
                       )}
                     </div>
@@ -277,7 +277,7 @@ export default function Events() {
                         dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
                       }}
                     >
-                      {rsvped ? 'Confirmado ✓' : 'Confirmar'}
+                      {rsvped ? 'Going ✓' : 'RSVP'}
                     </button>
                   </div>
                 </div>
@@ -304,7 +304,7 @@ export default function Events() {
           >
             {detailLoading || !detailEvent ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>Carregando...</div>
+                <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>Loading...</div>
               </div>
             ) : (
               <DetailPanel
@@ -347,7 +347,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             fontSize: 10, background: 'rgba(122,158,126,0.9)', color: 'white',
             padding: '4px 10px', borderRadius: 8, fontWeight: 700,
           }}>
-            🌿 Baixa pressão
+            🌿 Low pressure
           </div>
         )}
       </div>
@@ -361,7 +361,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           🗓 {ev.date} · {ev.duration || ev.time}<br/>
           {ev.categoryEmoji} {ev.categoryLabel}
           {ev.price && <><br/>💰 {ev.price}</>}
-          {ev.hasFood && <><br/>🍽️ Tem comida/bebida</>}
+          {ev.hasFood && <><br/>🍽️ Food & drinks included</>}
         </div>
 
         {ev.description && (
@@ -378,7 +378,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             borderLeft: '3px solid var(--sage)',
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 4 }}>
-              Por que é bom pra você agora
+              Why this is good for you now
             </div>
             <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.rerootReason}</div>
           </div>
@@ -386,13 +386,13 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
 
         {/* Lista de confirmados */}
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
-          {count === 0 ? 'Seja o primeiro do seu cohort' : `${count} ${count === 1 ? 'pessoa confirmada' : 'pessoas confirmadas'}`}
+          {count === 0 ? 'Be first in your cohort' : `${count} ${count === 1 ? 'going' : 'going'}`}
         </div>
 
         <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', marginBottom: 20 }}>
           {(ev.cohortGoing?.length === 0 && !rsvped) ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
-              Nenhum membro do cohort ainda. Seja o primeiro a confirmar presença.
+              No cohort members yet. Be the first to RSVP.
             </div>
           ) : (
             <>
@@ -410,7 +410,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
                   <div className="avatar" style={{ background: 'var(--terra)' }}>S</div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>
-                      Você <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· Confirmado ✓</span>
+                      Você <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· Going ✓</span>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>Semana 3 · {userNeighborhood}</div>
                   </div>
@@ -421,7 +421,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         </div>
 
         <button className="btn btn--primary" onClick={onRsvp}>
-          {rsvped ? 'Cancelar confirmação' : 'Confirmar presença'}
+          {rsvped ? 'Cancel RSVP' : 'RSVP to this event'}
         </button>
 
         {rsvped && (
@@ -430,7 +430,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             style={{ marginTop: 10, background: 'var(--sage-pale)', color: 'var(--sage)', fontWeight: 600, fontSize: 14 }}
             onClick={onAttended}
           >
-            Marcar como comparecido ✓
+            Mark as attended ✓
           </button>
         )}
 
@@ -441,7 +441,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--charcoal-light)', textDecoration: 'underline' }}
           >
-            Ver evento original →
+            View original event →
           </a>
         )}
       </div>

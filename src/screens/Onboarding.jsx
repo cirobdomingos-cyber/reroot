@@ -19,13 +19,17 @@ const COHORT_AVATARS = [
 export default function Onboarding() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
+  const [name, setName] = useState('')
   const [neighborhood, setNeighborhood] = useState(state.neighborhood)
 
   function handleJoin() {
+    if (name.trim()) dispatch({ type: 'SET_NAME', payload: name.trim() })
     dispatch({ type: 'SET_NEIGHBORHOOD', payload: neighborhood })
     dispatch({ type: 'JOIN_COHORT' })
     navigate('/partner-intro')
   }
+
+  const canJoin = name.trim().length > 0
 
   return (
     <div style={{
@@ -91,6 +95,30 @@ export default function Onboarding() {
           </div>
         </div>
 
+        {/* Name input */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Your first name
+          </div>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="e.g. Ana"
+            maxLength={30}
+            style={{
+              width: '100%',
+              background: 'rgba(255,255,255,0.08)',
+              border: `1px solid ${name.trim() ? 'rgba(122,158,126,0.6)' : 'rgba(255,255,255,0.15)'}`,
+              borderRadius: 12,
+              padding: '11px 14px',
+              color: 'white',
+              fontSize: 14,
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+          />
+        </div>
+
         {/* Neighborhood input */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -150,7 +178,12 @@ export default function Onboarding() {
         padding: '22px 22px 36px',
         marginTop: 20,
       }}>
-        <button className="btn btn--primary" onClick={handleJoin}>
+        <button
+          className="btn btn--primary"
+          onClick={handleJoin}
+          disabled={!canJoin}
+          style={{ opacity: canJoin ? 1 : 0.45 }}
+        >
           Join the Curitiba Spring Cohort →
         </button>
         <div style={{

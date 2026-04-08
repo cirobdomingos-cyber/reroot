@@ -2,6 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { useApp, computeCurrentWeek } from '../context/AppContext'
 import { EVENTS } from '../data/events'
 
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
 const MILESTONE_WEEKS = [1, 2, 3, 6, 9, 12]
 
 // The 2 events prescribed this week
@@ -31,7 +38,7 @@ export default function Home() {
     <div>
       {/* Greeting */}
       <div style={{ padding: '14px 20px 4px' }}>
-        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)' }}>Good morning,</div>
+        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)' }}>{getGreeting()},</div>
         <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--charcoal)' }}>
           {state.userName} 👋
         </div>
