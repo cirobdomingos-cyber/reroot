@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
-import { CATEGORIES } from '../data/events'
+import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail } from '../services/api'
 
-// Skeleton loader para o card
 function EventCardSkeleton() {
   return (
     <div style={{
@@ -27,15 +26,15 @@ function EventCardSkeleton() {
 export default function Events() {
   const { state, dispatch } = useApp()
   const [activeFilter, setActiveFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('all')
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [dataSource, setDataSource] = useState('static')  // 'live' | 'static'
+  const [dataSource, setDataSource] = useState('static')
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [detailEvent, setDetailEvent] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Busca eventos (live ou fallback)
   const loadEvents = useCallback(async (category) => {
     setLoading(true)
     const { events: evs, source } = await fetchEvents(category)
@@ -48,7 +47,6 @@ export default function Events() {
     loadEvents(activeFilter)
   }, [activeFilter, loadEvents])
 
-  // Abre detalhe do evento
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
     setDetailLoading(true)
@@ -62,12 +60,18 @@ export default function Events() {
     setDetailEvent(null)
   }
 
-  const filteredEvents = searchQuery.trim()
-    ? events.filter(ev =>
-        ev.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ev.venue?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : events
+  // Apply search + date filter
+  let filteredEvents = events
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase()
+    filteredEvents = filteredEvents.filter(ev =>
+      ev.name.toLowerCase().includes(q) ||
+      ev.venue?.toLowerCase().includes(q)
+    )
+  }
+  if (dateFilter !== 'all') {
+    filteredEvents = filteredEvents.filter(ev => ev.dateTag === dateFilter)
+  }
 
   function getMemberCount(ev) {
     const base = ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0
@@ -76,8 +80,6 @@ export default function Events() {
 
   return (
     <div style={{ position: 'relative' }}>
-
-      {/* Shimmer keyframe */}
       <style>{`
         @keyframes shimmer {
           0%   { background-position: -200% 0; }
@@ -94,12 +96,10 @@ export default function Events() {
               Curitiba · Spring Cohort · 24 members
             </div>
           </div>
-          {/* Badge de fonte dos dados */}
           <div style={{
             fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
             padding: '3px 8px', borderRadius: 6,
-            background: dataSource === 'live' ? 'var(--sage-pale)' : 'var(--sage-pale)',
-            color: 'var(--sage)',
+            background: 'var(--sage-pale)', color: 'var(--sage)',
           }}>
             {dataSource === 'live' ? '🟢 Live' : '🌿 Curitiba'}
           </div>
@@ -112,8 +112,7 @@ export default function Events() {
           display: 'flex', alignItems: 'center', gap: 8,
           background: 'white', borderRadius: 14,
           border: '1.5px solid var(--border)',
-          padding: '9px 14px',
-          boxShadow: 'var(--shadow-sm)',
+          padding: '9px 14px', boxShadow: 'var(--shadow-sm)',
         }}>
           <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>🔍</span>
           <input
@@ -122,8 +121,7 @@ export default function Events() {
             placeholder="Search events or venues..."
             style={{
               flex: 1, border: 'none', outline: 'none',
-              fontSize: 13, color: 'var(--charcoal)',
-              background: 'transparent',
+              fontSize: 13, color: 'var(--charcoal)', background: 'transparent',
             }}
           />
           {searchQuery && (
@@ -135,8 +133,8 @@ export default function Events() {
         </div>
       </div>
 
-      {/* Filter chips */}
-      <div style={{ display: 'flex', gap: 8, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+      {/* Category filter chips */}
+      <div style={{ display: 'flex', gap: 8, padding: '8px 16px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {CATEGORIES.map(cat => (
           <button
             key={cat.id}
@@ -151,6 +149,26 @@ export default function Events() {
             }}
           >
             {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date filter chips */}
+      <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {DATE_FILTERS.map(df => (
+          <button
+            key={df.id}
+            onClick={() => setDateFilter(df.id)}
+            style={{
+              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+              transition: 'all 0.15s',
+              border: dateFilter === df.id ? 'none' : '1px solid var(--border)',
+              background: dateFilter === df.id ? 'var(--terra)' : 'transparent',
+              color: dateFilter === df.id ? 'white' : 'var(--charcoal-light)',
+            }}
+          >
+            {df.label}
           </button>
         ))}
       </div>
@@ -174,13 +192,14 @@ export default function Events() {
             >
               {searchQuery
                 ? `No events found for "${searchQuery}"`
-                : 'Nenhum evento encontrado nessa categoria.'}
+                : 'No events found for this filter.'}
             </motion.div>
           )}
 
           {filteredEvents.map(ev => {
             const rsvped = !!state.rsvps[ev.id]
             const count = getMemberCount(ev)
+            const isVenue = ev.category === 'bars_cafes'
 
             return (
               <motion.div
@@ -208,8 +227,18 @@ export default function Events() {
                     {ev.categoryEmoji} {ev.categoryLabel}
                   </span>
 
-                  {/* Popularidade real ou social proof do cohort */}
-                  {count === 0 ? (
+                  {isVenue && (
+                    <span style={{
+                      position: 'absolute', top: 10, right: 12,
+                      fontSize: 9, fontWeight: 700,
+                      background: 'rgba(196,114,74,0.85)', color: 'white',
+                      padding: '3px 8px', borderRadius: 6,
+                    }}>
+                      SEMPRE ABERTO
+                    </span>
+                  )}
+
+                  {!isVenue && count === 0 && (
                     <span style={{
                       position: 'absolute', top: 10, right: 12,
                       fontSize: 10, fontWeight: 700,
@@ -218,7 +247,9 @@ export default function Events() {
                     }}>
                       Be first in your cohort
                     </span>
-                  ) : (
+                  )}
+
+                  {!isVenue && count > 0 && (
                     <span style={{
                       position: 'absolute', top: 10, right: 12,
                       fontSize: 10, fontWeight: 700,
@@ -227,12 +258,11 @@ export default function Events() {
                       display: 'flex', alignItems: 'center', gap: 4,
                     }}>
                       <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--sage-light)', display: 'block' }}/>
-                      {count} {count === 1 ? 'going' : 'going'}
+                      {count} going
                     </span>
                   )}
 
-                  {/* Badge de tamanho esperado */}
-                  {ev.expectedSize && (
+                  {ev.expectedSize && !isVenue && (
                     <span style={{
                       position: 'absolute', bottom: 10, right: 12,
                       fontSize: 9, background: 'rgba(122,158,126,0.85)', color: 'white',
@@ -251,7 +281,6 @@ export default function Events() {
                   <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                     📍 {ev.venue}
                   </div>
-                  {/* Vibe summary do Claude */}
                   {ev.vibeSummary && ev.vibeSummary !== ev.name && (
                     <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginBottom: 8, fontStyle: 'italic', lineHeight: 1.4 }}>
                       {ev.vibeSummary}
@@ -260,7 +289,7 @@ export default function Events() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--terra)' }}>
-                        {ev.date} · {ev.time}
+                        {isVenue ? ev.time : `${ev.date} · ${ev.time}`}
                       </div>
                       {ev.price && (
                         <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 1 }}>
@@ -277,7 +306,7 @@ export default function Events() {
                         dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
                       }}
                     >
-                      {rsvped ? 'Going ✓' : 'RSVP'}
+                      {rsvped ? 'Going ✓' : isVenue ? 'Save' : 'RSVP'}
                     </button>
                   </div>
                 </div>
@@ -287,7 +316,7 @@ export default function Events() {
         </AnimatePresence>
       )}
 
-      {/* ── Event detail drawer ── */}
+      {/* Event detail drawer */}
       <AnimatePresence>
         {selectedEventId && (
           <motion.div
@@ -328,6 +357,7 @@ export default function Events() {
 
 function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood }) {
   const count = (ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0) + (rsvped ? 1 : 0)
+  const isVenue = ev.category === 'bars_cafes'
 
   return (
     <>
@@ -356,9 +386,20 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
       <div style={{ padding: '20px 20px 100px' }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>{ev.name}</div>
 
+        {isVenue && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: 'var(--terra-pale)', padding: '4px 10px', borderRadius: 8,
+            fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+            textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+          }}>
+            Sempre aberto · Venha quando quiser
+          </div>
+        )}
+
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
           📍 {ev.venue}<br/>
-          🗓 {ev.date} · {ev.duration || ev.time}<br/>
+          🗓 {isVenue ? `Horário: ${ev.duration || ev.time}` : `${ev.date} · ${ev.duration || ev.time}`}<br/>
           {ev.categoryEmoji} {ev.categoryLabel}
           {ev.price && <><br/>💰 {ev.price}</>}
           {ev.hasFood && <><br/>🍽️ Food & drinks included</>}
@@ -370,7 +411,6 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           </div>
         )}
 
-        {/* Por que é bom pro Reroot */}
         {ev.rerootReason && (
           <div style={{
             background: 'var(--sage-pale)', borderRadius: 12,
@@ -384,15 +424,18 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           </div>
         )}
 
-        {/* Lista de confirmados */}
+        {/* Cohort members */}
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
-          {count === 0 ? 'Be first in your cohort' : `${count} ${count === 1 ? 'going' : 'going'}`}
+          {isVenue
+            ? (ev.cohortGoing?.length > 0 ? `${ev.cohortGoing.length} cohort members frequent this spot` : 'No cohort members here yet')
+            : (count === 0 ? 'Be first in your cohort' : `${count} going`)
+          }
         </div>
 
         <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', marginBottom: 20 }}>
           {(ev.cohortGoing?.length === 0 && !rsvped) ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
-              No cohort members yet. Be the first to RSVP.
+              {isVenue ? 'Be the first cohort member to save this spot.' : 'No cohort members yet. Be the first to RSVP.'}
             </div>
           ) : (
             <>
@@ -410,9 +453,9 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
                   <div className="avatar" style={{ background: 'var(--terra)' }}>S</div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>
-                      Você <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· Going ✓</span>
+                      You <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· {isVenue ? 'Saved ✓' : 'Going ✓'}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>Semana 3 · {userNeighborhood}</div>
+                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>Week 3 · {userNeighborhood}</div>
                   </div>
                 </div>
               )}
@@ -421,10 +464,13 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         </div>
 
         <button className="btn btn--primary" onClick={onRsvp}>
-          {rsvped ? 'Cancel RSVP' : 'RSVP to this event'}
+          {rsvped
+            ? (isVenue ? 'Remove from saved' : 'Cancel RSVP')
+            : (isVenue ? 'Save this spot' : 'RSVP to this event')
+          }
         </button>
 
-        {rsvped && (
+        {rsvped && !isVenue && (
           <button
             className="btn"
             style={{ marginTop: 10, background: 'var(--sage-pale)', color: 'var(--sage)', fontWeight: 600, fontSize: 14 }}
