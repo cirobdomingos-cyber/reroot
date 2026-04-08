@@ -1,0 +1,17 @@
+{
+  "appId": "com.reroot.app",
+  "appName": "Reroot",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#FAF9F6",
+      "showSpinner": false,
+      "androidSpinnerStyle": "small",
+      "spinnerColor": "#7A9E7E"
+    }
+  }
+}

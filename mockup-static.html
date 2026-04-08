@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reroot — Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --terra: #C4724A;
+    --terra-light: #E8956D;
+    --terra-pale: #F5DDD1;
+    --sage: #7A9E7E;
+    --sage-light: #A8C5AB;
+    --sage-pale: #E4EFE5;
+    --cream: #FAF8F5;
+    --charcoal: #2C2C2C;
+    --charcoal-mid: #5A5A5A;
+    --charcoal-light: #9A9A9A;
+    --white: #FFFFFF;
+    --border: #EAE7E3;
+    --shadow: rgba(44,44,44,0.08);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* ── Phone shell ── */
+  .phone-shell {
+    width: 390px;
+    height: 844px;
+    background: var(--cream);
+    border-radius: 48px;
+    box-shadow:
+      0 0 0 10px #1a1a1a,
+      0 0 0 12px #333,
+      0 40px 80px rgba(0,0,0,0.6);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* notch */
+  .phone-shell::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 126px; height: 34px;
+    background: #1a1a1a;
+    border-radius: 0 0 20px 20px;
+    z-index: 100;
+  }
+
+  /* status bar */
+  .status-bar {
+    height: 50px;
+    padding: 14px 28px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    background: var(--cream);
+    z-index: 50;
+  }
+  .status-bar .time { font-size: 15px; font-weight: 600; color: var(--charcoal); }
+  .status-bar .icons { display: flex; gap: 6px; align-items: center; }
+  .status-bar .icons svg { width: 16px; height: 16px; fill: var(--charcoal); }
+
+  /* screen container */
+  .screens {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    background: var(--cream);
+    padding-bottom: 80px;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    opacity: 0;
+    transform: translateX(20px);
+    pointer-events: none;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .screen::-webkit-scrollbar { display: none; }
+  .screen.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: all;
+  }
+
+  /* ── Bottom Nav ── */
+  .bottom-nav {
+    height: 80px;
+    background: var(--white);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 8px 8px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 50;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 12px;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-item:hover { background: var(--terra-pale); }
+  .nav-item svg { width: 22px; height: 22px; }
+  .nav-item span { font-size: 10px; font-weight: 500; color: var(--charcoal-light); }
+  .nav-item.active svg path, .nav-item.active svg rect, .nav-item.active svg circle { stroke: var(--terra) !important; }
+  .nav-item.active span { color: var(--terra); font-weight: 600; }
+
+  /* ── Shared components ── */
+  .screen-header {
+    padding: 16px 24px 8px;
+    background: var(--cream);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .screen-title { font-size: 22px; font-weight: 700; color: var(--charcoal); }
+  .screen-sub { font-size: 13px; color: var(--charcoal-mid); margin-top: 2px; }
+
+  .card {
+    background: var(--white);
+    border-radius: 20px;
+    padding: 20px;
+    margin: 0 16px 12px;
+    box-shadow: 0 2px 12px var(--shadow);
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-terra { background: var(--terra-pale); color: var(--terra); }
+  .tag-sage  { background: var(--sage-pale);  color: var(--sage);  }
+  .tag-charcoal { background: #EDEDED; color: var(--charcoal-mid); }
+
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: var(--terra);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-primary:active { background: #b0633d; transform: scale(0.98); }
+
+  .btn-secondary {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    color: var(--terra);
+    border: 2px solid var(--terra);
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-secondary:active { background: var(--terra-pale); }
+
+  .avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    flex-shrink: 0;
+    border: 2px solid var(--white);
+  }
+
+  .avatar-stack { display: flex; }
+  .avatar-stack .avatar { margin-left: -10px; }
+  .avatar-stack .avatar:first-child { margin-left: 0; }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  /* ── Screen 0: Onboarding ── */
+  #screen-onboarding {
+    background: linear-gradient(165deg, #2C2C2C 0%, #3d2d25 100%);
+    color: white;
+    padding-bottom: 0;
+  }
+  .ob-status { background: transparent; }
+  .ob-status .time, .ob-status .icons svg { fill: white; color: white; }
+
+  .ob-hero {
+    padding: 20px 28px 0;
+    text-align: center;
+  }
+  .ob-logo {
+    font-size: 28px; font-weight: 700; letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+  .ob-logo span { color: var(--terra-light); }
+  .ob-tagline { font-size: 12px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1.5px; }
+
+  .ob-cohort-card {
+    margin: 20px 20px 0;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 24px;
+    padding: 24px;
+  }
+  .ob-cohort-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--terra);
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    text-transform: uppercase; margin-bottom: 14px;
+  }
+  .ob-cohort-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: white; display: block; }
+  .ob-cohort-title {
+    font-size: 22px; font-weight: 700; line-height: 1.3;
+    margin-bottom: 6px;
+  }
+  .ob-cohort-title em { color: var(--terra-light); font-style: normal; }
+  .ob-cohort-sub { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 18px; line-height: 1.5; }
+
+  .ob-members-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .ob-members-row .avatar { width: 40px; height: 40px; font-size: 14px; }
+  .ob-members-info { }
+  .ob-members-info strong { font-size: 15px; font-weight: 600; display: block; }
+  .ob-members-info span { font-size: 12px; color: rgba(255,255,255,0.55); }
+
+  .ob-neighborhood {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    cursor: pointer;
+  }
+  .ob-neighborhood-left { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .ob-neighborhood-left svg { width: 15px; height: 15px; }
+  .ob-neighborhood-right { font-size: 11px; color: var(--terra-light); font-weight: 600; }
+
+  .ob-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 24px; }
+  .ob-tag {
+    padding: 6px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8); cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ob-tag.selected { background: var(--sage); border-color: var(--sage); color: white; font-weight: 600; }
+
+  .ob-bottom {
+    background: var(--cream);
+    border-radius: 28px 28px 0 0;
+    padding: 24px 24px 40px;
+    margin-top: 20px;
+  }
+  .ob-privacy { text-align: center; font-size: 11px; color: var(--charcoal-light); margin-top: 12px; line-height: 1.5; }
+
+  /* ── Screen 1: Home ── */
+  .home-greeting { padding: 16px 24px 4px; }
+  .home-greeting .hi { font-size: 13px; color: var(--charcoal-mid); }
+  .home-greeting .name { font-size: 24px; font-weight: 700; color: var(--charcoal); }
+
+  .progress-card {
+    margin: 8px 16px 12px;
+    background: linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%);
+    border-radius: 24px;
+    padding: 24px;
+    color: white;
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-card::after {
+    content: '';
+    position: absolute;
+    right: -30px; top: -30px;
+    width: 150px; height: 150px;
+    border-radius: 50%;
+    background: rgba(196,114,74,0.15);
+  }
+  .progress-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.5); margin-bottom: 6px; }
+  .progress-week { font-size: 28px; font-weight: 700; }
+  .progress-week span { font-size: 15px; font-weight: 400; color: rgba(255,255,255,0.6); }
+
+  .progress-arc-wrap { margin: 16px 0 12px; position: relative; }
+  .progress-arc-track {
+    height: 8px; border-radius: 4px;
+    background: rgba(255,255,255,0.15);
+    overflow: hidden;
+    position: relative;
+  }
+  .progress-arc-fill {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, var(--terra-light), var(--sage-light));
+    width: 25%;
+    transition: width 0.6s ease;
+  }
+
+  .progress-milestones {
+    display: flex; justify-content: space-between;
+    margin-top: 6px;
+  }
+  .milestone {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-size: 10px; color: rgba(255,255,255,0.4);
+  }
+  .milestone.done { color: var(--sage-light); }
+  .milestone.current { color: var(--terra-light); }
+  .milestone-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+  }
+  .milestone.done .milestone-dot { background: var(--sage-light); }
+  .milestone.current .milestone-dot { background: var(--terra-light); box-shadow: 0 0 0 3px rgba(196,114,74,0.3); }
+
+  .progress-stats { display: flex; gap: 20px; margin-top: 14px; }
+  .p-stat { }
+  .p-stat-val { font-size: 18px; font-weight: 700; }
+  .p-stat-lbl { font-size: 11px; color: rgba(255,255,255,0.5); }
+
+  .section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: var(--charcoal-light);
+    padding: 0 24px;
+    margin-bottom: 8px; margin-top: 16px;
+  }
+
+  .rx-card {
+    background: linear-gradient(135deg, var(--terra-pale), #f9ede5);
+    border-radius: 20px;
+    padding: 18px 20px;
+    margin: 0 16px 12px;
+    border: 1px solid rgba(196,114,74,0.15);
+  }
+  .rx-header { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .rx-icon { font-size: 18px; }
+  .rx-title { font-size: 14px; font-weight: 700; color: var(--charcoal); }
+  .rx-sub { font-size: 11px; color: var(--charcoal-mid); }
+
+  .rx-event {
+    display: flex; align-items: center; gap: 12px;
+    background: white; border-radius: 14px; padding: 12px 14px;
+    margin-bottom: 8px; cursor: pointer;
+    transition: transform 0.15s;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.04);
+  }
+  .rx-event:active { transform: scale(0.98); }
+  .rx-event-icon {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .rx-event-info { flex: 1; }
+  .rx-event-name { font-size: 13px; font-weight: 600; color: var(--charcoal); }
+  .rx-event-meta { font-size: 11px; color: var(--charcoal-mid); margin-top: 2px; }
+  .rx-event-badge {
+    font-size: 10px; font-weight: 600; color: var(--sage);
+    background: var(--sage-pale); padding: 3px 8px; border-radius: 8px;
+    flex-shrink: 0;
+  }
+
+  .social-proof-card {
+    margin: 0 16px 12px;
+    background: var(--white);
+    border-radius: 20px;
+    padding: 16px 18px;
+    box-shadow: 0 2px 12px var(--shadow);
+  }
+  .sp-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sp-row:last-child { margin-bottom: 0; }
+  .sp-text { flex: 1; font-size: 12px; color: var(--charcoal-mid); line-height: 1.4; }
+  .sp-text strong { color: var(--charcoal); }
+  .sp-rsvp-btn {
+    padding: 6px 14px; border-radius: 10px;
+    background: var(--terra-pale); color: var(--terra);
+    font-size: 11px; font-weight: 700; border: none;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer; flex-shrink: 0;
+  }
+
+  .framework-teaser {
+    margin: 0 16px 16px;
+    background: linear-gradient(135deg, var(--sage-pale), #daeadb);
+    border-radius: 20px;
+    padding: 18px 20px;
+    border: 1px solid rgba(122,158,126,0.2);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .framework-teaser:active { transform: scale(0.99); }
+  .fw-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .fw-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--sage);
+    background: var(--white); padding: 3px 8px; border-radius: 6px;
+  }
+  .fw-arrow { font-size: 18px; color: var(--sage); }
+  .fw-title { font-size: 16px; font-weight: 700; color: var(--charcoal); margin-bottom: 4px; }
+  .fw-desc { font-size: 12px; color: var(--charcoal-mid); line-height: 1.5; }
+  .fw-meta { margin-top: 12px; font-size: 10px; color: var(--sage); font-weight: 600; display: flex; align-items: center; gap: 4px; }
+
+  /* ── Screen 2: Events ── */
+  .filter-row {
+    display: flex; gap: 8px; padding: 8px 16px 12px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter-chip {
+    padding: 7px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    border: 1.5px solid var(--border); color: var(--charcoal-mid);
+    background: var(--white); cursor: pointer;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .filter-chip.active { background: var(--charcoal); color: white; border-color: var(--charcoal); }
+
+  .event-card {
+    background: var(--white);
+    border-radius: 20px;
+    margin: 0 16px 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .event-card:active { transform: scale(0.99); }
+  .event-card-header {
+    height: 100px;
+    display: flex; align-items: flex-end;
+    padding: 12px 16px;
+    position: relative;
+  }
+  .event-category-tag {
+    position: absolute; top: 10px; left: 12px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.9); color: var(--charcoal);
+  }
+  .event-member-badge {
+    position: absolute; top: 10px; right: 12px;
+    font-size: 10px; font-weight: 700;
+    padding: 4px 10px; border-radius: 8px;
+    background: rgba(44,44,44,0.75); color: white;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .event-member-badge.empty { background: rgba(255,255,255,0.85); color: var(--charcoal-mid); }
+  .member-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--sage-light); }
+
+  .event-card-body { padding: 14px 16px 16px; }
+  .event-name { font-size: 16px; font-weight: 700; color: var(--charcoal); margin-bottom: 4px; }
+  .event-venue { font-size: 12px; color: var(--charcoal-mid); margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
+  .event-footer { display: flex; align-items: center; justify-content: space-between; }
+  .event-date { font-size: 12px; font-weight: 600; color: var(--terra); }
+  .event-rsvp-btn {
+    padding: 8px 18px; border-radius: 12px;
+    background: var(--terra); color: white;
+    font-size: 12px; font-weight: 700;
+    border: none; font-family: 'Inter', sans-serif;
+    cursor: pointer;
+  }
+
+  /* Event detail overlay */
+  .event-overlay {
+    position: absolute; inset: 0;
+    background: var(--cream);
+    z-index: 20;
+    overflow-y: auto;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    scrollbar-width: none;
+  }
+  .event-overlay::-webkit-scrollbar { display: none; }
+  .event-overlay.open { transform: translateY(0); }
+  .overlay-hero { height: 200px; position: relative; }
+  .overlay-back {
+    position: absolute; top: 60px; left: 16px;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(255,255,255,0.9);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 18px;
+    border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .overlay-content { padding: 20px 20px 100px; }
+  .overlay-title { font-size: 22px; font-weight: 700; color: var(--charcoal); margin-bottom: 4px; }
+  .overlay-meta { font-size: 13px; color: var(--charcoal-mid); margin-bottom: 16px; line-height: 1.6; }
+  .rsvp-section-title { font-size: 13px; font-weight: 700; color: var(--charcoal); margin-bottom: 10px; }
+  .rsvp-person {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .rsvp-person:last-child { border-bottom: none; }
+  .rsvp-person-info { flex: 1; }
+  .rsvp-person-name { font-size: 14px; font-weight: 600; color: var(--charcoal); }
+  .rsvp-person-note { font-size: 11px; color: var(--charcoal-mid); margin-top: 1px; }
+
+  /* ── Screen 3: Journey (Framework) ── */
+  .framework-hero {
+    background: linear-gradient(135deg, var(--sage) 0%, #5d8861 100%);
+    margin: 8px 16px 0;
+    border-radius: 24px;
+    padding: 24px;
+    color: white;
+    position: relative;
+    overflow: hidden;
+  }
+  .framework-hero::after {
+    content: '';
+    position: absolute; right: -20px; bottom: -20px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+  }
+  .fw-hero-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.2); padding: 4px 10px;
+    border-radius: 20px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .fw-hero-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; line-height: 1.2; }
+  .fw-hero-sub { font-size: 13px; color: rgba(255,255,255,0.75); line-height: 1.5; }
+  .fw-methodology {
+    margin-top: 14px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 10px; padding: 8px 12px;
+    font-size: 11px; color: rgba(255,255,255,0.8);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .framework-section { margin: 16px 16px 0; }
+  .fw-section-title {
+    font-size: 13px; font-weight: 700; color: var(--charcoal);
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+
+  .prompt-card {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 8px var(--shadow);
+    border-left: 3px solid var(--terra);
+  }
+  .prompt-card.sage-border { border-left-color: var(--sage); }
+  .prompt-num {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--terra); margin-bottom: 6px;
+  }
+  .prompt-card.sage-border .prompt-num { color: var(--sage); }
+  .prompt-text { font-size: 14px; color: var(--charcoal); line-height: 1.6; font-weight: 500; }
+  .prompt-hint { font-size: 11px; color: var(--charcoal-light); margin-top: 6px; line-height: 1.4; }
+
+  .reframe-card {
+    background: linear-gradient(135deg, #2C2C2C, #3d2d25);
+    border-radius: 16px; padding: 18px;
+    margin-bottom: 10px; color: white;
+  }
+  .reframe-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--terra-light); margin-bottom: 8px; }
+  .reframe-from { font-size: 13px; color: rgba(255,255,255,0.55); margin-bottom: 8px; text-decoration: line-through; }
+  .reframe-arrow { font-size: 18px; margin-bottom: 6px; }
+  .reframe-to { font-size: 15px; font-weight: 600; color: white; line-height: 1.4; }
+
+  .action-step {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--white); border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 8px;
+    box-shadow: 0 1px 6px var(--shadow);
+  }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--terra); color: white;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-text { font-size: 13px; color: var(--charcoal); line-height: 1.5; }
+  .step-text strong { font-weight: 700; }
+
+  /* ── Screen 4: Profile ── */
+  .profile-hero {
+    background: linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%);
+    padding: 20px 24px 32px;
+    color: white;
+    text-align: center;
+    position: relative;
+  }
+  .profile-avatar-lg {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: var(--terra); color: white;
+    font-size: 26px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 12px;
+    border: 3px solid rgba(255,255,255,0.2);
+  }
+  .profile-name { font-size: 20px; font-weight: 700; }
+  .profile-cohort { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 3px; }
+  .sub-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--terra); padding: 5px 14px;
+    border-radius: 20px; font-size: 11px; font-weight: 700;
+    margin-top: 10px;
+  }
+
+  .journey-timeline { margin: 16px 16px 0; }
+  .timeline-item {
+    display: flex; gap: 12px; margin-bottom: 0;
+    position: relative;
+  }
+  .timeline-item:not(:last-child)::before {
+    content: ''; position: absolute;
+    left: 15px; top: 30px; bottom: -8px;
+    width: 2px; background: var(--border);
+  }
+  .timeline-left { width: 32px; flex-shrink: 0; }
+  .timeline-dot {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; background: var(--border);
+    position: relative; z-index: 1;
+  }
+  .timeline-dot.done { background: var(--sage-pale); }
+  .timeline-dot.current { background: var(--terra-pale); box-shadow: 0 0 0 4px var(--terra-pale); }
+  .timeline-dot.locked { background: #F0F0F0; opacity: 0.5; }
+  .timeline-content { flex: 1; padding-bottom: 20px; }
+  .timeline-week { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--charcoal-light); }
+  .timeline-event { font-size: 14px; font-weight: 600; color: var(--charcoal); }
+  .timeline-note { font-size: 11px; color: var(--charcoal-mid); margin-top: 2px; }
+
+  .badges-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px; margin-top: 8px; }
+  .badge-item {
+    background: var(--white); border-radius: 14px;
+    padding: 12px 14px; flex: 1; min-width: 100px;
+    text-align: center; box-shadow: 0 2px 8px var(--shadow);
+  }
+  .badge-icon { font-size: 24px; margin-bottom: 4px; }
+  .badge-name { font-size: 11px; font-weight: 700; color: var(--charcoal); }
+  .badge-item.locked { opacity: 0.4; filter: grayscale(1); }
+
+  .referral-card {
+    margin: 12px 16px;
+    background: linear-gradient(135deg, var(--sage-pale), #d4e8d5);
+    border-radius: 20px; padding: 18px 20px;
+    border: 1px solid rgba(122,158,126,0.25);
+  }
+  .referral-title { font-size: 15px; font-weight: 700; color: var(--charcoal); margin-bottom: 4px; }
+  .referral-sub { font-size: 12px; color: var(--charcoal-mid); line-height: 1.5; margin-bottom: 14px; }
+
+  /* ── Misc ── */
+  .spacer { height: 16px; }
+  .spacer-sm { height: 8px; }
+</style>
+</head>
+<body>
+
+<div class="phone-shell">
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <span class="time">9:41</span>
+    <div class="icons">
+      <!-- Signal -->
+      <svg viewBox="0 0 17 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="7" width="3" height="5" rx="1" fill="currentColor"/>
+        <rect x="4.5" y="4.5" width="3" height="7.5" rx="1" fill="currentColor"/>
+        <rect x="9" y="2" width="3" height="10" rx="1" fill="currentColor"/>
+        <rect x="13.5" y="0" width="3" height="12" rx="1" fill="currentColor" opacity="0.3"/>
+      </svg>
+      <!-- WiFi -->
+      <svg viewBox="0 0 16 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 9.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" fill="currentColor"/>
+        <path d="M4.5 7C5.7 5.8 6.8 5.2 8 5.2s2.3.6 3.5 1.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+        <path d="M2 4.5C3.8 2.7 5.8 1.8 8 1.8s4.2.9 6 2.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.5"/>
+      </svg>
+      <!-- Battery -->
+      <svg viewBox="0 0 25 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="currentColor"/>
+        <rect x="2" y="2" width="15" height="8" rx="2" fill="currentColor"/>
+        <path d="M23 4v4a2 2 0 000-4z" fill="currentColor" opacity="0.4"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Screens -->
+  <div class="screens" id="screensContainer">
+
+    <!-- ═══════════════════════════════════════
+         SCREEN 0: ONBOARDING
+    ═══════════════════════════════════════ -->
+    <div class="screen active" id="screen-onboarding">
+      <div class="ob-hero">
+        <div class="ob-logo">re<span>root</span></div>
+        <div class="ob-tagline">Your recovery journey</div>
+      </div>
+
+      <div class="ob-cohort-card">
+        <div class="ob-cohort-badge">Spring 2026 Cohort — Live Now</div>
+        <div class="ob-cohort-title">You're joining the<br><em>Portland Spring Cohort</em></div>
+        <div class="ob-cohort-sub">A small, curated group of people in the same chapter of life — not thousands of strangers.</div>
+
+        <div class="ob-members-row">
+          <div class="avatar-stack">
+            <div class="avatar" style="background:#C4724A;color:white">M</div>
+            <div class="avatar" style="background:#7A9E7E;color:white">K</div>
+            <div class="avatar" style="background:#9B7EB8;color:white">T</div>
+            <div class="avatar" style="background:#5B8DD9;color:white">J</div>
+            <div class="avatar" style="background:#E08D5E;color:white">R</div>
+          </div>
+          <div class="ob-members-info">
+            <strong>24 members in your cohort</strong>
+            <span>Same chapter of life · Cohort closes in 3 days</span>
+          </div>
+        </div>
+
+        <div class="ob-neighborhood">
+          <div class="ob-neighborhood-left">
+            <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="2">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+              <circle cx="12" cy="9" r="2.5"/>
+            </svg>
+            <span style="color:rgba(255,255,255,0.85)">Pearl District · NW Portland</span>
+          </div>
+          <div class="ob-neighborhood-right">Change →</div>
+        </div>
+
+        <div style="font-size:12px;color:rgba(255,255,255,0.55);margin-bottom:10px">Pick interests (tap to select):</div>
+        <div class="ob-tags">
+          <div class="ob-tag selected" onclick="this.classList.toggle('selected')">Coffee & Conversation</div>
+          <div class="ob-tag" onclick="this.classList.toggle('selected')">Hiking</div>
+          <div class="ob-tag selected" onclick="this.classList.toggle('selected')">Creative Writing</div>
+          <div class="ob-tag" onclick="this.classList.toggle('selected')">Yoga</div>
+          <div class="ob-tag selected" onclick="this.classList.toggle('selected')">Book Clubs</div>
+          <div class="ob-tag" onclick="this.classList.toggle('selected')">Art & Museums</div>
+          <div class="ob-tag" onclick="this.classList.toggle('selected')">Cooking</div>
+          <div class="ob-tag" onclick="this.classList.toggle('selected')">Live Music</div>
+        </div>
+      </div>
+
+      <div class="ob-bottom">
+        <button class="btn-primary" onclick="navigate('home')">
+          Join the Portland Spring Cohort →
+        </button>
+        <div class="ob-privacy">🔒 First names only · No social media linking · No dating features</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCREEN 1: HOME / DASHBOARD
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-home">
+
+      <div class="home-greeting">
+        <div class="hi">Good morning,</div>
+        <div class="name">Sandra 👋</div>
+      </div>
+
+      <!-- Progress Card -->
+      <div class="progress-card">
+        <div class="progress-label">Your Journey</div>
+        <div class="progress-week">Week 3 <span>of 12</span></div>
+
+        <div class="progress-arc-wrap">
+          <div class="progress-arc-track">
+            <div class="progress-arc-fill" id="progressFill" style="width:25%"></div>
+          </div>
+          <div class="progress-milestones">
+            <div class="milestone done"><div class="milestone-dot"></div>W1</div>
+            <div class="milestone done"><div class="milestone-dot"></div>W2</div>
+            <div class="milestone current"><div class="milestone-dot"></div>W3</div>
+            <div class="milestone"><div class="milestone-dot"></div>W6</div>
+            <div class="milestone"><div class="milestone-dot"></div>W9</div>
+            <div class="milestone"><div class="milestone-dot"></div>W12</div>
+          </div>
+        </div>
+
+        <div class="progress-stats">
+          <div class="p-stat">
+            <div class="p-stat-val">2</div>
+            <div class="p-stat-lbl">Events attended</div>
+          </div>
+          <div class="p-stat">
+            <div class="p-stat-val">3</div>
+            <div class="p-stat-lbl">Frameworks read</div>
+          </div>
+          <div class="p-stat">
+            <div class="p-stat-val">8</div>
+            <div class="p-stat-lbl">Cohort members met</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rx This Week -->
+      <div class="section-label">Your prescription this week</div>
+
+      <div class="rx-card">
+        <div class="rx-header">
+          <div class="rx-icon">💊</div>
+          <div>
+            <div class="rx-title">2 events · Week 3 protocol</div>
+            <div class="rx-sub">Curated for your re-entry stage</div>
+          </div>
+        </div>
+
+        <div class="rx-event" onclick="navigate('events')">
+          <div class="rx-event-icon" style="background:#FFF0E8">☕</div>
+          <div class="rx-event-info">
+            <div class="rx-event-name">Sunday Morning Coffee Walk</div>
+            <div class="rx-event-meta">Sat Apr 12 · Jamison Square</div>
+          </div>
+          <div class="rx-event-badge">3 going</div>
+        </div>
+
+        <div class="rx-event" onclick="navigate('events')">
+          <div class="rx-event-icon" style="background:#E8F2E8">✍️</div>
+          <div class="rx-event-info">
+            <div class="rx-event-name">Creative Writing Drop-In</div>
+            <div class="rx-event-meta">Tue Apr 15 · Powell's Books</div>
+          </div>
+          <div class="rx-event-badge">Be first</div>
+        </div>
+      </div>
+
+      <!-- Social Proof -->
+      <div class="section-label">Cohort activity</div>
+
+      <div class="social-proof-card">
+        <div class="sp-row">
+          <div class="avatar-stack">
+            <div class="avatar" style="background:#7A9E7E;color:white;width:30px;height:30px;font-size:11px">K</div>
+            <div class="avatar" style="background:#C4724A;color:white;width:30px;height:30px;font-size:11px">M</div>
+            <div class="avatar" style="background:#9B7EB8;color:white;width:30px;height:30px;font-size:11px">T</div>
+          </div>
+          <div class="sp-text"><strong>3 cohort members</strong> are going to Sunday Coffee Walk</div>
+          <button class="sp-rsvp-btn" onclick="navigate('events')">RSVP</button>
+        </div>
+        <div class="divider"></div>
+        <div class="sp-row">
+          <div class="avatar-stack">
+            <div class="avatar" style="background:#5B8DD9;color:white;width:30px;height:30px;font-size:11px">J</div>
+          </div>
+          <div class="sp-text"><strong>Jamie</strong> just completed their Week 3 framework</div>
+        </div>
+      </div>
+
+      <!-- Framework Teaser -->
+      <div class="section-label">This week's framework</div>
+
+      <div class="framework-teaser" onclick="navigate('journey')">
+        <div class="fw-header">
+          <div class="fw-label">AI Framework · Week 3</div>
+          <div class="fw-arrow">→</div>
+        </div>
+        <div class="fw-title">The Re-entry Ritual</div>
+        <div class="fw-desc">Structured reflection + reframe exercises for showing up socially after a long pause.</div>
+        <div class="fw-meta">
+          <span>🛡️</span>
+          Generated with therapist-reviewed methodology
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCREEN 2: EVENTS
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-events">
+      <div class="screen-header">
+        <div class="screen-title">Events</div>
+        <div class="screen-sub">Curated for Portland Spring Cohort · 24 members</div>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-chip active" onclick="setFilter(this, 'all')">All</div>
+        <div class="filter-chip" onclick="setFilter(this, 'quiet')">🌿 Quiet Social</div>
+        <div class="filter-chip" onclick="setFilter(this, 'active')">🏃 Active</div>
+        <div class="filter-chip" onclick="setFilter(this, 'creative')">🎨 Creative</div>
+        <div class="filter-chip" onclick="setFilter(this, 'community')">🤝 Community</div>
+      </div>
+
+      <!-- Event 1 -->
+      <div class="event-card" onclick="openEventOverlay('coffee')">
+        <div class="event-card-header" style="background:linear-gradient(135deg,#F5DDD1,#EDCBB8)">
+          <div class="event-category-tag">🌿 Quiet Social</div>
+          <div class="event-member-badge">
+            <div class="member-dot"></div>
+            3 cohort members going
+          </div>
+        </div>
+        <div class="event-card-body">
+          <div class="event-name">Sunday Morning Coffee Walk</div>
+          <div class="event-venue">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            Jamison Square · Pearl District
+          </div>
+          <div class="event-footer">
+            <div class="event-date">Sat, Apr 12 · 9:00 AM</div>
+            <button class="event-rsvp-btn">RSVP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event 2 -->
+      <div class="event-card" onclick="openEventOverlay('writing')">
+        <div class="event-card-header" style="background:linear-gradient(135deg,#E4EFE5,#CDDECE)">
+          <div class="event-category-tag">🎨 Creative</div>
+          <div class="event-member-badge empty">Be first from your cohort</div>
+        </div>
+        <div class="event-card-body">
+          <div class="event-name">Creative Writing Drop-In</div>
+          <div class="event-venue">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            Powell's Books, Room 2B
+          </div>
+          <div class="event-footer">
+            <div class="event-date">Tue, Apr 15 · 7:00 PM</div>
+            <button class="event-rsvp-btn">RSVP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event 3 -->
+      <div class="event-card" onclick="openEventOverlay('yoga')">
+        <div class="event-card-header" style="background:linear-gradient(135deg,#E8EAF6,#C8CBE9)">
+          <div class="event-category-tag">🏃 Active</div>
+          <div class="event-member-badge">
+            <div class="member-dot"></div>
+            2 cohort members going
+          </div>
+        </div>
+        <div class="event-card-body">
+          <div class="event-name">Sunrise Park Yoga</div>
+          <div class="event-venue">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            Tom McCall Waterfront Park
+          </div>
+          <div class="event-footer">
+            <div class="event-date">Sun, Apr 13 · 8:30 AM</div>
+            <button class="event-rsvp-btn">RSVP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event 4 -->
+      <div class="event-card" onclick="openEventOverlay('board')">
+        <div class="event-card-header" style="background:linear-gradient(135deg,#FFF3E0,#FFE0B2)">
+          <div class="event-category-tag">🤝 Community</div>
+          <div class="event-member-badge">
+            <div class="member-dot"></div>
+            5 cohort members going
+          </div>
+        </div>
+        <div class="event-card-body">
+          <div class="event-name">Board Game Night @ Lucky Lab</div>
+          <div class="event-venue">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+            Lucky Lab Brew Pub · Hawthorne
+          </div>
+          <div class="event-footer">
+            <div class="event-date">Fri, Apr 18 · 6:30 PM</div>
+            <button class="event-rsvp-btn">RSVP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Detail Overlay -->
+      <div class="event-overlay" id="eventOverlay">
+        <div class="overlay-hero" id="overlayHero" style="background:linear-gradient(135deg,#F5DDD1,#EDCBB8)">
+          <button class="overlay-back" onclick="closeEventOverlay()">←</button>
+        </div>
+        <div class="overlay-content">
+          <div id="overlayTitle" class="overlay-title">Sunday Morning Coffee Walk</div>
+          <div id="overlayMeta" class="overlay-meta">
+            📍 Jamison Square, Pearl District<br>
+            🗓 Saturday, April 12 · 9:00 – 10:30 AM<br>
+            🌿 Quiet Social · Low-key, no agenda
+          </div>
+
+          <div class="rsvp-section-title" id="rsvpSectionTitle">3 cohort members going</div>
+
+          <div id="rsvpList">
+            <div class="rsvp-person">
+              <div class="avatar" style="background:#7A9E7E;color:white">K</div>
+              <div class="rsvp-person-info">
+                <div class="rsvp-person-name">Karen</div>
+                <div class="rsvp-person-note">Week 4 · Pearl District</div>
+              </div>
+            </div>
+            <div class="rsvp-person">
+              <div class="avatar" style="background:#C4724A;color:white">M</div>
+              <div class="rsvp-person-info">
+                <div class="rsvp-person-name">Maria</div>
+                <div class="rsvp-person-note">Week 3 · Northwest</div>
+              </div>
+            </div>
+            <div class="rsvp-person">
+              <div class="avatar" style="background:#9B7EB8;color:white">T</div>
+              <div class="rsvp-person-info">
+                <div class="rsvp-person-name">Trish</div>
+                <div class="rsvp-person-note">Week 3 · Slabtown</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="spacer"></div>
+          <button class="btn-primary">Join them — RSVP Now</button>
+          <div class="spacer-sm"></div>
+          <button class="btn-secondary">Save for later</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCREEN 3: COACHING FRAMEWORK (Journey)
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-journey">
+      <div class="screen-header">
+        <div class="screen-title">Weekly Framework</div>
+        <div class="screen-sub">Week 3 of 12 · Updated every Monday</div>
+      </div>
+
+      <div class="framework-hero">
+        <div class="fw-hero-badge">📖 Week 3 Framework</div>
+        <div class="fw-hero-title">The Re-entry Ritual</div>
+        <div class="fw-hero-sub">A structured guide for showing up socially after a long pause — without pressure, performance, or pretending.</div>
+        <div class="fw-methodology">
+          🛡️ AI-generated with therapist-reviewed methodology · Not a substitute for therapy
+        </div>
+      </div>
+
+      <!-- Reflection Prompts -->
+      <div class="framework-section">
+        <div class="fw-section-title">Reflection prompts</div>
+
+        <div class="prompt-card">
+          <div class="prompt-num">Prompt 01</div>
+          <div class="prompt-text">What does "showing up" mean to you right now — and how is that different from what it meant two years ago?</div>
+          <div class="prompt-hint">Take 5 minutes. Write freely. Don't edit.</div>
+        </div>
+
+        <div class="prompt-card">
+          <div class="prompt-num">Prompt 02</div>
+          <div class="prompt-text">Name one small moment from this week where you felt genuinely yourself — even briefly.</div>
+          <div class="prompt-hint">It doesn't have to be social. A walk counts.</div>
+        </div>
+
+        <div class="prompt-card">
+          <div class="prompt-num">Prompt 03</div>
+          <div class="prompt-text">What's the specific story you tell yourself before you decline an invitation?</div>
+          <div class="prompt-hint">Naming the story is the first step to changing it.</div>
+        </div>
+      </div>
+
+      <!-- Reframe Exercises -->
+      <div class="framework-section">
+        <div class="fw-section-title">Reframe exercises</div>
+
+        <div class="reframe-card">
+          <div class="reframe-label">Reframe 01 — The Expectation Trap</div>
+          <div class="reframe-from">"I need to be interesting / funny / 'on' when I go out."</div>
+          <div class="reframe-arrow">↓</div>
+          <div class="reframe-to">"My only job is to show up. The rest is optional."</div>
+        </div>
+
+        <div class="reframe-card">
+          <div class="reframe-label">Reframe 02 — The Energy Myth</div>
+          <div class="reframe-from">"I'll go when I feel ready / have more energy."</div>
+          <div class="reframe-arrow">↓</div>
+          <div class="reframe-to">"Energy follows action, not the other way around. Small steps first."</div>
+        </div>
+      </div>
+
+      <!-- Action Steps -->
+      <div class="framework-section">
+        <div class="fw-section-title">This week's actions</div>
+
+        <div class="action-step">
+          <div class="step-num">1</div>
+          <div class="step-text"><strong>Attend one event</strong> from your prescription. Not two. One.</div>
+        </div>
+        <div class="action-step">
+          <div class="step-num">2</div>
+          <div class="step-text"><strong>Say your name first</strong> to one person you haven't met. That's the whole goal.</div>
+        </div>
+        <div class="action-step">
+          <div class="step-num">3</div>
+          <div class="step-text"><strong>Journal for 5 minutes</strong> after the event. Not what happened — how you felt walking in.</div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="prompt-card sage-border">
+          <div class="prompt-num" style="color:var(--sage)">A note from the methodology</div>
+          <div class="prompt-text" style="font-size:13px;font-weight:400">Research on social re-entry consistently shows the threshold moment is <strong>walking through the door</strong> — not how the event goes. Your nervous system needs repetition, not perfection.</div>
+        </div>
+
+        <div class="spacer"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SCREEN 4: PROFILE / PROGRESS
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-profile">
+
+      <div class="profile-hero">
+        <div class="profile-avatar-lg">S</div>
+        <div class="profile-name">Sandra</div>
+        <div class="profile-cohort">Portland Spring Cohort · 24 members</div>
+        <div class="sub-badge">🌿 Reroot Member · $19.99/mo</div>
+      </div>
+
+      <!-- Journey Timeline -->
+      <div class="section-label" style="margin-top:16px">Journey timeline</div>
+
+      <div class="journey-timeline">
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="timeline-dot done">✓</div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-week">Week 1</div>
+            <div class="timeline-event">Orientation & First Framework</div>
+            <div class="timeline-note">Completed "The Ground Beneath You"</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="timeline-dot done">✓</div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-week">Week 2</div>
+            <div class="timeline-event">First Event Attended 🎉</div>
+            <div class="timeline-note">Sunday Coffee Walk · Earned "Said Yes" badge</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="timeline-dot current">→</div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-week">Week 3 · Current</div>
+            <div class="timeline-event">The Re-entry Ritual</div>
+            <div class="timeline-note">2 events prescribed · 0 attended so far</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="timeline-dot locked">🔒</div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-week">Week 6 · Milestone</div>
+            <div class="timeline-event">Cohort Gathering</div>
+            <div class="timeline-note">In-person meetup for all cohort members</div>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="timeline-dot locked">🔒</div>
+          </div>
+          <div class="timeline-content">
+            <div class="timeline-week">Week 12 · Graduation</div>
+            <div class="timeline-event">Roots Established 🌱</div>
+            <div class="timeline-note">Complete your recovery arc</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Badges -->
+      <div class="section-label" style="margin-top:16px">Badges earned</div>
+      <div class="badges-grid">
+        <div class="badge-item">
+          <div class="badge-icon">🌱</div>
+          <div class="badge-name">First Step</div>
+        </div>
+        <div class="badge-item">
+          <div class="badge-icon">✋</div>
+          <div class="badge-name">Said Yes</div>
+        </div>
+        <div class="badge-item">
+          <div class="badge-icon">📖</div>
+          <div class="badge-name">Framework 3</div>
+        </div>
+        <div class="badge-item locked">
+          <div class="badge-icon">🔥</div>
+          <div class="badge-name">Said Yes Twice</div>
+        </div>
+        <div class="badge-item locked">
+          <div class="badge-icon">🤝</div>
+          <div class="badge-name">Cohort Connector</div>
+        </div>
+        <div class="badge-item locked">
+          <div class="badge-icon">🌳</div>
+          <div class="badge-name">Roots Established</div>
+        </div>
+      </div>
+
+      <!-- Subscription -->
+      <div class="section-label" style="margin-top:16px">Membership</div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--charcoal)">Reroot Member</div>
+            <div style="font-size:12px;color:var(--charcoal-mid);margin-top:2px">Full access · Billed monthly</div>
+          </div>
+          <div style="font-size:18px;font-weight:700;color:var(--terra)">$19.99<span style="font-size:12px;font-weight:400;color:var(--charcoal-light)">/mo</span></div>
+        </div>
+        <div class="divider"></div>
+        <div style="font-size:12px;color:var(--charcoal-mid);line-height:1.7">
+          ✓ Weekly AI frameworks (therapist-reviewed)<br>
+          ✓ Curated cohort events · Portland area<br>
+          ✓ Cohort of 24 members · Closes Spring 2026<br>
+          ✓ Journey tracking & milestone badges
+        </div>
+      </div>
+
+      <!-- Referral -->
+      <div class="referral-card">
+        <div class="referral-title">Referred by your therapist?</div>
+        <div class="referral-sub">Many therapists recommend Reroot as a between-session structure. If yours sent you here, get your first month free.</div>
+        <button class="btn-primary" style="background:var(--sage)">Enter referral code →</button>
+      </div>
+
+      <div class="spacer"></div>
+
+    </div>
+
+  </div><!-- /screens -->
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav" id="bottomNav">
+    <div class="nav-item" id="nav-home" onclick="navigate('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
+        <path d="M9 21V12h6v9"/>
+      </svg>
+      <span>Home</span>
+    </div>
+    <div class="nav-item" id="nav-events" onclick="navigate('events')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      <span>Events</span>
+    </div>
+    <div class="nav-item" id="nav-journey" onclick="navigate('journey')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span>Journey</span>
+    </div>
+    <div class="nav-item" id="nav-profile" onclick="navigate('profile')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#9A9A9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      <span>Profile</span>
+    </div>
+  </nav>
+
+</div><!-- /phone-shell -->
+
+<script>
+  // ── State ──
+  let currentScreen = 'onboarding';
+
+  const screenMap = {
+    onboarding: 'screen-onboarding',
+    home:       'screen-home',
+    events:     'screen-events',
+    journey:    'screen-journey',
+    profile:    'screen-profile',
+  };
+
+  const navMap = {
+    home:    'nav-home',
+    events:  'nav-events',
+    journey: 'nav-journey',
+    profile: 'nav-profile',
+  };
+
+  function navigate(target) {
+    // Hide all
+    Object.values(screenMap).forEach(id => {
+      const el = document.getElementById(id);
+      el.classList.remove('active');
+    });
+
+    // Deactivate all nav
+    Object.values(navMap).forEach(id => {
+      document.getElementById(id).classList.remove('active');
+    });
+
+    // Show target
+    const screenId = screenMap[target] || screenMap['home'];
+    const el = document.getElementById(screenId);
+    el.classList.add('active');
+    el.scrollTop = 0;
+    currentScreen = target;
+
+    // Activate nav item
+    const navId = navMap[target];
+    if (navId) document.getElementById(navId).classList.add('active');
+
+    // Show/hide bottom nav and status bar styling
+    const bottomNav = document.getElementById('bottomNav');
+    const statusBar = document.getElementById('statusBar');
+
+    if (target === 'onboarding') {
+      bottomNav.style.display = 'none';
+      statusBar.style.background = 'transparent';
+      statusBar.style.color = 'white';
+      statusBar.querySelectorAll('svg').forEach(s => s.style.fill = 'white');
+      statusBar.querySelector('.time').style.color = 'white';
+    } else {
+      bottomNav.style.display = 'flex';
+      statusBar.style.background = 'var(--cream)';
+      statusBar.querySelectorAll('svg').forEach(s => s.style.fill = 'var(--charcoal)');
+      statusBar.querySelector('.time').style.color = 'var(--charcoal)';
+    }
+  }
+
+  // ── Event overlay ──
+  const eventData = {
+    coffee: {
+      bg: 'linear-gradient(135deg,#F5DDD1,#EDCBB8)',
+      title: 'Sunday Morning Coffee Walk',
+      meta: '📍 Jamison Square, Pearl District\n🗓 Saturday, April 12 · 9:00 – 10:30 AM\n🌿 Quiet Social · Low-key, no agenda',
+      rsvpTitle: '3 cohort members going',
+      people: [
+        {initial:'K',color:'#7A9E7E',name:'Karen',note:'Week 4 · Pearl District'},
+        {initial:'M',color:'#C4724A',name:'Maria',note:'Week 3 · Northwest'},
+        {initial:'T',color:'#9B7EB8',name:'Trish',note:'Week 3 · Slabtown'},
+      ]
+    },
+    writing: {
+      bg: 'linear-gradient(135deg,#E4EFE5,#CDDECE)',
+      title: 'Creative Writing Drop-In',
+      meta: '📍 Powell\'s Books, Room 2B\n🗓 Tuesday, April 15 · 7:00 – 9:00 PM\n🎨 Creative · Bring a notebook or just listen',
+      rsvpTitle: 'Be the first from your cohort',
+      people: []
+    },
+    yoga: {
+      bg: 'linear-gradient(135deg,#E8EAF6,#C8CBE9)',
+      title: 'Sunrise Park Yoga',
+      meta: '📍 Tom McCall Waterfront Park\n🗓 Sunday, April 13 · 8:30 – 10:00 AM\n🏃 Active · Bring a mat, all levels welcome',
+      rsvpTitle: '2 cohort members going',
+      people: [
+        {initial:'J',color:'#5B8DD9',name:'Jamie',note:'Week 5 · South Park Blocks'},
+        {initial:'R',color:'#E08D5E',name:'Rachel',note:'Week 3 · Eastside'},
+      ]
+    },
+    board: {
+      bg: 'linear-gradient(135deg,#FFF3E0,#FFE0B2)',
+      title: 'Board Game Night @ Lucky Lab',
+      meta: '📍 Lucky Lab Brew Pub, Hawthorne\n🗓 Friday, April 18 · 6:30 – 9:30 PM\n🤝 Community · Games provided, drinks optional',
+      rsvpTitle: '5 cohort members going',
+      people: [
+        {initial:'K',color:'#7A9E7E',name:'Karen',note:'Week 4 · Pearl District'},
+        {initial:'J',color:'#5B8DD9',name:'Jamie',note:'Week 5 · South Park Blocks'},
+        {initial:'M',color:'#C4724A',name:'Maria',note:'Week 3 · Northwest'},
+        {initial:'T',color:'#9B7EB8',name:'Trish',note:'Week 3 · Slabtown'},
+        {initial:'R',color:'#E08D5E',name:'Rachel',note:'Week 3 · Eastside'},
+      ]
+    }
+  };
+
+  function openEventOverlay(key) {
+    const d = eventData[key];
+    const overlay = document.getElementById('eventOverlay');
+    document.getElementById('overlayHero').style.background = d.bg;
+    document.getElementById('overlayTitle').textContent = d.title;
+    document.getElementById('overlayMeta').innerHTML = d.meta.split('\n').join('<br>');
+    document.getElementById('rsvpSectionTitle').textContent = d.rsvpTitle;
+
+    const listEl = document.getElementById('rsvpList');
+    if (d.people.length === 0) {
+      listEl.innerHTML = `<div style="padding:16px 0;text-align:center;color:var(--charcoal-mid);font-size:13px">No cohort members yet — be the first to RSVP and you'll appear here.</div>`;
+    } else {
+      listEl.innerHTML = d.people.map(p => `
+        <div class="rsvp-person">
+          <div class="avatar" style="background:${p.color};color:white">${p.initial}</div>
+          <div class="rsvp-person-info">
+            <div class="rsvp-person-name">${p.name}</div>
+            <div class="rsvp-person-note">${p.note}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    overlay.classList.add('open');
+  }
+
+  function closeEventOverlay() {
+    document.getElementById('eventOverlay').classList.remove('open');
+  }
+
+  // ── Filter chips (visual only) ──
+  function setFilter(el, type) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  // ── Init ──
+  navigate('onboarding');
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+/* ── Design tokens ── */
+:root {
+  --terra: #C4724A;
+  --terra-light: #E8956D;
+  --terra-pale: #F5DDD1;
+  --sage: #7A9E7E;
+  --sage-light: #A8C5AB;
+  --sage-pale: #E4EFE5;
+  --cream: #FAF8F5;
+  --charcoal: #2C2C2C;
+  --charcoal-mid: #5A5A5A;
+  --charcoal-light: #9A9A9A;
+  --white: #FFFFFF;
+  --border: #EAE7E3;
+  --shadow-sm: 0 1px 6px rgba(44,44,44,0.06);
+  --shadow: 0 2px 12px rgba(44,44,44,0.08);
+  --shadow-md: 0 4px 20px rgba(44,44,44,0.12);
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #111;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input  { font-family: inherit; }
+
+/* ── Phone shell ── */
+.phone-shell {
+  width: 390px;
+  height: 844px;
+  background: var(--cream);
+  border-radius: 50px;
+  box-shadow:
+    0 0 0 10px #1c1c1c,
+    0 0 0 12px #2e2e2e,
+    0 50px 100px rgba(0,0,0,0.7);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+/* Dynamic island */
+.phone-shell::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 120px; height: 34px;
+  background: #1c1c1c;
+  border-radius: 0 0 22px 22px;
+  z-index: 100;
+}
+
+/* ── Status bar ── */
+.status-bar {
+  height: 50px;
+  padding: 14px 28px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.status-bar--dark { color: white; }
+.status-bar--light { color: var(--charcoal); }
+.status-time { font-size: 15px; font-weight: 600; }
+.status-icons { display: flex; gap: 5px; align-items: center; }
+
+/* ── Screen ── */
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  position: relative;
+}
+.screen::-webkit-scrollbar { display: none; }
+.screen-inner { padding-bottom: 88px; }
+
+/* ── Bottom nav ── */
+.bottom-nav {
+  height: 80px;
+  background: var(--white);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 4px 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 50;
+}
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 18px;
+  border-radius: 14px;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.nav-item:hover { background: var(--terra-pale); }
+.nav-item__label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--charcoal-light);
+  transition: color 0.15s;
+}
+.nav-item--active .nav-item__label { color: var(--terra); font-weight: 600; }
+
+/* ── Shared cards ── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.card--terra {
+  background: linear-gradient(135deg, var(--terra-pale), #f9ede5);
+  border: 1px solid rgba(196,114,74,0.15);
+  box-shadow: none;
+}
+.card--sage {
+  background: linear-gradient(135deg, var(--sage-pale), #d4e8d5);
+  border: 1px solid rgba(122,158,126,0.2);
+  box-shadow: none;
+}
+.card--dark {
+  background: linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%);
+  color: white;
+}
+
+/* ── Buttons ── */
+.btn {
+  width: 100%;
+  padding: 15px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: scale(0.98); }
+.btn--primary { background: var(--terra); color: white; }
+.btn--primary:hover { background: #b8663f; }
+.btn--sage { background: var(--sage); color: white; }
+.btn--sage:hover { background: #6d9071; }
+.btn--outline {
+  background: transparent;
+  color: var(--terra);
+  border: 2px solid var(--terra);
+}
+.btn--outline:hover { background: var(--terra-pale); }
+.btn--ghost {
+  background: transparent;
+  color: var(--charcoal-mid);
+}
+
+/* ── Tags ── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tag--terra { background: var(--terra-pale); color: var(--terra); }
+.tag--sage  { background: var(--sage-pale); color: var(--sage); }
+.tag--dark  { background: rgba(255,255,255,0.15); color: white; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+/* ── Avatars ── */
+.avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  flex-shrink: 0;
+  border: 2px solid var(--white);
+  color: white;
+}
+.avatar--lg { width: 72px; height: 72px; font-size: 26px; border: 3px solid rgba(255,255,255,0.2); }
+.avatar-stack { display: flex; }
+.avatar-stack .avatar { margin-left: -10px; }
+.avatar-stack .avatar:first-child { margin-left: 0; }
+
+/* ── Section label ── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--charcoal-light);
+  padding: 0 20px;
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+/* ── Divider ── */
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+/* ── Screen header ── */
+.screen-header {
+  padding: 14px 20px 6px;
+  background: var(--cream);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.screen-header__title { font-size: 22px; font-weight: 700; color: var(--charcoal); }
+.screen-header__sub { font-size: 12px; color: var(--charcoal-mid); margin-top: 2px; }
+
+/* ── Responsive: full screen on mobile ── */
+@media (max-width: 430px) {
+  body { padding: 0; background: var(--cream); }
+  .phone-shell {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .phone-shell::before { display: none; }
+  .status-bar { height: 44px; padding-top: 10px; }
+}
