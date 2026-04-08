@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useApp, computeBadges } from '../context/AppContext'
+import { useApp, computeBadges, computeCurrentWeek } from '../context/AppContext'
 import { TIMELINE } from '../data/framework'
 
 export default function Profile() {
@@ -9,6 +9,7 @@ export default function Profile() {
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
+  const currentWeek = computeCurrentWeek(state.joinedAt)
 
   function applyReferral() {
     if (referralCode.trim()) setReferralApplied(true)
@@ -22,7 +23,7 @@ export default function Profile() {
 
   // Enrich timeline with dynamic note for current week
   const enrichedTimeline = TIMELINE.map(item => {
-    if (item.week === 3) {
+    if (item.week === currentWeek) {
       return { ...item, note: `${rsvpCount} events RSVP'd · ${state.eventsAttended} attended` }
     }
     return item
@@ -41,7 +42,7 @@ export default function Profile() {
         </div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>{state.userName}</div>
         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
-          Portland Spring Cohort · 24 members
+          Curitiba Spring Cohort · 24 members
         </div>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -157,7 +158,7 @@ export default function Profile() {
         <div className="divider"/>
         <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.8 }}>
           ✓ Weekly AI frameworks (therapist-reviewed)<br/>
-          ✓ Curated cohort events · Portland area<br/>
+          ✓ Curated cohort events · Curitiba area<br/>
           ✓ Cohort of 24 members · Closes Spring 2026<br/>
           ✓ Journey tracking & milestone badges
         </div>

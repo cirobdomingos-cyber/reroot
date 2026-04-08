@@ -82,12 +82,12 @@ input  { font-family: inherit; }
 
 /* ── Screen ── */
 .screen {
-  flex: 1;
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  position: relative;
 }
 .screen::-webkit-scrollbar { display: none; }
 .screen-inner { padding-bottom: 88px; }

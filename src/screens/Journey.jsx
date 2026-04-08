@@ -1,4 +1,4 @@
-import { useApp } from '../context/AppContext'
+import { useApp, computeCurrentWeek } from '../context/AppContext'
 import { FRAMEWORK } from '../data/framework'
 
 function bold(text) {
@@ -14,6 +14,7 @@ function bold(text) {
 export default function Journey() {
   const { state, dispatch } = useApp()
   const alreadyRead = state.frameworkRead
+  const currentWeek = computeCurrentWeek(state.joinedAt)
 
   function handleMarkRead() {
     dispatch({ type: 'SET_FRAMEWORK_READ' })
@@ -24,7 +25,7 @@ export default function Journey() {
       {/* Header */}
       <div className="screen-header">
         <div className="screen-header__title">Weekly Framework</div>
-        <div className="screen-header__sub">Week {FRAMEWORK.week} of 12 · Updated every Monday</div>
+        <div className="screen-header__sub">Week {currentWeek} of 12 · Updated every Monday</div>
       </div>
 
       {/* Hero card */}
@@ -49,7 +50,7 @@ export default function Journey() {
           fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
           marginBottom: 10,
         }}>
-          📖 Week {FRAMEWORK.week} Framework
+          📖 Week {currentWeek} Framework
         </div>
 
         <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, marginBottom: 8 }}>
