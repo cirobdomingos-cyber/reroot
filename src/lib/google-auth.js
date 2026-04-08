@@ -16,7 +16,7 @@ export const MOCK_GOOGLE_USER = {
   id: 'mock_google_user',
   name: 'Ciro Domingos',
   givenName: 'Ciro',
-  email: 'ciro@gmail.com',
+  email: 'ciro.b.domingos@gmail.com',
   picture: 'https://ui-avatars.com/api/?name=Ciro+Domingos&background=C4724A&color=fff&size=128&rounded=true',
 }
 
