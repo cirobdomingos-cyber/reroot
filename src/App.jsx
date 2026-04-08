@@ -3,11 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from './context/AppContext'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
-import Onboarding from './screens/Onboarding'
-import Home       from './screens/Home'
-import Events     from './screens/Events'
-import Journey    from './screens/Journey'
-import Profile    from './screens/Profile'
+import Onboarding    from './screens/Onboarding'
+import PartnerIntro  from './screens/PartnerIntro'
+import Home          from './screens/Home'
+import Events        from './screens/Events'
+import Journey       from './screens/Journey'
+import Profile       from './screens/Profile'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -35,8 +36,8 @@ export default function App() {
   const { state } = useApp()
   const location = useLocation()
 
-  const isOnboarding = location.pathname === '/' || location.pathname === '/onboarding'
-  const showNav = state.hasJoined && !isOnboarding
+  const isOnboarding = ['/', '/onboarding', '/partner-intro'].includes(location.pathname)
+  const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
 
   return (
     <div className="phone-shell">
@@ -49,9 +50,21 @@ export default function App() {
             <Route
               path="/"
               element={
-                state.hasJoined
+                !state.hasJoined
+                  ? <AnimatedPage><Onboarding /></AnimatedPage>
+                  : !state.questionnaireCompleted
+                  ? <Navigate to="/partner-intro" replace />
+                  : <Navigate to="/home" replace />
+              }
+            />
+            <Route
+              path="/partner-intro"
+              element={
+                !state.hasJoined
+                  ? <Navigate to="/" replace />
+                  : state.questionnaireCompleted
                   ? <Navigate to="/home" replace />
-                  : <AnimatedPage><Onboarding /></AnimatedPage>
+                  : <AnimatedPage><PartnerIntro /></AnimatedPage>
               }
             />
             <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />

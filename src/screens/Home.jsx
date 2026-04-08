@@ -1,15 +1,8 @@
 import { useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
+import { useApp, computeCurrentWeek } from '../context/AppContext'
 import { EVENTS } from '../data/events'
 
-const WEEK_MILESTONES = [
-  { week: 1,  label: 'W1',  state: 'done' },
-  { week: 2,  label: 'W2',  state: 'done' },
-  { week: 3,  label: 'W3',  state: 'current' },
-  { week: 6,  label: 'W6',  state: 'future' },
-  { week: 9,  label: 'W9',  state: 'future' },
-  { week: 12, label: 'W12', state: 'future' },
-]
+const MILESTONE_WEEKS = [1, 2, 3, 6, 9, 12]
 
 // The 2 events prescribed this week
 const PRESCRIBED_IDS = ['coffee', 'writing']
@@ -18,7 +11,14 @@ export default function Home() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
 
-  const progressPct = Math.round((state.currentWeek / state.totalWeeks) * 100)
+  const currentWeek = computeCurrentWeek(state.joinedAt)
+  const progressPct = Math.round((currentWeek / state.totalWeeks) * 100)
+
+  const weekMilestones = MILESTONE_WEEKS.map(w => ({
+    week: w,
+    label: `W${w}`,
+    state: w < currentWeek ? 'done' : w === currentWeek ? 'current' : 'future',
+  }))
   const prescribedEvents = EVENTS.filter(e => PRESCRIBED_IDS.includes(e.id))
 
   // Social proof: events with cohort members going (excluding prescribed)
@@ -43,7 +43,7 @@ export default function Home() {
           Your Journey
         </div>
         <div style={{ fontSize: 28, fontWeight: 700 }}>
-          Week {state.currentWeek}{' '}
+          Week {currentWeek}{' '}
           <span style={{ fontSize: 15, fontWeight: 400, color: 'rgba(255,255,255,0.55)' }}>
             of {state.totalWeeks}
           </span>
@@ -67,7 +67,7 @@ export default function Home() {
 
           {/* Milestones */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-            {WEEK_MILESTONES.map(m => (
+            {weekMilestones.map(m => (
               <div key={m.week} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
                 <div style={{
                   width: 8, height: 8, borderRadius: '50%',
@@ -110,7 +110,7 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
           <span style={{ fontSize: 18 }}>💊</span>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)' }}>2 events · Week 3 protocol</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)' }}>2 events · Week {currentWeek} protocol</div>
             <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>Curated for your re-entry stage</div>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function Home() {
             fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
             background: 'white', color: 'var(--sage)', padding: '3px 8px', borderRadius: 6,
           }}>
-            AI Framework · Week 3
+            AI Framework · Week {currentWeek}
           </span>
           <span style={{ fontSize: 18, color: 'var(--sage)' }}>→</span>
         </div>

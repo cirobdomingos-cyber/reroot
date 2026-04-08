@@ -1,12 +1,21 @@
 import { createContext, useContext, useReducer, useEffect } from 'react'
 
+// ── Week computation (derived from join date) ──────────────
+export function computeCurrentWeek(joinedAt) {
+  if (!joinedAt) return 1
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000
+  const elapsed = Date.now() - joinedAt
+  return Math.min(Math.max(Math.floor(elapsed / MS_PER_WEEK) + 1, 1), 12)
+}
+
 // ── Initial state ──────────────────────────────────────────
 const INITIAL_STATE = {
   hasJoined: false,
-  userName: 'Sandra',
-  neighborhood: 'Pearl District · NW Portland',
+  questionnaireCompleted: false,
+  joinedAt: null,               // timestamp — drives week computation
+  userName: 'Ana',
+  neighborhood: 'Água Verde · Curitiba',
   interests: ['Coffee & Conversation', 'Creative Writing', 'Book Clubs'],
-  currentWeek: 3,
   totalWeeks: 12,
   rsvps: {},            // eventId → true
   eventsAttended: 0,    // incremented via "Mark attended"
@@ -17,7 +26,15 @@ const INITIAL_STATE = {
 function reducer(state, action) {
   switch (action.type) {
     case 'JOIN_COHORT':
-      return { ...state, hasJoined: true }
+      return { ...state, hasJoined: true, joinedAt: state.joinedAt ?? Date.now() }
+
+    case 'COMPLETE_QUESTIONNAIRE':
+      return {
+        ...state,
+        questionnaireCompleted: true,
+        questionnaireAnswers: action.payload.answers,
+        aiPartnerMessage: action.payload.message,
+      }
 
     case 'SET_NAME':
       return { ...state, userName: action.payload }
@@ -62,6 +79,7 @@ function reducer(state, action) {
 // ── Badge derivation (computed, not stored) ────────────────
 export function computeBadges(state) {
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
+  const currentWeek = computeCurrentWeek(state.joinedAt)
   return [
     {
       id: 'first_step',
@@ -81,7 +99,7 @@ export function computeBadges(state) {
       id: 'framework_3',
       icon: '📖',
       name: 'Framework 3',
-      earned: state.frameworkRead && state.currentWeek >= 3,
+      earned: state.frameworkRead && currentWeek >= 3,
       desc: 'Completed Week 3 framework',
     },
     {
@@ -102,7 +120,7 @@ export function computeBadges(state) {
       id: 'roots',
       icon: '🌳',
       name: 'Roots Established',
-      earned: state.currentWeek >= 12,
+      earned: currentWeek >= 12,
       desc: 'Completed the 12-week program',
     },
   ]

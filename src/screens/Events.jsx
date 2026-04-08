@@ -33,6 +33,7 @@ export default function Events() {
   const [selectedEventId, setSelectedEventId] = useState(null)
   const [detailEvent, setDetailEvent] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   // Busca eventos (live ou fallback)
   const loadEvents = useCallback(async (category) => {
@@ -60,6 +61,13 @@ export default function Events() {
     setSelectedEventId(null)
     setDetailEvent(null)
   }
+
+  const filteredEvents = searchQuery.trim()
+    ? events.filter(ev =>
+        ev.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ev.venue?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : events
 
   function getMemberCount(ev) {
     const base = ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0
@@ -98,6 +106,35 @@ export default function Events() {
         </div>
       </div>
 
+      {/* Search bar */}
+      <div style={{ padding: '4px 16px 0' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          background: 'white', borderRadius: 14,
+          border: '1.5px solid var(--border)',
+          padding: '9px 14px',
+          boxShadow: 'var(--shadow-sm)',
+        }}>
+          <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>🔍</span>
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search events or venues..."
+            style={{
+              flex: 1, border: 'none', outline: 'none',
+              fontSize: 13, color: 'var(--charcoal)',
+              background: 'transparent',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--charcoal-light)', padding: 0 }}
+            >✕</button>
+          )}
+        </div>
+      </div>
+
       {/* Filter chips */}
       <div style={{ display: 'flex', gap: 8, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {CATEGORIES.map(cat => (
@@ -130,16 +167,18 @@ export default function Events() {
       {/* Event list */}
       {!loading && (
         <AnimatePresence mode="popLayout">
-          {events.length === 0 && (
+          {filteredEvents.length === 0 && (
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--charcoal-mid)', fontSize: 14 }}
             >
-              Nenhum evento encontrado nessa categoria.
+              {searchQuery
+                ? `No events found for "${searchQuery}"`
+                : 'Nenhum evento encontrado nessa categoria.'}
             </motion.div>
           )}
 
-          {events.map(ev => {
+          {filteredEvents.map(ev => {
             const rsvped = !!state.rsvps[ev.id]
             const count = getMemberCount(ev)
 

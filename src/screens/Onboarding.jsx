@@ -24,7 +24,7 @@ export default function Onboarding() {
   function handleJoin() {
     dispatch({ type: 'SET_NEIGHBORHOOD', payload: neighborhood })
     dispatch({ type: 'JOIN_COHORT' })
-    navigate('/home')
+    navigate('/partner-intro')
   }
 
   return (
@@ -68,7 +68,7 @@ export default function Onboarding() {
 
         <div style={{ fontSize: 21, fontWeight: 700, lineHeight: 1.3, marginBottom: 6 }}>
           You're joining the<br />
-          <span style={{ color: 'var(--terra-light)' }}>Portland Spring Cohort</span>
+          <span style={{ color: 'var(--terra-light)' }}>Curitiba Spring Cohort</span>
         </div>
         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 18, lineHeight: 1.5 }}>
           A small, curated group of people in the same chapter of life — not thousands of strangers.
@@ -99,7 +99,7 @@ export default function Onboarding() {
           <input
             value={neighborhood}
             onChange={e => setNeighborhood(e.target.value)}
-            placeholder="e.g. Pearl District"
+            placeholder="e.g. Batel, Centro, Água Verde"
             style={{
               width: '100%',
               background: 'rgba(255,255,255,0.08)',
@@ -151,7 +151,7 @@ export default function Onboarding() {
         marginTop: 20,
       }}>
         <button className="btn btn--primary" onClick={handleJoin}>
-          Join the Portland Spring Cohort →
+          Join the Curitiba Spring Cohort →
         </button>
         <div style={{
           textAlign: 'center',
