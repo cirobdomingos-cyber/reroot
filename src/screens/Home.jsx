@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeCurrentWeek, getChapter } from '../context/AppContext'
 import { useT } from '../i18n'
 import { EVENTS } from '../data/events'
+import { ACTIVITIES } from '../data/activities'
+import { scheduleEventReminder } from '../lib/notifications'
 
 function getGreetingKey() {
   const h = new Date().getHours()
@@ -55,6 +57,8 @@ export default function Home() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [showReflectModal, setShowReflectModal] = useState(false)
   const [reflectWord, setReflectWord] = useState('')
+  const [checkInDone, setCheckInDone] = useState(false)
+  const [notifToast, setNotifToast] = useState(null) // event name string
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
@@ -63,10 +67,15 @@ export default function Home() {
   // First event pick: lowest-pressure event not yet RSVPd
   const dayZeroEvent = EVENTS.find(e => e.isLowPressure && !state.rsvps[e.id]) ?? EVENTS[0]
 
-  function handleDayZeroSave() {
+  async function handleDayZeroSave() {
     dispatch({ type: 'SAVE_DAY_ZERO', payload: { eventId: dayZeroEvent.id } })
     setShowConfetti(true)
     setTimeout(() => setShowConfetti(false), 1200)
+    const ok = await scheduleEventReminder(dayZeroEvent)
+    if (ok) {
+      setNotifToast(dayZeroEvent.name)
+      setTimeout(() => setNotifToast(null), 3000)
+    }
   }
 
   function saveReflection() {
@@ -79,6 +88,17 @@ export default function Home() {
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
   const showReflectNudge = rsvpCount > 0 && state.reflections.length === 0
   const daysLeft = daysUntilMonday()
+
+  // Weekly check-in: show on Mondays when previous week not checked in
+  const isMonday = new Date().getDay() === 1
+  const prevWeek = currentWeek - 1
+  const showWeeklyCheckIn = isMonday && currentWeek > 1 && !state.weeklyCheckIns?.[prevWeek] && !checkInDone
+
+  // Event-day banner: any RSVPd event tagged as this_week
+  const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
+
+  // Pick 3 random-ish activities for "Ideias" section (rotate by week)
+  const activitySlice = ACTIVITIES.slice((currentWeek - 1) % 3, ((currentWeek - 1) % 3) + 3)
 
   // Month-end card: show in first 10 days of the month if user joined over a week ago
   const joinedOverAWeek = state.joinedAt && (Date.now() - state.joinedAt) > 7 * 24 * 60 * 60 * 1000
@@ -144,6 +164,51 @@ export default function Home() {
                 >
                   {t.home_month_share} →
                 </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Weekly check-in card */}
+      <AnimatePresence>
+        {showWeeklyCheckIn && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.3 }}
+            style={{ margin: '10px 16px 0', background: 'white', borderRadius: 20, overflow: 'hidden', boxShadow: 'var(--shadow)' }}
+          >
+            <div style={{ background: 'linear-gradient(135deg, #2C3A2D 0%, #1e2d2e 100%)', padding: '14px 16px 12px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(158,201,162,0.8)', marginBottom: 4 }}>
+                {t.home_checkin_label}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>
+                {t.home_checkin_q} {prevWeek}?
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                {t.home_checkin_sub}
+              </div>
+            </div>
+            <div style={{ padding: '14px 16px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                {(t.home_checkin_emojis ?? ['😰','😐','🙂','😊','🎉']).map((emoji, i) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      dispatch({ type: 'SAVE_WEEKLY_CHECKIN', payload: { week: prevWeek, emoji } })
+                      setCheckInDone(true)
+                    }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
+                    }}
+                  >
+                    <span style={{ fontSize: 28 }}>{emoji}</span>
+                    <span style={{ fontSize: 9, color: 'var(--charcoal-light)', fontWeight: 600 }}>
+                      {(t.home_checkin_emo_lbl ?? ['Difícil','Ok','Bem','Ótimo','Incrível!'])[i]}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
           </motion.div>
@@ -304,6 +369,40 @@ export default function Home() {
         </div>
       )}
 
+      {/* Event-day banner */}
+      {thisWeekRsvp && (
+        <div style={{ margin: '8px 16px 0' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #D4A256 0%, #E8B86D 100%)',
+            borderRadius: 16, padding: '12px 16px',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 26, flexShrink: 0 }}>{thisWeekRsvp.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.75)', marginBottom: 2 }}>
+                {t.home_event_today_label}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'white', lineHeight: 1.3 }}>
+                {thisWeekRsvp.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
+                {thisWeekRsvp.date} · {thisWeekRsvp.time}
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/events')}
+              style={{
+                background: 'rgba(255,255,255,0.25)', border: 'none', borderRadius: 10,
+                padding: '6px 10px', fontSize: 11, fontWeight: 700, color: 'white',
+                cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              {t.home_event_today_view}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Reflection nudge */}
       {showReflectNudge && (
         <div style={{ margin: '8px 16px 0' }}>
@@ -457,6 +556,93 @@ export default function Home() {
           {t.home_framework_verified}
         </div>
       </div>
+
+      {/* Activity ideas section */}
+      <div className="section-label">{t.home_activities_label}</div>
+      <div style={{ fontSize: 11, color: 'var(--charcoal-light)', margin: '-6px 16px 10px', lineHeight: 1.4 }}>
+        {t.home_activities_sub}
+      </div>
+      {activitySlice.map(act => (
+        <div key={act.id} style={{ margin: '0 16px 10px' }}>
+          <div style={{
+            background: 'white', borderRadius: 18, overflow: 'hidden',
+            boxShadow: 'var(--shadow-sm)',
+          }}>
+            {/* Activity header strip */}
+            <div style={{ height: 64, background: act.headerBg, position: 'relative', display: 'flex', alignItems: 'flex-end', padding: '0 14px 10px' }}>
+              <span style={{ fontSize: 28 }}>{act.icon}</span>
+              {act.soloFriendly && (
+                <span style={{
+                  position: 'absolute', top: 8, right: 10,
+                  fontSize: 9, fontWeight: 700,
+                  background: 'rgba(255,255,255,0.88)', color: 'var(--sage)',
+                  padding: '3px 8px', borderRadius: 6,
+                }}>
+                  {t.home_activity_solo}
+                </span>
+              )}
+            </div>
+            {/* Activity body */}
+            <div style={{ padding: '12px 14px 14px' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 2 }}>
+                {act.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+                📍 {act.address} · {act.when}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--charcoal)', lineHeight: 1.5, marginBottom: 10 }}>
+                {act.description}
+              </div>
+              <div style={{
+                background: 'var(--sage-pale)', borderRadius: 10,
+                padding: '9px 12px',
+                borderLeft: '3px solid var(--sage)',
+              }}>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 3 }}>
+                  {t.home_activity_reroot}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--charcoal)', lineHeight: 1.5 }}>
+                  {act.rerootAngle}
+                </div>
+              </div>
+              {act.tags && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  {act.tags.map(tag => (
+                    <span key={tag} style={{
+                      fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6,
+                      background: 'var(--cream)', color: 'var(--charcoal-mid)',
+                      border: '1px solid var(--border)',
+                    }}>{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* Notification toast */}
+      <AnimatePresence>
+        {notifToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
+            style={{
+              position: 'fixed', bottom: 90, left: 16, right: 16, zIndex: 300,
+              background: 'var(--charcoal)', color: 'white',
+              borderRadius: 14, padding: '12px 16px',
+              display: 'flex', alignItems: 'center', gap: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>🔔</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Reflection modal */}
       <AnimatePresence>

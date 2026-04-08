@@ -57,6 +57,9 @@ const INITIAL_STATE = {
 
   // Month-end card dismissed
   monthEndDismissed: false,
+
+  // Weekly check-ins: { [week]: { emoji, timestamp } }
+  weeklyCheckIns: {},
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -156,6 +159,14 @@ function reducer(state, action) {
 
     case 'DISMISS_MONTH_END':
       return { ...state, monthEndDismissed: true }
+
+    case 'SAVE_WEEKLY_CHECKIN': {
+      const { week, emoji } = action.payload
+      return {
+        ...state,
+        weeklyCheckIns: { ...state.weeklyCheckIns, [week]: { emoji, timestamp: Date.now() } },
+      }
+    }
 
     case 'SET_PAUSED':
       return { ...state, isPaused: action.payload }

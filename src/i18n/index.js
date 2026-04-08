@@ -304,6 +304,30 @@ export const T = {
     profile_paused_badge:  '⏸ Pausado — retoma em 2 semanas',
     profile_close:         'Fechar',
     profile_redo_onboarding: '↺ Refazer onboarding',
+
+    // ── Weekly check-in ───────────────────────────────────
+    home_checkin_label:   'Check-in da semana passada',
+    home_checkin_q:       'Como foi a semana',
+    home_checkin_sub:     'Sua resposta nos ajuda a sugerir o que vem a seguir.',
+    home_checkin_saved:   'Anotado ✓',
+    home_checkin_saved_sub: 'Aqui estão as sugestões para esta semana:',
+    home_checkin_emojis:  ['😰', '😐', '🙂', '😊', '🎉'],
+    home_checkin_emo_lbl: ['Difícil', 'Mais ou menos', 'Bem', 'Ótimo', 'Incrível!'],
+
+    // ── Activity ideas ────────────────────────────────────
+    home_activities_label: 'Ideias para você',
+    home_activities_sub:   'Atividades solo-friendly em Curitiba',
+    home_activity_reroot:  'Por que é bom agora',
+    home_activity_solo:    '✓ Solo-friendly',
+    home_activity_free:    'Grátis',
+
+    // ── Event-day banner ──────────────────────────────────
+    home_event_today_label: 'Você tem um evento esta semana',
+    home_event_today_sub:   'Boa sorte — você vai arrasar.',
+    home_event_today_view:  'Ver detalhes →',
+
+    // ── Notification toast ────────────────────────────────
+    home_notif_confirmed:  '🔔 Lembrete salvo',
   },
 
   en: {
@@ -607,6 +631,30 @@ export const T = {
     profile_paused_badge:  '⏸ Paused — resumes in 2 weeks',
     profile_close:         'Close',
     profile_redo_onboarding: '↺ Redo onboarding',
+
+    // ── Weekly check-in ───────────────────────────────────
+    home_checkin_label:   'Last week check-in',
+    home_checkin_q:       'How was week',
+    home_checkin_sub:     'Your answer helps us suggest what comes next.',
+    home_checkin_saved:   'Noted ✓',
+    home_checkin_saved_sub: "Here are this week's suggestions:",
+    home_checkin_emojis:  ['😰', '😐', '🙂', '😊', '🎉'],
+    home_checkin_emo_lbl: ['Hard', 'Okay', 'Good', 'Great', 'Amazing!'],
+
+    // ── Activity ideas ────────────────────────────────────
+    home_activities_label: 'Ideas for you',
+    home_activities_sub:   'Solo-friendly activities around Curitiba',
+    home_activity_reroot:  'Why this helps right now',
+    home_activity_solo:    '✓ Solo ok',
+    home_activity_free:    'Free',
+
+    // ── Event-day banner ──────────────────────────────────
+    home_event_today_label: 'You have an event this week',
+    home_event_today_sub:   'Good luck — you\'ve got this.',
+    home_event_today_view:  'View details →',
+
+    // ── Notification toast ────────────────────────────────
+    home_notif_confirmed:  '🔔 Reminder saved',
   },
 }
 

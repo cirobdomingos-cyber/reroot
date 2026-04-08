@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail } from '../services/api'
+import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 
 function EventCardSkeleton() {
   return (
@@ -34,6 +35,7 @@ export default function Events() {
   const [detailEvent, setDetailEvent] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [notifToast, setNotifToast] = useState(null)
 
   const loadEvents = useCallback(async (category) => {
     setLoading(true)
@@ -76,6 +78,20 @@ export default function Events() {
   function getMemberCount(ev) {
     const base = ev.cohortGoing?.length ?? ev.attendeesConfirmed ?? 0
     return base + (state.rsvps[ev.id] ? 1 : 0)
+  }
+
+  async function handleRsvpToggle(ev) {
+    const wasRsvped = !!state.rsvps[ev.id]
+    dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+    if (!wasRsvped && ev.category !== 'bars_cafes') {
+      const ok = await scheduleEventReminder(ev)
+      if (ok) {
+        setNotifToast(ev.name)
+        setTimeout(() => setNotifToast(null), 3000)
+      }
+    } else if (wasRsvped) {
+      cancelEventReminder(ev.id)
+    }
   }
 
   return (
@@ -303,7 +319,7 @@ export default function Events() {
                       style={{ width: 'auto', padding: '8px 18px', fontSize: 12, borderRadius: 12 }}
                       onClick={e => {
                         e.stopPropagation()
-                        dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+                        handleRsvpToggle(ev)
                       }}
                     >
                       {rsvped ? 'Going ✓' : isVenue ? 'Save' : 'RSVP'}
@@ -315,6 +331,29 @@ export default function Events() {
           })}
         </AnimatePresence>
       )}
+
+      {/* Notification toast */}
+      <AnimatePresence>
+        {notifToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
+            style={{
+              position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 100,
+              background: 'var(--charcoal)', color: 'white',
+              borderRadius: 14, padding: '12px 16px',
+              display: 'flex', alignItems: 'center', gap: 10,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>🔔</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Lembrete salvo</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Event detail drawer */}
       <AnimatePresence>
@@ -340,7 +379,7 @@ export default function Events() {
                 event={detailEvent}
                 rsvped={!!state.rsvps[detailEvent.id]}
                 onClose={closeDetail}
-                onRsvp={() => dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: detailEvent.id } })}
+                onRsvp={() => handleRsvpToggle(detailEvent)}
                 onAttended={() => {
                   dispatch({ type: 'MARK_ATTENDED' })
                   closeDetail()
