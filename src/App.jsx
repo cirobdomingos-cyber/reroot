@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from './context/AppContext'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
+import CompanionChat from './components/CompanionChat'
 import Onboarding     from './screens/Onboarding'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
@@ -37,6 +39,7 @@ function AnimatedPage({ children }) {
 export default function App() {
   const { state } = useApp()
   const location = useLocation()
+  const [companionOpen, setCompanionOpen] = useState(false)
 
   const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro', '/diagnostic'].includes(location.pathname)
   const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
@@ -105,6 +108,28 @@ export default function App() {
       </div>
 
       {showNav && <BottomNav />}
+
+      {/* AI Companion FAB — visible on all main screens */}
+      {showNav && !companionOpen && (
+        <motion.button
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.3, type: 'spring', stiffness: 260, damping: 20 }}
+          onClick={() => setCompanionOpen(true)}
+          style={{
+            position: 'absolute', bottom: 80, right: 16, zIndex: 50,
+            width: 52, height: 52, borderRadius: '50%', border: 'none',
+            background: 'var(--sage)', color: 'white',
+            boxShadow: '0 4px 16px rgba(122, 158, 126, 0.4)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: 22,
+          }}
+        >
+          🌿
+        </motion.button>
+      )}
+
+      <CompanionChat open={companionOpen} onClose={() => setCompanionOpen(false)} />
     </div>
   )
 }

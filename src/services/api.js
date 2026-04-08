@@ -138,3 +138,27 @@ export async function triggerRefresh() {
   if (!res.ok) throw new Error('Refresh falhou')
   return res.json()
 }
+
+/**
+ * AI Companion — send a message and get back a response with optional event suggestions.
+ * Uses a longer timeout since Claude needs time to think.
+ */
+export async function askCompanion({ message, situation, goal, week, language, history = [] }) {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), 10_000) // 10s timeout for LLM
+
+  try {
+    const res = await fetch(`${BASE_URL}/companion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ message, situation, goal, week, language, history }),
+    })
+    clearTimeout(id)
+    if (!res.ok) throw new Error(`Companion error: ${res.status}`)
+    return await res.json()
+  } catch (err) {
+    clearTimeout(id)
+    throw err
+  }
+}
