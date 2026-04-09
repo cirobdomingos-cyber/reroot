@@ -9,13 +9,18 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon.svg'],
       manifest: {
-        name: 'Reroot',
+        id: 'app.reroot',
+        name: 'Reroot — Vida Social',
         short_name: 'Reroot',
-        description: 'Redescubra sua vida social',
+        description: 'Redescubra sua vida social em Curitiba. Eventos com baixa pressão, locais acolhedores e uma comunidade que entende você.',
         theme_color: '#7A9E7E',
-        background_color: '#FAF9F6',
+        background_color: '#FAF8F5',
         display: 'standalone',
-        start_url: '/',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/?source=pwa',
+        lang: 'pt-BR',
+        categories: ['lifestyle', 'social'],
         icons: [
           {
             src: 'icon-192x192.png',
@@ -25,6 +30,11 @@ export default defineConfig({
           {
             src: 'icon-512x512.png',
             sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: 'icon-1024x1024.png',
+            sizes: '1024x1024',
             type: 'image/png',
           },
           {
