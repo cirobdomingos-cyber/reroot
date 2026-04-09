@@ -53,6 +53,14 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                endpoint   TEXT UNIQUE NOT NULL,
+                keys_json  TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS user_states (
                 google_id   TEXT PRIMARY KEY,
                 state_json  TEXT NOT NULL,
@@ -60,6 +68,31 @@ def init_db():
             )
         """)
         conn.commit()
+
+
+# ── Push subscriptions ─────────────────────────────────────
+
+def upsert_push_subscription(endpoint: str, keys_json: str) -> None:
+    """Insert or replace a Web Push subscription (upsert on endpoint)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO push_subscriptions (endpoint, keys_json, created_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(endpoint) DO UPDATE SET
+                keys_json  = excluded.keys_json,
+                created_at = excluded.created_at
+        """, (endpoint, keys_json, now))
+        conn.commit()
+
+
+def get_all_push_subscriptions() -> list[dict]:
+    """Return all stored push subscriptions as dicts."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT endpoint, keys_json FROM push_subscriptions"
+        ).fetchall()
+    return [{"endpoint": r["endpoint"], "keys": json.loads(r["keys_json"])} for r in rows]
 
 
 # ── User state persistence ─────────────────────────────────

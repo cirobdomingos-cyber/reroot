@@ -558,6 +558,64 @@ async def companion_chat(req: CompanionRequest):
     }
 
 
+# ── Web Push Notifications ──
+#
+# VAPID key pair — in production, generate your own and store in env vars.
+# These test keys are safe to commit for development only.
+# Generate production keys: py -m py_vapid --gen
+VAPID_PRIVATE_KEY = "nOAa5iExKg1EvBMkLblGvg"
+VAPID_PUBLIC_KEY  = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBZuhbr6lT5E12OwvTPrBa5ygw"
+VAPID_CLAIMS = {"sub": "mailto:admin@reroot.app"}
+WEEKLY_PUSH_MESSAGE = "Hora do check-in semanal no Reroot! Como foi sua semana? 🌿"
+
+
+class PushSubscriptionBody(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@app.post("/push/subscribe")
+def push_subscribe(body: PushSubscriptionBody):
+    """Store or update a Web Push subscription from the browser."""
+    db.upsert_push_subscription(body.endpoint, json.dumps(body.keys))
+    log.info(f"Push subscription saved: {body.endpoint[:60]}…")
+    return {"status": "subscribed"}
+
+
+@app.post("/push/send-weekly")
+async def push_send_weekly():
+    """Send the weekly check-in push to all subscribers."""
+    subscriptions = db.get_all_push_subscriptions()
+    if not subscriptions:
+        return {"sent": 0, "message": "No subscribers"}
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        raise HTTPException(status_code=501, detail="pywebpush not installed")
+    sent = 0
+    failed = 0
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                data=WEEKLY_PUSH_MESSAGE,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+            )
+            sent += 1
+        except Exception as exc:
+            log.warning(f"Push failed for {sub['endpoint'][:60]}…: {exc}")
+            failed += 1
+    log.info(f"Weekly push: {sent} sent, {failed} failed")
+    return {"sent": sent, "failed": failed}
+
+
+@app.get("/push/vapid-public-key")
+def push_vapid_public_key():
+    """Return the VAPID public key so the frontend can subscribe."""
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
 # ── Static files + SPA fallback ──
 # Must be registered AFTER all API routes so /events, /health etc. take priority
 

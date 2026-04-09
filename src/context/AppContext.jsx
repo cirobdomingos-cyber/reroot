@@ -118,6 +118,10 @@ const INITIAL_STATE = {
 
   // Weekly check-ins: { [week]: { emoji, timestamp } }
   weeklyCheckIns: {},
+
+  // Push notifications
+  pushOptedIn: false,   // true once user subscribes to weekly push reminders
+  pushDismissed: false, // true if user explicitly declined the prompt
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -243,6 +247,12 @@ function reducer(state, action) {
         userName: !state.userName ? (givenName || name.split(' ')[0]) : state.userName,
       }
     }
+
+    case 'SET_PUSH_OPTED_IN':
+      return { ...state, pushOptedIn: true }
+
+    case 'SET_PUSH_DISMISSED':
+      return { ...state, pushDismissed: true }
 
     case 'RESTORE_STATE': {
       // Remote wins for progress; local wins for preferences. googleUser always stays local.

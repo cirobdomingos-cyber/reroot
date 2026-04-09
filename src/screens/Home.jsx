@@ -6,6 +6,7 @@ import { useT } from '../i18n'
 import { EVENTS } from '../data/events'
 import { ACTIVITIES } from '../data/activities'
 import { scheduleEventReminder } from '../lib/notifications'
+import { usePushNotifications } from '../lib/usePushNotifications'
 
 function getGreetingKey() {
   const h = new Date().getHours()
@@ -60,6 +61,8 @@ export default function Home() {
   const [checkInDone, setCheckInDone] = useState(false)
   const [notifToast, setNotifToast] = useState(null) // event name string
   const [shareCopied, setShareCopied] = useState(false)
+  const [pushSuccess, setPushSuccess] = useState(false)
+  const { subscribe: subscribePush, dismiss: dismissPush, loading: pushLoading } = usePushNotifications()
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
@@ -112,6 +115,7 @@ export default function Home() {
   // Weekly check-in: show whenever current week > 1 and check-in not done yet
   const prevWeek = currentWeek - 1
   const showWeeklyCheckIn = currentWeek > 1 && !state.weeklyCheckIns?.[currentWeek] && !checkInDone
+  const showPushPrompt = currentWeek > 1 && !state.pushOptedIn && !state.pushDismissed && !pushSuccess && 'PushManager' in window
 
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
@@ -231,6 +235,66 @@ export default function Home() {
                 ))}
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Push notification opt-in card */}
+      <AnimatePresence>
+        {showPushPrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+            style={{
+              margin: '10px 16px 0', background: 'white', borderRadius: 20,
+              boxShadow: 'var(--shadow)', padding: '14px 16px',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}
+          >
+            <span style={{ fontSize: 28, flexShrink: 0 }}>🔔</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.3 }}>
+                Receber lembrete semanal?
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+                Uma notificação toda semana para o check-in.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button
+                onClick={dismissPush}
+                style={{ fontSize: 12, color: 'var(--charcoal-mid)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px' }}
+              >
+                Agora não
+              </button>
+              <button
+                onClick={async () => { const ok = await subscribePush(); if (ok) setPushSuccess(true) }}
+                disabled={pushLoading}
+                style={{
+                  fontSize: 13, fontWeight: 700, color: 'white',
+                  background: 'linear-gradient(135deg, #7A9E7E 0%, #4e7a3a 100%)',
+                  border: 'none', borderRadius: 10, padding: '8px 14px', cursor: 'pointer',
+                  opacity: pushLoading ? 0.7 : 1,
+                }}
+              >
+                {pushLoading ? '…' : 'Ativar 🔔'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pushSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
+            style={{
+              margin: '10px 16px 0', background: '#E4EFE5', borderRadius: 16,
+              padding: '10px 14px', fontSize: 13, color: '#2C3A2D', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <span>✅</span> Lembretes semanais ativados!
           </motion.div>
         )}
       </AnimatePresence>
