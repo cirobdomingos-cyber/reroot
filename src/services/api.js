@@ -215,6 +215,46 @@ export async function trackEvent(eventName, properties = {}) {
   }
 }
 
+// ── Friends API ────────────────────────────────────────────
+
+export async function getMyFriendCode(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/my-code?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) return (await res.json()).code
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+export async function addFriend(googleId, code) {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/friends/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, code }),
+    })
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+export async function getFriends(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) return (await res.json()).friends
+  } catch {
+    // Backend unavailable
+  }
+  return []
+}
+
 /**
  * AI Companion — send a message and get back a response with optional event suggestions.
  * Sends the full event catalog so the LLM always has events to recommend

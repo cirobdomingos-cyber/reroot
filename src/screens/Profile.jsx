@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeBadges, computeCurrentWeek, getChapter, CHAPTERS } from '../context/AppContext'
 import { useT } from '../i18n'
 import { TIMELINE } from '../data/framework'
+import { getMyFriendCode, addFriend, getFriends } from '../services/api'
 
 export default function Profile() {
   const { state, dispatch } = useApp()
@@ -17,6 +18,54 @@ export default function Profile() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [paused, setPaused] = useState(state.isPaused)
   const [selectedBadge, setSelectedBadge] = useState(null)
+
+  // Friends state
+  const [friendCode, setFriendCode] = useState(null)
+  const [friendCodeLoading, setFriendCodeLoading] = useState(false)
+  const [friends, setFriends] = useState([])
+  const [friendsLoading, setFriendsLoading] = useState(false)
+  const [addCodeInput, setAddCodeInput] = useState('')
+  const [addResult, setAddResult] = useState(null) // { status, friend_name? }
+  const [addLoading, setAddLoading] = useState(false)
+
+  const googleId = state.googleUser?.id
+
+  useEffect(() => {
+    if (!googleId) return
+    setFriendCodeLoading(true)
+    getMyFriendCode(googleId).then(code => {
+      setFriendCode(code)
+      setFriendCodeLoading(false)
+    })
+    setFriendsLoading(true)
+    getFriends(googleId).then(list => {
+      setFriends(list ?? [])
+      setFriendsLoading(false)
+    })
+  }, [googleId])
+
+  async function handleAddFriend() {
+    if (!addCodeInput.trim() || !googleId || addLoading) return
+    setAddLoading(true)
+    setAddResult(null)
+    const result = await addFriend(googleId, addCodeInput.trim().toUpperCase())
+    setAddResult(result)
+    setAddLoading(false)
+    if (result?.status === 'ok') {
+      setAddCodeInput('')
+      // Refresh friends list
+      getFriends(googleId).then(list => setFriends(list ?? []))
+    }
+  }
+
+  function handleWhatsApp() {
+    const text = `Oi! Usa meu código ${friendCode} no Reroot para a gente conectar 🌿 reroot.app`
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+  }
+
+  function handleCopyCode() {
+    if (friendCode) navigator.clipboard.writeText(friendCode).catch(() => {})
+  }
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
@@ -194,6 +243,156 @@ export default function Profile() {
         <div style={{ marginTop: 12, textAlign: 'center', fontSize: 12, color: 'var(--charcoal-mid)' }}>
           <strong style={{ color: 'var(--charcoal)' }}>{weeksShownUp.length}</strong> {t.profile_weeks_shown?.toLowerCase?.() ?? 'weeks shown up'}
         </div>
+      </div>
+
+      {/* Friends */}
+      <div className="section-label">Amigos</div>
+      <div style={{ margin: '0 16px 12px' }}>
+        {!googleId ? (
+          <div className="card" style={{ textAlign: 'center', fontSize: 13, color: 'var(--charcoal-mid)', padding: '16px' }}>
+            Entre com Google para conectar com amigos 🌿
+          </div>
+        ) : (
+          <>
+            {/* Your invite code */}
+            <div className="card" style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+                Seu código de convite
+              </div>
+              {friendCodeLoading ? (
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>Carregando...</div>
+              ) : friendCode ? (
+                <>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
+                  }}>
+                    <div style={{
+                      fontSize: 22, fontWeight: 800, letterSpacing: 3,
+                      color: 'var(--terra)', flex: 1,
+                    }}>
+                      {friendCode}
+                    </div>
+                    <button
+                      onClick={handleCopyCode}
+                      style={{
+                        padding: '7px 14px', borderRadius: 10, fontSize: 12,
+                        fontWeight: 700, border: '1.5px solid var(--border)',
+                        background: 'white', cursor: 'pointer', color: 'var(--charcoal)',
+                      }}
+                    >
+                      Copiar
+                    </button>
+                    <button
+                      onClick={handleWhatsApp}
+                      style={{
+                        padding: '7px 14px', borderRadius: 10, fontSize: 12,
+                        fontWeight: 700, border: 'none',
+                        background: '#25D366', cursor: 'pointer', color: 'white',
+                      }}
+                    >
+                      WhatsApp
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
+                    Compartilhe com amigos para conectar
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
+                  Código não disponível no momento
+                </div>
+              )}
+            </div>
+
+            {/* Add a friend */}
+            <div className="card" style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 10 }}>
+                Adicionar amigo
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: addResult ? 10 : 0 }}>
+                <input
+                  value={addCodeInput}
+                  onChange={e => { setAddCodeInput(e.target.value.toUpperCase()); setAddResult(null) }}
+                  onKeyDown={e => e.key === 'Enter' && handleAddFriend()}
+                  placeholder="Código do amigo"
+                  maxLength={12}
+                  style={{
+                    flex: 1, padding: '10px 14px',
+                    border: '1.5px solid var(--border)',
+                    borderRadius: 12, fontSize: 13,
+                    background: 'var(--cream)', outline: 'none',
+                    color: 'var(--charcoal)', letterSpacing: 2, fontWeight: 700,
+                  }}
+                />
+                <button
+                  onClick={handleAddFriend}
+                  disabled={addLoading || !addCodeInput.trim()}
+                  className="btn btn--sage"
+                  style={{ width: 'auto', padding: '10px 18px', fontSize: 13, opacity: addLoading || !addCodeInput.trim() ? 0.5 : 1 }}
+                >
+                  {addLoading ? '...' : 'Adicionar'}
+                </button>
+              </div>
+              {addResult && (
+                <div style={{
+                  fontSize: 13, fontWeight: 600, padding: '8px 12px',
+                  borderRadius: 10,
+                  background: addResult.status === 'ok' ? 'var(--sage-pale)' : 'var(--terra-pale)',
+                  color: addResult.status === 'ok' ? 'var(--sage)' : 'var(--terra)',
+                }}>
+                  {addResult.status === 'ok' && `✓ ${addResult.friend_name ?? 'Amigo'} adicionado!`}
+                  {addResult.status === 'self' && 'Esse é o seu próprio código 😅'}
+                  {addResult.status === 'already_friends' && 'Vocês já são amigos!'}
+                  {addResult.status === 'not_found' && 'Código inválido'}
+                  {!addResult.status && 'Erro ao conectar. Tente novamente.'}
+                </div>
+              )}
+            </div>
+
+            {/* Friends list */}
+            <div className="card">
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 10 }}>
+                Seus amigos
+              </div>
+              {friendsLoading ? (
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>Carregando...</div>
+              ) : friends.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', fontStyle: 'italic', padding: '8px 0' }}>
+                  Nenhum amigo ainda. Compartilhe seu código! 🌿
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {friends.map(friend => (
+                    <div key={friend.google_id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {friend.picture ? (
+                        <img
+                          src={friend.picture}
+                          alt={friend.name}
+                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 38, height: 38, borderRadius: '50%',
+                          background: 'var(--terra)', color: 'white',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 16, fontWeight: 700, flexShrink: 0,
+                        }}>
+                          {(friend.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>{friend.name}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>
+                        Amigo ✓
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Reflections journal */}
