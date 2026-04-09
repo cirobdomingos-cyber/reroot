@@ -14,6 +14,7 @@ import Diagnostic     from './screens/Diagnostic'
 import Home           from './screens/Home'
 import Events         from './screens/Events'
 import Journey        from './screens/Journey'
+import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
 
 const pageVariants = {
@@ -133,6 +134,7 @@ export default function App() {
             <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
             <Route path="/journey" element={<AnimatedPage><Journey /></AnimatedPage>} />
+            <Route path="/friends" element={<AnimatedPage><Friends /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

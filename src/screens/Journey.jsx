@@ -32,7 +32,7 @@ export default function Journey() {
   const t = useT()
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
-  const framework = getFramework(currentWeek)
+  const framework = getFramework(currentWeek, state.userSituation)
   const alreadyRead = state.frameworkRead
 
   return (

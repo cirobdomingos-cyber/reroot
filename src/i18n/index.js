@@ -8,6 +8,7 @@ export const T = {
     nav_home:    'Início',
     nav_events:  'Eventos',
     nav_journey: 'Jornada',
+    nav_friends: 'Amigos',
     nav_profile: 'Perfil',
 
     // ── Onboarding ────────────────────────────────────────
@@ -467,6 +468,28 @@ export const T = {
     no_attendees:       'Nenhum participante encontrado',
     connecting:         'Conectando...',
     connect_sent:       'Enviado!',
+
+    // ── Friends screen ────────────────────────────────────
+    friends_title:           'Amigos',
+    friends_sub:             'Conecte-se com seu cohort',
+    friends_my_code_label:   'Seu código',
+    friends_my_code_hint:    'Compartilhe pra adicionar amigos',
+    friends_code_copy:       'Copiar',
+    friends_code_copied:     'Copiado!',
+    friends_add_label:       'Adicionar por código',
+    friends_add_placeholder: 'Ex: ABC123',
+    friends_add_btn:         'Adicionar',
+    friends_add_adding:      'Adicionando...',
+    friends_add_success:     'Amigo adicionado!',
+    friends_add_error:       'Código inválido ou já é seu amigo',
+    friends_list_label:      'Seus amigos',
+    friends_list_empty:      'Você ainda não tem amigos no reroot. Adicione alguém pelo código ou conecte-se em um evento.',
+    friends_feed_label:      'Para onde seus amigos estão indo',
+    friends_feed_empty:      'Nenhum amigo confirmou presença em eventos próximos.',
+    friends_feed_going:      'indo',
+    friends_login_required:  'Faça login com Google pra ver e adicionar amigos.',
+    friends_count_one:       'amigo',
+    friends_count_many:      'amigos',
 
     // ── Accessibility ─────────────────────────────────────
     accessibility_mode:        'Modo Acessível',
