@@ -85,7 +85,7 @@ async def run_refresh(settings):
     # ── SESC Paraná (free/low-cost cultural events — no credentials needed) ──
     log_id = db.log_refresh_start("sesc")
     try:
-        sesc_events = await sesc_fetch(city=city)
+        sesc_events = await sesc_fetch(city=city, anthropic_api_key=settings.anthropic_api_key)
         all_raws.extend(sesc_events)
         db.log_refresh_finish(log_id, events_new=len(sesc_events), events_updated=0)
         log.info(f"  SESC: {len(sesc_events)} eventos")
@@ -93,16 +93,16 @@ async def run_refresh(settings):
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  SESC falhou: {e}")
 
-    # ── Prefeitura de Curitiba (agenda cultural municipal) ──
-    log_id = db.log_refresh_start("prefeitura")
+    # ── Teatro Guaíra (major Curitiba cultural center — concerts, ballet, theatre) ──
+    log_id = db.log_refresh_start("teatro_guaira")
     try:
         pref_events = await prefeitura_fetch(city=city)
         all_raws.extend(pref_events)
         db.log_refresh_finish(log_id, events_new=len(pref_events), events_updated=0)
-        log.info(f"  Prefeitura: {len(pref_events)} eventos")
+        log.info(f"  Teatro Guaíra: {len(pref_events)} eventos")
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Prefeitura falhou: {e}")
+        log.error(f"  Teatro Guaíra falhou: {e}")
 
     if not all_raws:
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")

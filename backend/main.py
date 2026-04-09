@@ -101,7 +101,7 @@ def health():
         "eventbrite_configured": bool(settings.eventbrite_token),
         "instagram_configured": bool(settings.instagram_user and settings.instagram_pass),
         "sesc_configured": True,
-        "prefeitura_configured": True,
+        "teatro_guaira_configured": True,
         "google_places_configured": bool(settings.google_places_api_key),
     }
 
@@ -161,7 +161,7 @@ def stats():
         "by_category": by_cat,
         "sources": {
             src: sum(1 for e in events if e.source == src)
-            for src in ["sympla", "eventbrite", "meetup", "instagram", "sesc", "prefeitura"]
+            for src in ["sympla", "eventbrite", "meetup", "instagram", "sesc", "teatro_guaira"]
         },
     }
 
