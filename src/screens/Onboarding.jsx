@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import { trackEvent } from '../services/api'
 
 const ALL_INTERESTS = [
   'Café & Conversa', 'Caminhadas', 'Escrita Criativa', 'Yoga',
@@ -49,6 +50,11 @@ export default function Onboarding() {
   const googleBtnRef = useRef(null)
   const googleConfigured = isGoogleConfigured()
 
+  // Track that the user reached step 0 (the entry point of onboarding)
+  useEffect(() => {
+    trackEvent('onboarding_started')
+  }, [])
+
   useEffect(() => {
     if (!googleConfigured) return
     const cleanup = mountGoogleButton(googleBtnRef, (googleUser) => {
@@ -72,6 +78,7 @@ export default function Onboarding() {
     if (name.trim()) dispatch({ type: 'SET_NAME', payload: name.trim() })
     dispatch({ type: 'SET_NEIGHBORHOOD', payload: neighborhood })
     dispatch({ type: 'JOIN_COHORT' })
+    trackEvent('cohort_joined', { step_name: 'onboarding' })
     navigate('/partner-intro')
   }
 

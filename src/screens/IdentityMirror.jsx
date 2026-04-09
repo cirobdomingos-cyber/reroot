@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
+import { trackEvent } from '../services/api'
 
 const TOTAL_STEPS = 4  // 0=situation, 1=goal, 2=pastLife, 3=currentFeel, then affirmation
 
@@ -25,6 +26,9 @@ function OptionButton({ opt, selected, onSelect }) {
   )
 }
 
+// Step names map for readable analytics properties
+const IDENTITY_STEP_NAMES = ['situation', 'goal', 'past_life', 'current_feel', 'affirmation']
+
 export default function IdentityMirror() {
   const { dispatch } = useApp()
   const navigate = useNavigate()
@@ -38,6 +42,11 @@ export default function IdentityMirror() {
   const [selected, setSelected] = useState(null)
 
   const isAffirmation = step === TOTAL_STEPS
+
+  // Track each step when it becomes visible
+  useEffect(() => {
+    trackEvent(`onboarding_step_${step + 1}`, { step_name: IDENTITY_STEP_NAMES[step] ?? `step_${step}` })
+  }, [step])
 
   function handleNext() {
     if (step === 0) {
@@ -58,6 +67,7 @@ export default function IdentityMirror() {
         type: 'COMPLETE_IDENTITY_MIRROR',
         payload: { situation, goal, pastLife, currentFeel },
       })
+      trackEvent('identity_mirror_completed', { situation, goal })
       navigate('/partner-intro')
     }
   }
