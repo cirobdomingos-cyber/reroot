@@ -472,7 +472,7 @@ async def companion_chat(req: CompanionRequest):
     try:
         client = Anthropic(api_key=settings.anthropic_api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=512,
             system=system,
             messages=messages,
