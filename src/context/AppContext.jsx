@@ -1,4 +1,5 @@
-import { createContext, useContext, useReducer, useEffect } from 'react'
+import { createContext, useContext, useReducer, useEffect, useRef } from 'react'
+import { loadUserState, saveUserState } from '../services/api'
 
 // ── Week computation (derived from join date) ──────────────
 export function computeCurrentWeek(joinedAt) {
@@ -243,6 +244,34 @@ function reducer(state, action) {
       }
     }
 
+    case 'RESTORE_STATE': {
+      // Remote wins for progress; local wins for preferences. googleUser always stays local.
+      const remote = action.payload
+      return {
+        ...state,
+        rsvps:                    remote.rsvps                    ?? state.rsvps,
+        reflections:              remote.reflections              ?? state.reflections,
+        weeksShownUp:             remote.weeksShownUp             ?? state.weeksShownUp,
+        eventsAttended:           remote.eventsAttended           ?? state.eventsAttended,
+        weeklyCheckIns:           remote.weeklyCheckIns           ?? state.weeklyCheckIns,
+        hasJoined:                remote.hasJoined                ?? state.hasJoined,
+        joinedAt:                 remote.joinedAt                 ?? state.joinedAt,
+        identityMirrorCompleted:  remote.identityMirrorCompleted  ?? state.identityMirrorCompleted,
+        questionnaireCompleted:   remote.questionnaireCompleted   ?? state.questionnaireCompleted,
+        dayZeroSaved:             remote.dayZeroSaved             ?? state.dayZeroSaved,
+        dayZeroEventId:           remote.dayZeroEventId           ?? state.dayZeroEventId,
+        identityPastLife:         remote.identityPastLife         ?? state.identityPastLife,
+        identityCurrentFeel:      remote.identityCurrentFeel      ?? state.identityCurrentFeel,
+        userSituation:            remote.userSituation            ?? state.userSituation,
+        userGoal:                 remote.userGoal                 ?? state.userGoal,
+        frameworkRead:            remote.frameworkRead            ?? state.frameworkRead,
+        diagnosticSeen:           remote.diagnosticSeen           ?? state.diagnosticSeen,
+        language:     state.language     || remote.language,
+        userName:     state.userName     || remote.userName,
+        neighborhood: state.neighborhood || remote.neighborhood,
+      }
+    }
+
     case 'REDO_ONBOARDING':
       return {
         ...state,
@@ -339,6 +368,27 @@ export function AppProvider({ children }) {
   // Persist to localStorage on every state change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  }, [state])
+
+  // Load remote state once per Google login — fire-and-forget
+  const lastLoadedGoogleId = useRef(null)
+  useEffect(() => {
+    const googleId = state.googleUser?.id
+    if (!googleId || googleId === lastLoadedGoogleId.current) return
+    lastLoadedGoogleId.current = googleId
+    loadUserState(googleId).then(remoteState => {
+      if (remoteState) dispatch({ type: 'RESTORE_STATE', payload: remoteState })
+    })
+  }, [state.googleUser?.id])
+
+  // Debounce-save to backend on any state change while logged in
+  const saveTimerRef = useRef(null)
+  useEffect(() => {
+    const googleId = state.googleUser?.id
+    if (!googleId) return
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => saveUserState(googleId, state), 500)
+    return () => clearTimeout(saveTimerRef.current)
   }, [state])
 
   return (

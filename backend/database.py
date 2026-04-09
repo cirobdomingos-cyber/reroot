@@ -52,6 +52,43 @@ def init_db():
                 created_at      TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_states (
+                google_id   TEXT PRIMARY KEY,
+                state_json  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+
+
+# ── User state persistence ─────────────────────────────────
+
+def get_user_state(google_id: str) -> Optional[dict]:
+    """Return parsed state dict for the given Google account, or None."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT state_json FROM user_states WHERE google_id = ?",
+            (google_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return json.loads(row["state_json"])
+
+
+def upsert_user_state(google_id: str, state: dict) -> None:
+    """Insert or replace the full state blob for the given Google account."""
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_states (google_id, state_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(google_id) DO UPDATE SET
+                state_json = excluded.state_json,
+                updated_at = excluded.updated_at
+            """,
+            (google_id, json.dumps(state), datetime.now(timezone.utc).isoformat()),
+        )
         conn.commit()
 
 

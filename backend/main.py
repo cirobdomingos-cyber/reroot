@@ -166,6 +166,29 @@ def stats():
     }
 
 
+# ── User state sync ──
+
+class UserStateSaveRequest(BaseModel):
+    google_id: str
+    state: dict
+
+
+@app.get("/user/state/{google_id}")
+def get_user_state_endpoint(google_id: str):
+    """Load persisted app state for a Google account."""
+    saved = db.get_user_state(google_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="No state found for this user")
+    return {"state": saved}
+
+
+@app.post("/user/state")
+def save_user_state_endpoint(req: UserStateSaveRequest):
+    """Upsert app state for a Google account."""
+    db.upsert_user_state(req.google_id, req.state)
+    return {"ok": True}
+
+
 # ── Google Places ──
 
 _CURITIBA_LAT = -25.4290
