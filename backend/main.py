@@ -166,6 +166,29 @@ def stats():
     }
 
 
+# ── User state sync ──
+
+class UserStateSaveRequest(BaseModel):
+    google_id: str
+    state: dict
+
+
+@app.get("/user/state/{google_id}")
+def get_user_state_endpoint(google_id: str):
+    """Load persisted app state for a Google account."""
+    saved = db.get_user_state(google_id)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="No state found for this user")
+    return {"state": saved}
+
+
+@app.post("/user/state")
+def save_user_state_endpoint(req: UserStateSaveRequest):
+    """Upsert app state for a Google account."""
+    db.upsert_user_state(req.google_id, req.state)
+    return {"ok": True}
+
+
 # ── Google Places ──
 
 _CURITIBA_LAT = -25.4290
@@ -386,6 +409,39 @@ def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
 
 
+# ── Analytics ──
+
+class AnalyticsEventRequest(BaseModel):
+    event_name: str
+    properties: dict = {}
+    session_id: str = ""
+
+
+@app.post("/analytics/event", status_code=200)
+def track_event(req: AnalyticsEventRequest):
+    """Fire-and-forget analytics ingestion. Never raises to the client."""
+    try:
+        db.insert_analytics_event(
+            event_name=req.event_name,
+            properties_json=json.dumps(req.properties),
+            session_id=req.session_id,
+        )
+    except Exception as e:
+        log.warning(f"Analytics insert failed (non-fatal): {e}")
+    return {"ok": True}
+
+
+@app.get("/analytics/funnel")
+def analytics_funnel():
+    """Admin view: event counts grouped by name — shows onboarding drop-off."""
+    try:
+        rows = db.get_funnel_counts()
+    except Exception as e:
+        log.error(f"Analytics funnel query failed: {e}")
+        raise HTTPException(status_code=500, detail="Analytics query failed")
+    return {"funnel": rows, "total_rows": sum(r["total"] for r in rows)}
+
+
 # ── AI Companion ──
 
 class CompanionRequest(BaseModel):
@@ -472,7 +528,7 @@ async def companion_chat(req: CompanionRequest):
     try:
         client = Anthropic(api_key=settings.anthropic_api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=512,
             system=system,
             messages=messages,
@@ -500,6 +556,64 @@ async def companion_chat(req: CompanionRequest):
         "events": recommended_events,
         "tone": data.get("tone", "encouraging"),
     }
+
+
+# ── Web Push Notifications ──
+#
+# VAPID key pair — in production, generate your own and store in env vars.
+# These test keys are safe to commit for development only.
+# Generate production keys: py -m py_vapid --gen
+VAPID_PRIVATE_KEY = "nOAa5iExKg1EvBMkLblGvg"
+VAPID_PUBLIC_KEY  = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBZuhbr6lT5E12OwvTPrBa5ygw"
+VAPID_CLAIMS = {"sub": "mailto:admin@reroot.app"}
+WEEKLY_PUSH_MESSAGE = "Hora do check-in semanal no Reroot! Como foi sua semana? 🌿"
+
+
+class PushSubscriptionBody(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@app.post("/push/subscribe")
+def push_subscribe(body: PushSubscriptionBody):
+    """Store or update a Web Push subscription from the browser."""
+    db.upsert_push_subscription(body.endpoint, json.dumps(body.keys))
+    log.info(f"Push subscription saved: {body.endpoint[:60]}…")
+    return {"status": "subscribed"}
+
+
+@app.post("/push/send-weekly")
+async def push_send_weekly():
+    """Send the weekly check-in push to all subscribers."""
+    subscriptions = db.get_all_push_subscriptions()
+    if not subscriptions:
+        return {"sent": 0, "message": "No subscribers"}
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        raise HTTPException(status_code=501, detail="pywebpush not installed")
+    sent = 0
+    failed = 0
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                data=WEEKLY_PUSH_MESSAGE,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+            )
+            sent += 1
+        except Exception as exc:
+            log.warning(f"Push failed for {sub['endpoint'][:60]}…: {exc}")
+            failed += 1
+    log.info(f"Weekly push: {sent} sent, {failed} failed")
+    return {"sent": sent, "failed": failed}
+
+
+@app.get("/push/vapid-public-key")
+def push_vapid_public_key():
+    """Return the VAPID public key so the frontend can subscribe."""
+    return {"publicKey": VAPID_PUBLIC_KEY}
 
 
 # ── Static files + SPA fallback ──

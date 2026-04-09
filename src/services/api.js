@@ -11,7 +11,7 @@ import { EVENTS } from '../data/events'
 // In local dev, frontend runs on :5173 and backend on :8000.
 const BASE_URL = import.meta.env.VITE_API_URL ??
   (import.meta.env.DEV ? 'http://localhost:8000' : '')
-const TIMEOUT_MS = 2000
+const TIMEOUT_MS = 5000
 
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController()
@@ -68,6 +68,7 @@ function normalizeBackendEvent(ev) {
     url: ev.url,
     source: ev.source || 'live',
     isReal: true,
+    dateStart: ev.dateStart,
     dateTag: computeDateTag(ev.dateStart),
   }
 }
@@ -150,10 +151,68 @@ export async function checkBackendHealth() {
   }
 }
 
+export async function loadUserState(googleId) {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/user/state/${encodeURIComponent(googleId)}`)
+    if (res.ok) return (await res.json()).state
+  } catch {
+    // Backend unavailable — local state is the source of truth
+  }
+  return null
+}
+
+export async function saveUserState(googleId, state) {
+  try {
+    await fetchWithTimeout(`${BASE_URL}/user/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, state }),
+    })
+  } catch {
+    // Backend unavailable — local state is the source of truth
+  }
+}
+
 export async function triggerRefresh() {
   const res = await fetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
   if (!res.ok) throw new Error('Refresh falhou')
   return res.json()
+}
+
+/**
+ * Onboarding funnel analytics — fire-and-forget, never throws.
+ *
+ * Generates a stable session ID per browser session (sessionStorage) so we can
+ * count unique drop-off sessions without any user identity.
+ *
+ * Portfolio signal: this is the "thin client, dumb transport" pattern — the
+ * frontend owns zero analytics logic beyond "did the thing happen"; all
+ * aggregation lives in the backend SQL query.
+ */
+function getSessionId() {
+  const KEY = 'reroot_session_id'
+  let id = sessionStorage.getItem(KEY)
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+    sessionStorage.setItem(KEY, id)
+  }
+  return id
+}
+
+export async function trackEvent(eventName, properties = {}) {
+  try {
+    await fetch(`${BASE_URL}/analytics/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_name: eventName,
+        properties,
+        session_id: getSessionId(),
+      }),
+    })
+  } catch {
+    // Swallow all errors — analytics must never break the product
+  }
 }
 
 /**

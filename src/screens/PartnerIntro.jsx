@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
+import { trackEvent } from '../services/api'
 
 function generateMessage(t, answers) {
   const { reason, challenge, goal } = answers
@@ -24,6 +25,16 @@ export default function PartnerIntro() {
   const [answers, setAnswers] = useState({})
   const [selected, setSelected] = useState(null)
 
+  // Track each questionnaire question step as it becomes visible
+  // STEPS has 3 questions (indices 0–2); steps 3 and 4 are internal UI states
+  useEffect(() => {
+    if (step < STEPS.length) {
+      const stepName = STEPS[step]?.id ?? `step_${step}`
+      // IdentityMirror used steps 1–5; questionnaire continues at 6+
+      trackEvent(`onboarding_step_${step + 6}`, { step_name: `questionnaire_${stepName}` })
+    }
+  }, [step, STEPS.length])
+
   function handleNext() {
     if (selected === null) return
     const newAnswers = { ...answers, [STEPS[step].id]: selected }
@@ -38,6 +49,7 @@ export default function PartnerIntro() {
       setTimeout(() => {
         setStep(4)
         dispatch({ type: 'COMPLETE_QUESTIONNAIRE', payload: { answers: newAnswers, message } })
+        trackEvent('questionnaire_completed', { answers: newAnswers })
       }, 2200)
     }
   }

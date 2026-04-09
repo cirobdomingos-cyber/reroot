@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
-import { fetchEvents, fetchEventDetail } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -148,6 +148,13 @@ export default function Events() {
   async function handleRsvpToggle(ev) {
     const wasRsvped = !!state.rsvps[ev.id]
     dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+    // Fire first_rsvp only on the very first RSVP the user makes
+    if (!wasRsvped) {
+      const existingRsvps = Object.values(state.rsvps).filter(Boolean).length
+      if (existingRsvps === 0) {
+        trackEvent('first_rsvp', { event_id: ev.id, event_name: ev.name, category: ev.category })
+      }
+    }
     if (!wasRsvped && !isVenueMode) {
       const ok = await scheduleEventReminder(ev)
       if (ok) {
