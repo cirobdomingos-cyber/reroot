@@ -22,6 +22,8 @@ async def run_refresh(settings):
     from scrapers.eventbrite import fetch_events as eventbrite_fetch
     from scrapers.meetup import fetch_events as meetup_fetch
     from scrapers.instagram import fetch_events as instagram_fetch
+    from scrapers.sesc import fetch_events as sesc_fetch
+    from scrapers.prefeitura import fetch_events as prefeitura_fetch
     from enrichment import EnrichmentPipeline
     import database as db
 
@@ -79,6 +81,28 @@ async def run_refresh(settings):
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Instagram falhou: {e}")
+
+    # ── SESC Paraná (free/low-cost cultural events — no credentials needed) ──
+    log_id = db.log_refresh_start("sesc")
+    try:
+        sesc_events = await sesc_fetch(city=city)
+        all_raws.extend(sesc_events)
+        db.log_refresh_finish(log_id, events_new=len(sesc_events), events_updated=0)
+        log.info(f"  SESC: {len(sesc_events)} eventos")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  SESC falhou: {e}")
+
+    # ── Prefeitura de Curitiba (agenda cultural municipal) ──
+    log_id = db.log_refresh_start("prefeitura")
+    try:
+        pref_events = await prefeitura_fetch(city=city)
+        all_raws.extend(pref_events)
+        db.log_refresh_finish(log_id, events_new=len(pref_events), events_updated=0)
+        log.info(f"  Prefeitura: {len(pref_events)} eventos")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  Prefeitura falhou: {e}")
 
     if not all_raws:
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")
