@@ -214,6 +214,11 @@ export const T = {
     partner_building_btn:   'Criando...',
     partner_question_of:    'Pergunta',
     partner_takes:          'Leva 30 segundos',
+    partner_skip:           'Pular',
+
+    // ── Companion FAB ─────────────────────────────────────
+    companion_fab_label:    'Companheiro',
+    companion_fab_hint:     'Converse com seu companheiro',
     partner_week1_items: [
       { emoji: '📖', text: 'O Framework de Chegada — uma reflexão de 10 min' },
       { emoji: '☕', text: 'Um evento do cohort sem pressão' },

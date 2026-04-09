@@ -35,9 +35,7 @@ export default function PartnerIntro() {
     }
   }, [step, STEPS.length])
 
-  function handleNext() {
-    if (selected === null) return
-    const newAnswers = { ...answers, [STEPS[step].id]: selected }
+  function advance(newAnswers) {
     setAnswers(newAnswers)
     setSelected(null)
 
@@ -49,9 +47,20 @@ export default function PartnerIntro() {
       setTimeout(() => {
         setStep(4)
         dispatch({ type: 'COMPLETE_QUESTIONNAIRE', payload: { answers: newAnswers, message } })
-        trackEvent('questionnaire_completed', { answers: newAnswers })
+        trackEvent('questionnaire_completed', { answers: newAnswers, skipped: Object.keys(newAnswers).length < STEPS.length })
       }, 2200)
     }
+  }
+
+  function handleNext() {
+    if (selected === null) return
+    advance({ ...answers, [STEPS[step].id]: selected })
+  }
+
+  function handleSkip() {
+    trackEvent('questionnaire_step_skipped', { step: STEPS[step]?.id })
+    // Advance without recording an answer — generateMessage falls back to defaults
+    advance({ ...answers })
   }
 
   const currentStep = STEPS[step]
@@ -196,9 +205,24 @@ export default function PartnerIntro() {
         )}
 
         {step < 3 && (
-          <div style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'var(--charcoal-light)' }}>
-            {t.partner_question_of} {step + 1} / {STEPS.length} · {t.partner_takes}
-          </div>
+          <>
+            <button
+              onClick={handleSkip}
+              style={{
+                display: 'block', margin: '12px auto 0',
+                background: 'none', border: 'none',
+                fontSize: 13, fontWeight: 600,
+                color: 'var(--charcoal-light)',
+                textDecoration: 'underline', cursor: 'pointer',
+                padding: '4px 12px',
+              }}
+            >
+              {t.partner_skip}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: 11, color: 'var(--charcoal-light)' }}>
+              {t.partner_question_of} {step + 1} / {STEPS.length} · {t.partner_takes}
+            </div>
+          </>
         )}
       </div>
     </div>
