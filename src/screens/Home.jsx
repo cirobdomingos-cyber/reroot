@@ -132,6 +132,12 @@ export default function Home() {
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
 
+  // Post-event reconnect nudge: any RSVPd this-week/this-weekend event (prompt to see attendees)
+  const reconnectEvent = EVENTS.find(ev =>
+    state.rsvps[ev.id] &&
+    (ev.dateTag === 'this_week' || ev.dateTag === 'this_weekend')
+  )
+
   // Pick 3 random-ish activities for "Ideias" section (rotate by week)
   const activitySlice = ACTIVITIES.slice((currentWeek - 1) % 3, ((currentWeek - 1) % 3) + 3)
 
@@ -400,7 +406,8 @@ export default function Home() {
       </div>
 
       {/* Friends feed — "Amigos também vão" */}
-      {friendsFeed.length > 0 && (
+      {/* Only shown when user has NOT disabled "show in friend suggestions" privacy toggle */}
+      {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
         <div style={{ margin: '0 16px 12px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
             Amigos também vão
@@ -493,6 +500,33 @@ export default function Home() {
           >
             {(state.privacy?.shareRsvps ?? state.shareRsvps) ? '✓' : '✗'}
           </button>
+        </div>
+      )}
+
+      {/* Post-event reconnect card — surfaces PostEventAttendees to users who don't tap back into past events */}
+      {reconnectEvent && (
+        <div
+          style={{
+            margin: '0 16px 12px',
+            background: 'var(--sage-pale)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            border: '1px solid rgba(122,158,126,0.25)',
+            cursor: 'pointer',
+          }}
+          onClick={() => navigate('/events', { state: { openEventId: reconnectEvent.id } })}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 4 }}>
+            {state.language === 'pt' ? '🤝 Você foi ao evento?' : '🤝 Did you attend?'}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+            {reconnectEvent.name}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+            {state.language === 'pt'
+              ? 'Veja quem esteve lá e conecte-se com quem você conheceu. →'
+              : 'See who was there and connect with people you met. →'}
+          </div>
         </div>
       )}
 

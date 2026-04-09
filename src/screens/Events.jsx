@@ -111,6 +111,12 @@ export default function Events() {
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
+    // Check custom events first — they don't exist in the backend
+    const customMatch = (state.customEvents || []).find(e => e.id === eventId)
+    if (customMatch) {
+      setDetailEvent(customMatch)
+      return
+    }
     setDetailLoading(true)
     const { event } = await fetchEventDetail(eventId)
     setDetailEvent(event)
@@ -128,8 +134,14 @@ export default function Events() {
     setSearchOpen(false)
   }
 
+  // Merge user-created custom events into the list
+  const customEventsForFilter = (state.customEvents || []).filter(ev =>
+    activeFilter === 'all' || ev.category === activeFilter
+  )
+  const allDisplayEvents = [...customEventsForFilter, ...events]
+
   // Apply search + date/venue filter
-  let filteredEvents = events
+  let filteredEvents = allDisplayEvents
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
     filteredEvents = filteredEvents.filter(ev =>
@@ -607,6 +619,25 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
         {/* Bottom row: badges + RSVP button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+            {ev.isCurated && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                background: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', color: '#6A1B9A',
+                padding: '2px 8px', borderRadius: 5,
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+              }}>
+                ✦ {t.tag_curated}
+              </span>
+            )}
+            {ev.isCustom && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                background: '#FFF3E0', color: 'var(--terra)',
+                padding: '2px 8px', borderRadius: 5,
+              }}>
+                ★ {t.tag_private}
+              </span>
+            )}
             {ev.isLowPressure && (
               <span style={{
                 fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
@@ -636,7 +667,7 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            {rsvped && <AddToCalendar event={ev} />}
+            <AddToCalendar event={ev} />
             <button
               className="btn btn--primary"
               style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10 }}
@@ -692,6 +723,16 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
           📍 {neighborhood}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          {ev.isCurated && (
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+              background: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', color: '#6A1B9A',
+              padding: '1px 7px', borderRadius: 5,
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}>
+              ✦ {t.tag_curated}
+            </span>
+          )}
           {ev.rating > 0 && (
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--terra)' }}>
               ⭐ {ev.rating}
@@ -721,7 +762,7 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
 
       {/* Save button + calendar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        {saved && <AddToCalendar event={ev} />}
+        <AddToCalendar event={ev} />
         <button
           onClick={e => { e.stopPropagation(); onSave() }}
           style={{
@@ -788,6 +829,25 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
           {ev.name}
         </div>
+
+        {/* Source badge — always visible so user knows what they're looking at */}
+        {(ev.isCurated || ev.isCustom) && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+            background: ev.isCustom ? '#FFF3E0' : 'linear-gradient(135deg, #EDE7F6, #D1C4E9)',
+            border: ev.isCustom ? '1px solid #FFB74D' : '1px solid #CE93D8',
+          }}>
+            <span style={{ fontSize: 12 }}>{ev.isCustom ? '★' : '✦'}</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+              color: ev.isCustom ? 'var(--terra)' : '#6A1B9A',
+              textTransform: 'uppercase',
+            }}>
+              {ev.isCustom ? t.tag_private_long : t.tag_curated_long}
+            </span>
+          </div>
+        )}
 
         {isVenue && (
           <div style={{
@@ -923,55 +983,6 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             {t.events_attended_btn}
           </button>
         )}
-
-        <AnimatePresence>
-          {rsvped && !isVenue && (
-            <motion.div
-              key="share-row"
-              initial={{ opacity: 0, height: 0, marginTop: 0 }}
-              animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
-              exit={{ opacity: 0, height: 0, marginTop: 0 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 14,
-                background: 'white', border: '1px solid var(--border)',
-              }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)', flexShrink: 0 }}>
-                  Avisar amigos:
-                </span>
-                <button
-                  onClick={handleWhatsApp}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 12px', borderRadius: 20,
-                    background: '#25D366', color: 'white',
-                    border: 'none', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', flexShrink: 0,
-                  }}
-                >
-                  💬 WhatsApp
-                </button>
-                <button
-                  onClick={handleCopyLink}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 12px', borderRadius: 20,
-                    background: copied ? 'var(--sage-pale)' : 'rgba(44,44,44,0.07)',
-                    color: copied ? 'var(--sage)' : 'var(--charcoal-mid)',
-                    border: 'none', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', flexShrink: 0,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? 'Copiado! ✓' : '🔗 Copiar link'}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {ev.url && (
           <a

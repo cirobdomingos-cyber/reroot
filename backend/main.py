@@ -189,11 +189,28 @@ def get_user_state_endpoint(google_id: str):
     return {"state": saved}
 
 
+REQUIRED_STATE_KEYS = {"hasJoined", "language", "rsvps"}
+MAX_STATE_SIZE_BYTES = 512_000  # 500 KB — generous but prevents abuse
+
+
 @app.post("/user/state")
 def save_user_state_endpoint(req: UserStateSaveRequest):
-    """Upsert app state for a Google account."""
+    """Upsert app state for a Google account with validation."""
+    if not req.google_id or len(req.google_id) > 200:
+        raise HTTPException(status_code=400, detail="Invalid google_id")
+
+    # Validate state is a reasonable object
+    if not isinstance(req.state, dict) or not REQUIRED_STATE_KEYS.issubset(req.state.keys()):
+        log.warning(f"State validation failed for {req.google_id[:20]}: missing keys")
+        raise HTTPException(status_code=400, detail="Invalid state object — missing required keys")
+
+    state_json = json.dumps(req.state)
+    if len(state_json) > MAX_STATE_SIZE_BYTES:
+        log.warning(f"State too large for {req.google_id[:20]}: {len(state_json)} bytes")
+        raise HTTPException(status_code=400, detail="State object too large")
+
     db.upsert_user_state(req.google_id, req.state)
-    return {"ok": True}
+    return {"ok": True, "saved_at": int(__import__('time').time() * 1000)}
 
 
 # ── RSVPs ──────────────────────────────────────────────────
@@ -565,6 +582,41 @@ def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
 
 
+# ── Client Error Reporting ──
+
+class ClientErrorRequest(BaseModel):
+    error_type: str          # "sync_save_failed", "sync_load_failed", "js_error", etc.
+    message: str = ""
+    context: dict = {}       # extra info: url, component, state snapshot hash, etc.
+    session_id: str = ""
+    google_id: str = ""
+
+
+@app.post("/errors/client", status_code=200)
+def report_client_error(req: ClientErrorRequest):
+    """Receive frontend error reports. Logged server-side for monitoring.
+    Never fails to the client — errors about errors shouldn't cascade."""
+    try:
+        log.warning(
+            f"CLIENT ERROR [{req.error_type}] "
+            f"user={req.google_id[:20] if req.google_id else 'anon'} "
+            f"session={req.session_id[:12]} — {req.message[:200]}"
+        )
+        # Also store in analytics table for dashboarding
+        db.insert_analytics_event(
+            event_name=f"client_error:{req.error_type}",
+            properties_json=json.dumps({
+                "message": req.message[:500],
+                "google_id": req.google_id[:30] if req.google_id else "",
+                **{k: str(v)[:200] for k, v in (req.context or {}).items()},
+            }),
+            session_id=req.session_id,
+        )
+    except Exception as e:
+        log.error(f"Error reporting endpoint itself failed: {e}")
+    return {"ok": True}
+
+
 # ── Analytics ──
 
 class AnalyticsEventRequest(BaseModel):
@@ -623,6 +675,11 @@ CRITICAL RULES:
 3. Keep it SHORT: 1-2 sentences max, then the events speak for themselves.
 4. Be warm but brief. Think friendly text message, not therapy session.
 5. If truly nothing matches, say so in one sentence and suggest what's closest.
+6. ALSO suggest custom activity ideas the user could create as private events \
+   with friends. These are personalized suggestions NOT in the catalog — things \
+   like "wine night with friends", "movie marathon", "picnic in the park". \
+   Always suggest 1-3 custom ideas that fit the user's mood/request. \
+   Each suggestion needs a name, emoji, short description, and category.
 
 USER CONTEXT:
 - Situation: {situation}
@@ -637,10 +694,20 @@ RESPONSE FORMAT — return ONLY valid JSON (no markdown):
 {{
   "message": "<1-2 sentences in {language_name}, warm and direct>",
   "event_ids": ["id1", "id2"],
+  "suggestions": [
+    {{
+      "name": "<activity name in {language_name}>",
+      "emoji": "<single emoji>",
+      "description": "<1 sentence description in {language_name}>",
+      "category": "quiet_social" | "active" | "creative" | "community" | "bars_cafes"
+    }}
+  ],
   "tone": "encouraging" | "gentle" | "excited" | "practical"
 }}
 
-event_ids MUST be exact IDs from the catalog. Always respond in {language_name}.
+event_ids MUST be exact IDs from the catalog.
+suggestions are NEW activity ideas — never use catalog event names/IDs.
+Always respond in {language_name}.
 """
 
 
@@ -710,6 +777,7 @@ async def companion_chat(req: CompanionRequest):
     return {
         "message": data.get("message", ""),
         "events": recommended_events,
+        "suggestions": data.get("suggestions", []),
         "tone": data.get("tone", "encouraging"),
     }
 

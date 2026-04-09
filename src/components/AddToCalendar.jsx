@@ -1,20 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { generateICS, getGoogleCalendarURL } from '../lib/calendar'
 
-function CalendarIcon({ size = 16, color = 'currentColor' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="18" rx="2"/>
-      <line x1="16" y1="2" x2="16" y2="6"/>
-      <line x1="8" y1="2" x2="8" y2="6"/>
-      <line x1="3" y1="10" x2="21" y2="10"/>
-    </svg>
-  )
-}
-
-function GoogleIcon({ size = 16 }) {
+function GoogleIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24">
       <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" fill="#4285F4"/>
@@ -25,36 +13,11 @@ function GoogleIcon({ size = 16 }) {
   )
 }
 
-function DownloadIcon({ size = 16, color = 'currentColor' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/>
-      <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-  )
-}
-
 export default function AddToCalendar({ event, style }) {
   const [open, setOpen] = useState(false)
-  const containerRef = useRef(null)
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('pointerdown', handleClick)
-    return () => document.removeEventListener('pointerdown', handleClick)
-  }, [open])
 
   function handleGoogle() {
-    const url = getGoogleCalendarURL(event)
-    window.open(url, '_blank', 'noopener')
+    window.open(getGoogleCalendarURL(event), '_blank', 'noopener')
     setOpen(false)
   }
 
@@ -63,104 +26,147 @@ export default function AddToCalendar({ event, style }) {
     setOpen(false)
   }
 
+  function handleWhatsApp() {
+    const link = event.url || 'reroot.app'
+    const msg = `Vou ao ${event.name} no ${event.venue}! 🌿 Você topa também? ${link}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener')
+    setOpen(false)
+  }
+
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block', ...style }}>
-      {/* Trigger button */}
+    <>
+      {/* Single-tap trigger */}
       <button
-        onClick={() => setOpen(prev => !prev)}
+        onClick={() => setOpen(true)}
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 12px',
-          borderRadius: 'var(--radius-sm)',
-          background: 'var(--terra-pale)',
-          color: 'var(--terra)',
-          fontSize: 12,
-          fontWeight: 600,
-          border: 'none',
-          cursor: 'pointer',
+          width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+          background: 'var(--terra-pale)', color: 'var(--terra)',
+          fontSize: 15, border: 'none', cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           WebkitTapHighlightColor: 'transparent',
-          transition: 'background 0.15s',
+          ...style,
         }}
+        title="Compartilhar"
       >
-        <CalendarIcon size={14} color="var(--terra)" />
-        Add to Calendar
+        📤
       </button>
 
-      {/* Dropdown */}
+      {/* Bottom sheet overlay */}
       <AnimatePresence>
         {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.95 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              marginBottom: 6,
-              background: 'var(--white)',
-              borderRadius: 'var(--radius)',
-              boxShadow: 'var(--shadow-md)',
-              border: '1px solid var(--border)',
-              overflow: 'hidden',
-              minWidth: 200,
-              zIndex: 60,
-            }}
-          >
-            <button
-              onClick={handleGoogle}
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setOpen(false)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                width: '100%',
-                padding: '12px 14px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                color: 'var(--charcoal)',
-                borderBottom: '1px solid var(--border)',
-                WebkitTapHighlightColor: 'transparent',
-                transition: 'background 0.12s',
+                position: 'fixed', inset: 0,
+                background: 'rgba(0,0,0,0.35)',
+                zIndex: 200,
               }}
-              onPointerEnter={e => e.currentTarget.style.background = 'var(--cream)'}
-              onPointerLeave={e => e.currentTarget.style.background = 'none'}
+            />
+            {/* Sheet */}
+            <motion.div
+              key="sheet"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+              style={{
+                position: 'fixed', bottom: 0, left: 0, right: 0,
+                background: 'white',
+                borderRadius: '20px 20px 0 0',
+                padding: '8px 16px 28px',
+                zIndex: 201,
+              }}
             >
-              <GoogleIcon size={16} />
-              Google Calendar
-            </button>
+              {/* Drag handle */}
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+              </div>
 
-            <button
-              onClick={handleICS}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                width: '100%',
-                padding: '12px 14px',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-                color: 'var(--charcoal)',
-                WebkitTapHighlightColor: 'transparent',
-                transition: 'background 0.12s',
-              }}
-              onPointerEnter={e => e.currentTarget.style.background = 'var(--cream)'}
-              onPointerLeave={e => e.currentTarget.style.background = 'none'}
-            >
-              <DownloadIcon size={16} color="var(--charcoal-mid)" />
-              Download .ics
-            </button>
-          </motion.div>
+              {/* Event name context */}
+              <div style={{
+                fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+                marginBottom: 14, textAlign: 'center',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {event.icon} {event.name}
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <SheetButton
+                  icon={<GoogleIcon size={20} />}
+                  label="Google Calendar"
+                  onClick={handleGoogle}
+                />
+                <SheetButton
+                  icon={<span style={{ fontSize: 18 }}>📅</span>}
+                  label="Baixar .ics"
+                  sublabel="Apple Calendar, Outlook"
+                  onClick={handleICS}
+                />
+                <SheetButton
+                  icon={<span style={{ fontSize: 18 }}>💬</span>}
+                  label="WhatsApp"
+                  sublabel="Convidar amigos"
+                  onClick={handleWhatsApp}
+                  accent="#25D366"
+                />
+              </div>
+
+              {/* Close */}
+              <button
+                onClick={() => setOpen(false)}
+                style={{
+                  width: '100%', marginTop: 10, padding: '13px 0',
+                  borderRadius: 14, border: '1.5px solid var(--border)',
+                  background: 'none', fontSize: 14, fontWeight: 600,
+                  color: 'var(--charcoal-mid)', cursor: 'pointer',
+                }}
+              >
+                Voltar
+              </button>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
-    </div>
+    </>
+  )
+}
+
+function SheetButton({ icon, label, sublabel, onClick, accent }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        width: '100%', padding: '13px 14px',
+        borderRadius: 14, border: 'none', cursor: 'pointer',
+        background: accent ? `${accent}12` : 'var(--cream)',
+        WebkitTapHighlightColor: 'transparent',
+        transition: 'background 0.12s',
+      }}
+    >
+      <div style={{ width: 24, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+        {icon}
+      </div>
+      <div style={{ flex: 1, textAlign: 'left' }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: accent || 'var(--charcoal)' }}>
+          {label}
+        </div>
+        {sublabel && (
+          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
+            {sublabel}
+          </div>
+        )}
+      </div>
+      <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>›</span>
+    </button>
   )
 }

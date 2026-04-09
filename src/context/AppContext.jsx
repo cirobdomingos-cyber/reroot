@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, useRef } from 'react'
-import { loadUserState, saveUserState } from '../services/api'
+import { loadUserState, saveUserState, isLoadInFlight } from '../services/api'
 
 // ── Week computation (derived from join date) ──────────────
 export function computeCurrentWeek(joinedAt) {
@@ -135,6 +135,9 @@ const INITIAL_STATE = {
 
   // Accessibility mode — large fonts + enhanced nav labels for older users
   accessibilityMode: false,
+
+  // Custom events created by the user via companion chat suggestions
+  customEvents: [],
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -285,6 +288,15 @@ function reducer(state, action) {
 
     case 'TOGGLE_ACCESSIBILITY':
       return { ...state, accessibilityMode: !state.accessibilityMode }
+
+    case 'ADD_CUSTOM_EVENT': {
+      const ev = action.payload
+      return {
+        ...state,
+        customEvents: [...state.customEvents, ev],
+        rsvps: { ...state.rsvps, [ev.id]: true },
+      }
+    }
 
     case 'RESTORE_STATE': {
       // Remote wins for progress; local wins for preferences. googleUser always stays local.
