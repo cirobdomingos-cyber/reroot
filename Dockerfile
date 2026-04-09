@@ -1,6 +1,14 @@
 # Stage 1: Build React frontend
 FROM node:20-slim AS frontend
 
+# Declare build-time variables so Railway injects them during `npm run build`.
+# VITE_ vars are baked into the JS bundle by Vite — they must be present at
+# build time, not runtime.
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_API_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_API_URL=$VITE_API_URL
+
 WORKDIR /build
 COPY package.json package-lock.json* ./
 RUN npm ci
