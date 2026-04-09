@@ -59,6 +59,7 @@ function normalizeBackendEvent(ev) {
     cohortGoing: ev.cohortGoing || [],
     price: ev.price,
     priceTier: ev.priceTier,
+    kidsWelcome: ev.kidsWelcome ?? false,
     hasFood: ev.hasFood,
     isLowPressure: ev.isLowPressure,
     attendeesConfirmed: ev.attendeesConfirmed,
@@ -265,6 +266,28 @@ export async function trackEvent(eventName, properties = {}) {
   } catch {
     // Swallow all errors — analytics must never break the product
   }
+}
+
+// ── Event attendees API ───────────────────────────────────
+
+/**
+ * Fetch attendees for a past event (post-event "People you met" flow).
+ * Returns array of { google_id, name, picture, is_friend, friend_code }.
+ * Graceful fallback: returns empty array if backend is unavailable.
+ */
+export async function fetchEventAttendees(eventId, googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/events/${encodeURIComponent(eventId)}/attendees?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      return data.attendees ?? []
+    }
+  } catch {
+    // Backend unavailable — silently return empty
+  }
+  return []
 }
 
 // ── Friends API ────────────────────────────────────────────
