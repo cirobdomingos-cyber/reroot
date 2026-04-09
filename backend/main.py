@@ -10,6 +10,7 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -187,6 +188,125 @@ def save_user_state_endpoint(req: UserStateSaveRequest):
     """Upsert app state for a Google account."""
     db.upsert_user_state(req.google_id, req.state)
     return {"ok": True}
+
+
+# ── RSVPs ──────────────────────────────────────────────────
+
+class RsvpUpsertRequest(BaseModel):
+    google_id: str
+    event_id: str
+    event_name: str
+    event_venue: str = ""
+    event_date: str = ""
+    event_url: str = ""
+
+
+@app.post("/rsvp")
+def rsvp_upsert(req: RsvpUpsertRequest):
+    """Record that a user is going to an event (normalized, queryable)."""
+    db.upsert_rsvp(
+        google_id=req.google_id,
+        event_id=req.event_id,
+        event_name=req.event_name,
+        event_venue=req.event_venue,
+        event_date=req.event_date,
+        event_url=req.event_url,
+    )
+    return {"ok": True}
+
+
+@app.delete("/rsvp/{event_id}")
+def rsvp_delete(event_id: str, google_id: str):
+    """Remove an RSVP for the given user/event pair."""
+    db.delete_rsvp(google_id=google_id, event_id=event_id)
+    return {"ok": True}
+
+
+# ── Friends ────────────────────────────────────────────────
+
+class FriendAddRequest(BaseModel):
+    google_id: str
+    code: str
+
+
+@app.get("/friends/my-code")
+def friends_my_code(google_id: str):
+    """Return the deterministic invite code for this user."""
+    return {"code": db.get_friend_code(google_id)}
+
+
+@app.post("/friends/add")
+def friends_add(req: FriendAddRequest):
+    """
+    Attempt to add a friendship using an invite code.
+    Returns status 'ok' | 'self' | 'already_friends' | 'not_found'
+    and, on success, the friend's display name.
+    """
+    result = db.upsert_friendship(
+        requester_google_id=req.google_id,
+        code=req.code,
+    )
+    if result["status"] == "ok":
+        # Resolve friend name for the confirmation message
+        friend_id = db._code_to_google_id(req.code)
+        if friend_id:
+            state = db.get_user_state(friend_id)
+            if state:
+                result["friend_name"] = state.get("userName") or friend_id
+    return result
+
+
+@app.get("/friends")
+def friends_list(google_id: str):
+    """Return all accepted friends with their profile info."""
+    friends = db.get_friends(google_id)
+    return {"friends": friends}
+
+
+@app.get("/friends/feed")
+def friends_feed(google_id: str):
+    """
+    Return upcoming events that accepted friends have RSVPed to,
+    grouped by event, each with a list of friends going.
+    Only includes events with event_date >= today.
+    """
+    friends = db.get_friends(google_id)
+    if not friends:
+        return {"events": []}
+
+    friend_ids = [f["google_id"] for f in friends]
+    friend_map = {f["google_id"]: f for f in friends}
+
+    rsvps = db.get_rsvps_for_users(friend_ids)
+    today = date.today().isoformat()
+
+    # Group by event_id, filter to future events
+    grouped: dict[str, dict] = {}
+    for rsvp in rsvps:
+        if rsvp["event_date"] and rsvp["event_date"] < today:
+            continue
+        eid = rsvp["event_id"]
+        if eid not in grouped:
+            grouped[eid] = {
+                "event_id": eid,
+                "event_name": rsvp["event_name"],
+                "event_venue": rsvp["event_venue"],
+                "event_date": rsvp["event_date"],
+                "event_url": rsvp["event_url"],
+                "friends_going": [],
+            }
+        friend_info = friend_map.get(rsvp["google_id"], {})
+        grouped[eid]["friends_going"].append({
+            "name": friend_info.get("name", rsvp["google_id"]),
+            "picture": friend_info.get("picture", ""),
+        })
+
+    # Sort by event_date ascending, nulls last
+    events = sorted(
+        grouped.values(),
+        key=lambda e: e["event_date"] or "9999-99-99",
+    )
+    return {"events": events}
 
 
 # ── Google Places ──

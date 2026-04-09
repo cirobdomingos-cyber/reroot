@@ -173,6 +173,58 @@ export async function saveUserState(googleId, state) {
   }
 }
 
+/**
+ * Sync an RSVP action to the backend.
+ * Fire-and-forget — never throws, never blocks the UI.
+ *
+ * isRsvped=true  → POST /rsvp   (user just RSVPd)
+ * isRsvped=false → DELETE /rsvp/{event_id}  (user un-RSVPd)
+ */
+export async function syncRsvp(googleId, event, isRsvped) {
+  try {
+    if (isRsvped) {
+      await fetch(`${BASE_URL}/rsvp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          google_id: googleId,
+          event_id: event.id,
+          event_name: event.name,
+          event_venue: event.venue,
+          event_date: event.date,
+          event_url: event.url ?? null,
+        }),
+      })
+    } else {
+      await fetch(
+        `${BASE_URL}/rsvp/${encodeURIComponent(event.id)}?google_id=${encodeURIComponent(googleId)}`,
+        { method: 'DELETE' },
+      )
+    }
+  } catch {
+    // Backend unavailable — local state is the source of truth
+  }
+}
+
+/**
+ * Fetch the friends social feed for a given user.
+ * Returns an array of events (possibly empty) each with a friends_going list.
+ */
+export async function fetchFriendsFeed(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/feed?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      return data.events ?? []
+    }
+  } catch {
+    // Backend unavailable — silently return empty
+  }
+  return []
+}
+
 export async function triggerRefresh() {
   const res = await fetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
   if (!res.ok) throw new Error('Refresh falhou')
@@ -213,6 +265,46 @@ export async function trackEvent(eventName, properties = {}) {
   } catch {
     // Swallow all errors — analytics must never break the product
   }
+}
+
+// ── Friends API ────────────────────────────────────────────
+
+export async function getMyFriendCode(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/my-code?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) return (await res.json()).code
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+export async function addFriend(googleId, code) {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/friends/add`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, code }),
+    })
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+export async function getFriends(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) return (await res.json()).friends
+  } catch {
+    // Backend unavailable
+  }
+  return []
 }
 
 /**

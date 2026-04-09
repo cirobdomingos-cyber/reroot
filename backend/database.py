@@ -2,6 +2,7 @@
 SQLite simples com TTL. Sem ORM — sqlite3 puro é suficiente aqui.
 Grain: um evento enriquecido por (source, external_id).
 """
+import hashlib
 import sqlite3
 import json
 from datetime import datetime, timezone
@@ -65,6 +66,28 @@ def init_db():
                 google_id   TEXT PRIMARY KEY,
                 state_json  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS rsvps (
+                google_id    TEXT NOT NULL,
+                event_id     TEXT NOT NULL,
+                event_name   TEXT NOT NULL,
+                event_venue  TEXT NOT NULL DEFAULT '',
+                event_date   TEXT NOT NULL DEFAULT '',
+                event_url    TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (google_id, event_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS friendships (
+                user_a       TEXT NOT NULL,
+                user_b       TEXT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'pending',
+                initiated_by TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (user_a, user_b)
             )
         """)
         conn.commit()
@@ -226,3 +249,185 @@ def log_refresh_finish(log_id: int, events_new: int, events_updated: int, error:
             WHERE id = ?
         """, (datetime.now().isoformat(), events_new, events_updated, error, log_id))
         conn.commit()
+
+
+# ── RSVPs ──────────────────────────────────────────────────
+
+def upsert_rsvp(
+    google_id: str,
+    event_id: str,
+    event_name: str,
+    event_venue: str,
+    event_date: str,
+    event_url: str,
+) -> None:
+    """Insert or replace a normalized RSVP row."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO rsvps (google_id, event_id, event_name, event_venue, event_date, event_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(google_id, event_id) DO UPDATE SET
+                event_name  = excluded.event_name,
+                event_venue = excluded.event_venue,
+                event_date  = excluded.event_date,
+                event_url   = excluded.event_url
+            """,
+            (google_id, event_id, event_name, event_venue, event_date, event_url, now),
+        )
+        conn.commit()
+
+
+def delete_rsvp(google_id: str, event_id: str) -> None:
+    """Remove an RSVP for a user/event pair."""
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM rsvps WHERE google_id = ? AND event_id = ?",
+            (google_id, event_id),
+        )
+        conn.commit()
+
+
+def get_rsvps_for_user(google_id: str) -> list[dict]:
+    """Return all RSVPs for a single user."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT event_id, event_name, event_venue, event_date, event_url, created_at "
+            "FROM rsvps WHERE google_id = ? ORDER BY event_date ASC",
+            (google_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_rsvps_for_users(google_ids: list[str]) -> list[dict]:
+    """Batch-fetch RSVPs for multiple users (friend feed query)."""
+    if not google_ids:
+        return []
+    placeholders = ",".join("?" * len(google_ids))
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT google_id, event_id, event_name, event_venue, event_date, event_url, created_at "
+            f"FROM rsvps WHERE google_id IN ({placeholders}) ORDER BY event_date ASC",
+            google_ids,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Friends ────────────────────────────────────────────────
+
+def get_friend_code(google_id: str) -> str:
+    """Deterministic invite code: first 8 hex chars of sha256(google_id), uppercased."""
+    return hashlib.sha256(google_id.encode()).hexdigest()[:8].upper()
+
+
+def _code_to_google_id(code: str) -> Optional[str]:
+    """
+    Reverse-look up which google_id maps to a given friend code.
+    Since the mapping is deterministic (sha256 prefix), we scan known users.
+    """
+    with get_conn() as conn:
+        rows = conn.execute("SELECT google_id FROM user_states").fetchall()
+    for row in rows:
+        if get_friend_code(row["google_id"]) == code.upper():
+            return row["google_id"]
+    return None
+
+
+def upsert_friendship(requester_google_id: str, code: str) -> dict:
+    """
+    Create a pending friendship from requester to the user identified by code.
+
+    Returns:
+        {'status': 'ok'}             — friendship row inserted (pending)
+        {'status': 'self'}           — code resolves to the requester themselves
+        {'status': 'already_friends'}— row already exists (any status)
+        {'status': 'not_found'}      — code does not match any known user
+    """
+    target_id = _code_to_google_id(code)
+    if target_id is None:
+        return {"status": "not_found"}
+    if target_id == requester_google_id:
+        return {"status": "self"}
+
+    # Canonical ordering: user_a < user_b alphabetically
+    user_a, user_b = sorted([requester_google_id, target_id])
+
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT status FROM friendships WHERE user_a = ? AND user_b = ?",
+            (user_a, user_b),
+        ).fetchone()
+        if existing:
+            return {"status": "already_friends"}
+        conn.execute(
+            """
+            INSERT INTO friendships (user_a, user_b, status, initiated_by, created_at)
+            VALUES (?, ?, 'pending', ?, ?)
+            """,
+            (user_a, user_b, requester_google_id, now),
+        )
+        conn.commit()
+    return {"status": "ok"}
+
+
+def accept_friendship(google_id: str, friend_google_id: str) -> bool:
+    """
+    Flip a pending friendship to accepted.
+    Only the non-initiating party should call this.
+    Returns True if a row was updated, False if not found.
+    """
+    user_a, user_b = sorted([google_id, friend_google_id])
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE friendships SET status = 'accepted'
+            WHERE user_a = ? AND user_b = ? AND status = 'pending'
+            """,
+            (user_a, user_b),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_friends(google_id: str) -> list[dict]:
+    """
+    Return all accepted friends of google_id, enriched with name/picture
+    from their user_states blob.
+
+    Shape: [{ google_id, name, picture, status }]
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT user_a, user_b, status FROM friendships
+            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            """,
+            (google_id, google_id),
+        ).fetchall()
+
+    friends = []
+    with get_conn() as conn:
+        for row in rows:
+            friend_id = row["user_b"] if row["user_a"] == google_id else row["user_a"]
+            state_row = conn.execute(
+                "SELECT state_json FROM user_states WHERE google_id = ?",
+                (friend_id,),
+            ).fetchone()
+            name = friend_id
+            picture = ""
+            if state_row:
+                try:
+                    state = json.loads(state_row["state_json"])
+                    name = state.get("userName") or friend_id
+                    picture = (state.get("googleUser") or {}).get("picture", "")
+                except Exception:
+                    pass
+            friends.append({
+                "google_id": friend_id,
+                "name": name,
+                "picture": picture,
+                "status": row["status"],
+            })
+    return friends
