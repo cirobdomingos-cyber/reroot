@@ -132,10 +132,12 @@ export default function Home() {
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
 
-  // Post-event reconnect nudge: any RSVPd this-week/this-weekend event (prompt to see attendees)
+  // Post-event reconnect nudge: only for RSVPd events that have already started/passed
+  const now = Date.now()
   const reconnectEvent = EVENTS.find(ev =>
     state.rsvps[ev.id] &&
-    (ev.dateTag === 'this_week' || ev.dateTag === 'this_weekend')
+    ev.dateStart &&
+    new Date(ev.dateStart).getTime() <= now
   )
 
   // Pick 3 random-ish activities for "Ideias" section (rotate by week)
