@@ -502,6 +502,16 @@ async def companion_chat(req: CompanionRequest):
 
 
 # ── Static files + SPA fallback ──
+# Digital Asset Links — required for TWA (Play Store) domain verification.
+# Served explicitly because starlette StaticFiles may reject dotfile directories.
+@app.get("/.well-known/assetlinks.json")
+async def asset_links():
+    asset_links_path = STATIC_DIR / ".well-known" / "assetlinks.json"
+    if asset_links_path.is_file():
+        return FileResponse(asset_links_path, media_type="application/json")
+    return FileResponse(Path(__file__).parent.parent / "public" / ".well-known" / "assetlinks.json", media_type="application/json")
+
+
 # Must be registered AFTER all API routes so /events, /health etc. take priority
 
 if STATIC_DIR.exists():
