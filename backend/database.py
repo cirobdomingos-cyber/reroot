@@ -90,6 +90,14 @@ def init_db():
                 PRIMARY KEY (user_a, user_b)
             )
         """)
+        # One-shot migration: flip any legacy 'pending' friendships to 'accepted'.
+        # Context: an earlier bug created rows with status='pending' and there was
+        # never an accept endpoint, so friendships were invisible to both users.
+        # This normalises historical data on startup; it's a no-op once all rows
+        # are already accepted, so it's safe to ship permanently.
+        conn.execute(
+            "UPDATE friendships SET status = 'accepted' WHERE status = 'pending'"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS submitted_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
