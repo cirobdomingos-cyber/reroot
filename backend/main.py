@@ -252,7 +252,7 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
     all_places.sort(key=lambda p: p["attendeesConfirmed"], reverse=True)
     top = all_places[:limit]
 
-    return {"places": top, "total": len(all_places), "type": type, "debug_statuses": google_statuses}
+    return {"places": top, "total": len(all_places), "type": type}
 
 
 def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
