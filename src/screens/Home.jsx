@@ -140,8 +140,18 @@ export default function Home() {
     new Date(ev.dateStart).getTime() <= now
   )
 
-  // Pick 3 random-ish activities for "Ideias" section (rotate by week)
-  const activitySlice = ACTIVITIES.slice((currentWeek - 1) % 3, ((currentWeek - 1) % 3) + 3)
+  // Profile-sorted activity slice: profile-matched activities first, then rotate by week.
+  // For activityFirst profiles (e.g. gentle), this ensures the most suitable
+  // solo-friendly activities always appear before the user is pushed toward group events.
+  const activitySlice = (() => {
+    if (!profile) return ACTIVITIES.slice(0, 3)
+    const matched = ACTIVITIES.filter(a => a.profiles?.includes(profile.id))
+    const rest = ACTIVITIES.filter(a => !a.profiles?.includes(profile.id))
+    const sorted = [...matched, ...rest]
+    // Circular rotation by week so the selection refreshes each week
+    const start = (currentWeek - 1) % sorted.length
+    return [...sorted, ...sorted].slice(start, start + 3)
+  })()
 
   // Month-end card: show in first 10 days of the month if user joined over a week ago
   const joinedOverAWeek = state.joinedAt && (Date.now() - state.joinedAt) > 7 * 24 * 60 * 60 * 1000
@@ -809,7 +819,7 @@ export default function Home() {
       {/* Activity ideas section */}
       <div className="section-label">{t.home_activities_label}</div>
       <div style={{ fontSize: 11, color: 'var(--charcoal-light)', margin: '-6px 16px 10px', lineHeight: 1.4 }}>
-        {t.home_activities_sub}
+        {profile?.activityFirst ? t.home_activities_sub_first : t.home_activities_sub}
       </div>
       {activitySlice.map(act => (
         <div key={act.id} style={{ margin: '0 16px 10px' }}>

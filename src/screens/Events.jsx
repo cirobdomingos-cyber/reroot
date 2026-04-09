@@ -31,6 +31,28 @@ function getSubtype(ev) {
   return ev.icon === '☕' ? 'cafe' : 'bar'
 }
 
+// Some scraped descriptions arrive as escaped HTML (e.g. Sympla returns
+// `&lt;p&gt;...&lt;/p&gt;`). Decode entities up to twice (for double-escaping),
+// strip tags, collapse whitespace. Pure text out — safe to render directly.
+function cleanDescription(raw) {
+  if (!raw || typeof raw !== 'string') return ''
+  const decode = s => s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+  let text = decode(raw)
+  if (/&(lt|gt|amp|quot|#\d+);/.test(text)) text = decode(text)
+  text = text.replace(/<br\s*\/?>/gi, '\n')
+  text = text.replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+  text = text.replace(/<[^>]+>/g, '')
+  text = text.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim()
+  return text
+}
+
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
 function EventCardSkeleton() {
@@ -71,6 +93,42 @@ function VenueSkeletonRow() {
   )
 }
 
+// ── Profile-based event sorting ─────────────────────────────────────────────
+// Returns events sorted so those in priorityCategories appear first.
+// activityFirst profiles bump 'active' and 'bars_cafes' to the front of the
+// priority order — these users benefit from a concrete thing-to-do, not
+// open-ended socialising.
+function sortByProfile(events, profile) {
+  if (!profile) return events
+  let priorities = [...profile.priorityCategories]
+  if (profile.activityFirst) {
+    const activityCats = priorities.filter(c => c === 'active' || c === 'bars_cafes')
+    const rest = priorities.filter(c => c !== 'active' && c !== 'bars_cafes')
+    priorities = [...activityCats, ...rest]
+  }
+  return [...events].sort((a, b) => {
+    const aRank = priorities.indexOf(a.category)
+    const bRank = priorities.indexOf(b.category)
+    const aNorm = aRank === -1 ? priorities.length : aRank
+    const bNorm = bRank === -1 ? priorities.length : bRank
+    return aNorm - bNorm
+  })
+}
+
+// Returns the default category tab for a given profile.
+// activityFirst profiles start on an activity-style category rather than
+// quiet_social — the structure of an activity is their lower-pressure entry point.
+function getDefaultFilter(profile) {
+  if (!profile) return 'all'
+  if (profile.activityFirst) {
+    const activityCat = profile.priorityCategories.find(
+      c => c === 'active' || c === 'bars_cafes'
+    )
+    return activityCat ?? profile.priorityCategories[0]
+  }
+  return profile.priorityCategories[0]
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function Events() {
@@ -78,7 +136,7 @@ export default function Events() {
   const location = useLocation()
   const t = useT()
   const profile = getProfile(state.userSituation)
-  const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
+  const defaultFilter = getDefaultFilter(profile)
 
   const [activeFilter, setActiveFilter]     = useState(defaultFilter)
   const [dateFilter, setDateFilter]         = useState('all')
@@ -182,6 +240,11 @@ export default function Events() {
   // Hide AI-curated suggestions
   if (hideCurated) {
     filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
+  }
+  // Profile-based sort — only applied on the 'all' tab so per-category tabs
+  // are unaffected; also skipped when user is searching to preserve relevance order.
+  if (activeFilter === 'all' && !searchQuery.trim() && profile) {
+    filteredEvents = sortByProfile(filteredEvents, profile)
   }
 
   function getMemberCount(ev) {
@@ -421,6 +484,19 @@ export default function Events() {
         isVenueMode
           ? <>{[0,1,2,3,4].map(i => <VenueSkeletonRow key={i} />)}</>
           : <>{[0,1,2,3,4].map(i => <EventCardSkeleton key={i} />)}</>
+      )}
+
+      {/* ── Profile section header (only on 'all' tab) ── */}
+      {!loading && activeFilter === 'all' && profile && filteredEvents.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 16px 6px',
+        }}>
+          <span style={{ fontSize: 11, color: 'var(--terra)', fontWeight: 700 }}>
+            ✦ {state.language === 'en' ? 'Picked for your profile' : 'Escolhido para o seu perfil'}
+          </span>
+          <span style={{ fontSize: 20 }}>{profile.emoji}</span>
+        </div>
       )}
 
       {/* ── List ── */}
@@ -917,7 +993,12 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         )}
 
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
-          📍 {ev.venue}<br/>
+          📍 {ev.venue}{ev.city && !ev.venue?.includes(ev.city) ? ` · ${ev.city}` : ''}<br/>
+          {ev.venueAddress && (
+            <span style={{ marginLeft: 18, fontSize: 12, color: 'var(--charcoal-light)' }}>
+              {ev.venueAddress}<br/>
+            </span>
+          )}
           {isVenue
             ? `🕐 ${t.events_venue_open}`
             : `🗓 ${ev.date} · ${ev.duration || ev.time}`
@@ -939,11 +1020,36 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           )}
         </div>
 
-        {ev.description && (
-          <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16 }}>
-            {ev.description}
-          </div>
-        )}
+        {(() => {
+          const desc = cleanDescription(ev.description)
+          return desc ? (
+            <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16, whiteSpace: 'pre-line' }}>
+              {desc}
+            </div>
+          ) : null
+        })()}
+
+        {/* Source link — prominent so users can verify on the original site */}
+        {ev.url && !isVenue && (() => {
+          const src = ev.source && SOURCE_CONFIG[ev.source]
+          const label = src ? `Ver no ${src.label} →` : t.events_view_original
+          return (
+            <a
+              href={ev.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 10, marginBottom: 16,
+                background: 'var(--sage-pale)', color: 'var(--sage)',
+                fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                border: '1px solid var(--sage)',
+              }}
+            >
+              🔗 {label}
+            </a>
+          )
+        })()}
 
         {ev.rerootReason && (
           <div style={{
@@ -1028,14 +1134,15 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           </button>
         )}
 
-        {ev.url && (
+        {/* Venues keep the Google Maps link at the bottom; non-venue source link is shown above the description. */}
+        {ev.url && isVenue && (
           <a
             href={ev.url}
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--charcoal-light)', textDecoration: 'underline' }}
           >
-            {isVenue ? '📍 Ver no Google Maps →' : t.events_view_original}
+            📍 Ver no Google Maps →
           </a>
         )}
       </div>

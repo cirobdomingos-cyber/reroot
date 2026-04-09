@@ -10,48 +10,50 @@ export function computeCurrentWeek(joinedAt) {
 }
 
 // ── Profile system ─────────────────────────────────────────
+// Profiles describe HOW someone wants to reconnect, not WHY they disconnected.
+// This makes them universal — no life event required to identify with one.
 export const PROFILES = {
-  heartbroken: {
-    id: 'heartbroken', emoji: '💔',
+  gentle: {
+    id: 'gentle', emoji: '🌿',
     prescriptionIntensity: 1,
     priorityCategories: ['quiet_social', 'creative'],
-    activityFirst: false,
-  },
-  transplant: {
-    id: 'transplant', emoji: '📦',
-    prescriptionIntensity: 2,
-    priorityCategories: ['community', 'active', 'bars_cafes'],
-    activityFirst: false,
-  },
-  burnout: {
-    id: 'burnout', emoji: '🔋',
-    prescriptionIntensity: 1,
-    priorityCategories: ['quiet_social', 'active'],
     activityFirst: true,
   },
-  remote: {
-    id: 'remote', emoji: '💻',
-    prescriptionIntensity: 1,
-    priorityCategories: ['bars_cafes', 'quiet_social'],
-    activityFirst: true,
-  },
-  reconnector: {
-    id: 'reconnector', emoji: '🌀',
+  explorer: {
+    id: 'explorer', emoji: '🧭',
     prescriptionIntensity: 2,
     priorityCategories: ['community', 'active', 'creative'],
     activityFirst: false,
   },
-  introvert: {
-    id: 'introvert', emoji: '🌱',
+  builder: {
+    id: 'builder', emoji: '🤝',
+    prescriptionIntensity: 2,
+    priorityCategories: ['community', 'bars_cafes', 'quiet_social'],
+    activityFirst: false,
+  },
+  rebounder: {
+    id: 'rebounder', emoji: '⚡',
+    prescriptionIntensity: 2,
+    priorityCategories: ['active', 'community', 'bars_cafes'],
+    activityFirst: false,
+  },
+  depth: {
+    id: 'depth', emoji: '☕',
     prescriptionIntensity: 1,
     priorityCategories: ['quiet_social', 'creative'],
     activityFirst: false,
   },
-  grief: {
-    id: 'grief', emoji: '🕊️',
+  steady: {
+    id: 'steady', emoji: '📅',
     prescriptionIntensity: 1,
-    priorityCategories: ['quiet_social', 'active'],
-    activityFirst: true,
+    priorityCategories: ['quiet_social', 'community'],
+    activityFirst: false,
+  },
+  curious: {
+    id: 'curious', emoji: '🔍',
+    prescriptionIntensity: 2,
+    priorityCategories: ['creative', 'active', 'community'],
+    activityFirst: false,
   },
 }
 
@@ -101,7 +103,7 @@ const INITIAL_STATE = {
   weeksShownUp: [],             // [1, 2, 3, ...] — week numbers
 
   // User profile (from IdentityMirror steps 0+1)
-  userSituation: null,  // 'heartbroken' | 'transplant' | 'burnout' | 'remote' | 'reconnector' | 'introvert' | 'grief'
+  userSituation: null,  // 'gentle' | 'explorer' | 'builder' | 'rebounder' | 'depth' | 'steady' | 'curious'
   userGoal: null,       // 'friends' | 'partner' | 'community' | 'self'
 
   // Diagnostic seen
