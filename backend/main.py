@@ -235,11 +235,18 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
             google_statuses.append(f"{place_type}:{g_status}")
             if g_status not in ("OK", "ZERO_RESULTS"):
                 log.warning(f"Places API status={g_status} para type={place_type}: {body.get('error_message', '')}")
-            for place in body.get("results", []):
-                pid = place["place_id"]
+            raw_results = body.get("results", [])
+            google_statuses[-1] += f"({len(raw_results)} raw)"
+            for place in raw_results:
+                pid = place.get("place_id", "")
+                if not pid:
+                    continue
                 if pid not in seen_ids:
                     seen_ids.add(pid)
-                    all_places.append(_place_to_frontend(place, type, meta))
+                    try:
+                        all_places.append(_place_to_frontend(place, type, meta))
+                    except Exception as e:
+                        log.warning(f"Places parse error for {pid}: {e}")
 
     # Sort by number of ratings (popularity proxy), cap at limit
     all_places.sort(key=lambda p: p["attendeesConfirmed"], reverse=True)
