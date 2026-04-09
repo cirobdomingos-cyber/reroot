@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
-import { fetchEvents, fetchEventDetail, trackEvent } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -148,6 +148,12 @@ export default function Events() {
   async function handleRsvpToggle(ev) {
     const wasRsvped = !!state.rsvps[ev.id]
     dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+
+    // Sync to backend social layer — only when user is logged in and sharing is enabled
+    if (state.googleUser?.id && state.shareRsvps) {
+      syncRsvp(state.googleUser.id, ev, !wasRsvped)
+    }
+
     // Fire first_rsvp only on the very first RSVP the user makes
     if (!wasRsvped) {
       const existingRsvps = Object.values(state.rsvps).filter(Boolean).length

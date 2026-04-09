@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeCurrentWeek, getChapter, getProfile } from '../context/AppContext'
@@ -7,6 +7,7 @@ import { EVENTS } from '../data/events'
 import { ACTIVITIES } from '../data/activities'
 import { scheduleEventReminder } from '../lib/notifications'
 import { usePushNotifications } from '../lib/usePushNotifications'
+import { fetchFriendsFeed } from '../services/api'
 
 function getGreetingKey() {
   const h = new Date().getHours()
@@ -63,6 +64,16 @@ export default function Home() {
   const [shareCopied, setShareCopied] = useState(false)
   const [pushSuccess, setPushSuccess] = useState(false)
   const { subscribe: subscribePush, dismiss: dismissPush, loading: pushLoading } = usePushNotifications()
+
+  // Friends feed — fetched on mount when user is logged in
+  const [friendsFeed, setFriendsFeed] = useState([])
+  useEffect(() => {
+    const googleId = state.googleUser?.id
+    if (!googleId) return
+    fetchFriendsFeed(googleId).then(events => {
+      setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
+    })
+  }, [state.googleUser?.id])
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
@@ -386,6 +397,103 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      {/* Friends feed — "Amigos também vão" */}
+      {friendsFeed.length > 0 && (
+        <div style={{ margin: '0 16px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+            Amigos também vão
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {friendsFeed.map(ev => (
+              <div
+                key={ev.event_id}
+                style={{
+                  background: 'white',
+                  borderRadius: 14,
+                  border: '1px solid var(--border)',
+                  padding: '10px 13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {ev.event_name}
+                  </div>
+                  {ev.event_venue && (
+                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+                      {ev.event_venue}
+                    </div>
+                  )}
+                </div>
+                {/* Avatar circles */}
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {ev.friends_going.slice(0, 4).map((friend, i) => (
+                    <img
+                      key={friend.name + i}
+                      src={friend.picture}
+                      alt={friend.name}
+                      title={friend.name}
+                      style={{
+                        width: 26, height: 26, borderRadius: '50%',
+                        border: '2px solid white',
+                        marginLeft: i === 0 ? 0 : -8,
+                        objectFit: 'cover',
+                      }}
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                  ))}
+                  {ev.friends_going.length > 4 && (
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      border: '2px solid white',
+                      background: 'var(--sage-light)',
+                      marginLeft: -8,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700, color: 'white',
+                    }}>
+                      +{ev.friends_going.length - 4}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Social sharing privacy toggle */}
+      {state.googleUser?.id && (
+        <div style={{
+          margin: '0 16px 12px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 14px',
+          background: 'white',
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
+            Compartilhar minha agenda com amigos
+          </span>
+          <button
+            onClick={() => dispatch({ type: 'SET_SHARE_RSVPS', payload: !state.shareRsvps })}
+            style={{
+              fontSize: 14,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 6px',
+              color: state.shareRsvps ? 'var(--sage)' : 'var(--charcoal-mid)',
+              fontWeight: 700,
+            }}
+            title={state.shareRsvps ? 'Clique para desativar' : 'Clique para ativar'}
+          >
+            {state.shareRsvps ? '✓' : '✗'}
+          </button>
+        </div>
+      )}
 
       {/* Day-zero win mechanic */}
       {!state.dayZeroSaved && (

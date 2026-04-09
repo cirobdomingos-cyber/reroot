@@ -122,6 +122,9 @@ const INITIAL_STATE = {
   // Push notifications
   pushOptedIn: false,   // true once user subscribes to weekly push reminders
   pushDismissed: false, // true if user explicitly declined the prompt
+
+  // Social feed privacy toggle
+  shareRsvps: true,     // when false, RSVPs are not synced to the social backend
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -253,6 +256,9 @@ function reducer(state, action) {
 
     case 'SET_PUSH_DISMISSED':
       return { ...state, pushDismissed: true }
+
+    case 'SET_SHARE_RSVPS':
+      return { ...state, shareRsvps: action.payload }
 
     case 'RESTORE_STATE': {
       // Remote wins for progress; local wins for preferences. googleUser always stays local.
