@@ -132,8 +132,26 @@ export default function Home() {
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
 
-  // Pick 3 random-ish activities for "Ideias" section (rotate by week)
-  const activitySlice = ACTIVITIES.slice((currentWeek - 1) % 3, ((currentWeek - 1) % 3) + 3)
+  // Post-event reconnect nudge: only for RSVPd events that have already started/passed
+  const now = Date.now()
+  const reconnectEvent = EVENTS.find(ev =>
+    state.rsvps[ev.id] &&
+    ev.dateStart &&
+    new Date(ev.dateStart).getTime() <= now
+  )
+
+  // Profile-sorted activity slice: profile-matched activities first, then rotate by week.
+  // For activityFirst profiles (e.g. gentle), this ensures the most suitable
+  // solo-friendly activities always appear before the user is pushed toward group events.
+  const activitySlice = (() => {
+    if (!profile) return ACTIVITIES.slice(0, 3)
+    const matched = ACTIVITIES.filter(a => a.profiles?.includes(profile.id))
+    const rest = ACTIVITIES.filter(a => !a.profiles?.includes(profile.id))
+    const sorted = [...matched, ...rest]
+    // Circular rotation by week so the selection refreshes each week
+    const start = (currentWeek - 1) % sorted.length
+    return [...sorted, ...sorted].slice(start, start + 3)
+  })()
 
   // Month-end card: show in first 10 days of the month if user joined over a week ago
   const joinedOverAWeek = state.joinedAt && (Date.now() - state.joinedAt) > 7 * 24 * 60 * 60 * 1000
@@ -400,7 +418,8 @@ export default function Home() {
       </div>
 
       {/* Friends feed — "Amigos também vão" */}
-      {friendsFeed.length > 0 && (
+      {/* Only shown when user has NOT disabled "show in friend suggestions" privacy toggle */}
+      {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
         <div style={{ margin: '0 16px 12px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
             Amigos também vão
@@ -493,6 +512,33 @@ export default function Home() {
           >
             {(state.privacy?.shareRsvps ?? state.shareRsvps) ? '✓' : '✗'}
           </button>
+        </div>
+      )}
+
+      {/* Post-event reconnect card — surfaces PostEventAttendees to users who don't tap back into past events */}
+      {reconnectEvent && (
+        <div
+          style={{
+            margin: '0 16px 12px',
+            background: 'var(--sage-pale)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            border: '1px solid rgba(122,158,126,0.25)',
+            cursor: 'pointer',
+          }}
+          onClick={() => navigate('/events', { state: { openEventId: reconnectEvent.id } })}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 4 }}>
+            {state.language === 'pt' ? '🤝 Você foi ao evento?' : '🤝 Did you attend?'}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+            {reconnectEvent.name}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+            {state.language === 'pt'
+              ? 'Veja quem esteve lá e conecte-se com quem você conheceu. →'
+              : 'See who was there and connect with people you met. →'}
+          </div>
         </div>
       )}
 
@@ -773,7 +819,7 @@ export default function Home() {
       {/* Activity ideas section */}
       <div className="section-label">{t.home_activities_label}</div>
       <div style={{ fontSize: 11, color: 'var(--charcoal-light)', margin: '-6px 16px 10px', lineHeight: 1.4 }}>
-        {t.home_activities_sub}
+        {profile?.activityFirst ? t.home_activities_sub_first : t.home_activities_sub}
       </div>
       {activitySlice.map(act => (
         <div key={act.id} style={{ margin: '0 16px 10px' }}>

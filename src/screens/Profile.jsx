@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeBadges, computeCurrentWeek, getChapter, CHAPTERS } from '../context/AppContext'
@@ -72,6 +72,32 @@ export default function Profile() {
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
 
+  // Badge celebration — detect newly earned badges and show overlay
+  const earnedBadgeIds = badges.filter(b => b.earned).map(b => b.id).join(',')
+  const prevEarnedRef = useRef(null)
+  const [celebratingBadge, setCelebratingBadge] = useState(null)
+
+  useEffect(() => {
+    if (prevEarnedRef.current === null) {
+      // First render — initialize without firing celebration
+      prevEarnedRef.current = earnedBadgeIds
+      return
+    }
+    if (earnedBadgeIds !== prevEarnedRef.current) {
+      const prevIds = prevEarnedRef.current.split(',').filter(Boolean)
+      const currentIds = earnedBadgeIds.split(',').filter(Boolean)
+      const newlyEarned = currentIds.filter(id => !prevIds.includes(id))
+      prevEarnedRef.current = earnedBadgeIds
+      if (newlyEarned.length > 0) {
+        const badge = badges.find(b => b.id === newlyEarned[0])
+        if (badge) {
+          setCelebratingBadge(badge)
+          setTimeout(() => setCelebratingBadge(null), 6000)
+        }
+      }
+    }
+  }, [earnedBadgeIds]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function saveName() {
     if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
     setEditingName(false)
@@ -109,6 +135,68 @@ export default function Profile() {
 
   return (
     <div>
+      {/* Badge earned celebration overlay */}
+      <AnimatePresence>
+        {celebratingBadge && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+              zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+            onClick={() => setCelebratingBadge(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.7, y: 24 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 280 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'white', borderRadius: 24, padding: '32px 28px',
+                textAlign: 'center', maxWidth: 300, margin: '0 20px',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
+              }}
+            >
+              <div style={{ fontSize: 60, marginBottom: 12 }}>{celebratingBadge.icon}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, color: 'var(--sage)', marginBottom: 4 }}>
+                {state.language === 'pt' ? 'Conquista desbloqueada!' : 'Badge unlocked!'}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 8 }}>{celebratingBadge.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 20 }}>{celebratingBadge.desc}</div>
+              <button
+                onClick={async () => {
+                  const text = state.language === 'pt'
+                    ? `Conquistei o badge "${celebratingBadge.name}" no Reroot! ${celebratingBadge.icon}`
+                    : `Unlocked the "${celebratingBadge.name}" badge on Reroot! ${celebratingBadge.icon}`
+                  if (navigator.share) {
+                    try { await navigator.share({ title: 'Reroot', text }) } catch {}
+                  } else {
+                    navigator.clipboard.writeText(text).catch(() => {})
+                  }
+                  setCelebratingBadge(null)
+                }}
+                style={{
+                  width: '100%', padding: 13, borderRadius: 14, border: 'none',
+                  background: 'var(--sage)', color: 'white', fontSize: 14,
+                  fontWeight: 700, cursor: 'pointer', marginBottom: 8,
+                }}
+              >
+                {state.language === 'pt' ? 'Compartilhar conquista →' : 'Share achievement →'}
+              </button>
+              <button
+                onClick={() => setCelebratingBadge(null)}
+                style={{ fontSize: 12, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                {state.language === 'pt' ? 'Fechar' : 'Close'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Hero */}
       <div style={{
         background: 'linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%)',
@@ -293,8 +381,10 @@ export default function Profile() {
                       WhatsApp
                     </button>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
-                    Compartilhe com amigos para conectar
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)', lineHeight: 1.5 }}>
+                    {state.language === 'pt'
+                      ? 'Troque esse código com pessoas que você conheceu nos eventos para se conectar aqui no app.'
+                      : 'Share this code with people you meet at events to connect here in the app.'}
                   </div>
                 </>
               ) : (

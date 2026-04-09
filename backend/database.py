@@ -90,7 +90,73 @@ def init_db():
                 PRIMARY KEY (user_a, user_b)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS submitted_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL,
+                description     TEXT NOT NULL DEFAULT '',
+                venue_name      TEXT NOT NULL DEFAULT '',
+                venue_address   TEXT NOT NULL DEFAULT '',
+                city            TEXT NOT NULL DEFAULT 'Curitiba',
+                date_start      TEXT NOT NULL,
+                price_min       REAL NOT NULL DEFAULT 0.0,
+                price_max       REAL NOT NULL DEFAULT 0.0,
+                url             TEXT NOT NULL DEFAULT '',
+                submitted_by    TEXT,            -- google_id, optional
+                status          TEXT NOT NULL DEFAULT 'pending',    -- pending | enriched | rejected
+                enriched_event_id TEXT,          -- set after successful enrichment
+                created_at      TEXT NOT NULL
+            )
+        """)
         conn.commit()
+
+
+# ── Submitted events (user/partner submissions) ───────────
+
+def insert_submitted_event(
+    name: str, description: str, venue_name: str, venue_address: str,
+    city: str, date_start: str, price_min: float, price_max: float,
+    url: str, submitted_by: Optional[str] = None,
+) -> int:
+    """Record a user-submitted event. Returns the new row id."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO submitted_events
+              (name, description, venue_name, venue_address, city,
+               date_start, price_min, price_max, url, submitted_by, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (name, description, venue_name, venue_address, city,
+             date_start, price_min, price_max, url, submitted_by, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def mark_submitted_enriched(submission_id: int, enriched_event_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE submitted_events SET status='enriched', enriched_event_id=? WHERE id=?",
+            (enriched_event_id, submission_id),
+        )
+        conn.commit()
+
+
+def count_upcoming_events(city: str) -> int:
+    """Count events with date_start in the future — used for gap-fill decision."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) as cnt FROM events
+            WHERE json_extract(payload, '$.city') = ?
+              AND json_extract(payload, '$.date_start') > ?
+            """,
+            (city, now),
+        ).fetchone()
+    return row["cnt"] if row else 0
 
 
 # ── Push subscriptions ─────────────────────────────────────

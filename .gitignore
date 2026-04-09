@@ -8,3 +8,23 @@ __pycache__/
 *.pyc
 *.db
 .idea/
+
+# Android / TWA build artifacts
+.gradle/
+build/
+app/
+gradle/
+gradlew
+gradlew.bat
+build.gradle
+settings.gradle
+gradle.properties
+
+# Signing keys — NEVER commit
+*.keystore
+android.keystore
+
+# TWA generated
+twa-manifest.json
+manifest-checksum.txt
+store_icon.png

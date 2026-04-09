@@ -104,13 +104,37 @@ async def run_refresh(settings):
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Teatro Guaíra falhou: {e}")
 
+    # ── Catraca Livre (free/low-cost event aggregator — WordPress API) ──
+    from scrapers.catraca_livre import fetch_events as catraca_fetch
+    log_id = db.log_refresh_start("catraca_livre")
+    try:
+        cl_events = await catraca_fetch(anthropic_api_key=settings.anthropic_api_key, city=city)
+        all_raws.extend(cl_events)
+        db.log_refresh_finish(log_id, events_new=len(cl_events), events_updated=0)
+        log.info(f"  Catraca Livre: {len(cl_events)} eventos")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  Catraca Livre falhou: {e}")
+
+    # ── Ingresso.com (Brazil's largest ticketing platform — JSON-LD extraction) ──
+    from scrapers.ingresso import fetch_events as ingresso_fetch
+    log_id = db.log_refresh_start("ingresso")
+    try:
+        ing_events = await ingresso_fetch(city=city)
+        all_raws.extend(ing_events)
+        db.log_refresh_finish(log_id, events_new=len(ing_events), events_updated=0)
+        log.info(f"  Ingresso.com: {len(ing_events)} eventos")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  Ingresso.com falhou: {e}")
+
     if not all_raws:
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")
         return
 
     # ── Enriquecimento com Claude ──
     log.info(f"  Enriquecendo {len(all_raws)} eventos com Claude Haiku...")
-    enriched = pipeline.enrich_batch(all_raws, max_events=40)
+    enriched = pipeline.enrich_batch(all_raws, max_events=50)
 
     # ── Persistência ──
     saved = 0
@@ -120,6 +144,23 @@ async def run_refresh(settings):
             saved += 1
         except Exception as e:
             log.warning(f"  Erro ao salvar '{ev.name}': {e}")
+
+    # ── AI gap-fill: generate synthetic events when DB is sparse ──
+    upcoming = db.count_upcoming_events(city)
+    if upcoming < 15 and settings.anthropic_api_key:
+        log.info(f"  Apenas {upcoming} eventos futuros — ativando gap-fill por IA...")
+        try:
+            generated_raws = pipeline.generate_events(city=city, count=15)
+            generated_enriched = pipeline.enrich_batch(generated_raws, max_events=15)
+            for ev in generated_enriched:
+                try:
+                    db.upsert_event(ev)
+                    saved += 1
+                except Exception as e:
+                    log.warning(f"  Erro ao salvar evento gerado '{ev.name}': {e}")
+            log.info(f"  Gap-fill: {len(generated_enriched)} eventos gerados pela IA")
+        except Exception as e:
+            log.error(f"  Gap-fill por IA falhou: {e}")
 
     total = db.count_events()
     log.info(f"✅ Refresh concluído: {saved} eventos salvos ({total} total no banco)")

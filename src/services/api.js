@@ -13,6 +13,52 @@ const BASE_URL = import.meta.env.VITE_API_URL ??
   (import.meta.env.DEV ? 'http://localhost:8000' : '')
 const TIMEOUT_MS = 5000
 
+// ── Client error reporter ─────────────────────────────────
+// Fire-and-forget. Never throws. Used to surface silent failures in production.
+function getSessionId() {
+  const KEY = 'reroot_session_id'
+  let id = sessionStorage.getItem(KEY)
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+    sessionStorage.setItem(KEY, id)
+  }
+  return id
+}
+
+export function reportError(errorType, message = '', context = {}, googleId = '') {
+  try {
+    fetch(`${BASE_URL}/errors/client`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error_type: errorType,
+        message: String(message).slice(0, 500),
+        context,
+        session_id: getSessionId(),
+        google_id: googleId,
+      }),
+    }).catch(() => {}) // truly last-resort — if error reporting fails, nothing more to do
+  } catch {
+    // Error reporting must never break the app
+  }
+}
+
+// Sync status — observable by UI components
+let _syncListeners = []
+let _lastSyncStatus = { ok: true, lastSavedAt: null, lastError: null, retrying: false }
+
+export function getSyncStatus() { return _lastSyncStatus }
+
+export function onSyncStatusChange(fn) {
+  _syncListeners.push(fn)
+  return () => { _syncListeners = _syncListeners.filter(l => l !== fn) }
+}
+
+function setSyncStatus(update) {
+  _lastSyncStatus = { ..._lastSyncStatus, ...update }
+  _syncListeners.forEach(fn => fn(_lastSyncStatus))
+}
+
 async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), TIMEOUT_MS)
@@ -71,6 +117,10 @@ function normalizeBackendEvent(ev) {
     isReal: true,
     dateStart: ev.dateStart,
     dateTag: computeDateTag(ev.dateStart),
+    // Detail-only fields — present when fetched via /events/{id}
+    venueAddress: ev.venueAddress,
+    city: ev.city,
+    imageUrl: ev.imageUrl,
   }
 }
 
@@ -152,26 +202,64 @@ export async function checkBackendHealth() {
   }
 }
 
+// Track whether a remote load is in-flight so saves don't race against it
+let _loadInFlight = false
+export function isLoadInFlight() { return _loadInFlight }
+
 export async function loadUserState(googleId) {
+  _loadInFlight = true
   try {
     const res = await fetchWithTimeout(`${BASE_URL}/user/state/${encodeURIComponent(googleId)}`)
-    if (res.ok) return (await res.json()).state
-  } catch {
-    // Backend unavailable — local state is the source of truth
+    if (res.ok) {
+      const data = await res.json()
+      return data.state
+    }
+    if (res.status === 404) return null // no remote state yet — not an error
+    reportError('sync_load_failed', `HTTP ${res.status}`, { googleId: googleId.slice(0, 20) }, googleId)
+  } catch (err) {
+    reportError('sync_load_failed', err.message, { googleId: googleId.slice(0, 20) }, googleId)
+  } finally {
+    _loadInFlight = false
   }
   return null
 }
 
+const MAX_SAVE_RETRIES = 3
+
 export async function saveUserState(googleId, state) {
-  try {
-    await fetchWithTimeout(`${BASE_URL}/user/state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ google_id: googleId, state }),
-    })
-  } catch {
-    // Backend unavailable — local state is the source of truth
+  // Block saves while a remote load is in flight to prevent race conditions
+  if (_loadInFlight) return
+
+  let lastError = null
+  for (let attempt = 0; attempt < MAX_SAVE_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        setSyncStatus({ retrying: true })
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))) // exponential backoff
+      }
+      const res = await fetchWithTimeout(`${BASE_URL}/user/state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ google_id: googleId, state }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSyncStatus({ ok: true, lastSavedAt: data.saved_at || Date.now(), lastError: null, retrying: false })
+        return // success
+      }
+      lastError = `HTTP ${res.status}`
+    } catch (err) {
+      lastError = err.message
+    }
   }
+
+  // All retries exhausted — report the failure
+  setSyncStatus({ ok: false, lastError, retrying: false })
+  reportError('sync_save_failed', lastError, {
+    googleId: googleId.slice(0, 20),
+    retries: MAX_SAVE_RETRIES,
+    stateKeys: Object.keys(state).join(','),
+  }, googleId)
 }
 
 /**
@@ -183,27 +271,32 @@ export async function saveUserState(googleId, state) {
  */
 export async function syncRsvp(googleId, event, isRsvped) {
   try {
-    if (isRsvped) {
-      await fetch(`${BASE_URL}/rsvp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          google_id: googleId,
-          event_id: event.id,
-          event_name: event.name,
-          event_venue: event.venue,
-          event_date: event.date,
-          event_url: event.url ?? null,
-        }),
-      })
-    } else {
-      await fetch(
-        `${BASE_URL}/rsvp/${encodeURIComponent(event.id)}?google_id=${encodeURIComponent(googleId)}`,
-        { method: 'DELETE' },
-      )
+    const res = isRsvped
+      ? await fetch(`${BASE_URL}/rsvp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            google_id: googleId,
+            event_id: event.id,
+            event_name: event.name,
+            event_venue: event.venue,
+            event_date: event.date,
+            event_url: event.url ?? null,
+          }),
+        })
+      : await fetch(
+          `${BASE_URL}/rsvp/${encodeURIComponent(event.id)}?google_id=${encodeURIComponent(googleId)}`,
+          { method: 'DELETE' },
+        )
+    if (!res.ok) {
+      reportError('rsvp_sync_failed', `HTTP ${res.status}`, {
+        eventId: event.id, action: isRsvped ? 'add' : 'remove',
+      }, googleId)
     }
-  } catch {
-    // Backend unavailable — local state is the source of truth
+  } catch (err) {
+    reportError('rsvp_sync_failed', err.message, {
+      eventId: event.id, action: isRsvped ? 'add' : 'remove',
+    }, googleId)
   }
 }
 
@@ -230,26 +323,6 @@ export async function triggerRefresh() {
   const res = await fetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
   if (!res.ok) throw new Error('Refresh falhou')
   return res.json()
-}
-
-/**
- * Onboarding funnel analytics — fire-and-forget, never throws.
- *
- * Generates a stable session ID per browser session (sessionStorage) so we can
- * count unique drop-off sessions without any user identity.
- *
- * Portfolio signal: this is the "thin client, dumb transport" pattern — the
- * frontend owns zero analytics logic beyond "did the thing happen"; all
- * aggregation lives in the backend SQL query.
- */
-function getSessionId() {
-  const KEY = 'reroot_session_id'
-  let id = sessionStorage.getItem(KEY)
-  if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
-    sessionStorage.setItem(KEY, id)
-  }
-  return id
 }
 
 export async function trackEvent(eventName, properties = {}) {

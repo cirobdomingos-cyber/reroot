@@ -122,3 +122,44 @@ export async function scheduleWeeklyCheckin() {
     })
   } catch {}
 }
+
+/**
+ * Schedule a post-event "reconnect" notification.
+ * Fires 3 hours after the event start time on native.
+ * No-op on web — the in-app reconnect card in Home.jsx handles that surface.
+ */
+export async function schedulePostEventNotification(event) {
+  const plugin = await getLocalNotifications()
+  if (!plugin) return
+  try {
+    const { display } = await plugin.checkPermissions()
+    if (display !== 'granted') return
+
+    // Calculate notification time: event dateStart + 3h (fall back to time field, then +3h from now)
+    let at
+    if (event.dateStart) {
+      at = new Date(new Date(event.dateStart).getTime() + 3 * 60 * 60 * 1000)
+    } else if (event.time) {
+      const match = event.time.match(/(\d{1,2}):(\d{2})/)
+      if (match) {
+        at = new Date()
+        at.setHours(parseInt(match[1], 10) + 3, parseInt(match[2], 10), 0, 0)
+        if (at < new Date()) at = new Date(Date.now() + 3 * 60 * 60 * 1000)
+      } else {
+        at = new Date(Date.now() + 3 * 60 * 60 * 1000)
+      }
+    } else {
+      at = new Date(Date.now() + 3 * 60 * 60 * 1000)
+    }
+
+    await plugin.schedule({
+      notifications: [{
+        id: strHash(event.id + '_post'),
+        title: '🤝 Você conheceu alguém hoje?',
+        body: `${event.name} — veja quem esteve lá e conecte-se.`,
+        schedule: { at },
+        smallIcon: 'ic_stat_icon_config_sample',
+      }],
+    })
+  } catch {}
+}

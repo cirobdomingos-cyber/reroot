@@ -5,6 +5,7 @@ import { useApp } from './context/AppContext'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
 import CompanionChat from './components/CompanionChat'
+import SyncStatus from './components/SyncStatus'
 import Onboarding     from './screens/Onboarding'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
@@ -135,6 +136,7 @@ export default function App() {
       )}
 
       <CompanionChat open={companionOpen} onClose={() => setCompanionOpen(false)} />
+      <SyncStatus lang={state.language} />
     </div>
   )
 }

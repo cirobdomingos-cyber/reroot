@@ -57,8 +57,14 @@ export const T = {
     filter_free:            'Grátis',
     filter_paid:            'Pago',
     filter_kids_welcome:    'Kids Welcome',
+    filter_hide_curated:    'Só reais',
+    filter_hide_curated_on: 'Sem sugestões AI',
     tag_free:               'Grátis',
     tag_kids:               '👶 Kids Welcome',
+    tag_curated:            'Sugestão AI',
+    tag_curated_long:       'Sugestão curada por AI — não é evento real',
+    tag_private:            'Meu evento',
+    tag_private_long:       'Evento privado criado por você',
 
     // ── Events ───────────────────────────────────────────
     events_title:           'Eventos',
@@ -172,11 +178,13 @@ export const T = {
       never_right: 'Nunca foi bem assim',
     },
     diag_reason_labels: {
-      burnout: 'Recuperação de burnout',
-      change: 'Grande mudança de vida',
-      anxiety: 'Ansiedade social',
-      moved: 'Nova na cidade',
-      lost: 'Perdeu o círculo social',
+      gentle:    'Com calma, no meu ritmo',
+      explorer:  'Explorando possibilidades',
+      builder:   'Construindo vínculos reais',
+      rebounder: 'Voltando ao jogo',
+      depth:     'Profundidade sobre volume',
+      steady:    'Com mais consistência',
+      curious:   'Com curiosidade, sem agenda',
     },
     diag_challenge_labels: {
       starting: 'Começar conversas',
@@ -214,13 +222,13 @@ export const T = {
     partner_steps: [
       {
         id: 'reason',
-        question: 'O que te trouxe ao Reroot?',
+        question: 'Como você prefere começar?',
         options: [
-          { id: 'burnout',  label: 'Me recuperando de burnout',             emoji: '🔋' },
-          { id: 'change',   label: 'Após uma grande mudança de vida',       emoji: '🌀' },
-          { id: 'anxiety',  label: 'Ansiedade social me travando',          emoji: '💭' },
-          { id: 'moved',    label: 'Novo na cidade',                        emoji: '📦' },
-          { id: 'lost',     label: 'Perdi meu círculo social',              emoji: '🌫️' },
+          { id: 'gentle',    label: 'Devagar — quero me acostumar antes de mergulhar', emoji: '🌿' },
+          { id: 'explorer',  label: 'Quero experimentar coisas variadas',              emoji: '🧭' },
+          { id: 'builder',   label: 'Foco em conhecer pessoas de verdade',             emoji: '🤝' },
+          { id: 'rebounder', label: 'Estou pronto — me bota em campo',                emoji: '⚡' },
+          { id: 'curious',   label: 'Sem agenda — vamos ver o que acontece',           emoji: '🔍' },
         ],
       },
       {
@@ -246,11 +254,11 @@ export const T = {
       },
     ],
     partner_messages: {
-      burnout:  'Você estava no limite — e você sabe disso. Essa consciência é exatamente por que isso funciona.',
-      change:   'Grandes transições desfazem quem pensávamos ser. Esse é na verdade o ponto de partida perfeito.',
-      anxiety:  'Ansiedade social não é um defeito. É seu sistema nervoso sendo superprotetor. Vamos trabalhar com ele, não contra.',
-      moved:    'Nova cidade, página em branco. Você não carrega o peso de velhos padrões sociais aqui — isso é uma vantagem.',
-      lost:     'Perder seu círculo não significa que você se perdeu. Significa que há espaço para construir algo mais intencional.',
+      gentle:    'Aparecer com calma já é aparecer. Vamos construir seu ritmo sem pressa.',
+      explorer:  'Você está numa fase de descoberta — e isso é exatamente o combustível certo.',
+      builder:   'Vínculos reais levam tempo e presença repetida. Esse é o plano.',
+      rebounder: 'Você tem o instinto. Só precisamos do ponto de entrada certo.',
+      curious:   'Curiosidade é o ativo mais subestimado na vida social. Você está bem equipado.',
       starting:   'Vou te introduzir em momentos estruturados — sem improvisação necessária.',
       groups:     'Começamos pequeno. Duas pessoas antes de vinte. O conforto cresce gradualmente.',
       myself:     'Os frameworks vão te ajudar a reconectar com como você realmente quer aparecer, sem precisar performar.',
@@ -264,7 +272,7 @@ export const T = {
 
     // ── Identity Mirror ───────────────────────────────────
     mirror_header:      'Antes de começar',
-    mirror_step_situation_q: 'O que te trouxe até aqui?',
+    mirror_step_situation_q: 'Como você quer se reconectar?',
     mirror_step_goal_q:      'O que você quer construir?',
     mirror_step1_q:     'Antes da pausa, sua vida social era...',
     mirror_step2_q:     'Chegando aqui hoje, você se sente...',
@@ -274,13 +282,13 @@ export const T = {
     mirror_affirmation_label: 'Seu ponto de partida',
     mirror_next_btn:    'Começar minha jornada →',
     mirror_step_situation_opts: [
-      { id: 'heartbroken',  label: 'Fim de relacionamento — perdi meu círculo junto', emoji: '💔' },
-      { id: 'transplant',   label: 'Me mudei de cidade — começo do zero',             emoji: '📦' },
-      { id: 'burnout',      label: 'Burnout — me afastei de tudo',                    emoji: '🔋' },
-      { id: 'remote',       label: 'Trabalho remoto me isolou aos poucos',             emoji: '💻' },
-      { id: 'reconnector',  label: 'Passei por algo difícil e me fechei',             emoji: '🌀' },
-      { id: 'introvert',    label: 'Nunca foi bem assim — quero mudar isso',          emoji: '🌱' },
-      { id: 'grief',        label: 'Perdi alguém importante e me afastei',            emoji: '🕊️' },
+      { id: 'gentle',    label: 'Quero voltar, mas com calma — menos é mais',              emoji: '🌿' },
+      { id: 'explorer',  label: 'Estou numa fase nova e quero descobrir o que me anima', emoji: '🧭' },
+      { id: 'builder',   label: 'Quero construir vínculos reais, não conexões rasas',   emoji: '🤝' },
+      { id: 'rebounder', label: 'Estive fora por um tempo e estou pronto pra voltar',   emoji: '⚡' },
+      { id: 'depth',     label: 'Prefiro poucas conexões, mas profundas',               emoji: '☕' },
+      { id: 'steady',    label: 'Tenho tentado, mas não consigo manter o ritmo',        emoji: '📅' },
+      { id: 'curious',   label: 'Quero experimentar coisas novas e ver onde leva',      emoji: '🔍' },
     ],
     mirror_step_goal_opts: [
       { id: 'friends',   label: 'Fazer amigos de verdade',       emoji: '🤝' },
@@ -289,13 +297,13 @@ export const T = {
       { id: 'self',      label: 'Me redescobrir antes de tudo',  emoji: '🌿' },
     ],
     mirror_situation_affirmations: {
-      heartbroken:  'Perder o círculo junto com o relacionamento é uma das rupturas mais subestimadas. Vamos reconstruir — devagar e com intenção.',
-      transplant:   'Cidade nova, página em branco. Você não carrega o peso de velhos padrões aqui — isso é uma vantagem real.',
-      burnout:      'A vida social que você tinha pode ter sido parte do problema. Vamos construir algo diferente — menor, mais intencional.',
-      remote:       'O isolamento do home office cresce silenciosamente. Reconhecer isso já é o primeiro e mais difícil passo.',
-      reconnector:  'Você recuou porque fazia sentido recuar. Agora faz sentido voltar — no seu ritmo, não no de ninguém mais.',
-      introvert:    'Não precisamos construir uma vida social barulhenta. Precisamos construir uma que funcione para quem você é.',
-      grief:        'Re-entrar no mundo depois de uma perda não é seguir em frente. É trazer quem você ama com você.',
+      gentle:    'Reconexão não precisa ser intensa. Aparecer com calma é exatamente tão válido quanto aparecer com empolgação.',
+      explorer:  'Fases novas pedem curiosidade, não respostas. Você está no lugar certo para descobrir.',
+      builder:   'Vínculos reais não acontecem em volume — acontecem através de presença repetida. É exatamente isso que vamos construir.',
+      rebounder: 'Você sabe como fazer isso — só precisa de um ponto de entrada. Vamos encontrar esse ponto juntos.',
+      depth:     'Profundidade sobre amplitude é uma estratégia, não uma limitação. Poucas conexões fortes constroem mais do que muitas superficiais.',
+      steady:    'Consistência não é força de vontade — é estrutura. Estamos aqui para montar essa estrutura com você.',
+      curious:   'Não importa onde isso leva — importa que você está chegando com abertura. Isso é tudo que precisamos.',
     },
     mirror_step1_opts: [
       { id: 'gallery_openings', label: 'Muito ativa — eventos, amigos, saídas', emoji: '✨' },
@@ -365,54 +373,54 @@ export const T = {
     diag_profile_label: 'Seu perfil',
     diag_goal_label:    'Seu objetivo',
     profiles: {
-      heartbroken: {
-        name: 'Recomeçando', tag: 'Reconstruindo seu mundo',
-        rx1: 'Um evento por semana — tranquilo, sem pressão de estar "ligado".',
-        rx2: 'Foco em você agora. O social orgânico vem depois.',
-        rx3: 'Metodologia de transição emocional revisada por terapeutas.',
-        companion: 'Perder o círculo junto com o relacionamento é uma das rupturas mais subestimadas. Vamos devagar.',
+      gentle: {
+        name: 'Passo a Passo', tag: 'Reconexão no seu ritmo',
+        rx1: 'Um evento por semana — escolhido com cuidado, sem pressão de desempenho.',
+        rx2: 'Começamos com atividades solo-friendly antes de grupos.',
+        rx3: 'Metodologia de exposição gradual revisada por terapeutas.',
+        companion: 'Reconexão não precisa ser intensa. Aparecer com calma é exatamente tão válido quanto aparecer com empolgação.',
       },
-      transplant: {
-        name: 'Transplantado', tag: 'Construindo do zero',
-        rx1: 'Dois eventos por semana — você está aqui para conhecer gente.',
-        rx2: 'Prioridade: eventos comunitários onde nomes viram rostos.',
-        rx3: 'O cohort é seu ponto de partida — pessoas na mesma fase.',
-        companion: 'Cidade nova, página em branco. Você não carrega o peso de velhos padrões aqui — isso é vantagem.',
+      explorer: {
+        name: 'Explorando', tag: 'Descobrindo o que te anima',
+        rx1: 'Dois eventos por semana — variados, para mapear o que ressoa.',
+        rx2: 'Prioridade: experiências novas onde você não precisa ser expert.',
+        rx3: 'Framework de autodescoberta por experimentação social.',
+        companion: 'Fases novas pedem curiosidade, não respostas. Você está no lugar certo para descobrir.',
       },
-      burnout: {
-        name: 'Em Recuperação', tag: 'Seletivo, não antissocial',
-        rx1: 'Uma coisa, escolhida com cuidado. Qualidade sobre volume.',
-        rx2: 'Você não precisa voltar ao nível de antes. Pode redefinir.',
-        rx3: 'Framework baseado em regulação do sistema nervoso pós-burnout.',
-        companion: 'O modo de vida social que você tinha pode ter sido parte do problema. Vamos construir algo diferente.',
+      builder: {
+        name: 'Construindo Vínculos', tag: 'Conexões reais, não superficiais',
+        rx1: 'Dois eventos por semana em ambientes onde os mesmos rostos aparecem.',
+        rx2: 'Presença repetida é o ingrediente principal de amizades verdadeiras.',
+        rx3: 'Metodologia de construção de comunidade revisada por terapeutas.',
+        companion: 'Vínculos reais não acontecem em volume — acontecem através de presença repetida. É exatamente isso que vamos construir.',
       },
-      remote: {
-        name: 'Saindo da Bolha', tag: 'Só estar por perto já é progresso',
-        rx1: 'Esta semana: só estar em algum lugar. Um café, um parque. Sem agenda social.',
-        rx2: 'Reacostumar o corpo com espaços públicos vem antes dos eventos.',
-        rx3: 'Exposição gradual — o método comprovado de reverter isolamento.',
-        companion: 'O isolamento do home office cresce silenciosamente. Reconhecer isso já é o passo mais difícil.',
+      rebounder: {
+        name: 'Voltando ao Jogo', tag: 'Você sabe como isso funciona',
+        rx1: 'Dois eventos por semana — energia alta, ambiente social ativo.',
+        rx2: 'Foco em eventos onde a barreira de entrada é baixa mas o retorno é alto.',
+        rx3: 'Protocolo de reentrada para quem está pronto para acelerar.',
+        companion: 'Você sabe como fazer isso — só precisa de um ponto de entrada. Vamos encontrar esse ponto juntos.',
       },
-      reconnector: {
-        name: 'Reconectando', tag: 'Voltando para você mesmo',
-        rx1: 'Dois eventos por semana — você já sabe como isso funciona.',
-        rx2: 'Prioridade: eventos variados para lembrar o que te anima.',
-        rx3: 'Metodologia de reconexão intencional revisada por terapeutas.',
-        companion: 'Você recuou porque fazia sentido. Agora faz sentido voltar — no seu ritmo.',
+      depth: {
+        name: 'Qualidade sobre Volume', tag: 'Poucas conexões, mas de verdade',
+        rx1: 'Um evento por semana — ambientes pequenos onde conversas reais acontecem.',
+        rx2: 'Sem eventos de multidão. Prioridade total: tamanho pequeno, contexto compartilhado.',
+        rx3: 'Framework focado em profundidade de conexão, não em volume.',
+        companion: 'Profundidade sobre amplitude é uma estratégia, não uma limitação. Poucas conexões fortes constroem mais do que muitas superficiais.',
       },
-      introvert: {
-        name: 'Crescendo', tag: 'Profundidade sobre volume',
-        rx1: 'Um evento por semana. A meta é uma conexão real — não muitas superficiais.',
-        rx2: 'Ambientes menores e mais tranquilos, onde conversas de verdade acontecem.',
-        rx3: 'Framework de desenvolvimento social para introvertidos.',
-        companion: 'Não precisamos criar uma vida social barulhenta. Precisamos construir uma que funcione para você.',
+      steady: {
+        name: 'Com Consistência', tag: 'Estrutura que sustenta o ritmo',
+        rx1: 'Um evento por semana — o mesmo dia, o mesmo tipo de ambiente.',
+        rx2: 'Consistência não é força de vontade. É a estrutura que vamos construir juntos.',
+        rx3: 'Metodologia de hábito social revisada por terapeutas.',
+        companion: 'Consistência não é força de vontade — é estrutura. Estamos aqui para montar essa estrutura com você.',
       },
-      grief: {
-        name: 'Caminhando', tag: 'Reentrada gentil',
-        rx1: 'Um passo suave. Você define o ritmo — sem pressa nenhuma.',
-        rx2: 'Atividades ao ar livre e criativas — sem necessidade de conversa.',
-        rx3: 'Metodologia de reintegração após luto revisada por terapeutas.',
-        companion: 'Re-entrar no mundo depois de uma perda não é seguir em frente. É trazer quem você ama com você.',
+      curious: {
+        name: 'Com Curiosidade', tag: 'Aberto para onde isso leva',
+        rx1: 'Dois eventos por semana — um familiar, um desconhecido.',
+        rx2: 'A curiosidade é o ativo. Não precisamos saber o destino.',
+        rx3: 'Framework de expansão por interesse genuíno.',
+        companion: 'Não importa onde isso leva — importa que você está chegando com abertura. Isso é tudo que precisamos.',
       },
     },
     goals: {
@@ -434,6 +442,7 @@ export const T = {
     // ── Activity ideas ────────────────────────────────────
     home_activities_label: 'Ideias para você',
     home_activities_sub:   'Atividades solo-friendly em Curitiba',
+    home_activities_sub_first: 'Comece por aqui — antes de eventos em grupo',
     home_activity_reroot:  'Por que é bom agora',
     home_activity_solo:    '✓ Solo-friendly',
     home_activity_free:    'Grátis',
@@ -483,6 +492,16 @@ T.en.privacy_show_suggestions = 'Appear in friend suggestions'
 T.en.privacy_show_suggestions_desc = 'Other people can find your profile'
 T.en.privacy_show_profile = 'Profile visible to non-friends'
 T.en.privacy_show_profile_desc = 'Non-friends can see your full profile'
+
+// EN overrides for curated filter
+T.en.filter_hide_curated = 'Real only'
+T.en.filter_hide_curated_on = 'No AI suggestions'
+
+// EN overrides for curated/private event badges
+T.en.tag_curated = 'AI Suggestion'
+T.en.tag_curated_long = 'AI-curated suggestion — not a real event'
+T.en.tag_private = 'My event'
+T.en.tag_private_long = 'Private event created by you'
 
 // ── Hook ──────────────────────────────────────────────────
 import { useApp } from '../context/AppContext'

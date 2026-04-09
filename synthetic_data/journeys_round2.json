@@ -1,0 +1,688 @@
+[
+  {
+    "persona_id": "P17",
+    "persona_name": "Sofia Carvalho",
+    "profile": "burnout",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "19:30", "duration_min": 22, "actions": ["opened app after therapist mentioned it", "started onboarding", "selected 'burnout' profile — felt immediately understood", "read the diagnostic screen slowly, re-read twice"]}],
+          "friction": "Panicked when she saw 'two events per week' suggested — felt like too much obligation. Almost quit.",
+          "satisfaction": "The diagnostic copy ('you don't have to perform, just show up') landed perfectly. First time an app spoke in her language."
+        },
+        "day_2": {
+          "sessions": [{"time": "12:00", "duration_min": 14, "actions": ["browsed curated events", "saved 'Yoga ao Ar Livre' (morning, free, low pressure)", "noticed 'add to calendar' button — tapped it, worked instantly"]}],
+          "friction": null,
+          "satisfaction": "The 'add to calendar' button is a small thing that signals the app respects her time infrastructure."
+        },
+        "day_4": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["opened Companion Chat", "typed 'qual evento devo ir se estou com energia mínima?'", "got a thoughtful AI response recommending the morning yoga event with context"]}],
+          "friction": "Wasn't sure if it was a real person or AI at first — no disclaimer visible immediately.",
+          "satisfaction": "Answer was good. The companion chat felt like a knowledgeable friend, not a bot."
+        },
+        "day_6": {
+          "sessions": [{"time": "08:15", "duration_min": 90, "actions": ["attended yoga event offline", "opened app during cool-down", "saw 'people you met' section in event drawer — connected with 2 attendees one-tap"]}],
+          "friction": "The 'people you met' section only appeared AFTER the event date, which she didn't know would happen. She almost missed it.",
+          "satisfaction": "Post-event attendee flow worked perfectly once she found it. 'This is what I needed — a reason to come back to the app after the event.'"
+        },
+        "day_7": {
+          "sessions": [{"time": "21:00", "duration_min": 6, "actions": ["checked journey screen", "read week 1 companion message", "marked yoga as attended"]}],
+          "friction": null,
+          "satisfaction": "The journey message ('Você apareceu. Isso já é o suficiente por hoje.') made her cry. Exactly what her therapist says."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "19:00", "duration_min": 12, "actions": ["browsed events for week 2", "noticed no 'duration' filter — had to open each event to check length", "saved 'Aula de Aquarela' (low pressure, 2h)"]}],
+          "friction": "Had to check 5 event detail cards to find 2h max events. Duration filter would save time.",
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "20:30", "duration_min": 18, "actions": ["asked companion chat if she should feel guilty for not going to more events", "got a nuanced answer validating rest as part of the process"]}],
+          "friction": null,
+          "satisfaction": "The companion's answer was better than expected. It quoted her own profile ('burnout restoration') back to her in a meaningful way."
+        },
+        "day_13": {
+          "sessions": [{"time": "15:00", "duration_min": 2.5 * 60, "actions": ["attended watercolor workshop offline", "met 3 people", "came back to app to log the reflection word: 'alive'"]}],
+          "friction": null,
+          "satisfaction": "Best week in 2.5 years. Wrote about it in her therapy journal."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["explored profile screen", "found badges — saw she'd earned 'Primeira Aparição'", "felt proud", "checked journey progress bar"]}],
+          "friction": "No notification that she earned a badge — discovered it by chance. Should be a celebration moment.",
+          "satisfaction": "Badge system is motivating. Connects to her UX background — good activation design."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.85,
+        "peak_usage_times": ["evening", "post-event"],
+        "drop_off_risk": "low — high profile fit, companion chat engagement strong",
+        "events_attended": 2,
+        "friend_connections_made": 2
+      }
+    }
+  },
+  {
+    "persona_id": "P18",
+    "persona_name": "Daniel Kim",
+    "profile": "transplant",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "21:00", "duration_min": 30, "actions": ["found app via colleague recommendation", "toggled UI to English immediately — worked perfectly", "completed onboarding", "chose 'transplant' profile"]}],
+          "friction": "Interest options (Café & Conversa, Clube do Livro) are mostly in Portuguese even in EN mode — confusing mismatch.",
+          "satisfaction": "English UI option is a genuine differentiator. First social app that didn't feel hostile to non-Portuguese speakers."
+        },
+        "day_3": {
+          "sessions": [{"time": "12:30", "duration_min": 15, "actions": ["browsed events in English mode", "some event descriptions aren't translated", "RSVPed for 'Caminhada Matinal' — activity is language-independent"]}],
+          "friction": "Event descriptions are in Portuguese even when app is in English. Partial translation creates inconsistency.",
+          "satisfaction": "Activity-based events (walks, yoga) remove language as a barrier."
+        },
+        "day_5": {
+          "sessions": [{"time": "20:00", "duration_min": 7, "actions": ["saw 'Adicionar Amigo por Código' on Profile screen", "didn't understand what it was for", "pasted a random code — got error", "left confused"]}],
+          "friction": "Friend code system has zero explanation. No tooltip, no 'what is this?' link. Just a text field and a button.",
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "08:00", "duration_min": 2 * 60, "actions": ["attended morning walk event offline", "spoke to 2 people in broken Portuguese", "opened app afterward to mark attended"]}],
+          "friction": null,
+          "satisfaction": "Activity removed language anxiety. Said 'obrigado' 15 times and it was enough. The walk format is genius for language-barrier users."
+        },
+        "day_7": {
+          "sessions": [{"time": "23:00", "duration_min": 12, "actions": ["asked colleague what the friend code was for", "colleague didn't know either", "both frustrated", "eventually figured out it was to share his code with people he met at events"]}],
+          "friction": "Friend code discovery path is entirely broken. Only works if you independently figure out what it's for.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "19:00", "duration_min": 15, "actions": ["tried Companion Chat — in English", "asked for event recommendations for someone learning Portuguese", "got a relevant, personalized answer"]}],
+          "friction": null,
+          "satisfaction": "Companion chat works in English. Small detail, big win for internationals."
+        },
+        "day_11": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["went to second event (ceramic class)", "exchanged friend codes with 2 people AT the event", "finally understood the friend code system"]}],
+          "friction": "Should have been taught during or right after the first event. Missed value in week 1.",
+          "satisfaction": "Once he understood friend codes, he appreciated the QR-code-like simplicity."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["home feed now shows friends' events", "saw that a connection RSVPed for a book club", "RSVPed too — social proof from friend worked perfectly"]}],
+          "friction": null,
+          "satisfaction": "Friends feed on Home screen is great. Exactly how social proof should work."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.75,
+        "peak_usage_times": ["late evening", "post-event"],
+        "drop_off_risk": "medium — friend code confusion in week 1 caused early friction",
+        "events_attended": 2,
+        "friend_connections_made": 2
+      }
+    }
+  },
+  {
+    "persona_id": "P19",
+    "persona_name": "Beatriz Santos",
+    "profile": "heartbroken",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "21:30", "duration_min": 35, "actions": ["downloaded app after seeing Instagram ad", "onboarding — selected 'heartbroken' profile", "expected dating app, surprised by the social angle", "browsed events"]}],
+          "friction": "Wanted to find family-friendly events for weekends with her daughter. No filter exists. Had to open 9 events to find 2 with kidsWelcome = true.",
+          "satisfaction": "The 'heartbroken' profile framing was correct for her. Felt less alone reading the profile copy."
+        },
+        "day_2": {
+          "sessions": [{"time": "12:00", "duration_min": 6, "actions": ["opened events", "tried to filter by 'para família' — no such filter", "tapped category chips — none map to family-friendly concept", "frustrated, closed app"]}],
+          "friction": "The data has kidsWelcome field but there's no filter for it. This is the single biggest blocker for her.",
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "20:00", "duration_min": 20, "actions": ["returned after daughter went to sleep", "slowly browsed all events, reading each card", "found 'Caminhada no Botânico' — kidsWelcome true", "RSVPed", "used 'add to calendar' button — worked"]}],
+          "friction": "The discovery process took 20 minutes of manual scanning to do what a filter would do in 5 seconds.",
+          "satisfaction": "'Add to calendar' is excellent for her schedule management needs."
+        },
+        "day_6": {
+          "sessions": [{"time": "09:00", "duration_min": 2 * 60, "actions": ["attended morning walk with daughter", "daughter made a friend with another child whose parent was also there", "logged reflection word: 'esperança'"]}],
+          "friction": null,
+          "satisfaction": "Best Saturday in months. The event was genuinely good for both of them."
+        },
+        "day_7": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["tried to find more events for daughter — none visible without filter", "opened Companion Chat: 'me indica eventos que posso levar minha filha de 7 anos'", "got 2 relevant suggestions"]}],
+          "friction": "Companion Chat served the correct answer, but this should be a filter, not a chat question.",
+          "satisfaction": "Companion Chat saved the session. Without it she would have churned."
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "21:00", "duration_min": 15, "actions": ["browsed events for adult-only time (kid with father)", "found 'Clube do Livro' — but it was at 20:00 on a Tuesday", "logistics work — RSVPed"]}],
+          "friction": null,
+          "satisfaction": "App understood she needs both parent/child time and adult time. Profile curated both types."
+        },
+        "day_13": {
+          "sessions": [{"time": "20:00", "duration_min": 1.5 * 60, "actions": ["attended book club", "first all-adult social event in 8 months", "connected with 3 women", "app showed post-event attendees"]}],
+          "friction": null,
+          "satisfaction": "Post-event attendee list was the missing piece she'd been wanting since week 1."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:30", "duration_min": 10, "actions": ["left app store review", "3-star because no family filter", "commented: 'eventos são ótimos mas o app me força a ler tudo para achar algo para trazer minha filha'"]}],
+          "friction": "Still blocked by missing family filter.",
+          "satisfaction": null
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.70,
+        "peak_usage_times": ["afternoon", "late night after daughter sleeps"],
+        "drop_off_risk": "high — will churn if family filter isn't added within 30 days",
+        "events_attended": 2,
+        "friend_connections_made": 3
+      }
+    }
+  },
+  {
+    "persona_id": "P20",
+    "persona_name": "Rafael Martins",
+    "profile": "reconnector",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "10:00", "duration_min": 25, "actions": ["onboarded quickly — selected 'reconnector'", "events list: impressed by variety and quality", "RSVPed for photography walk immediately"]}],
+          "friction": null,
+          "satisfaction": "The app didn't treat him like he was in crisis. 'Reconnector' profile felt adult and non-pathologizing."
+        },
+        "day_3": {
+          "sessions": [{"time": "09:00", "duration_min": 1.5 * 60, "actions": ["attended photography walk event offline", "met 4 people", "app showed cohort members going — real social proof"]}],
+          "friction": "No recurring event option — this exact group wants to meet weekly. Having to create from scratch each time is a deterrent.",
+          "satisfaction": "Event quality was high. Hosts were experienced and welcoming."
+        },
+        "day_5": {
+          "sessions": [{"time": "22:00", "duration_min": 18, "actions": ["explored Journey screen", "read week 1 message ('Você apareceu. Isso já é suficiente.')", "felt slightly patronized — he's not fragile, he's strategic"]}],
+          "friction": "Week 1 journey message is calibrated for fragile users. For reconnectors with social confidence, it feels condescending.",
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["tried to create recurring photography event", "no recurring option in event creation", "had to write 'toda semana' in description as a workaround"]}],
+          "friction": "No recurring event creation. Major gap for active users who want to build a recurring community.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "20:00", "duration_min": 12, "actions": ["read week 2 journey message — same format as week 1", "feels less relevant now that he's past the 'showing up' phase"]}],
+          "friction": "Journey messages don't adapt after week 2. Become generic and slightly canned.",
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "08:00", "duration_min": 2 * 60, "actions": ["attended second photography event — manually recreated", "6 people showed up, same 3 from last week + 3 new"]}],
+          "friction": null,
+          "satisfaction": "Community is forming. The app's core value works: people come back. Now needs infrastructure for it."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["friends feed on home screen — saw a connection RSVPed for a design talk", "RSVPed too", "this friends feed loop is the best feature"]}],
+          "friction": null,
+          "satisfaction": "Friends feed is underrated. Drives repeat engagement without feeling manipulative."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.78,
+        "peak_usage_times": ["morning", "evening"],
+        "drop_off_risk": "medium — needs recurring event feature to sustain photography community",
+        "events_attended": 3,
+        "friend_connections_made": 4
+      }
+    }
+  },
+  {
+    "persona_id": "P21",
+    "persona_name": "Emma Johansson",
+    "profile": "transplant",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "20:00", "duration_min": 28, "actions": ["downloaded and onboarded in full English — seamless", "identity mirror: chose 'transplant'", "interest selection: chose 'Café & Conversa', 'Arte & Museus'", "browsed events in English"]}],
+          "friction": "Some event descriptions mix PT/EN inconsistently. Minor but noticeable.",
+          "satisfaction": "English mode works. The bilingual toggle is a genuine signal that the product is internationally minded."
+        },
+        "day_3": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["saw cohort members on event cards ('A, C, T are going')", "RSVPed for watercolor workshop because of cohort social proof"]}],
+          "friction": null,
+          "satisfaction": "Cohort social proof is effective. Didn't attend because of the event — attended because of the co-presence signal."
+        },
+        "day_5": {
+          "sessions": [{"time": "14:00", "duration_min": 3 * 60, "actions": ["attended watercolor event offline", "met a Brazilian woman who spoke English — became first real Brazilian friend", "used post-event attendees to connect right after"]}],
+          "friction": null,
+          "satisfaction": "Post-event attendee feature closed the loop instantly. First time she left an event with a guaranteed follow-up mechanism."
+        },
+        "day_7": {
+          "sessions": [{"time": "20:00", "duration_min": 15, "actions": ["explored Journey screen in English", "week 1 companion message was translated and felt sincere", "logged check-in"]}],
+          "friction": "Journey framework content (chapter names: 'Reentrada', 'Raízes') are in Portuguese even in EN mode.",
+          "satisfaction": "Check-in ritual feels grounding for someone living far from home."
+        }
+      },
+      "week_2": {
+        "day_10": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["received notification for upcoming event — appreciated the timing", "event was relevant to saved interest"]}],
+          "friction": "Notification had no way to choose which categories to get notified about.",
+          "satisfaction": "Notification relevance was good this time — but luck-based, not design-based."
+        },
+        "day_12": {
+          "sessions": [{"time": "20:00", "duration_min": 2 * 60, "actions": ["attended yoga event outdoors — third week, same location", "starting to recognize faces", "cohort members recognize her too"]}],
+          "friction": null,
+          "satisfaction": "The repetition is building familiarity. That's the product promise — and it's working."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 12, "actions": ["sent friend request to watercolor connection via app", "both now see each other in friends feed", "friends feed drives second event together"]}],
+          "friction": null,
+          "satisfaction": "The social graph is starting to work. From stranger to friend in 2 weeks — that's the product."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.90,
+        "peak_usage_times": ["evening"],
+        "drop_off_risk": "low — strong profile fit, English mode working, post-event feature closed loop",
+        "events_attended": 3,
+        "friend_connections_made": 2
+      }
+    }
+  },
+  {
+    "persona_id": "P22",
+    "persona_name": "André Oliveira",
+    "profile": "grief",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "23:00", "duration_min": 40, "actions": ["opened app — therapist recommended 'something low stakes'", "identity mirror: chose 'grief' profile", "read the diagnostic copy very slowly"]}],
+          "friction": null,
+          "satisfaction": "The grief profile exists. That alone was unexpected. Most apps pretend grief doesn't happen."
+        },
+        "day_2": {
+          "sessions": [{"time": "21:30", "duration_min": 8, "actions": ["browsed events", "saved 'Yoga ao Ar Livre' — morning, quiet, solo-compatible"]}],
+          "friction": null,
+          "satisfaction": "The 'rerootReason' copy on the yoga event ('Prática individual em grupo — você pode ser completamente silencioso') read like it was written for him."
+        },
+        "day_4": {
+          "sessions": [{"time": "22:00", "duration_min": 20, "actions": ["opened Companion Chat", "typed a long message about his situation", "AI responded with warmth without being performative"]}],
+          "friction": "No clear signal that this is an AI (not a human support staff). Some users could form attachments that feel misplaced.",
+          "satisfaction": "The companion's response was the best he'd gotten from an AI about grief. Didn't minimize. Didn't offer toxic positivity."
+        },
+        "day_5": {
+          "sessions": [{"time": "20:00", "duration_min": 5, "actions": ["went to Journey screen", "felt the journey message 'Você apareceu. Isso já é o suficiente por hoje.' reference his dead friend without the app knowing", "closed app, needed to process"]}],
+          "friction": null,
+          "satisfaction": "Profound moment. App triggered the right emotion at the right time accidentally."
+        },
+        "day_7": {
+          "sessions": [{"time": "09:30", "duration_min": 1.5 * 60, "actions": ["attended yoga event", "didn't talk to anyone — just existed alongside people", "felt okay"]}],
+          "friction": null,
+          "satisfaction": "Being around people without having to perform was enough. This is the spec for grief users."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "21:00", "duration_min": 6, "actions": ["had bad therapy session", "didn't want to go to any events", "found the 'Pause journey' feature in Profile"]}],
+          "friction": null,
+          "satisfaction": "Pause feature exists and he used it. This is the difference between churn and retention for grief users."
+        },
+        "day_12": {
+          "sessions": [{"time": "23:00", "duration_min": 4, "actions": ["unpaused journey", "week message was still waiting, not reset", "small but meaningful UX detail"]}],
+          "friction": null,
+          "satisfaction": "App didn't punish him for pausing. That's rare and important."
+        },
+        "day_14": {
+          "sessions": [{"time": "09:00", "duration_min": 2 * 60, "actions": ["attended second yoga event", "recognized 2 faces from last week", "small nod of mutual recognition", "logged 'presença' as reflection word"]}],
+          "friction": null,
+          "satisfaction": "He can feel something changing. Slowly."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.60,
+        "peak_usage_times": ["late night"],
+        "drop_off_risk": "low — pause feature saved the account, companion chat engagement strong",
+        "events_attended": 2,
+        "friend_connections_made": 0
+      }
+    }
+  },
+  {
+    "persona_id": "P23",
+    "persona_name": "Clara Zhang",
+    "profile": "transplant",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "20:30", "duration_min": 22, "actions": ["onboarded — kept in Portuguese (functional)", "chose 'transplant' profile", "interest alignment: arts, cooking, café culture"]}],
+          "friction": "Some onboarding copy is complex Portuguese — struggled with a few sentences.",
+          "satisfaction": "The visual design of IdentityMirror is clear enough to follow even with imperfect language comprehension."
+        },
+        "day_3": {
+          "sessions": [{"time": "12:00", "duration_min": 10, "actions": ["saw cohort avatars on event card", "'3 pessoas do seu grupo vão' drove her to RSVP", "chose cooking event"]}],
+          "friction": null,
+          "satisfaction": "Cohort social proof is the strongest driver for uncertain users. She RSVPed ONLY because others were going."
+        },
+        "day_6": {
+          "sessions": [{"time": "18:00", "duration_min": 3 * 60, "actions": ["attended cooking event — activity-based meant language was secondary", "connected with 2 Brazilian women", "logged check-in"]}],
+          "friction": "Post-event attendees section showed names but no language preference — she didn't know if her new connections spoke English",
+          "satisfaction": "Cooking format removed language barrier. Hands doing things = universal."
+        },
+        "day_7": {
+          "sessions": [{"time": "22:00", "duration_min": 8, "actions": ["sent friend codes to the 2 women she met", "successfully added"]}],
+          "friction": "Friend code UX requires both users to have the app and know the code. One contact didn't have it — flow broken for her.",
+          "satisfaction": "When it works, friend codes are elegant. QR code option would solve the friction."
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "21:00", "duration_min": 15, "actions": ["used Companion Chat to ask for events near her neighborhood", "got a list filtered by distance"]}],
+          "friction": null,
+          "satisfaction": "Companion chat handles language-edge queries better than filters. Useful workaround for non-native speakers."
+        },
+        "day_13": {
+          "sessions": [{"time": "16:00", "duration_min": 2 * 60, "actions": ["attended café meetup with her 2 new connections from cooking event", "first time hanging out outside app-organized event"]}],
+          "friction": null,
+          "satisfaction": "App served its purpose — facilitated real friendship. She's no longer using Reroot as a crutch."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["left a review", "mentioned the app helped her feel like a Paulistana, not a foreigner"]}],
+          "friction": null,
+          "satisfaction": "NPS 9. Core value delivered."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.82,
+        "peak_usage_times": ["evening"],
+        "drop_off_risk": "low — goal achieved, but real-world friendships may pull her away from the app",
+        "events_attended": 2,
+        "friend_connections_made": 2
+      }
+    }
+  },
+  {
+    "persona_id": "P24",
+    "persona_name": "Marcos Pereira",
+    "profile": "grief",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "10:00", "duration_min": 45, "actions": ["downloaded app — took 15 min to get through sign-in", "Google login confused him — clicked wrong button twice", "eventually got through with help from his wife"]}],
+          "friction": "Google OAuth flow is confusing for non-tech users. No 'email/password' fallback.",
+          "satisfaction": "Once inside, the app is simpler than he expected."
+        },
+        "day_2": {
+          "sessions": [{"time": "09:00", "duration_min": 20, "actions": ["browsed events — looking for daytime activities", "all events seem to be weekday mornings or weekend", "found 'Caminhada Matinal' Saturday at 9am"]}],
+          "friction": "No time-of-day filter. He only wants daytime events (morning/early afternoon). Currently no way to filter this.",
+          "satisfaction": "Caminhada Matinal exists — exactly his timing."
+        },
+        "day_3": {
+          "sessions": [{"time": "20:00", "duration_min": 12, "actions": ["icon-only navigation confused him", "tapped wrong bottom nav 3 times before finding events"]}],
+          "friction": "Navigation labels BELOW icons are very small. accessibilityMode state exists but toggling it (buried in Profile) doesn't visibly change font size or icon label prominence.",
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "09:00", "duration_min": 2 * 60, "actions": ["attended morning walk event", "connected with a retired man his age", "both retired, same neighborhood", "classic story: best connection of his week"]}],
+          "friction": null,
+          "satisfaction": "The event worked. Proof that the platform serves older demographics when accessibility doesn't block them."
+        },
+        "day_7": {
+          "sessions": [{"time": "16:00", "duration_min": 6, "actions": ["tried to find the notifications settings", "couldn't find them", "called his wife for help"]}],
+          "friction": "Notification settings and accessibilityMode are buried in Profile, which requires scrolling past friends/badges sections.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "11:00", "duration_min": 10, "actions": ["his connection from the walk sent a friend code", "Marcos didn't understand the text message", "called him to ask what to do"]}],
+          "friction": "Friend code system is a barrier for non-tech users. Requires copying a code, going to the app, finding the right screen, and pasting. Multiple steps for resistant adopters.",
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "09:00", "duration_min": 2 * 60, "actions": ["second walk event — walked alongside the same connection again", "starting to feel like a regular"]}],
+          "friction": null,
+          "satisfaction": "Consistency builds community. The app created conditions for this — real value delivered."
+        },
+        "day_14": {
+          "sessions": [{"time": "10:00", "duration_min": 15, "actions": ["tried to leave a review on app store", "couldn't find where to do it", "wrote a note to his son to help him next time"]}],
+          "friction": "No in-app 'leave a review' prompt. Value moments go uncaptured for users who would write 5-star reviews if prompted.",
+          "satisfaction": "He's happy. He just can't express it digitally without help."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.55,
+        "peak_usage_times": ["morning", "early afternoon"],
+        "drop_off_risk": "high — accessibility issues and friend code friction; would benefit from simpler social graph entry",
+        "events_attended": 2,
+        "friend_connections_made": 1
+      }
+    }
+  },
+  {
+    "persona_id": "P25",
+    "persona_name": "Isabela Costa",
+    "profile": "introvert",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "23:00", "duration_min": 45, "actions": ["opened app in bed", "onboarding felt designed for her — introvert profile, low pressure language", "spent 20min reading all event descriptions before selecting anything"]}],
+          "friction": "No 'watch mode' — she wants to explore events without RSVPing until she's ultra-sure. RSVP feels like a commitment.",
+          "satisfaction": "Diagnostic copy ('você pode aparecer no seu ritmo') felt like permission she didn't know she needed."
+        },
+        "day_3": {
+          "sessions": [{"time": "22:00", "duration_min": 12, "actions": ["browsed creative events", "saw no free filter — had to read prices one by one", "student budget: needs free events"]}],
+          "friction": "No price tier filter. Student budget means paid events are auto-rejected — but she has to open each card to see the price.",
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "21:00", "duration_min": 20, "actions": ["used Companion Chat: 'quais eventos são de graça essa semana?'", "got a precise list of free events"]}],
+          "friction": "Again, companion chat compensating for a missing filter.",
+          "satisfaction": "Companion chat answer was perfect. But this is a patch, not a solution."
+        },
+        "day_6": {
+          "sessions": [{"time": "08:00", "duration_min": 90, "actions": ["attended yoga event (free)", "stayed at the edge of the group", "nobody pressured her to interact more", "felt safe"]}],
+          "friction": null,
+          "satisfaction": "Low-pressure design of the event was exactly spec. Nothing felt forced."
+        },
+        "day_7": {
+          "sessions": [{"time": "23:00", "duration_min": 10, "actions": ["got notification about a new event", "notification didn't say it was free or what category", "opened app just to check — would prefer the notification to contain that data"]}],
+          "friction": "Notification copy is generic — doesn't surface the key decision variables (price, category, date).",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["saw friend code in Profile", "no explanation of what it is", "assumed it was some referral program", "ignored it"]}],
+          "friction": "Friend code onboarding is entirely absent. No contextual explanation.",
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "15:00", "duration_min": 2.5 * 60, "actions": ["attended creative writing event (found via companion chat)", "smallest group she'd ever been in — 4 people", "opened up more than expected", "logged reflection: 'pertença'"]}],
+          "friction": null,
+          "satisfaction": "Small group format is the killer feature for introverts. 4 people > 40 people."
+        },
+        "day_14": {
+          "sessions": [{"time": "23:00", "duration_min": 12, "actions": ["discovered post-event attendees section by accident", "connected with 2 people from the writing event", "felt proud and surprised that she did it"]}],
+          "friction": "Post-event attendees is a hidden gem. Needs surfacing — first-time RSVP users won't know to look there.",
+          "satisfaction": "NPS 8. 'The app kind of changed something in me.'"
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.88,
+        "peak_usage_times": ["late night"],
+        "drop_off_risk": "low — strong profile fit, companion chat compensating for filter gaps",
+        "events_attended": 2,
+        "friend_connections_made": 2
+      }
+    }
+  },
+  {
+    "persona_id": "P26",
+    "persona_name": "Tomás Herrera",
+    "profile": "reconnector",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "19:30", "duration_min": 15, "actions": ["onboarded fast — tech-savvy", "selected 'reconnector'", "RSVPed for 3 events on day 1"]}],
+          "friction": "3-event cap on prescription felt limiting. He wants more options visible.",
+          "satisfaction": "Good event diversity: active, creative, community."
+        },
+        "day_3": {
+          "sessions": [{"time": "08:00", "duration_min": 90, "actions": ["attended cycling meetup event", "organized group afterward on WhatsApp because no group chat in app"]}],
+          "friction": "No group messaging feature. Every time, the community self-organizes on WhatsApp and the app loses the connection data.",
+          "satisfaction": "Event was excellent. Community is there — the app just loses them at the gate."
+        },
+        "day_4": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["tried to create a spontaneous event for the next morning", "form is too complex for a quick post", "gave up and posted on WhatsApp instead"]}],
+          "friction": "Event creation form requires too many fields for spontaneous posting. No quick-create template.",
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "07:00", "duration_min": 2 * 60, "actions": ["attended second event (design debate)", "strong intellectual discussion", "exactly the depth he wanted"]}],
+          "friction": null,
+          "satisfaction": "When events go deep, the app earns its NPS 9."
+        },
+        "day_7": {
+          "sessions": [{"time": "21:00", "duration_min": 12, "actions": ["read week 1 journey message — felt condescending for someone already social", "journey content isn't calibrated by confidence level"]}],
+          "friction": "Journey message 'Você apareceu. Isso já é suficiente por hoje.' is perfect for introverts and grief users. For reconnectors it reads as infantilizing.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["discovered badge system — 5 badges earned", "shared to stories on Instagram"]}],
+          "friction": "No native share template optimized for social media. He manually screenshotted.",
+          "satisfaction": "Badge system is shareable content — organic marketing waiting to be unlocked."
+        },
+        "day_11": {
+          "sessions": [{"time": "09:00", "duration_min": 2 * 60, "actions": ["attended third event (photography)", "2 people from week 1 cycling event showed up", "informal community forming"]}],
+          "friction": null,
+          "satisfaction": "Regulars are emerging. The platform created conditions for a scene, not just a transaction."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 15, "actions": ["left review", "mentioned: 'the events are excellent but I have to migrate to WhatsApp every time I want to coordinate with people I met'"]}],
+          "friction": "The WhatsApp migration problem is structurally unsolved. Every active user mentioned it.",
+          "satisfaction": "NPS 8. Would be 10 with group chat."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.94,
+        "peak_usage_times": ["morning", "evening"],
+        "drop_off_risk": "medium — high engagement but WhatsApp migration risk; will churn if community moves there",
+        "events_attended": 4,
+        "friend_connections_made": 5
+      }
+    }
+  },
+  {
+    "persona_id": "P27",
+    "persona_name": "Juliana Ramos",
+    "profile": "heartbroken",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "21:00", "duration_min": 40, "actions": ["took 15min just reading the landing page before downloading", "onboarding — selected 'heartbroken'", "nervously read privacy settings"]}],
+          "friction": "No explanation of who can see her profile during onboarding. She has no idea if strangers can see her photo and situation.",
+          "satisfaction": "The 'heartbroken' profile framing made the app feel safe. Not a hookup app."
+        },
+        "day_2": {
+          "sessions": [{"time": "20:00", "duration_min": 25, "actions": ["went to Profile to check privacy settings", "found no privacy settings section", "found only 'acessibilidade' toggle in settings", "panicked slightly"]}],
+          "friction": "No privacy settings at all in the current profile screen. P12/P14 from Round 1 raised this. Still not addressed.",
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "21:00", "duration_min": 15, "actions": ["calmed down after realizing the app doesn't show personal info prominently", "browsed events cautiously", "RSVPed for a women-only book club (no women-only filter but found by reading descriptions)"]}],
+          "friction": "No 'women-only' filter — had to read 12 event descriptions to find this. Filter would surface this in 1 click.",
+          "satisfaction": "When she found the book club, felt relief. Exactly what she needed."
+        },
+        "day_6": {
+          "sessions": [{"time": "20:00", "duration_min": 2 * 60, "actions": ["attended book club", "all women", "felt completely safe", "best evening in months"]}],
+          "friction": null,
+          "satisfaction": "The event experience exceeded expectations. App delivered."
+        },
+        "day_7": {
+          "sessions": [{"time": "22:00", "duration_min": 8, "actions": ["checked home screen — saw 'pessoas próximas a você' section", "immediately felt unsafe", "went back to find how to turn it off", "couldn't find a setting for it"]}],
+          "friction": "The 'people near you' feature (raised in Round 1 for P12/P14) is still showing. No way to opt out. She almost deleted the app.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "20:00", "duration_min": 6, "actions": ["returned cautiously", "checked if 'pessoas próximas' section was still there", "it was, but nothing bad happened", "decided to stay"]}],
+          "friction": "She's tolerating a risk rather than using a feature. This is a ticking clock.",
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "20:00", "duration_min": 2 * 60, "actions": ["attended second book club", "3 women from last week returned", "gave her friend code to one of them", "friend code worked this time"]}],
+          "friction": null,
+          "satisfaction": "Community is forming. App is working despite the privacy concern."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 12, "actions": ["left a 3-star review specifically about privacy", "wrote: 'excelentes eventos mas não consigo controlar quem me vê na plataforma'"]}],
+          "friction": "Privacy concern left unresolved from Round 1. Deterministic detractor.",
+          "satisfaction": null
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.65,
+        "peak_usage_times": ["evening"],
+        "drop_off_risk": "high — privacy issue is a trust bomb; one bad experience and she deletes",
+        "events_attended": 2,
+        "friend_connections_made": 1
+      }
+    }
+  },
+  {
+    "persona_id": "P28",
+    "persona_name": "Kwame Asante",
+    "profile": "transplant",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "18:00", "duration_min": 18, "actions": ["onboarded fast", "selected 'transplant' — spontaneous, high energy traits felt mis-categorized", "RSVPed for 3 events same day"]}],
+          "friction": "No profile for 'I'm not struggling, I just want more friends in my city.' The transplant profile feels slightly victimhood-coded for someone like him.",
+          "satisfaction": "Event diversity is great. Found sport, creative, and social events within minutes."
+        },
+        "day_2": {
+          "sessions": [{"time": "20:00", "duration_min": 15, "actions": ["looked for 'happening today' or same-day events", "no such view exists", "all events are scheduled 3-7 days out"]}],
+          "friction": "'Happening now' / spontaneous event section is absent. Biggest personal gap — raised in R1 by P03/P13, still absent.",
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "08:00", "duration_min": 2 * 60, "actions": ["attended basketball event", "13 people showed up", "best sports group he'd found in SP", "organized group WhatsApp right after"]}],
+          "friction": "Again: group leaves app for WhatsApp immediately. The community formed but lives outside the platform.",
+          "satisfaction": "Event itself: excellent. Platform retention after event: zero."
+        },
+        "day_5": {
+          "sessions": [{"time": "20:30", "duration_min": 10, "actions": ["tried to post a spontaneous football plan", "event creation requires: name, venue, date, time, description, category, size, price...", "gave up at field 5"]}],
+          "friction": "Spontaneous event creation is blocked by form complexity. A 'quick post' with just venue + time + max people would unlock this entirely.",
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "22:00", "duration_min": 8, "actions": ["browsed events for next week", "good selection", "RSVPed for a music event"]}],
+          "friction": null,
+          "satisfaction": "When the event supply is good, he's very happy with the platform."
+        }
+      },
+      "week_2": {
+        "day_9": {
+          "sessions": [{"time": "20:00", "duration_min": 5, "actions": ["checked for new same-day events — none", "opened WhatsApp instead"]}],
+          "friction": "Daily churn to WhatsApp for spontaneous coordination is the pattern. Reroot loses daily active usage to this.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "20:00", "duration_min": 2 * 60, "actions": ["attended music event", "danced, met 6 new people", "added 4 as connections via friend codes", "friend codes felt natural at this point"]}],
+          "friction": null,
+          "satisfaction": "When events are great, he's the product's best ambassador. Naturally shares and brings people."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["left NPS 9", "written comment: 'best social app in SP by far, please just add group chat and let me post same-day plans'"]}],
+          "friction": null,
+          "satisfaction": "High NPS despite structural gaps — the event quality is strong enough to hold him."
+        }
+      },
+      "usage_pattern": {
+        "avg_sessions_per_day": 0.82,
+        "peak_usage_times": ["evening", "weekend"],
+        "drop_off_risk": "medium — loyal but WhatsApp migration risk high; spontaneous feature would dramatically increase daily opens",
+        "events_attended": 4,
+        "friend_connections_made": 6
+      }
+    }
+  }
+]

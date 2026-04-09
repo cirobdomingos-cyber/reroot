@@ -103,6 +103,9 @@ def health():
         "instagram_configured": bool(settings.instagram_user and settings.instagram_pass),
         "sesc_configured": True,
         "teatro_guaira_configured": True,
+        "catraca_livre_configured": True,
+        "ingresso_configured": True,
+        "ai_gap_fill_configured": bool(settings.anthropic_api_key),
         "google_places_configured": bool(settings.google_places_api_key),
     }
 
@@ -168,9 +171,110 @@ def stats():
         "by_category": by_cat,
         "sources": {
             src: sum(1 for e in events if e.source == src)
-            for src in ["sympla", "eventbrite", "meetup", "instagram", "sesc", "teatro_guaira"]
+            for src in [
+                "sympla", "eventbrite", "meetup", "instagram",
+                "sesc", "teatro_guaira", "catraca_livre", "ingresso",
+                "ai_generated", "submitted",
+            ]
         },
     }
+
+
+# ── User event submission ──────────────────────────────────
+
+class EventSubmission(BaseModel):
+    name: str
+    description: str = ""
+    venue_name: str
+    venue_address: str = ""
+    city: str = "Curitiba"
+    date_start: str                   # ISO 8601 string from frontend
+    price_min: float = 0.0
+    price_max: float = 0.0
+    url: str = ""
+    submitted_by: Optional[str] = None  # google_id
+
+
+async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
+    """Background task: enrich a submitted event with Claude then upsert into events table."""
+    if not settings.anthropic_api_key:
+        return
+
+    from enrichment import EnrichmentPipeline
+    from models import RawEvent
+    from datetime import timezone as tz
+
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            ds = __import__("datetime").datetime.strptime(req.date_start, fmt).replace(tzinfo=tz.utc)
+            break
+        except ValueError:
+            ds = None
+
+    if not ds:
+        log.warning(f"Submission {submission_id}: invalid date_start '{req.date_start}'")
+        return
+
+    raw = RawEvent(
+        source="submitted",
+        external_id=f"sub_{submission_id}",
+        name=req.name[:200],
+        description=req.description[:1000],
+        venue_name=req.venue_name[:200],
+        venue_address=req.venue_address[:300],
+        city=req.city,
+        date_start=ds,
+        price_min=req.price_min,
+        price_max=req.price_max,
+        url=req.url[:500],
+    )
+
+    pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
+    enriched = pipeline.enrich(raw)
+    if not enriched:
+        log.warning(f"Submission {submission_id}: enrichment failed")
+        return
+
+    try:
+        db.upsert_event(enriched)
+        db.mark_submitted_enriched(submission_id, enriched.id)
+        log.info(f"Submission {submission_id}: enriched → {enriched.id} ({enriched.reroot_category})")
+    except Exception as e:
+        log.error(f"Submission {submission_id}: save error: {e}")
+
+
+@app.post("/events/submit", status_code=202)
+async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
+    """
+    Accept a user- or partner-submitted event.
+    The event is recorded immediately; enrichment runs in the background.
+    Returns the submission id so the frontend can poll for status.
+    """
+    # Basic input validation
+    if not req.name or len(req.name.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Event name too short")
+    if len(req.name) > 200 or len(req.description) > 2000:
+        raise HTTPException(status_code=400, detail="Input exceeds maximum length")
+    if not req.venue_name or len(req.venue_name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Venue name required")
+
+    submission_id = db.insert_submitted_event(
+        name=req.name.strip(),
+        description=req.description.strip(),
+        venue_name=req.venue_name.strip(),
+        venue_address=req.venue_address.strip(),
+        city=req.city.strip() or settings.city,
+        date_start=req.date_start,
+        price_min=req.price_min,
+        price_max=req.price_max,
+        url=req.url.strip(),
+        submitted_by=req.submitted_by,
+    )
+
+    if settings.anthropic_api_key:
+        background_tasks.add_task(_enrich_and_save_submission, submission_id, req)
+
+    return {"ok": True, "submission_id": submission_id, "status": "pending"}
 
 
 # ── User state sync ──
@@ -189,11 +293,28 @@ def get_user_state_endpoint(google_id: str):
     return {"state": saved}
 
 
+REQUIRED_STATE_KEYS = {"hasJoined", "language", "rsvps"}
+MAX_STATE_SIZE_BYTES = 512_000  # 500 KB — generous but prevents abuse
+
+
 @app.post("/user/state")
 def save_user_state_endpoint(req: UserStateSaveRequest):
-    """Upsert app state for a Google account."""
+    """Upsert app state for a Google account with validation."""
+    if not req.google_id or len(req.google_id) > 200:
+        raise HTTPException(status_code=400, detail="Invalid google_id")
+
+    # Validate state is a reasonable object
+    if not isinstance(req.state, dict) or not REQUIRED_STATE_KEYS.issubset(req.state.keys()):
+        log.warning(f"State validation failed for {req.google_id[:20]}: missing keys")
+        raise HTTPException(status_code=400, detail="Invalid state object — missing required keys")
+
+    state_json = json.dumps(req.state)
+    if len(state_json) > MAX_STATE_SIZE_BYTES:
+        log.warning(f"State too large for {req.google_id[:20]}: {len(state_json)} bytes")
+        raise HTTPException(status_code=400, detail="State object too large")
+
     db.upsert_user_state(req.google_id, req.state)
-    return {"ok": True}
+    return {"ok": True, "saved_at": int(__import__('time').time() * 1000)}
 
 
 # ── RSVPs ──────────────────────────────────────────────────
@@ -540,6 +661,7 @@ def _to_frontend(ev, detail: bool = False) -> dict:
     if detail:
         out["description"] = ev.description
         out["venueAddress"] = ev.venue_address
+        out["city"] = ev.city
         out["imageUrl"] = ev.image_url
 
     return out
@@ -563,6 +685,41 @@ def _duration(ev) -> str:
 
 def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
+
+
+# ── Client Error Reporting ──
+
+class ClientErrorRequest(BaseModel):
+    error_type: str          # "sync_save_failed", "sync_load_failed", "js_error", etc.
+    message: str = ""
+    context: dict = {}       # extra info: url, component, state snapshot hash, etc.
+    session_id: str = ""
+    google_id: str = ""
+
+
+@app.post("/errors/client", status_code=200)
+def report_client_error(req: ClientErrorRequest):
+    """Receive frontend error reports. Logged server-side for monitoring.
+    Never fails to the client — errors about errors shouldn't cascade."""
+    try:
+        log.warning(
+            f"CLIENT ERROR [{req.error_type}] "
+            f"user={req.google_id[:20] if req.google_id else 'anon'} "
+            f"session={req.session_id[:12]} — {req.message[:200]}"
+        )
+        # Also store in analytics table for dashboarding
+        db.insert_analytics_event(
+            event_name=f"client_error:{req.error_type}",
+            properties_json=json.dumps({
+                "message": req.message[:500],
+                "google_id": req.google_id[:30] if req.google_id else "",
+                **{k: str(v)[:200] for k, v in (req.context or {}).items()},
+            }),
+            session_id=req.session_id,
+        )
+    except Exception as e:
+        log.error(f"Error reporting endpoint itself failed: {e}")
+    return {"ok": True}
 
 
 # ── Analytics ──
@@ -623,9 +780,17 @@ CRITICAL RULES:
 3. Keep it SHORT: 1-2 sentences max, then the events speak for themselves.
 4. Be warm but brief. Think friendly text message, not therapy session.
 5. If truly nothing matches, say so in one sentence and suggest what's closest.
+6. ALSO suggest custom activity ideas the user could create as private events \
+   with friends. These are personalized suggestions NOT in the catalog — things \
+   like "wine night with friends", "movie marathon", "picnic in the park". \
+   Always suggest 1-3 custom ideas that fit the user's mood/request. \
+   Each suggestion needs a name, emoji, short description, and category.
 
 USER CONTEXT:
-- Situation: {situation}
+- Reconnection mode: {situation}
+  (gentle=wants to go slow; explorer=discovering new things; builder=building real bonds;
+   rebounder=ready to jump back in; depth=few deep connections; steady=needs consistency;
+   curious=experimenting with no agenda)
 - Goal: {goal}
 - Week {week}/12
 - Language: {language}
@@ -637,10 +802,20 @@ RESPONSE FORMAT — return ONLY valid JSON (no markdown):
 {{
   "message": "<1-2 sentences in {language_name}, warm and direct>",
   "event_ids": ["id1", "id2"],
+  "suggestions": [
+    {{
+      "name": "<activity name in {language_name}>",
+      "emoji": "<single emoji>",
+      "description": "<1 sentence description in {language_name}>",
+      "category": "quiet_social" | "active" | "creative" | "community" | "bars_cafes"
+    }}
+  ],
   "tone": "encouraging" | "gentle" | "excited" | "practical"
 }}
 
-event_ids MUST be exact IDs from the catalog. Always respond in {language_name}.
+event_ids MUST be exact IDs from the catalog.
+suggestions are NEW activity ideas — never use catalog event names/IDs.
+Always respond in {language_name}.
 """
 
 
@@ -710,6 +885,7 @@ async def companion_chat(req: CompanionRequest):
     return {
         "message": data.get("message", ""),
         "events": recommended_events,
+        "suggestions": data.get("suggestions", []),
         "tone": data.get("tone", "encouraging"),
     }
 

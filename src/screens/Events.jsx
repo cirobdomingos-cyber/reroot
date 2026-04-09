@@ -5,11 +5,20 @@ import { useApp, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp } from '../services/api'
-import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
+import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+
+// Source provenance config — drives the badge label/style for every event origin.
+// Add new entries here when new scrapers go live (sympla, lu.ma, etc.).
+const SOURCE_CONFIG = {
+  reroot:     { label: 'Reroot AI',   icon: '✦', bg: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', border: '#CE93D8', color: '#6A1B9A' },
+  sympla:     { label: 'Sympla',      icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
+  eventbrite: { label: 'Eventbrite',  icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
+  meetup:     { label: 'Meetup',      icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
+}
 
 const VENUE_SUBTYPES = [
   { id: 'all',  label: 'Todos' },
@@ -20,6 +29,28 @@ const VENUE_SUBTYPES = [
 function getSubtype(ev) {
   if (ev.placeSubtype) return ev.placeSubtype
   return ev.icon === '☕' ? 'cafe' : 'bar'
+}
+
+// Some scraped descriptions arrive as escaped HTML (e.g. Sympla returns
+// `&lt;p&gt;...&lt;/p&gt;`). Decode entities up to twice (for double-escaping),
+// strip tags, collapse whitespace. Pure text out — safe to render directly.
+function cleanDescription(raw) {
+  if (!raw || typeof raw !== 'string') return ''
+  const decode = s => s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+  let text = decode(raw)
+  if (/&(lt|gt|amp|quot|#\d+);/.test(text)) text = decode(text)
+  text = text.replace(/<br\s*\/?>/gi, '\n')
+  text = text.replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+  text = text.replace(/<[^>]+>/g, '')
+  text = text.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim()
+  return text
 }
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
@@ -62,6 +93,42 @@ function VenueSkeletonRow() {
   )
 }
 
+// ── Profile-based event sorting ─────────────────────────────────────────────
+// Returns events sorted so those in priorityCategories appear first.
+// activityFirst profiles bump 'active' and 'bars_cafes' to the front of the
+// priority order — these users benefit from a concrete thing-to-do, not
+// open-ended socialising.
+function sortByProfile(events, profile) {
+  if (!profile) return events
+  let priorities = [...profile.priorityCategories]
+  if (profile.activityFirst) {
+    const activityCats = priorities.filter(c => c === 'active' || c === 'bars_cafes')
+    const rest = priorities.filter(c => c !== 'active' && c !== 'bars_cafes')
+    priorities = [...activityCats, ...rest]
+  }
+  return [...events].sort((a, b) => {
+    const aRank = priorities.indexOf(a.category)
+    const bRank = priorities.indexOf(b.category)
+    const aNorm = aRank === -1 ? priorities.length : aRank
+    const bNorm = bRank === -1 ? priorities.length : bRank
+    return aNorm - bNorm
+  })
+}
+
+// Returns the default category tab for a given profile.
+// activityFirst profiles start on an activity-style category rather than
+// quiet_social — the structure of an activity is their lower-pressure entry point.
+function getDefaultFilter(profile) {
+  if (!profile) return 'all'
+  if (profile.activityFirst) {
+    const activityCat = profile.priorityCategories.find(
+      c => c === 'active' || c === 'bars_cafes'
+    )
+    return activityCat ?? profile.priorityCategories[0]
+  }
+  return profile.priorityCategories[0]
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function Events() {
@@ -69,7 +136,7 @@ export default function Events() {
   const location = useLocation()
   const t = useT()
   const profile = getProfile(state.userSituation)
-  const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
+  const defaultFilter = getDefaultFilter(profile)
 
   const [activeFilter, setActiveFilter]     = useState(defaultFilter)
   const [dateFilter, setDateFilter]         = useState('all')
@@ -85,6 +152,7 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
+  const [hideCurated, setHideCurated]       = useState(false)
 
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
@@ -111,6 +179,12 @@ export default function Events() {
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
+    // Check custom events first — they don't exist in the backend
+    const customMatch = (state.customEvents || []).find(e => e.id === eventId)
+    if (customMatch) {
+      setDetailEvent(customMatch)
+      return
+    }
     setDetailLoading(true)
     const { event } = await fetchEventDetail(eventId)
     setDetailEvent(event)
@@ -128,8 +202,14 @@ export default function Events() {
     setSearchOpen(false)
   }
 
+  // Merge user-created custom events into the list
+  const customEventsForFilter = (state.customEvents || []).filter(ev =>
+    activeFilter === 'all' || ev.category === activeFilter
+  )
+  const allDisplayEvents = [...customEventsForFilter, ...events]
+
   // Apply search + date/venue filter
-  let filteredEvents = events
+  let filteredEvents = allDisplayEvents
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
     filteredEvents = filteredEvents.filter(ev =>
@@ -156,6 +236,15 @@ export default function Events() {
   // Kids Welcome filter — additive
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
+  }
+  // Hide AI-curated suggestions
+  if (hideCurated) {
+    filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
+  }
+  // Profile-based sort — only applied on the 'all' tab so per-category tabs
+  // are unaffected; also skipped when user is searching to preserve relevance order.
+  if (activeFilter === 'all' && !searchQuery.trim() && profile) {
+    filteredEvents = sortByProfile(filteredEvents, profile)
   }
 
   function getMemberCount(ev) {
@@ -185,6 +274,8 @@ export default function Events() {
         setNotifToast(ev.name)
         setTimeout(() => setNotifToast(null), 3000)
       }
+      // Schedule post-event reconnect nudge (native only, fires 3h after event start)
+      schedulePostEventNotification(ev)
     } else if (wasRsvped) {
       cancelEventReminder(ev.id)
     }
@@ -373,6 +464,19 @@ export default function Events() {
         >
           👶 {t.filter_kids_welcome}
         </button>
+        <button
+          onClick={() => setHideCurated(h => !h)}
+          style={{
+            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+            transition: 'all 0.15s',
+            border: hideCurated ? 'none' : '1px solid var(--border)',
+            background: hideCurated ? '#6A1B9A' : 'transparent',
+            color: hideCurated ? 'white' : 'var(--charcoal-light)',
+          }}
+        >
+          {hideCurated ? `✦ ${t.filter_hide_curated_on}` : `✦ ${t.filter_hide_curated}`}
+        </button>
       </div>
 
       {/* ── Loading skeletons ── */}
@@ -380,6 +484,19 @@ export default function Events() {
         isVenueMode
           ? <>{[0,1,2,3,4].map(i => <VenueSkeletonRow key={i} />)}</>
           : <>{[0,1,2,3,4].map(i => <EventCardSkeleton key={i} />)}</>
+      )}
+
+      {/* ── Profile section header (only on 'all' tab) ── */}
+      {!loading && activeFilter === 'all' && profile && filteredEvents.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 16px 6px',
+        }}>
+          <span style={{ fontSize: 11, color: 'var(--terra)', fontWeight: 700 }}>
+            ✦ {state.language === 'en' ? 'Picked for your profile' : 'Escolhido para o seu perfil'}
+          </span>
+          <span style={{ fontSize: 20 }}>{profile.emoji}</span>
+        </div>
       )}
 
       {/* ── List ── */}
@@ -607,6 +724,28 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
         {/* Bottom row: badges + RSVP button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+            {ev.source && SOURCE_CONFIG[ev.source] && (() => {
+              const src = SOURCE_CONFIG[ev.source]
+              return (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                  background: src.bg, color: src.color,
+                  padding: '2px 8px', borderRadius: 5,
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                }}>
+                  {src.icon} {src.label}
+                </span>
+              )
+            })()}
+            {ev.isCustom && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                background: '#FFF3E0', color: 'var(--terra)',
+                padding: '2px 8px', borderRadius: 5,
+              }}>
+                ★ {t.tag_private}
+              </span>
+            )}
             {ev.isLowPressure && (
               <span style={{
                 fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
@@ -636,7 +775,7 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            {rsvped && <AddToCalendar event={ev} />}
+            <AddToCalendar event={ev} />
             <button
               className="btn btn--primary"
               style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10 }}
@@ -692,6 +831,19 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
           📍 {neighborhood}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          {ev.source && SOURCE_CONFIG[ev.source] && (() => {
+            const src = SOURCE_CONFIG[ev.source]
+            return (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                background: src.bg, color: src.color,
+                padding: '1px 7px', borderRadius: 5,
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+              }}>
+                {src.icon} {src.label}
+              </span>
+            )
+          })()}
           {ev.rating > 0 && (
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--terra)' }}>
               ⭐ {ev.rating}
@@ -721,7 +873,7 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
 
       {/* Save button + calendar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        {saved && <AddToCalendar event={ev} />}
+        <AddToCalendar event={ev} />
         <button
           onClick={e => { e.stopPropagation(); onSave() }}
           style={{
@@ -789,6 +941,34 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           {ev.name}
         </div>
 
+        {/* Source badge — always visible so user knows where this event came from */}
+        {(ev.source && SOURCE_CONFIG[ev.source]) ? (() => {
+          const src = SOURCE_CONFIG[ev.source]
+          return (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+              background: src.bg, border: `1px solid ${src.border}`,
+            }}>
+              <span style={{ fontSize: 12 }}>{src.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: src.color, textTransform: 'uppercase' }}>
+                {src.label}
+              </span>
+            </div>
+          )
+        })() : ev.isCustom ? (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+            background: '#FFF3E0', border: '1px solid #FFB74D',
+          }}>
+            <span style={{ fontSize: 12 }}>★</span>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: 'var(--terra)', textTransform: 'uppercase' }}>
+              {t.tag_private_long}
+            </span>
+          </div>
+        ) : null}
+
         {isVenue && (
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -813,7 +993,12 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
         )}
 
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
-          📍 {ev.venue}<br/>
+          📍 {ev.venue}{ev.city && !ev.venue?.includes(ev.city) ? ` · ${ev.city}` : ''}<br/>
+          {ev.venueAddress && (
+            <span style={{ marginLeft: 18, fontSize: 12, color: 'var(--charcoal-light)' }}>
+              {ev.venueAddress}<br/>
+            </span>
+          )}
           {isVenue
             ? `🕐 ${t.events_venue_open}`
             : `🗓 ${ev.date} · ${ev.duration || ev.time}`
@@ -835,11 +1020,36 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           )}
         </div>
 
-        {ev.description && (
-          <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16 }}>
-            {ev.description}
-          </div>
-        )}
+        {(() => {
+          const desc = cleanDescription(ev.description)
+          return desc ? (
+            <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16, whiteSpace: 'pre-line' }}>
+              {desc}
+            </div>
+          ) : null
+        })()}
+
+        {/* Source link — prominent so users can verify on the original site */}
+        {ev.url && !isVenue && (() => {
+          const src = ev.source && SOURCE_CONFIG[ev.source]
+          const label = src ? `Ver no ${src.label} →` : t.events_view_original
+          return (
+            <a
+              href={ev.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 14px', borderRadius: 10, marginBottom: 16,
+                background: 'var(--sage-pale)', color: 'var(--sage)',
+                fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                border: '1px solid var(--sage)',
+              }}
+            >
+              🔗 {label}
+            </a>
+          )
+        })()}
 
         {ev.rerootReason && (
           <div style={{
@@ -924,63 +1134,15 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           </button>
         )}
 
-        <AnimatePresence>
-          {rsvped && !isVenue && (
-            <motion.div
-              key="share-row"
-              initial={{ opacity: 0, height: 0, marginTop: 0 }}
-              animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
-              exit={{ opacity: 0, height: 0, marginTop: 0 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 14,
-                background: 'white', border: '1px solid var(--border)',
-              }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)', flexShrink: 0 }}>
-                  Avisar amigos:
-                </span>
-                <button
-                  onClick={handleWhatsApp}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 12px', borderRadius: 20,
-                    background: '#25D366', color: 'white',
-                    border: 'none', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', flexShrink: 0,
-                  }}
-                >
-                  💬 WhatsApp
-                </button>
-                <button
-                  onClick={handleCopyLink}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    padding: '6px 12px', borderRadius: 20,
-                    background: copied ? 'var(--sage-pale)' : 'rgba(44,44,44,0.07)',
-                    color: copied ? 'var(--sage)' : 'var(--charcoal-mid)',
-                    border: 'none', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', flexShrink: 0,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {copied ? 'Copiado! ✓' : '🔗 Copiar link'}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {ev.url && (
+        {/* Venues keep the Google Maps link at the bottom; non-venue source link is shown above the description. */}
+        {ev.url && isVenue && (
           <a
             href={ev.url}
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: 'block', textAlign: 'center', marginTop: 14, fontSize: 12, color: 'var(--charcoal-light)', textDecoration: 'underline' }}
           >
-            {isVenue ? '📍 Ver no Google Maps →' : t.events_view_original}
+            📍 Ver no Google Maps →
           </a>
         )}
       </div>
