@@ -45,41 +45,6 @@ export default function Journey() {
         </div>
       </div>
 
-      {/* Chapter card */}
-      <div style={{ margin: '4px 16px 4px' }}>
-        <div style={{
-          background: chapter.pale,
-          border: `1.5px solid ${chapter.color}22`,
-          borderRadius: 18, padding: '14px 16px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: chapter.color }}/>
-            <span style={{ fontSize: 11, fontWeight: 700, color: chapter.color, textTransform: 'uppercase', letterSpacing: 1 }}>
-              {chapter.name}
-            </span>
-            <span style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
-              · {t.journey_of} {chapter.weeks[0]}–{chapter.weeks[chapter.weeks.length - 1]}
-            </span>
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>
-            {chapter.desc}
-          </div>
-          {/* Chapter progress bar */}
-          <div style={{ marginTop: 10, height: 4, borderRadius: 2, background: `${chapter.color}22`, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              width: `${((currentWeek - chapter.weeks[0]) / chapter.weeks.length) * 100}%`,
-              borderRadius: 2, background: chapter.color,
-              transition: 'width 0.6s ease',
-            }}/>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>W{chapter.weeks[0]}</span>
-            <span style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>W{chapter.weeks[chapter.weeks.length - 1]}</span>
-          </div>
-        </div>
-      </div>
-
       {/* AI Companion message */}
       {(state.aiPartnerMessage || (currentWeek >= 1 && currentWeek <= 12)) && (
         <div style={{ margin: '8px 16px 0' }}>
@@ -142,42 +107,49 @@ export default function Journey() {
 
       {/* Reflection prompts */}
       <div className="section-label">{t.journey_prompts_label}</div>
-      {framework.prompts.map(p => (
-        <div key={p.num} style={{
-          margin: '0 16px 10px', background: 'white',
-          borderRadius: 16, padding: '15px 16px',
-          boxShadow: 'var(--shadow-sm)', borderLeft: '3px solid var(--terra)',
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--terra)', marginBottom: 6 }}>
-            {t.journey_prompt_prefix} {p.num}
+      <div style={{ margin: '0 16px 10px', background: 'white', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+        {framework.prompts.map((p, i) => (
+          <div key={p.num} style={{
+            padding: '14px 16px',
+            borderBottom: i < framework.prompts.length - 1 ? '1px solid var(--border)' : 'none',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--terra)', marginBottom: 5 }}>
+              {t.journey_prompt_prefix} {p.num}
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, fontWeight: 500 }}>
+              {p.question}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 5 }}>
+              💭 {p.hint}
+            </div>
           </div>
-          <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, fontWeight: 500 }}>
-            {p.question}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 6 }}>
-            💭 {p.hint}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {/* Reframe exercises */}
       <div className="section-label">{t.journey_reframes_label}</div>
-      {framework.reframes.map((r, i) => (
-        <div key={i} style={{
-          margin: '0 16px 10px',
-          background: 'linear-gradient(135deg, #2C2C2C, #3d2d25)',
-          borderRadius: 16, padding: 18, color: 'white',
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--terra-light)', marginBottom: 10 }}>
-            {r.label}
+      <div style={{
+        margin: '0 16px 10px',
+        background: 'linear-gradient(135deg, #2C2C2C, #3d2d25)',
+        borderRadius: 16, overflow: 'hidden', color: 'white',
+      }}>
+        {framework.reframes.map((r, i) => (
+          <div key={i} style={{
+            padding: '16px 18px',
+            borderBottom: i < framework.reframes.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 'none',
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--terra-light)', marginBottom: 8 }}>
+              {r.label}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textDecoration: 'line-through', marginBottom: 4 }}>{r.from}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{r.to}</div>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 8, textDecoration: 'line-through' }}>
-            {r.from}
-          </div>
-          <div style={{ fontSize: 20, marginBottom: 6, color: 'var(--terra-light)' }}>↓</div>
-          <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.4 }}>{r.to}</div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {/* Actions */}
       <div className="section-label">{t.journey_actions_label}</div>

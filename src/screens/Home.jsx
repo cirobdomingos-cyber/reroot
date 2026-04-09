@@ -127,7 +127,7 @@ export default function Home() {
   // Weekly check-in: show whenever current week > 1 and check-in not done yet
   const prevWeek = currentWeek - 1
   const showWeeklyCheckIn = currentWeek > 1 && !state.weeklyCheckIns?.[currentWeek] && !checkInDone
-  const showPushPrompt = currentWeek > 1 && !state.pushOptedIn && !state.pushDismissed && !pushSuccess && 'PushManager' in window
+  const showPushPrompt = currentWeek > 1 && !state.pushOptedIn && !state.pushDismissed && !pushSuccess && 'PushManager' in window && !showWeeklyCheckIn
 
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
@@ -155,7 +155,7 @@ export default function Home() {
 
   // Month-end card: show in first 10 days of the month if user joined over a week ago
   const joinedOverAWeek = state.joinedAt && (Date.now() - state.joinedAt) > 7 * 24 * 60 * 60 * 1000
-  const showMonthEnd = joinedOverAWeek && !state.monthEndDismissed && new Date().getDate() <= 10
+  const showMonthEnd = joinedOverAWeek && !state.monthEndDismissed && new Date().getDate() <= 10 && !showWeeklyCheckIn && !showPushPrompt
 
   // Milestone dots for progress bar
   const MILESTONE_WEEKS = [1, 2, 3, 6, 9, 12]
@@ -337,33 +337,18 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Chapter banner */}
-      <div style={{ margin: '6px 16px 0' }}>
-        <div style={{
-          background: chapter.pale,
-          border: `1.5px solid ${chapter.color}22`,
-          borderRadius: 14, padding: '10px 14px',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: chapter.color, flexShrink: 0,
-          }}/>
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: chapter.color }}>
-              {profileCopy ? profileCopy.tag : t.home_chapter_label}
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', marginTop: 1 }}>
-              {chapter.name} — {chapter.desc.split('.')[0]}.
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Progress card */}
-      <div style={{ margin: '8px 16px 12px' }} className="card card--dark">
-        <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>
-          {t.home_journey_label}
+      <div style={{ margin: '6px 16px 12px' }} className="card card--dark">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5, color: 'rgba(255,255,255,0.5)' }}>
+            {t.home_journey_label}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: chapter.color }}/>
+            <span style={{ fontSize: 10, fontWeight: 700, color: chapter.color, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              {profileCopy ? profileCopy.tag : chapter.name}
+            </span>
+          </div>
         </div>
         <div style={{ fontSize: 28, fontWeight: 700 }}>
           {t.home_week} {currentWeek}{' '}
@@ -484,36 +469,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Social sharing privacy toggle */}
-      {state.googleUser?.id && (
-        <div style={{
-          margin: '0 16px 12px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 14px',
-          background: 'white',
-          borderRadius: 12,
-          border: '1px solid var(--border)',
-        }}>
-          <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
-            Compartilhar minha agenda com amigos
-          </span>
-          <button
-            onClick={() => dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key: 'shareRsvps', value: !(state.privacy?.shareRsvps ?? state.shareRsvps) } })}
-            style={{
-              fontSize: 14,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '2px 6px',
-              color: (state.privacy?.shareRsvps ?? state.shareRsvps) ? 'var(--sage)' : 'var(--charcoal-mid)',
-              fontWeight: 700,
-            }}
-            title={(state.privacy?.shareRsvps ?? state.shareRsvps) ? 'Clique para desativar' : 'Clique para ativar'}
-          >
-            {(state.privacy?.shareRsvps ?? state.shareRsvps) ? '✓' : '✗'}
-          </button>
-        </div>
-      )}
+
 
       {/* Post-event reconnect card — surfaces PostEventAttendees to users who don't tap back into past events */}
       {reconnectEvent && (
@@ -827,27 +783,25 @@ export default function Home() {
             background: 'white', borderRadius: 18, overflow: 'hidden',
             boxShadow: 'var(--shadow-sm)',
           }}>
-            {/* Activity header strip */}
-            <div style={{ height: 64, background: act.headerBg, position: 'relative', display: 'flex', alignItems: 'flex-end', padding: '0 14px 10px' }}>
-              <span style={{ fontSize: 28 }}>{act.icon}</span>
-              {act.soloFriendly && (
-                <span style={{
-                  position: 'absolute', top: 8, right: 10,
-                  fontSize: 9, fontWeight: 700,
-                  background: 'rgba(255,255,255,0.88)', color: 'var(--sage)',
-                  padding: '3px 8px', borderRadius: 6,
-                }}>
-                  {t.home_activity_solo}
-                </span>
-              )}
-            </div>
             {/* Activity body */}
             <div style={{ padding: '12px 14px 14px' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 2 }}>
-                {act.name}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
-                📍 {act.address} · {act.when}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: act.headerBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+                  {act.icon}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 1 }}>
+                    {act.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
+                    📍 {act.address} · {act.when}
+                  </div>
+                </div>
+                {act.soloFriendly && (
+                  <span style={{ fontSize: 9, fontWeight: 700, background: 'var(--sage-pale)', color: 'var(--sage)', padding: '3px 8px', borderRadius: 6, flexShrink: 0 }}>
+                    {t.home_activity_solo}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 12, color: 'var(--charcoal)', lineHeight: 1.5, marginBottom: 10 }}>
                 {act.description}
