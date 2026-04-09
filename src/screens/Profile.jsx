@@ -611,6 +611,80 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* Accessibility mode toggle */}
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+              {t.accessibility_mode}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+              {t.accessibility_description}
+            </div>
+          </div>
+          <button
+            onClick={() => dispatch({ type: 'TOGGLE_ACCESSIBILITY' })}
+            style={{
+              width: 52, height: 30, borderRadius: 15, border: 'none',
+              background: state.accessibilityMode ? 'var(--sage)' : 'var(--border)',
+              cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+              flexShrink: 0, marginLeft: 12,
+            }}
+          >
+            <div style={{
+              width: 24, height: 24, borderRadius: '50%', background: 'white',
+              position: 'absolute', top: 3,
+              left: state.accessibilityMode ? 25 : 3,
+              transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+            }} />
+          </button>
+        </div>
+      </div>
+
+      {/* Privacy settings */}
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
+          🔒 {t.privacy_title ?? 'Privacy'}
+        </div>
+        {[
+          { key: 'shareRsvps',             label: t.privacy_share_rsvps ?? 'Share RSVPs with friends',        desc: t.privacy_share_rsvps_desc ?? 'Your friends can see events you confirmed' },
+          { key: 'showInFriendSuggestions', label: t.privacy_show_suggestions ?? 'Appear in friend suggestions', desc: t.privacy_show_suggestions_desc ?? 'Other people can find your profile' },
+          { key: 'showProfileToStrangers',  label: t.privacy_show_profile ?? 'Profile visible to non-friends',   desc: t.privacy_show_profile_desc ?? 'Non-friends can see your full profile' },
+        ].map(({ key, label, desc }) => {
+          const value = state.privacy?.[key] ?? (key === 'shareRsvps' ? state.shareRsvps : false)
+          return (
+            <div key={key} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 0',
+              borderBottom: key !== 'showProfileToStrangers' ? '1px solid var(--border)' : 'none',
+            }}>
+              <div style={{ flex: 1, paddingRight: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{label}</div>
+                <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
+              </div>
+              <button
+                onClick={() => dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key, value: !value } })}
+                style={{
+                  width: 44, height: 26, borderRadius: 13, border: 'none',
+                  background: value ? 'var(--sage)' : 'var(--border)',
+                  position: 'relative', cursor: 'pointer', flexShrink: 0,
+                  transition: 'background 0.2s',
+                }}
+              >
+                <div style={{
+                  width: 20, height: 20, borderRadius: '50%',
+                  background: 'white', position: 'absolute', top: 3,
+                  left: value ? 21 : 3,
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
       {/* Redo onboarding + Reset */}
       <div style={{ padding: '4px 16px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <button

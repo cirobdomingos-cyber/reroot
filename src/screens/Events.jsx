@@ -6,6 +6,8 @@ import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
+import AddToCalendar from '../components/AddToCalendar'
+import PostEventAttendees from '../components/PostEventAttendees'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
@@ -81,6 +83,8 @@ export default function Events() {
   const [searchQuery, setSearchQuery]       = useState('')
   const [searchOpen, setSearchOpen]         = useState(false)
   const [notifToast, setNotifToast]         = useState(null)
+  const [priceFilter, setPriceFilter]       = useState('all')
+  const [kidsFilter, setKidsFilter]         = useState(false)
 
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
@@ -139,6 +143,20 @@ export default function Events() {
   if (isVenueMode && venueSubFilter !== 'all') {
     filteredEvents = filteredEvents.filter(ev => getSubtype(ev) === venueSubFilter)
   }
+  // Price filter — additive (AND logic)
+  if (priceFilter === 'free') {
+    filteredEvents = filteredEvents.filter(ev =>
+      ev.priceTier === 'free' || ev.price === 'Gratuito' || ev.price === 'Free'
+    )
+  } else if (priceFilter === 'paid') {
+    filteredEvents = filteredEvents.filter(ev =>
+      ev.priceTier !== 'free' && ev.price !== 'Gratuito' && ev.price !== 'Free'
+    )
+  }
+  // Kids Welcome filter — additive
+  if (kidsFilter) {
+    filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
+  }
 
   function getMemberCount(ev) {
     const base = ev.cohortGoing?.length ?? 0
@@ -150,7 +168,7 @@ export default function Events() {
     dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
 
     // Sync to backend social layer — only when user is logged in and sharing is enabled
-    if (state.googleUser?.id && state.shareRsvps) {
+    if (state.googleUser?.id && (state.privacy?.shareRsvps ?? state.shareRsvps)) {
       syncRsvp(state.googleUser.id, ev, !wasRsvped)
     }
 
@@ -318,6 +336,43 @@ export default function Events() {
             </button>
           ))
         )}
+      </div>
+
+      {/* ── Price + Kids Welcome filter chips ── */}
+      <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {[
+          { id: 'all',  label: t.filter_all_prices },
+          { id: 'free', label: `🆓 ${t.filter_free}` },
+          { id: 'paid', label: `💰 ${t.filter_paid}` },
+        ].map(pf => (
+          <button
+            key={pf.id}
+            onClick={() => setPriceFilter(pf.id)}
+            style={{
+              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+              transition: 'all 0.15s',
+              border: priceFilter === pf.id ? 'none' : '1px solid var(--border)',
+              background: priceFilter === pf.id ? 'var(--sage)' : 'transparent',
+              color: priceFilter === pf.id ? 'white' : 'var(--charcoal-light)',
+            }}
+          >
+            {pf.label}
+          </button>
+        ))}
+        <button
+          onClick={() => setKidsFilter(k => !k)}
+          style={{
+            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+            transition: 'all 0.15s',
+            border: kidsFilter ? 'none' : '1px solid var(--border)',
+            background: kidsFilter ? '#E8956D' : 'transparent',
+            color: kidsFilter ? 'white' : 'var(--charcoal-light)',
+          }}
+        >
+          👶 {t.filter_kids_welcome}
+        </button>
       </div>
 
       {/* ── Loading skeletons ── */}
@@ -560,23 +615,36 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
                 🌿 {t.events_low_pressure}
               </span>
             )}
-            {ev.price && (
+            {ev.priceTier === 'free' ? (
+              <span className="tag tag--sage" style={{ fontSize: 10, padding: '2px 7px' }}>
+                {t.tag_free}
+              </span>
+            ) : ev.price ? (
               <span style={{
-                fontSize: 11,
-                color: ev.priceTier === 'free' ? 'var(--sage)' : 'var(--charcoal-light)',
-                fontWeight: ev.priceTier === 'free' ? 700 : 400,
+                fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 400,
               }}>
                 {ev.price}
               </span>
+            ) : null}
+            {ev.kidsWelcome && (
+              <span className="tag" style={{
+                fontSize: 10, padding: '2px 7px',
+                background: '#FFF3E0', color: '#E65100',
+              }}>
+                {t.tag_kids}
+              </span>
             )}
           </div>
-          <button
-            className="btn btn--primary"
-            style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}
-            onClick={onRsvp}
-          >
-            {rsvped ? `✓ ${t.events_rsvped.replace(' ✓', '')}` : t.events_rsvp}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {rsvped && <AddToCalendar event={ev} />}
+            <button
+              className="btn btn--primary"
+              style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10 }}
+              onClick={onRsvp}
+            >
+              {rsvped ? `✓ ${t.events_rsvped.replace(' ✓', '')}` : t.events_rsvp}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -640,22 +708,33 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
               {t.events_low_pressure}
             </span>
           )}
+          {ev.kidsWelcome && (
+            <span style={{
+              fontSize: 10, background: '#FFF3E0', color: '#E65100',
+              padding: '1px 7px', borderRadius: 6, fontWeight: 600,
+            }}>
+              {t.tag_kids}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Save button */}
-      <button
-        onClick={e => { e.stopPropagation(); onSave() }}
-        style={{
-          flexShrink: 0, padding: '7px 14px', borderRadius: 10,
-          fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-          border: saved ? 'none' : '1.5px solid var(--border)',
-          background: saved ? 'var(--sage)' : 'transparent',
-          color: saved ? 'white' : 'var(--charcoal-mid)',
-        }}
-      >
-        {saved ? `✓ ${t.events_saved_check}` : t.events_save}
-      </button>
+      {/* Save button + calendar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {saved && <AddToCalendar event={ev} />}
+        <button
+          onClick={e => { e.stopPropagation(); onSave() }}
+          style={{
+            padding: '7px 14px', borderRadius: 10,
+            fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+            border: saved ? 'none' : '1.5px solid var(--border)',
+            background: saved ? 'var(--sage)' : 'transparent',
+            color: saved ? 'white' : 'var(--charcoal-mid)',
+          }}
+        >
+          {saved ? `✓ ${t.events_saved_check}` : t.events_save}
+        </button>
+      </div>
     </div>
   )
 }
@@ -744,6 +823,18 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           {ev.hasFood && <><br/>{t.events_food_drink}</>}
         </div>
 
+        {/* Price badge + Kids Welcome tag in detail view */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+          {ev.priceTier === 'free' && (
+            <span className="tag tag--sage">{t.tag_free}</span>
+          )}
+          {ev.kidsWelcome && (
+            <span className="tag" style={{ background: '#FFF3E0', color: '#E65100' }}>
+              {t.tag_kids}
+            </span>
+          )}
+        </div>
+
         {ev.description && (
           <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16 }}>
             {ev.description}
@@ -761,6 +852,14 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             </div>
             <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.rerootReason}</div>
           </div>
+        )}
+
+        {/* Post-event attendees — "People you met" */}
+        {!isVenue && (
+          <PostEventAttendees
+            eventId={ev.id}
+            eventDate={ev.dateStart || ev.date}
+          />
         )}
 
         {/* Cohort members */}
@@ -808,6 +907,12 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
           }
         </button>
+
+        {rsvped && (
+          <div style={{ marginTop: 10 }}>
+            <AddToCalendar event={ev} />
+          </div>
+        )}
 
         {rsvped && !isVenue && (
           <button

@@ -58,6 +58,7 @@ class EnrichedEvent(BaseModel):
     is_low_pressure: bool           # bom para re-entrada social
     good_for_reroot: bool
     reroot_reason: str              # "Ambiente íntimo, sem expectativa de performance"
+    kids_welcome: bool = False       # family-friendly / kids allowed
     price_tier: str                 # "free" | "low" | "medium" | "high"
     vibe_summary: str               # frase curta para o card
     expected_size: str              # "small" | "medium" | "large"

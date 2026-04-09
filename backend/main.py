@@ -111,16 +111,22 @@ def health():
 def list_events(
     category: Optional[str] = None,
     good_only: bool = False,
+    price_tier: Optional[str] = None,
+    kids_welcome: Optional[bool] = None,
     limit: int = 20,
 ):
     """
     Retorna eventos enriquecidos prontos para o frontend.
     category: quiet_social | active | creative | community | all
+    price_tier: free | paid (paid = anything that is not free)
+    kids_welcome: true to filter only family-friendly events
     """
     events = db.get_events(
         city=settings.city,
         good_only=good_only,
         category=category if category != "all" else None,
+        price_tier=price_tier,
+        kids_welcome=kids_welcome,
         limit=limit,
     )
 
@@ -222,6 +228,21 @@ def rsvp_delete(event_id: str, google_id: str):
     return {"ok": True}
 
 
+# ── Event attendees ────────────────────────────────────────
+
+@app.get("/events/{event_id}/attendees")
+def event_attendees(event_id: str, google_id: str):
+    """
+    Return list of users who RSVPed to this event, excluding the requester.
+    Each attendee has google_id, name, picture, is_friend, and friend_code.
+    """
+    attendees = db.get_event_attendees(event_id, google_id)
+    # Attach friend_code so the frontend can call addFriend directly
+    for a in attendees:
+        a["friend_code"] = db.get_friend_code(a["google_id"])
+    return {"attendees": attendees}
+
+
 # ── Friends ────────────────────────────────────────────────
 
 class FriendAddRequest(BaseModel):
@@ -277,7 +298,21 @@ def friends_feed(google_id: str):
     friend_ids = [f["google_id"] for f in friends]
     friend_map = {f["google_id"]: f for f in friends}
 
-    rsvps = db.get_rsvps_for_users(friend_ids)
+    # Filter out friends who disabled RSVP sharing in their privacy settings
+    visible_ids = []
+    for fid in friend_ids:
+        friend_state = db.get_user_state(fid)
+        if friend_state:
+            privacy = friend_state.get("privacy", {})
+            # Default to True (sharing on) if privacy key is absent — backward compat
+            if not privacy.get("shareRsvps", friend_state.get("shareRsvps", True)):
+                continue
+        visible_ids.append(fid)
+
+    if not visible_ids:
+        return {"events": []}
+
+    rsvps = db.get_rsvps_for_users(visible_ids)
     today = date.today().isoformat()
 
     # Group by event_id, filter to future events
@@ -488,6 +523,7 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         "icon": _category_icon(ev.reroot_category),
         "price": price_label,
         "priceTier": ev.price_tier,
+        "kidsWelcome": ev.kids_welcome,
         "hasFood": ev.has_food,
         "isLowPressure": ev.is_low_pressure,
         "attendeesConfirmed": member_count,

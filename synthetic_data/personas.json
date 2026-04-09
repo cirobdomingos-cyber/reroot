@@ -1,0 +1,258 @@
+[
+  {
+    "persona_id": "P01",
+    "name": "Lucas Ferreira",
+    "age": 24,
+    "city": "Sao Paulo, Brazil",
+    "life_context": "Recent college graduate, lives alone in a studio apartment, works remotely as a junior developer. Moved to SP from a small town 2 years ago.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["anxious", "methodical", "curious"],
+      "social_style": "Prefers small groups, avoids crowded events, needs time to warm up to new people"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["break isolation from remote work", "make friends in a new city", "find board game groups"],
+    "frustrations_with_previous_apps": ["Tinder felt too romantic-focused", "Meetup groups were too large and intimidating", "Bumble BFF matches never replied"],
+    "expectations": ["Small group activities", "Low-pressure ways to connect", "Interest-based matching, not just photos"]
+  },
+  {
+    "persona_id": "P02",
+    "name": "Maria Gonzalez",
+    "age": 35,
+    "city": "Mexico City, Mexico",
+    "life_context": "Single mother of a 6-year-old, works as an accountant at a mid-size firm. Lives with her mother who helps with childcare.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["pragmatic", "warm", "time-constrained"],
+      "social_style": "Values deep friendships over many acquaintances, prefers daytime or early evening activities"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": ["find other parents for weekend activities", "rediscover hobbies she dropped after having her daughter", "adult conversation outside of work"],
+    "frustrations_with_previous_apps": ["Most social apps assume you have free evenings", "Events are always at bars — not parent-friendly", "No way to filter by schedule availability"],
+    "expectations": ["Family-friendly event options", "Flexible scheduling", "Trustworthy community feel"]
+  },
+  {
+    "persona_id": "P03",
+    "name": "James Okonkwo",
+    "age": 28,
+    "city": "Lagos, Nigeria",
+    "life_context": "Freelance graphic designer, lives with two roommates, active social life but wants to expand beyond his current circle.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["spontaneous", "energetic", "competitive"],
+      "social_style": "Loves meeting new people, first to suggest plans, thrives in group settings"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["discover unique local events", "network with other creatives", "find pickup sports games"],
+    "frustrations_with_previous_apps": ["Instagram events are hard to find", "WhatsApp groups get spammy", "No good way to find last-minute activities"],
+    "expectations": ["Real-time event discovery", "Quick RSVP process", "Active community that actually shows up"]
+  },
+  {
+    "persona_id": "P04",
+    "name": "Yuki Tanaka",
+    "age": 42,
+    "city": "Osaka, Japan",
+    "life_context": "Office worker at a logistics company, married with two teenagers. Feels his social circle has shrunk to only work colleagues.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["reserved", "loyal", "detail-oriented"],
+      "social_style": "Uncomfortable with casual small talk, prefers structured activities with clear purpose"
+    },
+    "tech_relationship": "resistant_adopter",
+    "motivations": ["find a photography club", "reconnect with hobbies from his 20s", "have friends outside of work"],
+    "frustrations_with_previous_apps": ["Too many notifications", "Interfaces feel designed for teenagers", "Unclear how to start a conversation"],
+    "expectations": ["Clean, simple interface", "Activity-focused not chat-focused", "No pressure to be constantly active"]
+  },
+  {
+    "persona_id": "P05",
+    "name": "Priya Sharma",
+    "age": 22,
+    "city": "Bangalore, India",
+    "life_context": "Final year engineering student, lives in a hostel. Active on social media but struggles with real-life social connections.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["creative", "overthinking", "idealistic"],
+      "social_style": "Active online persona, quiet in person, needs structured social settings to open up"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["find people who share niche interests (anime, poetry)", "overcome social anxiety through low-stakes meetups", "build confidence before graduating"],
+    "frustrations_with_previous_apps": ["People only want to date", "Communities feel superficial", "Hard to find people with genuinely shared interests"],
+    "expectations": ["Deep interest matching", "Icebreaker features", "Option to join events anonymously first"]
+  },
+  {
+    "persona_id": "P06",
+    "name": "Carlos Mendez",
+    "age": 55,
+    "city": "Buenos Aires, Argentina",
+    "life_context": "Recently divorced, children are adults living abroad. Retired early from banking. Lots of free time, few social outlets.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["nostalgic", "generous", "slightly insecure about age"],
+      "social_style": "Enjoys long conversations, prefers in-person over digital, values respect and mutual interest"
+    },
+    "tech_relationship": "resistant_adopter",
+    "motivations": ["combat loneliness after divorce", "find travel companions", "join cultural activities (theater, wine tastings)"],
+    "frustrations_with_previous_apps": ["Everything feels youth-oriented", "Complex registration processes", "No one his age on most platforms"],
+    "expectations": ["Age-inclusive community", "Simple onboarding", "Events that match his interests and pace"]
+  },
+  {
+    "persona_id": "P07",
+    "name": "Aisha Bello",
+    "age": 30,
+    "city": "Nairobi, Kenya",
+    "life_context": "NGO project manager, single, recently relocated from Mombasa. Knows very few people in the city.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["empathetic", "organized", "adventurous"],
+      "social_style": "Natural connector, enjoys introducing people to each other, prefers meaningful interactions"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["build a social network in a new city quickly", "find volunteering opportunities", "explore Nairobi's food and culture scene"],
+    "frustrations_with_previous_apps": ["Fake profiles everywhere", "No way to verify if events are real", "Chat conversations die quickly"],
+    "expectations": ["Verified profiles or events", "Community-driven content", "Group activities not just 1-on-1"]
+  },
+  {
+    "persona_id": "P08",
+    "name": "Emma Lindqvist",
+    "age": 26,
+    "city": "Stockholm, Sweden",
+    "life_context": "UX designer at a startup, lives with her partner. Has friends but wants to expand her social circle beyond the tech bubble.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["analytical", "empathetic", "perfectionist"],
+      "social_style": "Selective about social commitments, values quality time, appreciates well-organized events"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["meet people outside the tech industry", "find creative workshops (ceramics, painting)", "have a reason to explore her own city"],
+    "frustrations_with_previous_apps": ["Too many features crammed into one app", "Bad UX makes her cringe professionally", "Notifications are always irrelevant"],
+    "expectations": ["Beautiful, intuitive design", "Smart notification system", "Curated event recommendations"]
+  },
+  {
+    "persona_id": "P09",
+    "name": "David Park",
+    "age": 19,
+    "city": "Seoul, South Korea",
+    "life_context": "University freshman, lives in a dorm. Shy and homesick, struggling to make friends on campus.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["shy", "artistic", "observant"],
+      "social_style": "Lurker by default, contributes when comfortable, prefers expressing himself through creative work"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["find a music/band group on campus", "overcome homesickness by staying busy", "meet people without the pressure of approaching strangers"],
+    "frustrations_with_previous_apps": ["University apps are dead or clunky", "Everyone seems to already have friend groups", "Chat-first apps are intimidating"],
+    "expectations": ["Campus-specific features", "Activity-first approach", "Gentle onboarding that doesn't demand a full profile"]
+  },
+  {
+    "persona_id": "P10",
+    "name": "Sophie Dubois",
+    "age": 38,
+    "city": "Lyon, France",
+    "life_context": "Freelance translator, lives alone with two cats. Works from home, days can pass without in-person interaction.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["intellectual", "dry humor", "independent"],
+      "social_style": "Values solitude but recognizes she needs more human contact, prefers one-on-one or small groups"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": ["break the work-from-home isolation cycle", "find a book club or language exchange", "have regular weekly social commitments"],
+    "frustrations_with_previous_apps": ["Forced to upload photos and write witty bios", "Algorithms push you toward the most popular people", "No recurring event feature"],
+    "expectations": ["Low-pressure profile setup", "Recurring group meetups", "Matching by genuine interests not popularity"]
+  },
+  {
+    "persona_id": "P11",
+    "name": "Omar Al-Rashid",
+    "age": 31,
+    "city": "Dubai, UAE",
+    "life_context": "Expat marketing manager, moved from Jordan 6 months ago. Company provides housing but social life is nonexistent.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["charismatic", "impatient", "goal-oriented"],
+      "social_style": "Networking comes naturally, prefers action over planning, loses interest if things move slowly"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["build a social and professional network fast", "find Arabic-speaking community groups", "discover weekend activities in Dubai"],
+    "frustrations_with_previous_apps": ["Too slow to get value — too many steps before you can do anything", "Events are poorly curated", "No language/cultural filters"],
+    "expectations": ["Fast onboarding", "Cultural and language filters", "High-quality curated events"]
+  },
+  {
+    "persona_id": "P12",
+    "name": "Rachel Kim",
+    "age": 45,
+    "city": "Portland, Oregon, USA",
+    "life_context": "High school teacher, married, kids in middle school. Feels she lost her identity outside of 'mom' and 'teacher'.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["nurturing", "self-reflective", "cautious"],
+      "social_style": "Warms up slowly, loyal once committed, prefers groups where she can contribute her skills"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": ["rediscover personal interests", "find a hiking or running group", "meet people who see her as more than her roles"],
+    "frustrations_with_previous_apps": ["Privacy concerns — doesn't want students finding her", "Apps feel like they're for single people in their 20s", "Signing up takes too long"],
+    "expectations": ["Strong privacy controls", "Age-appropriate community", "Easy commitment levels (drop-in events)"]
+  },
+  {
+    "persona_id": "P13",
+    "name": "Tomás Rivera",
+    "age": 21,
+    "city": "Bogota, Colombia",
+    "life_context": "Works at a call center during the day, studies business administration at night. Lives with parents. Limited free time.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["hustler", "optimistic", "scattered"],
+      "social_style": "Makes friends everywhere but struggles to maintain them due to schedule, prefers quick spontaneous hangouts"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": ["networking for future career", "find entrepreneurship meetups", "socialize despite crazy schedule"],
+    "frustrations_with_previous_apps": ["Events require too much advance planning", "No last-minute or 'happening now' feature", "Everything costs money"],
+    "expectations": ["Free or low-cost events", "Last-minute activity suggestions", "Quick micro-interactions"]
+  },
+  {
+    "persona_id": "P14",
+    "name": "Fatima Zahra",
+    "age": 27,
+    "city": "Casablanca, Morocco",
+    "life_context": "Pharmacist, lives with family. Conservative household but personally progressive. Wants independence without family conflict.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["diplomatic", "curious", "cautious about privacy"],
+      "social_style": "Opens up in trusted environments, avoids apps where she might be recognized by family acquaintances"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": ["find like-minded women for activities", "explore interests her family doesn't support (music, art)", "build an independent social identity"],
+    "frustrations_with_previous_apps": ["Lack of privacy — anyone can find you", "No women-only spaces", "Cultural insensitivity in matching"],
+    "expectations": ["Granular privacy controls", "Women-only event options", "Culturally aware platform"]
+  },
+  {
+    "persona_id": "P15",
+    "name": "Hans Mueller",
+    "age": 62,
+    "city": "Vienna, Austria",
+    "life_context": "Retired engineer, widowed 3 years ago. Lives alone in a house that feels too big. Children live in Germany.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["stoic", "structured", "lonely but won't admit it"],
+      "social_style": "Needs a practical reason to socialize, won't do 'small talk meetups', respects punctuality and clear plans"
+    },
+    "tech_relationship": "resistant_adopter",
+    "motivations": ["find chess or bridge groups", "someone to go hiking with", "structure his empty days"],
+    "frustrations_with_previous_apps": ["Tiny fonts, confusing navigation", "No clear instructions", "Downloaded once, deleted in 10 minutes"],
+    "expectations": ["Accessible design (large text, clear buttons)", "Straightforward purpose per screen", "Activities with clear time/place/agenda"]
+  },
+  {
+    "persona_id": "P16",
+    "name": "Zara Williams",
+    "age": 33,
+    "city": "London, UK",
+    "life_context": "Startup founder (ed-tech), lives alone, high-stress lifestyle. Social life collapsed under work pressure.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["driven", "restless", "FOMO-prone"],
+      "social_style": "Wants to be social but cancels plans 50% of the time due to work, frustrated by her own pattern"
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": ["force herself to take breaks", "meet founders dealing with similar stress", "find low-commitment social options"],
+    "frustrations_with_previous_apps": ["Guilt from RSVPing and not showing up", "No cancellation-friendly culture", "Events require too much commitment"],
+    "expectations": ["Flexible RSVP system", "No-penalty cancellations", "Quick 1-hour activities near her"]
+  }
+]

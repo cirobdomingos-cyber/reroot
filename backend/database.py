@@ -192,6 +192,8 @@ def get_events(
     city: str = "Curitiba",
     good_only: bool = False,
     category: Optional[str] = None,
+    price_tier: Optional[str] = None,
+    kids_welcome: Optional[bool] = None,
     limit: int = 20,
 ) -> list[EnrichedEvent]:
     query = "SELECT payload FROM events WHERE 1=1"
@@ -208,6 +210,14 @@ def get_events(
     if category and category != "all":
         query += " AND json_extract(payload, '$.reroot_category') = ?"
         params.append(category)
+
+    if price_tier == "free":
+        query += " AND json_extract(payload, '$.price_tier') = 'free'"
+    elif price_tier == "paid":
+        query += " AND json_extract(payload, '$.price_tier') != 'free'"
+
+    if kids_welcome is True:
+        query += " AND json_extract(payload, '$.kids_welcome') = true"
 
     query += " ORDER BY json_extract(payload, '$.date_start') ASC LIMIT ?"
     params.append(limit)
@@ -312,6 +322,78 @@ def get_rsvps_for_users(google_ids: list[str]) -> list[dict]:
             google_ids,
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Event attendees ────────────────────────────────────────
+
+def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
+    """
+    Return all users who RSVPed to an event, excluding the requester.
+    Each attendee includes name, picture (from user_states), and is_friend flag.
+    Respects privacy: users with showProfileToStrangers=false who are not friends
+    of the requester are excluded.
+    """
+    with get_conn() as conn:
+        # Get all RSVPs for this event, excluding the requester
+        rsvp_rows = conn.execute(
+            "SELECT google_id FROM rsvps WHERE event_id = ? AND google_id != ?",
+            (event_id, requesting_google_id),
+        ).fetchall()
+
+    if not rsvp_rows:
+        return []
+
+    # Get friendships for the requester (accepted only)
+    friend_ids = set()
+    with get_conn() as conn:
+        friend_rows = conn.execute(
+            """
+            SELECT user_a, user_b FROM friendships
+            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            """,
+            (requesting_google_id, requesting_google_id),
+        ).fetchall()
+    for row in friend_rows:
+        friend_id = row["user_b"] if row["user_a"] == requesting_google_id else row["user_a"]
+        friend_ids.add(friend_id)
+
+    attendees = []
+    with get_conn() as conn:
+        for rsvp in rsvp_rows:
+            gid = rsvp["google_id"]
+            state_row = conn.execute(
+                "SELECT state_json FROM user_states WHERE google_id = ?",
+                (gid,),
+            ).fetchone()
+
+            name = gid
+            picture = ""
+            if state_row:
+                try:
+                    state = json.loads(state_row["state_json"])
+                    # Privacy check: skip users who hide from non-friends
+                    privacy = state.get("privacy", {})
+                    is_friend = gid in friend_ids
+                    if not is_friend and not privacy.get("showProfileToStrangers", False):
+                        # Still show them — they RSVPed to a shared event.
+                        # But respect showInFriendSuggestions if False: hide them entirely.
+                        if not privacy.get("showInFriendSuggestions", True):
+                            continue
+                    name = state.get("userName") or gid
+                    picture = (state.get("googleUser") or {}).get("picture", "")
+                except Exception:
+                    pass
+            else:
+                is_friend = gid in friend_ids
+
+            attendees.append({
+                "google_id": gid,
+                "name": name,
+                "picture": picture,
+                "is_friend": gid in friend_ids,
+            })
+
+    return attendees
 
 
 # ── Friends ────────────────────────────────────────────────
