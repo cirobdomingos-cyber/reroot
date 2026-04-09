@@ -212,6 +212,8 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
     all_places: list[dict] = []
     seen_ids: set[str] = set()
 
+    google_statuses: list[str] = []
+
     async with httpx.AsyncClient(timeout=10) as client:
         for place_type in place_types:
             params = {
@@ -224,8 +226,14 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
             r = await client.get(_PLACES_BASE, params=params)
             if r.status_code != 200:
                 log.warning(f"Places API erro {r.status_code} para type={place_type}")
+                google_statuses.append(f"{place_type}:http_{r.status_code}")
                 continue
-            for place in r.json().get("results", []):
+            body = r.json()
+            g_status = body.get("status", "UNKNOWN")
+            google_statuses.append(f"{place_type}:{g_status}")
+            if g_status not in ("OK", "ZERO_RESULTS"):
+                log.warning(f"Places API status={g_status} para type={place_type}: {body.get('error_message', '')}")
+            for place in body.get("results", []):
                 pid = place["place_id"]
                 if pid not in seen_ids:
                     seen_ids.add(pid)
@@ -235,7 +243,7 @@ async def list_places(type: str = "bars_cafes", limit: int = 20):
     all_places.sort(key=lambda p: p["attendeesConfirmed"], reverse=True)
     top = all_places[:limit]
 
-    return {"places": top, "total": len(all_places), "type": type}
+    return {"places": top, "total": len(all_places), "type": type, "debug_statuses": google_statuses}
 
 
 def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
