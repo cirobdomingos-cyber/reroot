@@ -134,7 +134,7 @@ def upsert_event(ev: EnrichedEvent):
 
 def get_events(
     city: str = "Curitiba",
-    good_only: bool = True,
+    good_only: bool = False,
     category: Optional[str] = None,
     limit: int = 20,
 ) -> list[EnrichedEvent]:
