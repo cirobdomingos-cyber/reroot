@@ -16,6 +16,7 @@ export default function Profile() {
   const [showPauseSheet, setShowPauseSheet] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [paused, setPaused] = useState(state.isPaused)
+  const [selectedBadge, setSelectedBadge] = useState(null)
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
@@ -135,6 +136,21 @@ export default function Profile() {
         }}>
           {paused ? t.profile_paused_badge : t.profile_member_badge}
         </div>
+        {paused && (
+          <button
+            onClick={() => {
+              dispatch({ type: 'SET_PAUSED', payload: false })
+              setPaused(false)
+            }}
+            style={{
+              marginTop: 10, background: 'var(--sage)', color: 'white',
+              border: 'none', borderRadius: 20, padding: '7px 20px',
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            ▶ {t.profile_resume_btn ?? 'Retomar jornada'}
+          </button>
+        )}
       </div>
 
       {/* Weeks shown up — 12-week grid */}
@@ -255,28 +271,53 @@ export default function Profile() {
       {/* Badges */}
       <div className="section-label">{t.profile_badges_label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '0 16px' }}>
-        {badges.map(badge => (
-          <div key={badge.id} title={badge.desc} style={{
-            background: 'white', borderRadius: 14, padding: '12px 14px',
-            flex: '1 1 calc(33% - 8px)', textAlign: 'center',
-            boxShadow: 'var(--shadow-sm)',
-            opacity: badge.earned ? 1 : 0.35,
-            filter: badge.earned ? 'none' : 'grayscale(1)',
-            transition: 'all 0.3s', position: 'relative',
-          }}>
-            {badge.earned && (
-              <div style={{
-                position: 'absolute', top: -4, right: -4,
-                width: 14, height: 14, borderRadius: '50%',
-                background: 'var(--sage)', border: '2px solid white',
-                fontSize: 8, color: 'white',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700,
-              }}>✓</div>
-            )}
-            <div style={{ fontSize: 24, marginBottom: 4 }}>{badge.icon}</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.2 }}>{badge.name}</div>
-          </div>
-        ))}
+        {badges.map(badge => {
+          const isSelected = selectedBadge === badge.id
+          return (
+            <div
+              key={badge.id}
+              onClick={() => setSelectedBadge(isSelected ? null : badge.id)}
+              style={{
+                background: 'white', borderRadius: 14, padding: '12px 14px',
+                flex: '1 1 calc(33% - 8px)', textAlign: 'center',
+                boxShadow: isSelected ? '0 0 0 2px var(--sage)' : 'var(--shadow-sm)',
+                opacity: badge.earned ? 1 : 0.35,
+                filter: badge.earned ? 'none' : 'grayscale(1)',
+                transition: 'all 0.2s', position: 'relative',
+                cursor: 'pointer',
+              }}
+            >
+              {badge.earned && (
+                <div style={{
+                  position: 'absolute', top: -4, right: -4,
+                  width: 14, height: 14, borderRadius: '50%',
+                  background: 'var(--sage)', border: '2px solid white',
+                  fontSize: 8, color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700,
+                }}>✓</div>
+              )}
+              <div style={{ fontSize: 24, marginBottom: 4 }}>{badge.icon}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.2 }}>{badge.name}</div>
+              <AnimatePresence>
+                {isSelected && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    style={{ overflow: 'hidden' }}
+                  >
+                    <div style={{
+                      fontSize: 10, color: badge.earned ? 'var(--sage)' : 'var(--charcoal-light)',
+                      marginTop: 6, lineHeight: 1.4,
+                    }}>
+                      {badge.desc}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        })}
       </div>
 
       {/* Membership */}

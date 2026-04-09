@@ -109,7 +109,7 @@ def health():
 @app.get("/events")
 def list_events(
     category: Optional[str] = None,
-    good_only: bool = True,
+    good_only: bool = False,
     limit: int = 20,
 ):
     """
@@ -355,6 +355,7 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         # cohortGoing simulado — em produção viria de uma tabela de RSVPs
         "cohortGoing": [],
         "source": ev.source,
+        "dateStart": ev.date_start.isoformat(),
     }
 
     if detail:
