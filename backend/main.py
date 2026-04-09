@@ -503,13 +503,24 @@ async def companion_chat(req: CompanionRequest):
 
 # ── Static files + SPA fallback ──
 # Digital Asset Links — required for TWA (Play Store) domain verification.
-# Served explicitly because starlette StaticFiles may reject dotfile directories.
-@app.get("/.well-known/assetlinks.json")
+# Content is inlined to avoid any dotfile/static-serving issues.
+# Update sha256_cert_fingerprints after running: bubblewrap init
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
 async def asset_links():
-    asset_links_path = STATIC_DIR / ".well-known" / "assetlinks.json"
-    if asset_links_path.is_file():
-        return FileResponse(asset_links_path, media_type="application/json")
-    return FileResponse(Path(__file__).parent.parent / "public" / ".well-known" / "assetlinks.json", media_type="application/json")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content=[{
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": "app.reroot",
+                "sha256_cert_fingerprints": [
+                    "PLACEHOLDER_REPLACE_WITH_YOUR_SHA256_AFTER_BUBBLEWRAP_INIT"
+                ]
+            }
+        }],
+        headers={"Content-Type": "application/json"},
+    )
 
 
 # Must be registered AFTER all API routes so /events, /health etc. take priority
