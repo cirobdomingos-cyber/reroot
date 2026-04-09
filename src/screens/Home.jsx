@@ -59,6 +59,7 @@ export default function Home() {
   const [reflectWord, setReflectWord] = useState('')
   const [checkInDone, setCheckInDone] = useState(false)
   const [notifToast, setNotifToast] = useState(null) // event name string
+  const [shareCopied, setShareCopied] = useState(false)
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
@@ -88,14 +89,29 @@ export default function Home() {
     setShowReflectModal(false)
   }
 
+  async function handleShare() {
+    const text = `Semana ${currentWeek} no Reroot: ${state.eventsAttended} eventos, ${Object.values(state.rsvps).filter(Boolean).length} confirmados. Reconectando aos poucos. 🌿`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Minha jornada no Reroot', text })
+      } catch {
+        // user cancelled or share failed
+      }
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(text)
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    }
+  }
+
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
   const showReflectNudge = rsvpCount > 0 && state.reflections.length === 0
   const daysLeft = daysUntilMonday()
 
-  // Weekly check-in: show on Mondays when previous week not checked in
-  const isMonday = new Date().getDay() === 1
+  // Weekly check-in: show whenever current week > 1 and check-in not done yet
   const prevWeek = currentWeek - 1
-  const showWeeklyCheckIn = isMonday && currentWeek > 1 && !state.weeklyCheckIns?.[prevWeek] && !checkInDone
+  const showWeeklyCheckIn = currentWeek > 1 && !state.weeklyCheckIns?.[currentWeek] && !checkInDone
 
   // Event-day banner: any RSVPd event tagged as this_week
   const thisWeekRsvp = EVENTS.find(ev => state.rsvps[ev.id] && ev.dateTag === 'this_week')
@@ -163,9 +179,10 @@ export default function Home() {
                   {t.home_month_dismiss}
                 </button>
                 <button
+                  onClick={handleShare}
                   style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
                 >
-                  {t.home_month_share} →
+                  {shareCopied ? 'Copiado!' : `${t.home_month_share} →`}
                 </button>
               </div>
             </div>

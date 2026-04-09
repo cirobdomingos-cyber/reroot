@@ -26,6 +26,22 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+function computeDateTag(dateStartIso) {
+  if (!dateStartIso) return 'anytime'
+  const now = new Date()
+  const eventDate = new Date(dateStartIso)
+  const diffDays = Math.floor((eventDate - now) / (1000 * 60 * 60 * 24))
+  const eventDay = eventDate.getDay() // 0=Sun, 6=Sat
+
+  if (diffDays < 0) return null // past — will be filtered
+  if (diffDays <= 7) {
+    if (eventDay === 0 || eventDay === 6) return 'this_weekend'
+    return 'this_week'
+  }
+  if (diffDays <= 14) return 'next_week'
+  return 'anytime'
+}
+
 function normalizeBackendEvent(ev) {
   return {
     id: ev.id,
@@ -52,6 +68,7 @@ function normalizeBackendEvent(ev) {
     url: ev.url,
     source: ev.source || 'live',
     isReal: true,
+    dateTag: computeDateTag(ev.dateStart),
   }
 }
 

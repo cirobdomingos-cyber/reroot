@@ -2,6 +2,24 @@ import { useApp, computeCurrentWeek, getChapter } from '../context/AppContext'
 import { useT } from '../i18n'
 import { getFramework } from '../data/framework'
 
+function getWeeklyCompanionMessage(week, chapter, situation, fallback) {
+  const messages = {
+    1:  'Você apareceu. Isso já é o suficiente por hoje.',
+    2:  'Uma semana dentro. Seu sistema nervoso está aprendendo que é seguro.',
+    3:  'Três semanas. Algo pequeno está mudando — você consegue sentir?',
+    4:  'Agora é sobre consistência. Apareça, mesmo quando não tiver vontade.',
+    5:  'Semana 5. Os mesmos lugares começam a parecer seus.',
+    6:  'Metade da jornada. O que você notou sobre si mesmo até aqui?',
+    7:  'Hora de expandir um pouco. Diga sim para algo que te assusta levemente.',
+    8:  'Semana 8. Você está maior do que quando começou.',
+    9:  'Falta pouco. O que antes parecia impossível agora é só improvável?',
+    10: 'Dez semanas. A vida social não é mais um projeto — é só vida.',
+    11: 'Quase lá. Como você está diferente de quando chegou?',
+    12: 'Doze semanas. Você construiu algo real. Isso não some.',
+  }
+  return messages[week] ?? fallback
+}
+
 function bold(text) {
   const parts = text.split(/\*\*(.*?)\*\*/g)
   return parts.map((part, i) =>
@@ -63,7 +81,7 @@ export default function Journey() {
       </div>
 
       {/* AI Companion message */}
-      {state.aiPartnerMessage && (
+      {(state.aiPartnerMessage || (currentWeek >= 1 && currentWeek <= 12)) && (
         <div style={{ margin: '8px 16px 0' }}>
           <div style={{
             background: 'linear-gradient(135deg, #1e2d2e 0%, #2C3A2D 100%)',
@@ -80,7 +98,7 @@ export default function Journey() {
                 {t.journey_companion_label}
               </div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)', lineHeight: 1.6 }}>
-                {state.aiPartnerMessage}
+                {getWeeklyCompanionMessage(currentWeek, chapter, state.userSituation, state.aiPartnerMessage)}
               </div>
             </div>
           </div>
