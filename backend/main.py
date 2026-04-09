@@ -502,35 +502,32 @@ async def companion_chat(req: CompanionRequest):
 
 
 # ── Static files + SPA fallback ──
-# Digital Asset Links — required for TWA (Play Store) domain verification.
-# Content is inlined to avoid any dotfile/static-serving issues.
-# Update sha256_cert_fingerprints after running: bubblewrap init
-@app.get("/.well-known/assetlinks.json", include_in_schema=False)
-async def asset_links():
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        content=[{
-            "relation": ["delegate_permission/common.handle_all_urls"],
-            "target": {
-                "namespace": "android_app",
-                "package_name": "app.reroot",
-                "sha256_cert_fingerprints": [
-                    "PLACEHOLDER_REPLACE_WITH_YOUR_SHA256_AFTER_BUBBLEWRAP_INIT"
-                ]
-            }
-        }],
-        headers={"Content-Type": "application/json"},
-    )
-
-
 # Must be registered AFTER all API routes so /events, /health etc. take priority
+
+_ASSET_LINKS = [{
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+        "namespace": "android_app",
+        "package_name": "app.reroot",
+        "sha256_cert_fingerprints": [
+            "PLACEHOLDER_REPLACE_WITH_YOUR_SHA256_AFTER_BUBBLEWRAP_INIT"
+        ]
+    }
+}]
 
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{path:path}")
     async def spa_fallback(request: Request, path: str):
-        """Serve static files or fall back to index.html for SPA routing."""
+        """Serve static files or fall back to index.html for SPA routing.
+
+        Also handles /.well-known/assetlinks.json here because Starlette's
+        router does not reliably match explicit routes for dotfile paths.
+        """
+        from fastapi.responses import JSONResponse
+        if path == ".well-known/assetlinks.json":
+            return JSONResponse(content=_ASSET_LINKS)
         file_path = STATIC_DIR / path
         if file_path.is_file():
             return FileResponse(file_path)
