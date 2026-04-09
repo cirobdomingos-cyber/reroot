@@ -17,23 +17,26 @@ const VENUE_SUBTYPES = [
 
 function getSubtype(ev) {
   if (ev.placeSubtype) return ev.placeSubtype
-  // Infer from static data icon
   return ev.icon === '☕' ? 'cafe' : 'bar'
 }
+
+// ── Skeleton loaders ──────────────────────────────────────────────────────────
 
 function EventCardSkeleton() {
   return (
     <div style={{
-      background: 'white', borderRadius: 20, margin: '0 16px 12px',
-      overflow: 'hidden', boxShadow: 'var(--shadow)',
+      background: 'white', borderRadius: 16, margin: '0 16px 9px',
+      padding: '12px 13px', border: '1px solid var(--border)',
+      display: 'flex', gap: 12,
     }}>
-      <div style={{ height: 96, background: 'linear-gradient(90deg, #f0ede8, #e8e4de, #f0ede8)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }}/>
-      <div style={{ padding: '13px 16px 15px' }}>
-        <div style={{ height: 16, width: '70%', background: '#f0ede8', borderRadius: 6, marginBottom: 8 }}/>
-        <div style={{ height: 12, width: '50%', background: '#f0ede8', borderRadius: 6, marginBottom: 12 }}/>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ height: 12, width: '30%', background: '#f0ede8', borderRadius: 6 }}/>
-          <div style={{ height: 32, width: 70, background: '#f0ede8', borderRadius: 12 }}/>
+      <div style={{ width: 48, height: 48, borderRadius: 13, background: '#f0ede8', flexShrink: 0, animation: 'shimmer 1.4s infinite', backgroundSize: '200% 100%' }}/>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 14, width: '75%', background: '#f0ede8', borderRadius: 6, marginBottom: 8 }}/>
+        <div style={{ height: 11, width: '50%', background: '#f0ede8', borderRadius: 6, marginBottom: 8 }}/>
+        <div style={{ height: 11, width: '35%', background: '#f0ede8', borderRadius: 6, marginBottom: 10 }}/>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ height: 20, width: 80, background: '#f0ede8', borderRadius: 6 }}/>
+          <div style={{ height: 30, width: 80, background: '#f0ede8', borderRadius: 10 }}/>
         </div>
       </div>
     </div>
@@ -57,23 +60,27 @@ function VenueSkeletonRow() {
   )
 }
 
+// ── Main screen ───────────────────────────────────────────────────────────────
+
 export default function Events() {
   const { state, dispatch } = useApp()
   const location = useLocation()
   const t = useT()
   const profile = getProfile(state.userSituation)
   const defaultFilter = profile?.priorityCategories?.[0] ?? 'all'
-  const [activeFilter, setActiveFilter] = useState(defaultFilter)
-  const [dateFilter, setDateFilter] = useState('all')
+
+  const [activeFilter, setActiveFilter]     = useState(defaultFilter)
+  const [dateFilter, setDateFilter]         = useState('all')
   const [venueSubFilter, setVenueSubFilter] = useState('all')
-  const [events, setEvents] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [dataSource, setDataSource] = useState('static')
+  const [events, setEvents]                 = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [dataSource, setDataSource]         = useState('static')
   const [selectedEventId, setSelectedEventId] = useState(null)
-  const [detailEvent, setDetailEvent] = useState(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [notifToast, setNotifToast] = useState(null)
+  const [detailEvent, setDetailEvent]       = useState(null)
+  const [detailLoading, setDetailLoading]   = useState(false)
+  const [searchQuery, setSearchQuery]       = useState('')
+  const [searchOpen, setSearchOpen]         = useState(false)
+  const [notifToast, setNotifToast]         = useState(null)
 
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
@@ -90,12 +97,10 @@ export default function Events() {
     setVenueSubFilter('all')
   }, [activeFilter, loadEvents])
 
-  // Open event detail when navigated from companion chat
   useEffect(() => {
     const openId = location.state?.openEventId
     if (openId && !loading) {
       openDetail(openId)
-      // Clear the navigation state so it doesn't re-trigger
       window.history.replaceState({}, '')
     }
   }, [location.state?.openEventId, loading])
@@ -111,6 +116,12 @@ export default function Events() {
   function closeDetail() {
     setSelectedEventId(null)
     setDetailEvent(null)
+  }
+
+  function handleCategoryChange(id) {
+    setActiveFilter(id)
+    setSearchQuery('')
+    setSearchOpen(false)
   }
 
   // Apply search + date/venue filter
@@ -157,103 +168,127 @@ export default function Events() {
         }
       `}</style>
 
-      {/* Header */}
-      <div className="screen-header">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* ── Sticky zone: title + search + category chips ── */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'var(--cream)',
+        borderBottom: '1px solid var(--border)',
+        paddingBottom: 0,
+      }}>
+        {/* Title row */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px 10px',
+        }}>
           <div>
             <div className="screen-header__title">{t.events_title}</div>
             <div className="screen-header__sub">{t.events_sub}</div>
           </div>
-          <div style={{
-            fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
-            padding: '3px 8px', borderRadius: 6,
-            background: dataSource === 'places' ? 'rgba(196,114,74,0.12)' : 'var(--sage-pale)',
-            color: dataSource === 'places' ? 'var(--terra)' : 'var(--sage)',
-          }}>
-            {dataSource === 'live' ? t.events_live : dataSource === 'places' ? '📍 Google' : t.events_static}
-          </div>
-        </div>
-      </div>
-
-      {/* Search bar */}
-      <div style={{ padding: '4px 16px 0' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: 'white', borderRadius: 14,
-          border: '1.5px solid var(--border)',
-          padding: '9px 14px', boxShadow: 'var(--shadow-sm)',
-        }}>
-          <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>🔍</span>
-          <input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder={t.events_search}
-            style={{
-              flex: 1, border: 'none', outline: 'none',
-              fontSize: 13, color: 'var(--charcoal)', background: 'transparent',
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--charcoal-light)', padding: 0 }}
-            >✕</button>
-          )}
-        </div>
-      </div>
-
-      {/* Category filter chips */}
-      <div style={{ display: 'flex', gap: 8, padding: '8px 16px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {CATEGORIES.map(cat => (
           <button
-            key={cat.id}
-            onClick={() => setActiveFilter(cat.id)}
+            onClick={() => setSearchOpen(o => !o)}
             style={{
-              padding: '7px 14px', borderRadius: 20, whiteSpace: 'nowrap',
-              fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-              transition: 'all 0.15s',
-              border: activeFilter === cat.id ? 'none' : '1.5px solid var(--border)',
-              background: activeFilter === cat.id ? 'var(--charcoal)' : 'white',
-              color: activeFilter === cat.id ? 'white' : 'var(--charcoal-mid)',
+              width: 36, height: 36, borderRadius: 12,
+              background: searchOpen ? 'var(--charcoal)' : 'white',
+              border: searchOpen ? 'none' : '1.5px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
+              color: searchOpen ? 'white' : 'var(--charcoal-mid)',
             }}
-          >
-            {cat.label}
-          </button>
-        ))}
-      </div>
+          >🔍</button>
+        </div>
 
-      {/* Date filter or venue sub-filter */}
-      {isVenueMode ? (
-        <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {VENUE_SUBTYPES.map(sub => (
+        {/* Collapsible search */}
+        <AnimatePresence>
+          {searchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{ padding: '0 16px 8px' }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'white', borderRadius: 12,
+                  border: '1.5px solid var(--border)',
+                  padding: '8px 12px', boxShadow: 'var(--shadow-sm)',
+                }}>
+                  <span style={{ fontSize: 13, color: 'var(--charcoal-light)' }}>🔍</span>
+                  <input
+                    autoFocus
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder={t.events_search}
+                    style={{
+                      flex: 1, border: 'none', outline: 'none',
+                      fontSize: 13, color: 'var(--charcoal)', background: 'transparent',
+                    }}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--charcoal-light)', padding: 0 }}
+                    >✕</button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Category chips */}
+        <div style={{ display: 'flex', gap: 7, padding: '0 16px 10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {CATEGORIES.map(cat => (
             <button
-              key={sub.id}
-              onClick={() => setVenueSubFilter(sub.id)}
+              key={cat.id}
+              onClick={() => handleCategoryChange(cat.id)}
               style={{
-                padding: '5px 14px', borderRadius: 16, whiteSpace: 'nowrap',
-                fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
+                fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
                 transition: 'all 0.15s',
-                border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
-                background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
-                color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
+                border: activeFilter === cat.id ? 'none' : '1.5px solid var(--border)',
+                background: activeFilter === cat.id ? 'var(--charcoal)' : 'white',
+                color: activeFilter === cat.id ? 'white' : 'var(--charcoal-mid)',
               }}
             >
-              {sub.label}
+              {cat.label}
             </button>
           ))}
-          {dataSource === 'places' && (
-            <span style={{
-              marginLeft: 'auto', flexShrink: 0, alignSelf: 'center',
-              fontSize: 10, color: 'var(--charcoal-light)',
-              paddingRight: 4,
-            }}>
-              {filteredEvents.length} locais
-            </span>
-          )}
         </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 6, padding: '8px 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {DATE_FILTERS.map(df => (
+      </div>
+
+      {/* ── Date / venue sub-filter (scrolls with content) ── */}
+      <div style={{ display: 'flex', gap: 6, padding: '10px 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {isVenueMode ? (
+          <>
+            {VENUE_SUBTYPES.map(sub => (
+              <button
+                key={sub.id}
+                onClick={() => setVenueSubFilter(sub.id)}
+                style={{
+                  padding: '5px 14px', borderRadius: 16, whiteSpace: 'nowrap',
+                  fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
+                  background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
+                  color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
+                }}
+              >
+                {sub.label}
+              </button>
+            ))}
+            {dataSource === 'places' && (
+              <span style={{
+                marginLeft: 'auto', flexShrink: 0, alignSelf: 'center',
+                fontSize: 10, color: 'var(--charcoal-light)', paddingRight: 4,
+              }}>
+                {filteredEvents.length} locais
+              </span>
+            )}
+          </>
+        ) : (
+          DATE_FILTERS.map(df => (
             <button
               key={df.id}
               onClick={() => setDateFilter(df.id)}
@@ -268,163 +303,103 @@ export default function Events() {
             >
               {df.label}
             </button>
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
-      {/* Loading skeletons */}
+      {/* ── Loading skeletons ── */}
       {loading && (
         isVenueMode
           ? <>{[0,1,2,3,4].map(i => <VenueSkeletonRow key={i} />)}</>
-          : <>{[0,1,2].map(i => <EventCardSkeleton key={i} />)}</>
+          : <>{[0,1,2,3,4].map(i => <EventCardSkeleton key={i} />)}</>
       )}
 
-      {/* List */}
+      {/* ── List ── */}
       {!loading && (
         <AnimatePresence mode="popLayout">
-          {filteredEvents.length === 0 && (
+          {filteredEvents.length === 0 ? (
             <motion.div
+              key="empty"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--charcoal-mid)', fontSize: 14 }}
+              style={{ textAlign: 'center', padding: '52px 28px' }}
             >
-              {searchQuery
-                ? `${t.events_empty_search} "${searchQuery}"`
-                : t.events_empty_cat}
+              <div style={{ fontSize: 40, marginBottom: 12 }}>
+                {searchQuery ? '🔍' : isVenueMode ? '🗺️' : '📅'}
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
+                {searchQuery ? 'Nenhum resultado' : 'Nada por aqui'}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.6 }}>
+                {searchQuery
+                  ? `Sem resultados para "${searchQuery}"`
+                  : 'Tente outra categoria ou período'}
+              </div>
+              {searchQuery && (
+                <button
+                  onClick={() => { setSearchQuery(''); setSearchOpen(false) }}
+                  style={{
+                    marginTop: 18, padding: '8px 20px', borderRadius: 12,
+                    background: 'var(--terra)', color: 'white',
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  }}
+                >
+                  Limpar busca
+                </button>
+              )}
             </motion.div>
-          )}
+          ) : (
+            filteredEvents.map(ev => {
+              const rsvped = !!state.rsvps[ev.id]
+              const isVenue = VENUE_CATEGORIES.has(ev.category)
 
-          {filteredEvents.map(ev => {
-            const rsvped = !!state.rsvps[ev.id]
-            const isVenue = VENUE_CATEGORIES.has(ev.category)
+              if (isVenue) {
+                return (
+                  <motion.div
+                    key={ev.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <VenueRow
+                      ev={ev}
+                      saved={rsvped}
+                      onSave={() => handleRsvpToggle(ev)}
+                      onOpen={() => openDetail(ev.id)}
+                      t={t}
+                    />
+                  </motion.div>
+                )
+              }
 
-            if (isVenue) {
+              const count = getMemberCount(ev)
+
               return (
                 <motion.div
                   key={ev.id}
                   layout
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <VenueRow
+                  <EventCard
                     ev={ev}
-                    saved={rsvped}
-                    onSave={() => handleRsvpToggle(ev)}
+                    rsvped={rsvped}
+                    count={count}
                     onOpen={() => openDetail(ev.id)}
+                    onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     t={t}
                   />
                 </motion.div>
               )
-            }
-
-            const count = getMemberCount(ev)
-
-            return (
-              <motion.div
-                key={ev.id}
-                layout
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
-                style={{
-                  background: 'white', borderRadius: 20,
-                  margin: '0 16px 12px', overflow: 'hidden',
-                  boxShadow: 'var(--shadow)', cursor: 'pointer',
-                }}
-                onClick={() => openDetail(ev.id)}
-              >
-                {/* Card header */}
-                <div style={{ height: 96, background: ev.headerBg, position: 'relative' }}>
-                  <span style={{
-                    position: 'absolute', top: 10, left: 12,
-                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8,
-                    background: 'rgba(255,255,255,0.92)', color: 'var(--charcoal)',
-                    padding: '4px 10px', borderRadius: 8,
-                  }}>
-                    {ev.categoryEmoji} {ev.categoryLabel}
-                  </span>
-
-                  {count === 0 && (
-                    <span style={{
-                      position: 'absolute', top: 10, right: 12,
-                      fontSize: 10, fontWeight: 700,
-                      background: 'rgba(255,255,255,0.85)', color: 'var(--charcoal-mid)',
-                      padding: '4px 10px', borderRadius: 8,
-                    }}>
-                      {t.events_be_first}
-                    </span>
-                  )}
-
-                  {count > 0 && (
-                    <span style={{
-                      position: 'absolute', top: 10, right: 12,
-                      fontSize: 10, fontWeight: 700,
-                      background: 'rgba(44,44,44,0.75)', color: 'white',
-                      padding: '4px 10px', borderRadius: 8,
-                      display: 'flex', alignItems: 'center', gap: 4,
-                    }}>
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--sage-light)', display: 'block' }}/>
-                      {count} {t.events_going}
-                    </span>
-                  )}
-
-                  {ev.expectedSize && (
-                    <span style={{
-                      position: 'absolute', bottom: 10, right: 12,
-                      fontSize: 9, background: 'rgba(122,158,126,0.85)', color: 'white',
-                      padding: '2px 7px', borderRadius: 6, fontWeight: 700,
-                    }}>
-                      {ev.expectedSize === 'small' ? t.events_small : ev.expectedSize === 'medium' ? t.events_medium : t.events_large}
-                    </span>
-                  )}
-                </div>
-
-                {/* Card body */}
-                <div style={{ padding: '13px 16px 15px' }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 3 }}>
-                    {ev.name}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    📍 {ev.venue}
-                  </div>
-                  {ev.vibeSummary && ev.vibeSummary !== ev.name && (
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginBottom: 8, fontStyle: 'italic', lineHeight: 1.4 }}>
-                      {ev.vibeSummary}
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--terra)' }}>
-                        {`${ev.date} · ${ev.time}`}
-                      </div>
-                      {ev.price && (
-                        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 1 }}>
-                          {ev.price}
-                          {ev.hasFood && <span style={{ marginLeft: 6 }}>🍽️ {t.events_has_food}</span>}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      className="btn btn--primary"
-                      style={{ width: 'auto', padding: '8px 18px', fontSize: 12, borderRadius: 12 }}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleRsvpToggle(ev)
-                      }}
-                    >
-                      {rsvped ? t.events_rsvped : t.events_rsvp}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
+            })
+          )}
         </AnimatePresence>
       )}
 
-      {/* Notification toast */}
+      {/* ── Notification toast ── */}
       <AnimatePresence>
         {notifToast && (
           <motion.div
@@ -447,7 +422,7 @@ export default function Events() {
         )}
       </AnimatePresence>
 
-      {/* Event detail drawer */}
+      {/* ── Detail drawer ── */}
       <AnimatePresence>
         {selectedEventId && (
           <motion.div
@@ -462,8 +437,13 @@ export default function Events() {
               overflowY: 'auto', scrollbarWidth: 'none',
             }}
           >
+            {/* Drag handle */}
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(44,44,44,0.18)' }}/>
+            </div>
+
             {detailLoading || !detailEvent ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%' }}>
                 <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>{t.events_loading}</div>
               </div>
             ) : (
@@ -487,9 +467,117 @@ export default function Events() {
   )
 }
 
+// ── EventCard (compact horizontal layout) ────────────────────────────────────
+
+function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
+  // Split "Venue Name · Neighborhood" into two parts
+  const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
+    ? ev.venue.split(' · ')
+    : [ev.venue, null]
+
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        background: 'white', borderRadius: 16,
+        margin: '0 16px 9px', padding: '12px 13px',
+        border: '1px solid var(--border)',
+        display: 'flex', gap: 12, alignItems: 'flex-start',
+        cursor: 'pointer', transition: 'box-shadow 0.15s',
+      }}
+    >
+      {/* Category icon */}
+      <div style={{
+        width: 48, height: 48, borderRadius: 13, flexShrink: 0,
+        background: ev.headerBg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22,
+      }}>
+        {ev.icon}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Name row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{
+            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+            lineHeight: 1.3, flex: 1,
+          }}>
+            {ev.name}
+          </div>
+          {count > 0 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, flexShrink: 0,
+              background: 'rgba(44,44,44,0.07)', color: 'var(--charcoal-mid)',
+              padding: '3px 7px', borderRadius: 6,
+            }}>
+              {count} {t.events_going}
+            </span>
+          )}
+        </div>
+
+        {/* Venue */}
+        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 3 }}>
+          📍 {venueName}{venueNeighborhood && (
+            <span style={{ color: 'var(--charcoal-light)' }}> · {venueNeighborhood}</span>
+          )}
+        </div>
+
+        {/* Date + time */}
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)', marginTop: 2 }}>
+          🗓 {ev.date} · {ev.time}
+        </div>
+
+        {/* Vibe summary */}
+        {ev.vibeSummary && ev.vibeSummary !== ev.name && (
+          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3, fontStyle: 'italic', lineHeight: 1.35 }}>
+            {ev.vibeSummary}
+          </div>
+        )}
+
+        {/* Bottom row: badges + RSVP button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+            {ev.isLowPressure && (
+              <span style={{
+                fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
+                padding: '2px 7px', borderRadius: 5, fontWeight: 600,
+              }}>
+                🌿 {t.events_low_pressure}
+              </span>
+            )}
+            {ev.price && (
+              <span style={{
+                fontSize: 11,
+                color: ev.priceTier === 'free' ? 'var(--sage)' : 'var(--charcoal-light)',
+                fontWeight: ev.priceTier === 'free' ? 700 : 400,
+              }}>
+                {ev.price}
+              </span>
+            )}
+          </div>
+          <button
+            className="btn btn--primary"
+            style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10, flexShrink: 0 }}
+            onClick={onRsvp}
+          >
+            {rsvped ? `✓ ${t.events_rsvped.replace(' ✓', '')}` : t.events_rsvp}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── VenueRow ──────────────────────────────────────────────────────────────────
+
 function VenueRow({ ev, saved, onSave, onOpen, t }) {
   const subtype = getSubtype(ev)
-  const neighborhood = ev.venue?.split(' · ')[1] || ev.venue || ''
+  // Split "Name · Neighborhood" reliably
+  const [, neighborhood] = ev.venue?.includes(' · ')
+    ? ev.venue.split(' · ')
+    : [null, ev.venue || '']
 
   return (
     <div
@@ -559,6 +647,8 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
   )
 }
 
+// ── DetailPanel ───────────────────────────────────────────────────────────────
+
 function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood, t }) {
   const count = (ev.cohortGoing?.length ?? 0) + (rsvped ? 1 : 0)
   const isVenue = VENUE_CATEGORIES.has(ev.category)
@@ -566,9 +656,9 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
   return (
     <>
       {/* Hero */}
-      <div style={{ height: 200, background: ev.headerBg, position: 'relative' }}>
+      <div style={{ height: 180, background: ev.headerBg, position: 'relative' }}>
         <button onClick={onClose} style={{
-          position: 'absolute', top: 58, left: 16,
+          position: 'absolute', top: 16, left: 16,
           width: 36, height: 36, borderRadius: '50%',
           background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -588,7 +678,9 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
 
       {/* Content */}
       <div style={{ padding: '20px 20px 100px' }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>{ev.name}</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
+          {ev.name}
+        </div>
 
         {isVenue && (
           <div style={{
