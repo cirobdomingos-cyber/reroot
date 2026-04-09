@@ -59,6 +59,10 @@ export const T = {
     filter_kids_welcome:    'Kids Welcome',
     tag_free:               'Grátis',
     tag_kids:               '👶 Kids Welcome',
+    tag_curated:            'Sugestão AI',
+    tag_curated_long:       'Sugestão curada por AI — não é evento real',
+    tag_private:            'Meu evento',
+    tag_private_long:       'Evento privado criado por você',
 
     // ── Events ───────────────────────────────────────────
     events_title:           'Eventos',
@@ -483,6 +487,12 @@ T.en.privacy_show_suggestions = 'Appear in friend suggestions'
 T.en.privacy_show_suggestions_desc = 'Other people can find your profile'
 T.en.privacy_show_profile = 'Profile visible to non-friends'
 T.en.privacy_show_profile_desc = 'Non-friends can see your full profile'
+
+// EN overrides for curated/private event badges
+T.en.tag_curated = 'AI Suggestion'
+T.en.tag_curated_long = 'AI-curated suggestion — not a real event'
+T.en.tag_private = 'My event'
+T.en.tag_private_long = 'Private event created by you'
 
 // ── Hook ──────────────────────────────────────────────────
 import { useApp } from '../context/AppContext'
