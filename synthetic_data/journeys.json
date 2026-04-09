@@ -1,0 +1,1378 @@
+[
+  {
+    "persona_id": "P01",
+    "persona_name": "Lucas Ferreira",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "22:30", "duration_min": 25, "actions": ["downloaded app", "started onboarding", "filled profile hesitantly — skipped photo upload", "browsed interest categories", "selected: board games, hiking, tech meetups"]}],
+          "friction": "Felt uncomfortable uploading a photo — wished there was a 'skip for now' option that felt encouraged, not penalized.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "12:15", "duration_min": 10, "actions": ["checked suggested events", "saved a board game night for Saturday", "read event details carefully"]}],
+          "friction": "Couldn't tell how many people were already going — social proof was missing.",
+          "satisfaction": "Liked that events showed the vibe (casual, beginner-friendly)."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["received notification about board game night reminder", "checked attendee list — only 3 people", "almost cancelled"]}],
+          "friction": "Low attendee count made him anxious. No way to message the group beforehand.",
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "19:00", "duration_min": 5, "actions": ["confirmed attendance", "read host profile"]}],
+          "friction": null,
+          "satisfaction": "Host profile was detailed and welcoming — reduced anxiety."
+        },
+        "day_6": {
+          "sessions": [{"time": "14:00", "duration_min": 45, "actions": ["attended board game event (offline)", "opened app to check in", "added 2 people as connections after the event"]}],
+          "friction": "Post-event 'add friend' flow was confusing — had to search by name.",
+          "satisfaction": "The event was great. Small group, exactly what he wanted."
+        },
+        "day_7": {
+          "sessions": [{"time": "10:00", "duration_min": 12, "actions": ["browsed more events", "saved a hiking event", "checked messages from new connections"]}],
+          "friction": null,
+          "satisfaction": "Felt momentum building. The app actually worked for its intended purpose."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "22:00", "duration_min": 15, "actions": ["replied to messages", "uploaded profile photo finally", "explored 'create event' feature"]}],
+          "friction": null,
+          "satisfaction": "Uploading photo felt optional, not forced. Good."
+        },
+        "day_9": {
+          "sessions": [{"time": "12:30", "duration_min": 5, "actions": ["received suggestion for a coding meetup", "saved it"]}],
+          "friction": null,
+          "satisfaction": "Recommendation was spot-on."
+        },
+        "day_10": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["checked hiking event details", "saw 8 attendees", "confirmed RSVP"]}],
+          "friction": null,
+          "satisfaction": "Higher attendee count felt reassuring."
+        },
+        "day_12": {
+          "sessions": [{"time": "08:00", "duration_min": 3, "actions": ["checked hiking event meeting point"]}],
+          "friction": "Map integration was clunky — had to copy address to Google Maps manually.",
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "18:00", "duration_min": 20, "actions": ["attended hiking event", "posted photo in event feed", "connected with 3 more people"]}],
+          "friction": null,
+          "satisfaction": "Post-event feed was fun. Made real connections."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["created his own board game event", "invited connections"]}],
+          "friction": "Event creation form was long — too many required fields.",
+          "satisfaction": "Felt empowered to host. Big milestone for an introvert."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.86,
+        "preferred_times": ["late evening", "lunch break"],
+        "average_session_duration_min": 12,
+        "engagement_trend": "increasing"
+      }
+    }
+  },
+  {
+    "persona_id": "P02",
+    "persona_name": "Maria Gonzalez",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "21:30", "duration_min": 20, "actions": ["downloaded app after seeing an ad", "created profile", "searched for 'family-friendly' events"]}],
+          "friction": "No 'family-friendly' filter. Had to read each event description to figure out if kids were welcome.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "06:45", "duration_min": 8, "actions": ["browsed events during daughter's breakfast", "found a weekend park meetup for parents"]}],
+          "friction": null,
+          "satisfaction": "Found an event that fits! Weekend morning, outdoor, kids welcome."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "22:00", "duration_min": 5, "actions": ["confirmed park meetup RSVP", "checked other attendees"]}],
+          "friction": null,
+          "satisfaction": "Saw other moms attending. Felt less alone."
+        },
+        "day_5": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "10:00", "duration_min": 30, "actions": ["attended park meetup with daughter", "opened app to check in", "exchanged contacts with 2 moms"]}],
+          "friction": "Check-in feature was unclear — didn't know it existed until another attendee showed her.",
+          "satisfaction": "Amazing experience. Daughter played, she had adult conversation."
+        },
+        "day_7": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["messaged new connections", "searched for more weekend events", "bookmarked a cooking class"]}],
+          "friction": "Cooking class was on a Wednesday evening — doesn't work for parents. No schedule filter.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "06:30", "duration_min": 5, "actions": ["checked messages from park meetup friends", "agreed to meet again next Saturday"]}],
+          "friction": null,
+          "satisfaction": "Recurring plans forming organically. This is what she wanted."
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "22:15", "duration_min": 8, "actions": ["explored 'create event' to organize a parent brunch", "gave up — form was too complex on mobile"]}],
+          "friction": "Event creation was frustrating on small screen. Too many fields, tiny buttons.",
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "21:30", "duration_min": 6, "actions": ["received notification about similar park event next week", "saved it"]}],
+          "friction": null,
+          "satisfaction": "Smart recommendation based on past event. Nice."
+        },
+        "day_13": {
+          "sessions": [{"time": "10:00", "duration_min": 25, "actions": ["attended second park meetup", "brought a friend from work too"]}],
+          "friction": null,
+          "satisfaction": "Growing her circle. Feels like the app is delivering on its promise."
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["finally created a parent brunch event with help from a connection", "invited 6 people"]}],
+          "friction": null,
+          "satisfaction": "Managed to create event with help. Feels accomplished."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.64,
+        "preferred_times": ["early morning", "late evening"],
+        "average_session_duration_min": 11,
+        "engagement_trend": "steady"
+      }
+    }
+  },
+  {
+    "persona_id": "P03",
+    "persona_name": "James Okonkwo",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "18:00", "duration_min": 15, "actions": ["downloaded app", "completed full profile in one go — photo, bio, interests", "browsed events immediately"]}],
+          "friction": null,
+          "satisfaction": "Onboarding was smooth. Got to events fast."
+        },
+        "day_2": {
+          "sessions": [{"time": "10:00", "duration_min": 8, "actions": ["RSVPed to a pickup basketball game", "RSVPed to a design meetup"]}, {"time": "17:00", "duration_min": 5, "actions": ["checked basketball game details", "messaged the organizer"]}],
+          "friction": null,
+          "satisfaction": "Loves the variety. Two events in one week!"
+        },
+        "day_3": {
+          "sessions": [{"time": "19:00", "duration_min": 40, "actions": ["attended basketball game", "used app to find the venue", "rated the event 5 stars after"]}],
+          "friction": "Venue address was slightly wrong — walked an extra 10 minutes.",
+          "satisfaction": "Great game, competitive but friendly group."
+        },
+        "day_4": {
+          "sessions": [{"time": "09:00", "duration_min": 12, "actions": ["browsed 'happening today' events", "nothing interesting", "browsed connections suggestions"]}],
+          "friction": "'Happening today' section was empty by 9 AM. Needs more last-minute content.",
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "18:30", "duration_min": 20, "actions": ["attended design meetup", "exchanged portfolios with 3 designers", "connected on the app"]}],
+          "friction": null,
+          "satisfaction": "Networking gold. This is exactly what LinkedIn events should be but aren't."
+        },
+        "day_6": {
+          "sessions": [{"time": "11:00", "duration_min": 10, "actions": ["posted in event feed about the design meetup", "got 5 reactions"]}],
+          "friction": null,
+          "satisfaction": "Community engagement feels real."
+        },
+        "day_7": {
+          "sessions": [{"time": "15:00", "duration_min": 8, "actions": ["searched for weekend events", "RSVPed to a photography walk"]}],
+          "friction": null,
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["checked notifications — 3 event invites from connections"]}, {"time": "20:00", "duration_min": 10, "actions": ["RSVPed to 2 events", "declined 1"]}],
+          "friction": "Declining felt awkward — no way to say 'not this time but invite me again'.",
+          "satisfaction": "Being invited feels great. Social proof."
+        },
+        "day_9": {
+          "sessions": [{"time": "16:00", "duration_min": 35, "actions": ["attended photography walk", "took photos", "shared in event feed"]}],
+          "friction": "Photo upload was slow on mobile data.",
+          "satisfaction": "Beautiful event. Met a professional photographer who offered tips."
+        },
+        "day_10": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["created a spontaneous 'happening now' basketball game post"]}],
+          "friction": "No 'happening now' feature exists. Had to create a regular event set to today.",
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "18:00", "duration_min": 15, "actions": ["messaged 4 connections about the basketball game", "3 confirmed"]}],
+          "friction": "No group chat — had to message each person individually.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "17:00", "duration_min": 30, "actions": ["played basketball with app connections", "shared recap post"]}],
+          "friction": null,
+          "satisfaction": "The app is becoming his go-to for organizing activities."
+        },
+        "day_13": {
+          "sessions": [{"time": "10:00", "duration_min": 8, "actions": ["browsed new events for next week", "saved 3"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_14": {
+          "sessions": [{"time": "19:00", "duration_min": 12, "actions": ["reviewed his event history", "rated past events", "updated profile with new interests"]}],
+          "friction": null,
+          "satisfaction": "Feels like a power user already. App delivers consistent value."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 1.29,
+        "preferred_times": ["morning", "evening"],
+        "average_session_duration_min": 14,
+        "engagement_trend": "high_and_steady"
+      }
+    }
+  },
+  {
+    "persona_id": "P04",
+    "persona_name": "Yuki Tanaka",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "20:00", "duration_min": 30, "actions": ["downloaded app after colleague's recommendation", "struggled with onboarding — couldn't understand the interest selection", "chose 3 interests randomly", "uploaded a scenery photo instead of selfie"]}],
+          "friction": "Onboarding assumed familiarity with social app patterns. No tutorial or guide.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["opened app", "confused by home feed — mix of events and social posts", "couldn't find photography-specific content", "closed app"]}],
+          "friction": "Home feed was overwhelming. No clear section for 'just events near me'.",
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "19:30", "duration_min": 15, "actions": ["tried search function", "found 'Photography Walk Osaka'", "read details carefully", "hesitated to RSVP"]}],
+          "friction": "Wasn't sure what RSVP means in this context — is it binding? Can he cancel?",
+          "satisfaction": "Found exactly what he was looking for. Relief."
+        },
+        "day_7": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["RSVPed to photography walk", "explored the host's profile"]}],
+          "friction": null,
+          "satisfaction": "Host seemed experienced and organized. Trust-building."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "07:00", "duration_min": 3, "actions": ["received event reminder notification", "silenced all notifications except event reminders"]}],
+          "friction": "Notification settings were buried 4 levels deep.",
+          "satisfaction": "At least the option to customize notifications exists."
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "09:00", "duration_min": 60, "actions": ["attended photography walk", "took many photos", "spoke briefly with 2 people", "didn't connect on the app"]}],
+          "friction": "No prompt to connect with attendees after the event. Forgot to do it manually.",
+          "satisfaction": "The activity itself was perfect. Structured, purposeful, no forced socializing."
+        },
+        "day_11": {
+          "sessions": [{"time": "20:30", "duration_min": 10, "actions": ["searched for the people from the walk", "couldn't find them by name", "gave up"]}],
+          "friction": "No post-event attendee list or 'people you met' feature. Major gap.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["searched for next photography event", "found one in 2 weeks", "saved it"]}],
+          "friction": null,
+          "satisfaction": "Consistent events in his niche. Worth staying."
+        },
+        "day_14": {
+          "sessions": [{"time": "19:00", "duration_min": 5, "actions": ["updated interests to be more specific (landscape photography, nature)", "browsed recommendations"]}],
+          "friction": null,
+          "satisfaction": "Recommendations improved slightly after interest update."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.57,
+        "preferred_times": ["evening"],
+        "average_session_duration_min": 13,
+        "engagement_trend": "slow_start_then_steady"
+      }
+    }
+  },
+  {
+    "persona_id": "P05",
+    "persona_name": "Priya Sharma",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "23:00", "duration_min": 35, "actions": ["downloaded app", "spent long time crafting the perfect bio", "selected 8 interests", "explored every menu item"]}],
+          "friction": "Bio character limit was too short for her to express herself properly.",
+          "satisfaction": "Interest categories were detailed — found 'anime' and 'poetry' as options."
+        },
+        "day_2": {
+          "sessions": [{"time": "14:00", "duration_min": 15, "actions": ["browsed suggested connections", "read 10+ profiles", "didn't connect with anyone — too anxious"]}, {"time": "23:30", "duration_min": 20, "actions": ["browsed events", "found an anime screening", "read all details", "didn't RSVP"]}],
+          "friction": "No way to 'attend anonymously' or signal interest without full commitment.",
+          "satisfaction": "Events exist for her niche interests. Encouraging."
+        },
+        "day_3": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["re-read anime screening details", "checked attendee count (12)", "RSVPed — this took courage"]}],
+          "friction": null,
+          "satisfaction": "Taking the step felt good. The app made it relatively low-pressure."
+        },
+        "day_4": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["received a message from another attendee saying 'excited to meet fellow anime fans!'", "replied with a short message"]}],
+          "friction": null,
+          "satisfaction": "First interaction! The other person broke the ice. Wish the app had automated icebreakers."
+        },
+        "day_5": {
+          "sessions": [{"time": "18:00", "duration_min": 45, "actions": ["attended anime screening event", "sat quietly at first", "ended up in a passionate discussion about Studio Ghibli", "connected with 4 people"]}],
+          "friction": null,
+          "satisfaction": "Best social experience in months. Found her people."
+        },
+        "day_6": {
+          "sessions": [{"time": "10:00", "duration_min": 12, "actions": ["messaged event connections", "explored poetry open mic events", "saved one for next week"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "22:00", "duration_min": 15, "actions": ["joined an anime discussion group on the app", "posted a recommendation", "got 3 reactions"]}],
+          "friction": "Group feature was hard to find — hidden under a submenu.",
+          "satisfaction": "Community exists. Just needs to be more discoverable."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "13:00", "duration_min": 8, "actions": ["checked group discussions", "replied to a thread about upcoming conventions"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["RSVPed to poetry open mic as an audience member", "option to perform was available but she chose 'just watch'"]}],
+          "friction": null,
+          "satisfaction": "Love that there's a 'spectator' mode for events. No pressure."
+        },
+        "day_10": {
+          "sessions": [{"time": "19:00", "duration_min": 30, "actions": ["attended poetry open mic", "watched others perform", "at the last minute, shared one of her poems", "standing ovation from small group"]}],
+          "friction": null,
+          "satisfaction": "Life-changing moment. The app literally helped her break through a barrier."
+        },
+        "day_11": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["received encouraging messages from poetry event attendees", "replied happily"]}],
+          "friction": null,
+          "satisfaction": "Post-event support feels genuine."
+        },
+        "day_12": {
+          "sessions": [{"time": "22:00", "duration_min": 15, "actions": ["created a 'Poetry & Chai' event for hostel mates", "invited app connections"]}],
+          "friction": "Couldn't restrict event to her campus/hostel area. Location targeting is too broad.",
+          "satisfaction": "Feels confident enough to organize. Massive growth."
+        },
+        "day_13": {
+          "sessions": [{"time": "16:00", "duration_min": 8, "actions": ["checked RSVPs for her event (7 people!)", "messaged each attendee"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_14": {
+          "sessions": [{"time": "20:00", "duration_min": 10, "actions": ["hosted Poetry & Chai", "posted recap with photos", "received 12 reactions"]}],
+          "friction": null,
+          "satisfaction": "From lurker to host in 2 weeks. The app genuinely changed her social life."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 1.07,
+        "preferred_times": ["late night", "evening"],
+        "average_session_duration_min": 15,
+        "engagement_trend": "exponential_growth"
+      }
+    }
+  },
+  {
+    "persona_id": "P06",
+    "persona_name": "Carlos Mendez",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "10:00", "duration_min": 40, "actions": ["son helped him download the app during a video call", "struggled with account creation — password requirements confusing", "uploaded a formal photo", "selected interests: wine, theater, travel"]}],
+          "friction": "Password required special characters — took 4 attempts. No password visibility toggle.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "11:00", "duration_min": 15, "actions": ["opened app", "couldn't find where events were", "tapped random buttons", "found events section by accident"]}],
+          "friction": "Navigation is icon-based with no text labels. Completely unintuitive for him.",
+          "satisfaction": "When he found events, there were wine tasting options. Nice selection."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "09:00", "duration_min": 10, "actions": ["opened app to check wine tasting details", "tried to RSVP", "accidentally created a new event instead", "confused and closed app"]}],
+          "friction": "RSVP button and Create Event button look too similar. Critical UX issue for non-tech users.",
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "16:00", "duration_min": 8, "actions": ["called his son for help", "successfully RSVPed to wine tasting"]}],
+          "friction": "Needed external help to complete a basic action.",
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "17:00", "duration_min": 60, "actions": ["attended wine tasting event", "had a wonderful time", "met 3 people his age", "someone helped him connect on the app"]}],
+          "friction": null,
+          "satisfaction": "Best evening in months. The event was perfect — curated, small group, shared interest."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "10:30", "duration_min": 12, "actions": ["opened app to find messages from wine tasting friends", "managed to reply to one message"]}],
+          "friction": "Chat interface was confusing — couldn't distinguish between event chat and private messages.",
+          "satisfaction": "People reached out to him. Feels valued."
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "11:00", "duration_min": 8, "actions": ["searched for theater events", "found a play next weekend", "RSVPed successfully this time"]}],
+          "friction": null,
+          "satisfaction": "Getting the hang of it. Confidence growing."
+        },
+        "day_11": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "15:00", "duration_min": 5, "actions": ["checked event reminder", "confirmed attendance"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "19:00", "duration_min": 45, "actions": ["attended theater event", "went for coffee afterward with 2 new friends"]}],
+          "friction": null,
+          "satisfaction": "Two events, two great experiences. Starting to build real friendships."
+        },
+        "day_14": {
+          "sessions": [{"time": "10:00", "duration_min": 10, "actions": ["browsed upcoming events for the next month", "saved 3 events"]}],
+          "friction": "Calendar view would be helpful but doesn't exist.",
+          "satisfaction": "Planning ahead. The app is becoming part of his routine."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.57,
+        "preferred_times": ["morning", "afternoon"],
+        "average_session_duration_min": 17,
+        "engagement_trend": "slow_start_then_growing"
+      }
+    }
+  },
+  {
+    "persona_id": "P07",
+    "persona_name": "Aisha Bello",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "19:00", "duration_min": 20, "actions": ["downloaded app", "completed profile thoroughly", "verified email", "searched for volunteering events"]}],
+          "friction": "No 'volunteering' category in interests. Had to use 'community' as a workaround.",
+          "satisfaction": "Profile verification exists. Good for trust."
+        },
+        "day_2": {
+          "sessions": [{"time": "07:30", "duration_min": 10, "actions": ["browsed food-related events", "found a Nairobi food tour", "RSVPed"]}, {"time": "18:00", "duration_min": 8, "actions": ["explored 'people near you' feature", "connected with 3 people with shared interests"]}],
+          "friction": null,
+          "satisfaction": "Fast time-to-value. Found relevant events on day 2."
+        },
+        "day_3": {
+          "sessions": [{"time": "12:00", "duration_min": 15, "actions": ["messaged connections", "organized an informal coffee meetup through chat", "2 people agreed"]}],
+          "friction": "No way to create a quick informal meetup — had to coordinate manually via chat.",
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "17:00", "duration_min": 25, "actions": ["met 2 connections for coffee (offline)", "added them as close friends on the app"]}],
+          "friction": "No 'close friends' tier. Everyone is just a 'connection'.",
+          "satisfaction": "The meetup was amazing. Already feels less alone in Nairobi."
+        },
+        "day_5": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["checked food tour event details for tomorrow"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "11:00", "duration_min": 90, "actions": ["attended food tour", "met 15 people", "connected with 8 on the app", "posted photos in event feed"]}],
+          "friction": "Adding 8 connections one by one was tedious. No batch-add from event.",
+          "satisfaction": "Incredible event. Food was great, people were diverse and interesting."
+        },
+        "day_7": {
+          "sessions": [{"time": "20:00", "duration_min": 15, "actions": ["replied to all new connection messages", "shared the app with 2 coworkers"]}],
+          "friction": "No referral or invite feature. Had to share the app store link manually.",
+          "satisfaction": "Organic word of mouth happening."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "07:00", "duration_min": 10, "actions": ["checked for volunteering events again", "still nothing", "sent feedback to app support"]}],
+          "friction": "No volunteering category is a real gap for her persona.",
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [{"time": "18:30", "duration_min": 12, "actions": ["created a 'Beach Cleanup Volunteering' event herself", "set it for Saturday"]}],
+          "friction": "Had to tag it under 'outdoor' since there's no volunteering tag.",
+          "satisfaction": "Taking initiative. App allows user-generated events, which is great."
+        },
+        "day_10": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["checked RSVPs for beach cleanup — 11 people!"]}],
+          "friction": null,
+          "satisfaction": "Wow. People want this. Validates the event type."
+        },
+        "day_11": {
+          "sessions": [{"time": "19:00", "duration_min": 8, "actions": ["messaged attendees with logistics", "posted in event feed with what to bring"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "09:00", "duration_min": 120, "actions": ["hosted beach cleanup event", "14 people showed up", "documented everything with photos", "posted recap"]}],
+          "friction": null,
+          "satisfaction": "This is why the app exists. Real impact, real connections."
+        },
+        "day_13": {
+          "sessions": [{"time": "08:00", "duration_min": 10, "actions": ["received 20+ messages praising the event", "replied to all", "started planning monthly cleanups"]}],
+          "friction": null,
+          "satisfaction": "Becoming a community leader on the platform."
+        },
+        "day_14": {
+          "sessions": [{"time": "20:00", "duration_min": 15, "actions": ["created recurring monthly beach cleanup", "explored 'community' features", "suggested volunteering category via support"]}],
+          "friction": "No way to create recurring events. Has to manually create each one.",
+          "satisfaction": null
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 1.14,
+        "preferred_times": ["morning", "evening"],
+        "average_session_duration_min": 21,
+        "engagement_trend": "very_high_and_growing"
+      }
+    }
+  },
+  {
+    "persona_id": "P08",
+    "persona_name": "Emma Lindqvist",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "20:00", "duration_min": 18, "actions": ["downloaded app out of curiosity (saw on Product Hunt)", "analyzed onboarding flow critically", "completed profile", "selected interests: ceramics, art, outdoor activities"]}],
+          "friction": "Noted 3 UX issues during onboarding: inconsistent button styles, no progress indicator, confusing back navigation.",
+          "satisfaction": "Interest granularity was good — not just 'art' but sub-categories."
+        },
+        "day_2": {
+          "sessions": [{"time": "12:30", "duration_min": 10, "actions": ["browsed events", "found a ceramics workshop", "checked venue photos and reviews"]}],
+          "friction": "No venue photos or reviews. Had to Google the venue separately.",
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "20:30", "duration_min": 5, "actions": ["RSVPed to ceramics workshop", "read other attendee profiles — good mix of people"]}],
+          "friction": null,
+          "satisfaction": "Attendee diversity looked promising."
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "14:00", "duration_min": 120, "actions": ["attended ceramics workshop", "loved it", "connected with 3 people including the instructor"]}],
+          "friction": null,
+          "satisfaction": "Perfect event. Small group, hands-on activity, great instructor."
+        },
+        "day_6": {
+          "sessions": [{"time": "09:00", "duration_min": 8, "actions": ["rated the ceramics event", "left detailed feedback", "browsed for next week"]}],
+          "friction": "Event rating was just stars — no way to leave written feedback visible to future attendees.",
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["saved a painting class and a nature walk"]}],
+          "friction": null,
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "08:00", "duration_min": 3, "actions": ["received irrelevant notification about a gaming event", "went to notification settings to filter"]}],
+          "friction": "Notification preferences are all-or-nothing. Can't filter by interest category.",
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [{"time": "20:00", "duration_min": 12, "actions": ["messaged ceramics connections about the painting class", "2 want to join"]}],
+          "friction": null,
+          "satisfaction": "Building a mini art crew through the app."
+        },
+        "day_10": {
+          "sessions": [{"time": "18:00", "duration_min": 90, "actions": ["attended painting class with ceramics friends", "the instructor was on the app too"]}],
+          "friction": null,
+          "satisfaction": "Cross-pollination between events is happening naturally."
+        },
+        "day_11": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["posted a combined photo of ceramics + painting in her profile"]}],
+          "friction": "Profile gallery is limited to 4 photos. Too few.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "10:00", "duration_min": 60, "actions": ["attended nature walk", "different crowd this time — tech people", "interesting conversations"]}],
+          "friction": null,
+          "satisfaction": "Met people outside her bubble. Exactly what she wanted."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 15, "actions": ["wrote a long social media post about the app", "recommended it to followers"]}],
+          "friction": null,
+          "satisfaction": "Genuine advocacy. The app earned it."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.79,
+        "preferred_times": ["morning", "evening"],
+        "average_session_duration_min": 22,
+        "engagement_trend": "steady_engaged"
+      }
+    }
+  },
+  {
+    "persona_id": "P09",
+    "persona_name": "David Park",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "01:00", "duration_min": 20, "actions": ["downloaded app late at night feeling lonely", "minimal profile — no photo, short bio", "selected music, art as interests"]}],
+          "friction": "Felt judged by the empty profile. Wished there was a way to participate without a full profile.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "23:00", "duration_min": 15, "actions": ["browsed events", "found a jam session on campus next week", "saved but didn't RSVP"]}],
+          "friction": null,
+          "satisfaction": "A jam session is perfect. Low-key, music-focused."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "00:30", "duration_min": 10, "actions": ["re-checked jam session", "still only 4 RSVPs", "read their profiles"]}],
+          "friction": null,
+          "satisfaction": "Other attendees are music students too. Feels safer."
+        },
+        "day_5": {
+          "sessions": [{"time": "22:00", "duration_min": 5, "actions": ["RSVPed to jam session"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "15:00", "duration_min": 60, "actions": ["attended jam session", "brought his guitar", "played with 5 others", "exchanged music"]}],
+          "friction": "No way to share playlists or music links in the app.",
+          "satisfaction": "Found his tribe. Best day since moving to Seoul."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "23:00", "duration_min": 10, "actions": ["connected with jam session people", "started a group chat externally on KakaoTalk"]}],
+          "friction": "Group chat missing in app — had to go to an external platform.",
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [{"time": "22:00", "duration_min": 8, "actions": ["uploaded a guitar-playing photo as profile pic", "updated bio"]}],
+          "friction": null,
+          "satisfaction": "Slowly building his digital presence. Feels authentic."
+        },
+        "day_10": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "21:00", "duration_min": 12, "actions": ["searched for open mic nights", "found one at a cafe near campus", "RSVPed"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "20:00", "duration_min": 45, "actions": ["attended open mic", "performed a song he wrote", "got compliments"]}],
+          "friction": null,
+          "satisfaction": "Standing ovation from a small crowd. Confidence boost."
+        },
+        "day_13": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["received connection requests from open mic attendees", "accepted all"]}],
+          "friction": null,
+          "satisfaction": "People seeking him out. New feeling."
+        },
+        "day_14": {
+          "sessions": [{"time": "23:00", "duration_min": 15, "actions": ["browsed more events", "created a recurring 'campus jam' event", "invited all connections"]}],
+          "friction": "No campus-specific features or student verification.",
+          "satisfaction": "From a lonely freshman to an event organizer."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.64,
+        "preferred_times": ["late night"],
+        "average_session_duration_min": 15,
+        "engagement_trend": "slow_start_then_committed"
+      }
+    }
+  },
+  {
+    "persona_id": "P10",
+    "persona_name": "Sophie Dubois",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "14:00", "duration_min": 25, "actions": ["downloaded app during a work break", "created profile reluctantly", "used a cat photo instead of selfie", "selected: books, languages, walking"]}],
+          "friction": "Mandatory photo upload felt invasive. Used a workaround but it felt dishonest.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "16:00", "duration_min": 10, "actions": ["searched for book clubs in Lyon", "found 2 options", "read all details"]}],
+          "friction": null,
+          "satisfaction": "Book clubs exist! One meets weekly. Perfect."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "15:00", "duration_min": 8, "actions": ["RSVPed to book club meeting", "checked what book they're reading", "ordered the book online"]}],
+          "friction": "Book club didn't specify the current book in the event details. Found it in comments buried in chat.",
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "19:00", "duration_min": 90, "actions": ["attended book club", "participated actively in discussion", "connected with the host and 2 members"]}],
+          "friction": null,
+          "satisfaction": "Intellectually stimulating. The group was thoughtful and welcoming."
+        },
+        "day_7": {
+          "sessions": [{"time": "10:00", "duration_min": 12, "actions": ["searched for language exchange events", "found a French-English exchange", "saved it"]}],
+          "friction": null,
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "14:30", "duration_min": 8, "actions": ["RSVPed to language exchange", "messaged book club host about next meeting"]}],
+          "friction": null,
+          "satisfaction": "Book club confirmed as weekly recurring. Exactly what she needs — structure."
+        },
+        "day_9": {
+          "sessions": [{"time": "18:00", "duration_min": 60, "actions": ["attended language exchange", "paired with a native English speaker", "great conversation"]}],
+          "friction": "Pairing was random and in-person. An in-app pre-match would help introverts prepare.",
+          "satisfaction": "The conversation was the most human interaction she'd had all week. Eye-opening."
+        },
+        "day_10": {
+          "sessions": [{"time": "15:00", "duration_min": 5, "actions": ["checked next book club date", "set a personal reminder"]}],
+          "friction": "No in-app calendar sync feature.",
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "19:00", "duration_min": 90, "actions": ["attended second book club meeting", "brought homemade cake", "deepening friendships"]}],
+          "friction": null,
+          "satisfaction": "Weekly routine forming. This is exactly what she needed."
+        },
+        "day_14": {
+          "sessions": [{"time": "20:00", "duration_min": 10, "actions": ["replaced cat photo with real photo", "expanded bio", "explored more interests"]}],
+          "friction": null,
+          "satisfaction": "Comfortable enough to show herself. Trust in the community."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.57,
+        "preferred_times": ["afternoon"],
+        "average_session_duration_min": 22,
+        "engagement_trend": "steady_and_deepening"
+      }
+    }
+  },
+  {
+    "persona_id": "P11",
+    "persona_name": "Omar Al-Rashid",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["downloaded app", "rushed through profile setup", "minimal bio", "selected: networking, sports, food"]}],
+          "friction": "Wanted to skip profile and go straight to events. Mandatory steps slowed him down.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["searched for Arabic-speaking groups", "no results", "searched for networking events", "found a 'Young Professionals' mixer"]}],
+          "friction": "No language or cultural community filter. Disappointing for an expat.",
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "19:00", "duration_min": 5, "actions": ["RSVPed to Young Professionals mixer"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "19:00", "duration_min": 90, "actions": ["attended mixer", "met 10+ people", "connected with 6 on the app", "exchanged business cards too"]}],
+          "friction": "No 'business card' or professional profile section. Had to exchange physically.",
+          "satisfaction": "Great event, high-quality attendees."
+        },
+        "day_5": {
+          "sessions": [{"time": "10:00", "duration_min": 8, "actions": ["messaged new connections", "suggested a weekend brunch"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["created a brunch event for Sunday", "invited mixer connections"]}],
+          "friction": null,
+          "satisfaction": "Event creation was fast enough for his impatient style."
+        },
+        "day_7": {
+          "sessions": [{"time": "11:00", "duration_min": 60, "actions": ["hosted brunch — 5 people came", "everyone had a great time"]}],
+          "friction": null,
+          "satisfaction": "Already hosting events in week 1. The app enables action-takers."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "09:00", "duration_min": 5, "actions": ["browsed 'this weekend' events", "found a desert safari group"]}, {"time": "21:00", "duration_min": 3, "actions": ["RSVPed to desert safari"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [{"time": "07:00", "duration_min": 180, "actions": ["attended desert safari with app group", "incredible experience", "connected with 4 more people"]}],
+          "friction": null,
+          "satisfaction": "Life in Dubai is actually fun now. This app was the missing piece."
+        },
+        "day_10": {
+          "sessions": [{"time": "20:00", "duration_min": 8, "actions": ["posted safari photos", "got 15 reactions"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_11": {
+          "sessions": [{"time": "12:00", "duration_min": 5, "actions": ["searched for Friday events", "found a padel tennis match"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "18:00", "duration_min": 60, "actions": ["played padel with app group"]}],
+          "friction": null,
+          "satisfaction": "Regular sports crew forming."
+        },
+        "day_13": {
+          "sessions": [{"time": "09:00", "duration_min": 10, "actions": ["received a notification about a Jordanian community event!", "RSVPed immediately"]}],
+          "friction": null,
+          "satisfaction": "Finally! Cultural community content appearing. Algorithm is learning."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["reviewed his 2-week activity", "13 connections, 6 events attended", "shared app with 3 coworkers"]}],
+          "friction": null,
+          "satisfaction": "ROI is clear. Social life went from 0 to thriving in 2 weeks."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 1.0,
+        "preferred_times": ["morning", "evening"],
+        "average_session_duration_min": 21,
+        "engagement_trend": "fast_start_sustained"
+      }
+    }
+  },
+  {
+    "persona_id": "P12",
+    "persona_name": "Rachel Kim",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "22:00", "duration_min": 30, "actions": ["downloaded app after reading a blog post", "very careful with profile — used first name only", "didn't add workplace or school", "selected: hiking, cooking, wellness"]}],
+          "friction": "Worried about privacy. No clear explanation of who can see her profile.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "21:30", "duration_min": 12, "actions": ["explored privacy settings", "set profile to 'connections only'", "searched for hiking groups"]}],
+          "friction": "Privacy settings exist but were hard to find. No onboarding mention.",
+          "satisfaction": "Relief that privacy controls exist."
+        },
+        "day_3": {
+          "sessions": [{"time": "06:00", "duration_min": 8, "actions": ["found a Saturday morning trail run group", "checked attendee profiles carefully"]}],
+          "friction": null,
+          "satisfaction": "Saturday morning is perfect for her schedule."
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "21:00", "duration_min": 5, "actions": ["RSVPed to trail run", "told her husband about it"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "07:00", "duration_min": 90, "actions": ["attended trail run", "met 8 women of various ages", "loved the outdoor setting", "connected with 3"]}],
+          "friction": null,
+          "satisfaction": "No one asked about her job or kids first. She was just Rachel. Liberating."
+        },
+        "day_7": {
+          "sessions": [{"time": "20:30", "duration_min": 10, "actions": ["messaged trail run connections", "checked for next week's run"]}],
+          "friction": null,
+          "satisfaction": "Already looking forward to next week."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "21:00", "duration_min": 8, "actions": ["browsed cooking events", "found a sourdough baking class", "RSVPed"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "10:00", "duration_min": 120, "actions": ["attended sourdough class", "met completely different crowd from trail run", "loved the variety"]}],
+          "friction": null,
+          "satisfaction": "Different facets of her personality can show up in different events."
+        },
+        "day_11": {
+          "sessions": [{"time": "22:00", "duration_min": 5, "actions": ["a parent from her school found her on the app", "panicked briefly", "checked her privacy settings"]}],
+          "friction": "Being discoverable by people from her 'real life' was unsettling. Needs better audience controls.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["blocked the parent's profile", "wished there was a 'hide from contacts' feature"]}],
+          "friction": "No contact-based blocking. Had to block individually.",
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "07:00", "duration_min": 90, "actions": ["attended second trail run", "brought a friend from sourdough class", "cross-pollination!"]}],
+          "friction": null,
+          "satisfaction": "Her worlds are blending. She's building an identity outside mom/teacher."
+        },
+        "day_14": {
+          "sessions": [{"time": "20:00", "duration_min": 10, "actions": ["updated profile slightly — added a bio about loving trail running", "saved 2 more events"]}],
+          "friction": null,
+          "satisfaction": "Slowly opening up. The app respects her pace."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.71,
+        "preferred_times": ["early morning", "late evening"],
+        "average_session_duration_min": 25,
+        "engagement_trend": "cautious_but_growing"
+      }
+    }
+  },
+  {
+    "persona_id": "P13",
+    "persona_name": "Tomas Rivera",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "13:00", "duration_min": 8, "actions": ["downloaded during lunch break", "quick profile setup", "selected: entrepreneurship, networking, sports"]}],
+          "friction": null,
+          "satisfaction": "Fast onboarding. Appreciated that."
+        },
+        "day_2": {
+          "sessions": [{"time": "13:15", "duration_min": 5, "actions": ["searched for free networking events", "found an entrepreneur meetup but it costs $20"]}],
+          "friction": "No price filter. Can't tell which events are free vs paid until you click each one.",
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["browsed more events after night class", "found a free startup pitch night", "RSVPed"]}],
+          "friction": null,
+          "satisfaction": "Free events exist, just hard to find."
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "19:30", "duration_min": 60, "actions": ["attended pitch night", "networked with 5 people", "exchanged ideas for a side project"]}],
+          "friction": null,
+          "satisfaction": "Exactly his crowd. Ambitious, scrappy, fun."
+        },
+        "day_6": {
+          "sessions": [{"time": "13:00", "duration_min": 5, "actions": ["messaged pitch night connections during lunch"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_7": {
+          "sessions": [{"time": "13:30", "duration_min": 5, "actions": ["browsed 'happening this weekend' — nothing free in his area"]}],
+          "friction": "Limited free events. The app seems geared toward paid experiences.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "13:00", "duration_min": 5, "actions": ["checked for last-minute events", "nothing available"]}],
+          "friction": "No 'happening now' or last-minute feature. Huge gap for spontaneous users.",
+          "satisfaction": null
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "22:30", "duration_min": 10, "actions": ["created a 'Weekend Soccer' event in a public park — free", "invited connections"]}],
+          "friction": null,
+          "satisfaction": "If free events are scarce, he'll create them."
+        },
+        "day_11": {
+          "sessions": [{"time": "13:00", "duration_min": 3, "actions": ["checked RSVPs — 6 people for soccer"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "16:00", "duration_min": 60, "actions": ["played soccer with app connections", "great time"]}],
+          "friction": null,
+          "satisfaction": "The app works when users create content. But it needs more organic free events."
+        },
+        "day_13": {
+          "sessions": [{"time": "13:00", "duration_min": 5, "actions": ["another pitch night event appeared", "RSVPed immediately"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_14": {
+          "sessions": [{"time": "13:15", "duration_min": 5, "actions": ["browsed events", "saved 2 for next week"]}],
+          "friction": null,
+          "satisfaction": "Becoming a regular user despite the limitations."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.71,
+        "preferred_times": ["lunch break", "late night"],
+        "average_session_duration_min": 9,
+        "engagement_trend": "consistent_but_limited_by_content"
+      }
+    }
+  },
+  {
+    "persona_id": "P14",
+    "persona_name": "Fatima Zahra",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "23:30", "duration_min": 20, "actions": ["downloaded app secretly", "used nickname instead of real name", "no photo", "selected: art, music, books, women-only events"]}],
+          "friction": "No 'women-only' filter in events. Searched for it and found nothing.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "23:00", "duration_min": 15, "actions": ["explored privacy settings deeply", "set everything to maximum privacy", "searched for art events"]}],
+          "friction": "Profile still shows up in 'people near you'. No way to be completely invisible while still browsing.",
+          "satisfaction": null
+        },
+        "day_3": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["found an art gallery visit event", "all-gender event", "read attendee list carefully", "didn't recognize anyone"]}],
+          "friction": null,
+          "satisfaction": "Small event, 8 attendees, seems safe."
+        },
+        "day_4": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [{"time": "23:00", "duration_min": 5, "actions": ["RSVPed to art gallery visit"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "15:00", "duration_min": 60, "actions": ["attended art gallery visit", "wore a headscarf and felt accepted", "spoke with 3 women about contemporary Moroccan art"]}],
+          "friction": null,
+          "satisfaction": "Nobody judged her. Diverse group. She could be herself."
+        },
+        "day_7": {
+          "sessions": [{"time": "22:30", "duration_min": 8, "actions": ["connected with the 3 women from the gallery", "messaged one about a music event"]}],
+          "friction": null,
+          "satisfaction": "First connections that feel right."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "23:00", "duration_min": 10, "actions": ["searched for music events", "found a 'Women in Jazz' night", "RSVPed immediately"]}],
+          "friction": null,
+          "satisfaction": "Found a women-specific event even without a filter! Algorithm is getting it."
+        },
+        "day_9": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "20:00", "duration_min": 90, "actions": ["attended Women in Jazz night", "met 12 women from various backgrounds", "felt truly free"]}],
+          "friction": null,
+          "satisfaction": "This is what freedom looks like. A space where she defines herself."
+        },
+        "day_11": {
+          "sessions": [{"time": "23:00", "duration_min": 8, "actions": ["connected with 5 women from jazz night", "started a group chat"]}],
+          "friction": "Group chat was initiated outside the app (WhatsApp) because in-app group chat doesn't exist.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["uploaded a photo of herself at the jazz night (face partially visible)", "wrote a meaningful bio"]}],
+          "friction": null,
+          "satisfaction": "Slowly revealing herself. The community earned her trust."
+        },
+        "day_13": {
+          "sessions": [{"time": "23:00", "duration_min": 12, "actions": ["created a 'Women's Art Walk' event", "restricted to women attendees (manually in description)"]}],
+          "friction": "No gender-based event filtering. Had to write 'women only' in the description and hope.",
+          "satisfaction": null
+        },
+        "day_14": {
+          "sessions": [{"time": "22:00", "duration_min": 10, "actions": ["8 women RSVPed to her art walk", "messaged each one", "feels like a quiet revolution"]}],
+          "friction": null,
+          "satisfaction": "From hiding to hosting. The app gave her a safe space to grow."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.71,
+        "preferred_times": ["late night"],
+        "average_session_duration_min": 13,
+        "engagement_trend": "cautious_then_committed"
+      }
+    }
+  },
+  {
+    "persona_id": "P15",
+    "persona_name": "Hans Mueller",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "09:00", "duration_min": 45, "actions": ["daughter installed the app for him during a visit", "struggled with tiny text", "managed to create profile with daughter's help", "selected: chess, hiking, classical music"]}],
+          "friction": "Text too small, no accessibility options. Buttons are too close together. Had to zoom the entire phone.",
+          "satisfaction": null
+        },
+        "day_2": {
+          "sessions": [{"time": "10:00", "duration_min": 15, "actions": ["opened app", "accidentally tapped the wrong button 3 times", "found events section", "saw a chess club meeting"]}],
+          "friction": "Touch targets are far too small for his fingers. Frustrating.",
+          "satisfaction": "A chess club exists! Only 2 km away."
+        },
+        "day_3": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "10:00", "duration_min": 10, "actions": ["tried to RSVP to chess club", "success on second attempt"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_5": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "14:00", "duration_min": 120, "actions": ["attended chess club", "played 3 games", "won 2", "met a retired professor who became a friend instantly"]}],
+          "friction": null,
+          "satisfaction": "Best afternoon in years. Intellectually stimulated and socially engaged."
+        },
+        "day_7": {
+          "sessions": [{"time": "09:00", "duration_min": 8, "actions": ["checked for the professor's profile on the app", "couldn't find him — he's not on the app"]}],
+          "friction": "No way to invite non-users or exchange contact info through the app.",
+          "satisfaction": null
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "10:00", "duration_min": 10, "actions": ["searched for hiking groups", "found a 'Senior Hikers Vienna' group"]}],
+          "friction": null,
+          "satisfaction": "Age-specific group! Finally something that acknowledges his demographic."
+        },
+        "day_9": {
+          "sessions": [{"time": "09:30", "duration_min": 5, "actions": ["RSVPed to senior hiking group outing"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "08:00", "duration_min": 180, "actions": ["attended hiking outing", "walked 8 km with 6 other retirees", "had lunch together after"]}],
+          "friction": null,
+          "satisfaction": "Full day of activity with peers. Hasn't felt this alive since his wife passed."
+        },
+        "day_11": {
+          "sessions": [],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "10:00", "duration_min": 8, "actions": ["checked chess club next meeting", "saved it"]}],
+          "friction": null,
+          "satisfaction": "Routine forming. Two weekly activities."
+        },
+        "day_13": {
+          "sessions": [{"time": "14:00", "duration_min": 120, "actions": ["attended second chess club meeting", "the professor came too — told him about the app"]}],
+          "friction": null,
+          "satisfaction": "His social circle is growing. He has plans now."
+        },
+        "day_14": {
+          "sessions": [{"time": "09:00", "duration_min": 10, "actions": ["browsed classical music events", "found a chamber concert next week", "RSVPed"]}],
+          "friction": null,
+          "satisfaction": "Three types of activities in his calendar. Life feels full again."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.57,
+        "preferred_times": ["morning"],
+        "average_session_duration_min": 28,
+        "engagement_trend": "slow_but_deeply_engaged"
+      }
+    }
+  },
+  {
+    "persona_id": "P16",
+    "persona_name": "Zara Williams",
+    "journey": {
+      "week_1": {
+        "day_1": {
+          "sessions": [{"time": "23:30", "duration_min": 12, "actions": ["downloaded app on impulse", "speed-completed profile", "selected: fitness, networking, mindfulness"]}],
+          "friction": null,
+          "satisfaction": "Fast onboarding. Good for someone with zero patience."
+        },
+        "day_2": {
+          "sessions": [{"time": "07:00", "duration_min": 5, "actions": ["browsed events during morning coffee", "RSVPed to a yoga session and a founder meetup"]}],
+          "friction": null,
+          "satisfaction": "Two events booked in under 5 minutes."
+        },
+        "day_3": {
+          "sessions": [{"time": "18:00", "duration_min": 3, "actions": ["cancelled yoga session — work emergency"]}],
+          "friction": "Felt guilty about cancelling. App showed 'You cancelled' prominently on her profile activity.",
+          "satisfaction": null
+        },
+        "day_4": {
+          "sessions": [{"time": "19:00", "duration_min": 60, "actions": ["attended founder meetup", "met 8 other founders", "exchanged stories about burnout"]}],
+          "friction": null,
+          "satisfaction": "These are her people. Everyone understands the struggle."
+        },
+        "day_5": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["connected with 4 founders from the meetup", "messaged one about a follow-up coffee"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_6": {
+          "sessions": [{"time": "22:00", "duration_min": 8, "actions": ["RSVPed to a 30-minute morning meditation session", "RSVPed to a weekend brunch"]}],
+          "friction": null,
+          "satisfaction": "Short events are a lifeline for her schedule."
+        },
+        "day_7": {
+          "sessions": [{"time": "07:30", "duration_min": 30, "actions": ["attended morning meditation", "only 5 people", "intimate and calming"]}],
+          "friction": null,
+          "satisfaction": "30-minute commitment felt perfect. More events should be this short."
+        }
+      },
+      "week_2": {
+        "day_8": {
+          "sessions": [{"time": "11:00", "duration_min": 60, "actions": ["attended brunch with mixed group", "great conversation but had to leave early for a call"]}],
+          "friction": "Events don't have a clear end time. Hard to plan around work.",
+          "satisfaction": "Quality interactions even in a short window."
+        },
+        "day_9": {
+          "sessions": [{"time": "23:00", "duration_min": 5, "actions": ["RSVPed to another yoga session", "set a phone reminder to not cancel this time"]}],
+          "friction": null,
+          "satisfaction": null
+        },
+        "day_10": {
+          "sessions": [{"time": "07:00", "duration_min": 45, "actions": ["attended yoga session", "stayed for tea after", "met a therapist who specializes in founder burnout"]}],
+          "friction": null,
+          "satisfaction": "Serendipitous connection. Exactly the kind of person she needed to meet."
+        },
+        "day_11": {
+          "sessions": [{"time": "22:00", "duration_min": 3, "actions": ["cancelled a networking dinner — too tired"]}],
+          "friction": "Second cancellation. Pattern forming. App doesn't help her manage this.",
+          "satisfaction": null
+        },
+        "day_12": {
+          "sessions": [{"time": "08:00", "duration_min": 5, "actions": ["browsed 'quick events' under 1 hour near her office"]}],
+          "friction": "No duration filter for events. Has to check each one individually.",
+          "satisfaction": null
+        },
+        "day_13": {
+          "sessions": [{"time": "12:30", "duration_min": 30, "actions": ["attended a 'Lunch & Learn' with a founder connection", "perfect midday break"]}],
+          "friction": null,
+          "satisfaction": "Micro-events during work hours are the answer for her lifestyle."
+        },
+        "day_14": {
+          "sessions": [{"time": "21:00", "duration_min": 10, "actions": ["reviewed 2-week journey", "3 cancellations out of 8 RSVPs", "reflected on what works for her (short, morning/lunch events)"]}],
+          "friction": "No analytics or self-reflection feature to see her own patterns.",
+          "satisfaction": "Despite cancellations, she made 6 meaningful connections. Net positive."
+        }
+      },
+      "usage_pattern": {
+        "average_sessions_per_day": 0.86,
+        "preferred_times": ["early morning", "late night"],
+        "average_session_duration_min": 16,
+        "engagement_trend": "high_intent_inconsistent_execution"
+      }
+    }
+  }
+]

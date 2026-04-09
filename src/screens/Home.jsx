@@ -6,6 +6,7 @@ import { useT } from '../i18n'
 import { EVENTS } from '../data/events'
 import { ACTIVITIES } from '../data/activities'
 import { scheduleEventReminder } from '../lib/notifications'
+import AddToCalendar from '../components/AddToCalendar'
 import { usePushNotifications } from '../lib/usePushNotifications'
 import { fetchFriendsFeed } from '../services/api'
 
@@ -478,19 +479,19 @@ export default function Home() {
             Compartilhar minha agenda com amigos
           </span>
           <button
-            onClick={() => dispatch({ type: 'SET_SHARE_RSVPS', payload: !state.shareRsvps })}
+            onClick={() => dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key: 'shareRsvps', value: !(state.privacy?.shareRsvps ?? state.shareRsvps) } })}
             style={{
               fontSize: 14,
               background: 'none',
               border: 'none',
               cursor: 'pointer',
               padding: '2px 6px',
-              color: state.shareRsvps ? 'var(--sage)' : 'var(--charcoal-mid)',
+              color: (state.privacy?.shareRsvps ?? state.shareRsvps) ? 'var(--sage)' : 'var(--charcoal-mid)',
               fontWeight: 700,
             }}
-            title={state.shareRsvps ? 'Clique para desativar' : 'Clique para ativar'}
+            title={(state.privacy?.shareRsvps ?? state.shareRsvps) ? 'Clique para desativar' : 'Clique para ativar'}
           >
-            {state.shareRsvps ? '✓' : '✗'}
+            {(state.privacy?.shareRsvps ?? state.shareRsvps) ? '✓' : '✗'}
           </button>
         </div>
       )}
@@ -549,12 +550,15 @@ export default function Home() {
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <span style={{ color: 'var(--sage)', fontSize: 18 }}>✓</span>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--sage)' }}>
                 {t.home_day_zero_saved}
               </div>
               <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
                 {t.home_day_zero_going} — {EVENTS.find(e => e.id === state.dayZeroEventId)?.name}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <AddToCalendar event={EVENTS.find(e => e.id === state.dayZeroEventId)} />
               </div>
             </div>
           </div>
@@ -581,16 +585,19 @@ export default function Home() {
                 {thisWeekRsvp.date} · {thisWeekRsvp.time}
               </div>
             </div>
-            <button
-              onClick={() => navigate('/events')}
-              style={{
-                background: 'rgba(255,255,255,0.25)', border: 'none', borderRadius: 10,
-                padding: '6px 10px', fontSize: 11, fontWeight: 700, color: 'white',
-                cursor: 'pointer', flexShrink: 0,
-              }}
-            >
-              {t.home_event_today_view}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' }}>
+              <button
+                onClick={() => navigate('/events')}
+                style={{
+                  background: 'rgba(255,255,255,0.25)', border: 'none', borderRadius: 10,
+                  padding: '6px 10px', fontSize: 11, fontWeight: 700, color: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.home_event_today_view}
+              </button>
+              <AddToCalendar event={thisWeekRsvp} />
+            </div>
           </div>
         </div>
       )}
@@ -688,11 +695,14 @@ export default function Home() {
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
                 </div>
-                <div style={{
-                  fontSize: 10, fontWeight: 700, color: 'var(--sage)',
-                  background: 'var(--sage-pale)', padding: '3px 8px', borderRadius: 8, flexShrink: 0,
-                }}>
-                  {going === 0 ? t.home_be_first : `${going} ${t.home_going}`}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {rsvped && <AddToCalendar event={ev} />}
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+                    background: 'var(--sage-pale)', padding: '3px 8px', borderRadius: 8,
+                  }}>
+                    {going === 0 ? t.home_be_first : `${going} ${t.home_going}`}
+                  </div>
                 </div>
               </div>
             )
@@ -717,13 +727,16 @@ export default function Home() {
             </strong>{' '}
             {EVENTS[0].name}
           </div>
-          <button
-            className="btn btn--primary"
-            style={{ width: 'auto', padding: '6px 14px', fontSize: 11, borderRadius: 10 }}
-            onClick={() => dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: EVENTS[0].id } })}
-          >
-            {state.rsvps[EVENTS[0].id] ? t.home_going : t.home_rsvp}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {state.rsvps[EVENTS[0].id] && <AddToCalendar event={EVENTS[0]} />}
+            <button
+              className="btn btn--primary"
+              style={{ width: 'auto', padding: '6px 14px', fontSize: 11, borderRadius: 10 }}
+              onClick={() => dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: EVENTS[0].id } })}
+            >
+              {state.rsvps[EVENTS[0].id] ? t.home_going : t.home_rsvp}
+            </button>
+          </div>
         </div>
         <div className="divider"/>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

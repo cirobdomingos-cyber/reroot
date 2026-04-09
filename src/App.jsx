@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from './context/AppContext'
@@ -43,6 +43,11 @@ export default function App() {
 
   const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro', '/diagnostic'].includes(location.pathname)
   const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
+
+  // Sync accessibility mode to root element so CSS [data-accessibility="on"] selectors work
+  useEffect(() => {
+    document.documentElement.dataset.accessibility = state.accessibilityMode ? 'on' : 'off'
+  }, [state.accessibilityMode])
 
   return (
     <div className="phone-shell">

@@ -123,8 +123,18 @@ const INITIAL_STATE = {
   pushOptedIn: false,   // true once user subscribes to weekly push reminders
   pushDismissed: false, // true if user explicitly declined the prompt
 
-  // Social feed privacy toggle
-  shareRsvps: true,     // when false, RSVPs are not synced to the social backend
+  // Social feed privacy toggle (legacy — migrated into privacy object)
+  shareRsvps: true,     // kept for backward compat; canonical source is privacy.shareRsvps
+
+  // Granular privacy controls
+  privacy: {
+    shareRsvps: true,              // show my RSVPs in friend feed
+    showInFriendSuggestions: true,  // appear in "people near you" / friend suggestions
+    showProfileToStrangers: false,  // non-friends can see my full profile
+  },
+
+  // Accessibility mode — large fonts + enhanced nav labels for older users
+  accessibilityMode: false,
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -258,7 +268,23 @@ function reducer(state, action) {
       return { ...state, pushDismissed: true }
 
     case 'SET_SHARE_RSVPS':
-      return { ...state, shareRsvps: action.payload }
+      // Backward compat: update both top-level and privacy object
+      return {
+        ...state,
+        shareRsvps: action.payload,
+        privacy: { ...state.privacy, shareRsvps: action.payload },
+      }
+
+    case 'SET_PRIVACY_OPTION': {
+      const { key, value } = action.payload
+      const updated = { ...state, privacy: { ...state.privacy, [key]: value } }
+      // Keep top-level shareRsvps in sync for backward compat
+      if (key === 'shareRsvps') updated.shareRsvps = value
+      return updated
+    }
+
+    case 'TOGGLE_ACCESSIBILITY':
+      return { ...state, accessibilityMode: !state.accessibilityMode }
 
     case 'RESTORE_STATE': {
       // Remote wins for progress; local wins for preferences. googleUser always stays local.
@@ -285,6 +311,10 @@ function reducer(state, action) {
         language:     state.language     || remote.language,
         userName:     state.userName     || remote.userName,
         neighborhood: state.neighborhood || remote.neighborhood,
+        // Merge privacy settings: remote wins, with migration from legacy shareRsvps
+        privacy: remote.privacy
+          ? { ...state.privacy, ...remote.privacy }
+          : state.privacy,
       }
     }
 
@@ -372,7 +402,15 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return INITIAL_STATE
-    return { ...INITIAL_STATE, ...JSON.parse(raw) }
+    const parsed = { ...INITIAL_STATE, ...JSON.parse(raw) }
+    // Migrate legacy state: if privacy object is missing, build it from top-level shareRsvps
+    if (!parsed.privacy || typeof parsed.privacy !== 'object') {
+      parsed.privacy = {
+        ...INITIAL_STATE.privacy,
+        shareRsvps: parsed.shareRsvps ?? true,
+      }
+    }
+    return parsed
   } catch {
     return INITIAL_STATE
   }

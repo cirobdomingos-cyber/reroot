@@ -228,6 +228,51 @@ input  { font-family: inherit; }
 .screen-header__title { font-size: 22px; font-weight: 700; color: var(--charcoal); }
 .screen-header__sub { font-size: 12px; color: var(--charcoal-mid); margin-top: 2px; }
 
+/* ── Accessibility mode ── */
+[data-accessibility="on"] .nav-item__label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--charcoal);
+}
+[data-accessibility="on"] .nav-item--active .nav-item__label {
+  color: var(--terra);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+[data-accessibility="on"] .nav-item {
+  padding: 8px 14px;
+  gap: 6px;
+}
+[data-accessibility="on"] .nav-item--active {
+  background: var(--terra-pale);
+}
+[data-accessibility="on"] .screen-header__title {
+  font-size: 26px;
+}
+[data-accessibility="on"] .screen-header__sub {
+  font-size: 14px;
+}
+[data-accessibility="on"] .section-label {
+  font-size: 13px;
+}
+[data-accessibility="on"] .btn {
+  min-height: 48px;
+  font-size: 17px;
+}
+[data-accessibility="on"] .card {
+  font-size: 16px;
+}
+[data-accessibility="on"] .tag {
+  font-size: 13px;
+  padding: 6px 12px;
+}
+[data-accessibility="on"] .bottom-nav {
+  height: 88px;
+}
+[data-accessibility="on"] .screen-inner {
+  font-size: 16px;
+}
+
 /* ── Responsive: full screen on mobile ── */
 @media (max-width: 430px) {
   body { padding: 0; background: var(--cream); }

@@ -22,6 +22,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Passeio tranquilo com café no final',
     rerootReason: 'Ambiente aberto e sem pressão — caminhar lado a lado facilita conversa natural',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'A', color: '#7A9E7E', name: 'Ana', note: 'Semana 4 · Batel' },
@@ -50,6 +51,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Pinte sem julgamento em grupo íntimo',
     rerootReason: 'Atividade guiada remove a pressão de socializar — você tem algo para fazer com as mãos',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },
@@ -75,6 +77,7 @@ export const EVENTS = [
     expectedSize: 'medium',
     vibeSummary: 'Yoga suave com vista para o lago',
     rerootReason: 'Prática individual em grupo — você pode ser completamente silencioso e tudo bem',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'L', color: '#5B8DD9', name: 'Lúcia', note: 'Semana 5 · Água Verde' },
@@ -103,6 +106,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Mãos na argila em grupo íntimo',
     rerootReason: 'Grupo muito pequeno e atividade absorvente — ideal para quem está voltando a socializar',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },
@@ -128,6 +132,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Silêncio compartilhado com chá no final',
     rerootReason: 'Meditação é intrinsecamente sem pressão — ideal para quem quer companhia sem demanda social',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [
       { initial: 'L', color: '#5B8DD9', name: 'Lúcia', note: 'Semana 5 · Água Verde' },
@@ -156,6 +161,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Leitura silenciosa acompanhada de café',
     rerootReason: 'Ler junto é social sem ser exigente — zero pressão para falar',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [
       { initial: 'M', color: '#9B7EB8', name: 'Marina', note: 'Semana 2 · Juvevê' },
@@ -183,6 +189,7 @@ export const EVENTS = [
     expectedSize: 'medium',
     vibeSummary: 'Diversão estruturada com petiscos',
     rerootReason: 'Jogos dão estrutura natural para interação — sem small talk forçado',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'A', color: '#7A9E7E', name: 'Ana', note: 'Semana 4 · Batel' },
@@ -213,6 +220,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Plante junto e leve verduras para casa',
     rerootReason: 'Trabalho manual em grupo cria conexão sem exigir habilidade social — propósito compartilhado',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'M', color: '#9B7EB8', name: 'Marina', note: 'Semana 2 · Juvevê' },
@@ -241,6 +249,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Trilha guiada com vista panorâmica',
     rerootReason: 'Caminhar em grupo pequeno com foco na natureza — conversa acontece naturalmente',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'R', color: '#E08D5E', name: 'Renata', note: 'Semana 3 · Portão' },
@@ -268,6 +277,7 @@ export const EVENTS = [
     expectedSize: 'medium',
     vibeSummary: 'Sabores locais em clima de vizinhança',
     rerootReason: 'Feira livre permite ir e vir no seu ritmo — conversa acontece naturalmente nas bancas',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'A', color: '#7A9E7E', name: 'Ana', note: 'Semana 4 · Batel' },
@@ -296,6 +306,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Fotografe o centro histórico com novo olhar',
     rerootReason: 'Foco na atividade dá propósito ao passeio — socialização é efeito colateral natural',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },
@@ -321,6 +332,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Pedal tranquilo pela ciclovia',
     rerootReason: 'Pedalar em grupo permite conversa casual sem olho no olho — menos intimidante',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },
@@ -348,6 +360,7 @@ export const EVENTS = [
     expectedSize: 'medium',
     vibeSummary: 'Cervejas artesanais com mesas compartilhadas',
     rerootReason: 'Mesas grandes e ambiente casual — fácil sentar perto de desconhecidos sem ser estranho',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [
       { initial: 'L', color: '#5B8DD9', name: 'Lúcia', note: 'Frequenta às quintas' },
@@ -375,6 +388,7 @@ export const EVENTS = [
     expectedSize: 'medium',
     vibeSummary: 'Coquetéis e clima relax no Batel',
     rerootReason: 'Área externa permite ficar no seu canto — sem pressão de pista de dança ou multidão',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },
@@ -400,6 +414,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Café silencioso com livros e Wi-Fi',
     rerootReason: 'Ir a um café sozinho é o primeiro passo para normalizar sair de casa — zero expectativa social',
+    kidsWelcome: true,
     url: '',
     cohortGoing: [
       { initial: 'M', color: '#9B7EB8', name: 'Marina', note: 'Vai às tardes de quarta' },
@@ -427,6 +442,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Quiz nights e jam sessions em ambiente acolhedor',
     rerootReason: 'Quiz night dá estrutura: você é parte de um time, tem algo para fazer, conversa surge naturalmente',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [
       { initial: 'A', color: '#7A9E7E', name: 'Ana', note: 'Vai nas quiz nights · Terças' },
@@ -455,6 +471,7 @@ export const EVENTS = [
     expectedSize: 'small',
     vibeSummary: 'Brunch nórdico com mesas compartilhadas',
     rerootReason: 'Mesas coletivas normalizam estar sozinho em público — o primeiro passo mais suave que existe',
+    kidsWelcome: false,
     url: '',
     cohortGoing: [],
   },

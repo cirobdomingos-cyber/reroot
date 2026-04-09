@@ -1,0 +1,514 @@
+[
+  {
+    "persona_id": "P01",
+    "persona_name": "Lucas Ferreira",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Finally an app that gets it. I moved to SP two years ago and never managed to make real friends through apps until this one. The board game event I went to was small, chill, and exactly my vibe. Only reason it's not 5 stars: finding people after an event is weirdly hard. Add a 'people you met' feature please!",
+        "sentiment": "positive",
+        "themes": ["eventos", "matching", "ui_ux", "conexoes_pos_evento"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "The app actually delivers on what it promises — real activities with real people. I just wish the event creation form was shorter. I tried to host my own board game night and almost gave up filling out all the fields.",
+        "sentiment": "positive",
+        "themes": ["eventos", "criacao_de_eventos", "ui_ux"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi, after attending an event I wanted to add people I met but there's no easy way to do it. I had to search their names and some people have common names so it was confusing. Could you add a feature that shows a list of attendees after the event ends so we can connect easily? Thanks!",
+        "sentiment": "neutral",
+        "themes": ["conexoes_pos_evento", "ui_ux", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "been using this new social app for 2 weeks and actually went to a board game night with strangers?? and it was good??? introvert win. the app needs some polish but the concept is solid",
+        "sentiment": "positive",
+        "themes": ["eventos", "onboarding", "ui_ux"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P02",
+    "persona_name": "Maria Gonzalez",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "Good idea, some execution issues. As a mom, I need to know if events are kid-friendly BEFORE I open each one. There's no filter for that. Also tried to create an event on my phone and the form was unusable on a small screen. But the park meetup I found was amazing — my daughter loved it and I finally talked to adults.",
+        "sentiment": "neutral",
+        "themes": ["eventos", "filtros", "ui_ux", "criacao_de_eventos", "acessibilidade"]
+      },
+      {
+        "type": "nps_response",
+        "score": 7,
+        "text": "I'd recommend it to other parents, but with a warning: you'll have to dig to find family-friendly stuff. If they added a 'kids welcome' tag and better mobile event creation, it'd be a 10.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "criacao_de_eventos", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hello, I'm a single mom and this app has been helpful but I really struggle to find events I can attend with my daughter. Can you please add a 'family-friendly' or 'kids welcome' filter? Also the event creation page is very hard to use on my phone — the buttons are tiny and I have to scroll forever. Thanks for listening!",
+        "sentiment": "neutral",
+        "themes": ["filtros", "criacao_de_eventos", "ui_ux", "acessibilidade"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Found this app that helps you find real-life activities. Took my daughter to a park meetup and met other moms. We're going again next Saturday. If only it had a 'family-friendly' filter it'd be perfect for parents.",
+        "sentiment": "positive",
+        "themes": ["eventos", "filtros"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P03",
+    "persona_name": "James Okonkwo",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "THIS is what I've been looking for. Downloaded it, found a basketball game and a design meetup within 2 days. Already went to 6 events in 2 weeks. Only things missing: a 'happening now' button for spontaneous plans and group chat so I don't have to message everyone individually. But honestly? Best social app I've used.",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "funcionalidades_espontaneas", "matching"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "Already recommended it to 5 friends. The events are legit and people actually show up. I just wish there was a way to post 'happening right now' activities for spontaneous plans.",
+        "sentiment": "positive",
+        "themes": ["eventos", "funcionalidades_espontaneas", "comunidade"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hey team! Love the app, using it daily. Quick feature request: can you add group chat for events? Right now if I want to message all attendees I have to go one by one. Also a 'happening now' feature would be incredible for spontaneous meetups. Keep up the great work!",
+        "sentiment": "positive",
+        "themes": ["chat", "funcionalidades_espontaneas", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Yo if you're in Lagos and looking for pickup games, creative meetups, or just cool people to hang with — download this app. I've been to 6 events in 2 weeks and every single one was fire. My social life went from good to legendary 🔥",
+        "sentiment": "positive",
+        "themes": ["eventos", "comunidade", "matching"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P04",
+    "persona_name": "Yuki Tanaka",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "The photography walk I attended was wonderful. Exactly what I needed. However, the app itself is confusing. Home feed mixes everything together. I couldn't find events easily. After the event, I wanted to find the people I met but there was no attendee list. Interface needs to be simpler and more organized.",
+        "sentiment": "neutral",
+        "themes": ["eventos", "ui_ux", "navegacao", "conexoes_pos_evento"]
+      },
+      {
+        "type": "nps_response",
+        "score": 6,
+        "text": "The event quality is high but the app design frustrates me. I spend more time figuring out the interface than actually finding things. Needs a cleaner layout with clear sections. Also notification settings are buried too deep.",
+        "sentiment": "neutral",
+        "themes": ["ui_ux", "navegacao", "notificacoes"]
+      },
+      {
+        "type": "support_message",
+        "text": "I attended a photography walk through your app and it was a great experience. But afterwards I could not find the other attendees to connect with them. I searched by name but couldn't find anyone. Please consider adding a feature that shows who attended an event so we can connect afterwards. Also, your notification settings are very difficult to find — I had to go through 4 different menus. Thank you.",
+        "sentiment": "neutral",
+        "themes": ["conexoes_pos_evento", "notificacoes", "navegacao", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Went on a photography walk organized through this new social app. The event was excellent — well organized, small group, no pressure to socialize. The app itself needs work though. Finding things is not intuitive.",
+        "sentiment": "neutral",
+        "themes": ["eventos", "ui_ux", "navegacao"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P05",
+    "persona_name": "Priya Sharma",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "I'm an introvert with social anxiety and this app literally changed my life in two weeks. Found an anime screening, met people who GET me, went to a poetry open mic and actually performed!! The interest matching is amazing — it found anime AND poetry. Only wish: let me attend events anonymously at first before committing. But seriously, 5 stars because this app gave me courage I didn't know I had.",
+        "sentiment": "positive",
+        "themes": ["matching", "eventos", "saude_mental", "privacidade"]
+      },
+      {
+        "type": "nps_response",
+        "score": 10,
+        "text": "This app changed my social life. I went from browsing alone in my hostel to hosting a poetry and chai event with 7 people. The interest-based matching is incredibly accurate. The only improvement I'd suggest is adding an 'attend anonymously' option for shy people like me. But honestly? 10/10 would recommend to anyone who struggles socially.",
+        "sentiment": "positive",
+        "themes": ["matching", "eventos", "saude_mental", "privacidade"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi! First of all THANK YOU for this app. As someone with social anxiety, being able to find events based on specific interests like anime and poetry was a dream. I wanted to ask — is there any way to 'attend anonymously' or join an event as a spectator first? I almost didn't go to my first event because I was scared. Luckily I pushed through and it was amazing. But other anxious people might not. An anonymous/spectator mode could help SO many people. Thank you!",
+        "sentiment": "positive",
+        "themes": ["matching", "privacidade", "saude_mental", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "okay so I used to think social apps were just for extroverts and dating. then I found this app that matched me with anime fans AND poetry lovers and I went to an open mic and READ MY OWN POEM and people clapped?? if you're shy and think you can't do social things... try this app. it meets you where you are 💜",
+        "sentiment": "positive",
+        "themes": ["matching", "eventos", "saude_mental", "comunidade"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P06",
+    "persona_name": "Carlos Mendez",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 2,
+        "text": "The events are wonderful — wine tasting and theater were highlights of my month. But the app itself is not designed for people over 50. Text is too small, buttons look the same, I accidentally created an event when trying to join one. My son had to help me twice. Please make it simpler. The concept deserves better execution.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "eventos", "navegacao"]
+      },
+      {
+        "type": "nps_response",
+        "score": 5,
+        "text": "I would recommend the events to anyone my age, but I cannot recommend the app itself. It's too complicated. I needed help from my son to use basic features. If the design were simpler and the text larger, I would give a 10.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "navegacao"]
+      },
+      {
+        "type": "support_message",
+        "text": "Good day. I am 55 years old and recently divorced. I found your app through my son. The wine tasting event was the best evening I've had in months, and the theater event was equally good. However, I must tell you that using the app is very frustrating. The icons have no labels, so I had to guess what each button does. I accidentally created an event instead of joining one because the buttons look identical. I also could not find how to reply to messages — the chat screen confused me. Please consider making the app more accessible for older users. We want to socialize too. Thank you.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "navegacao", "chat", "onboarding"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "My son showed me this new app for meeting people. The events are fantastic — went to a wine tasting and theater play. Met wonderful people. But the app is impossible to use without help. Everything is tiny icons with no words. At my age, I need text labels and bigger buttons. The idea is a 10, the execution is a 3.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "ui_ux", "eventos"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P07",
+    "persona_name": "Aisha Bello",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Moved to Nairobi knowing no one and this app gave me a social life in 2 weeks. Organized a beach cleanup that 14 people came to! Love the user-created events. What's missing: a volunteering category (had to tag mine as 'outdoor'), recurring events (I have to recreate mine monthly), and a referral system. So close to perfect.",
+        "sentiment": "positive",
+        "themes": ["eventos", "criacao_de_eventos", "comunidade", "categorias", "funcionalidades_recorrentes"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "Incredible app for building community. I went from zero friends in Nairobi to organizing 14-person volunteer events. Missing features: volunteering category, recurring events, and invite/referral system. But the core experience is amazing.",
+        "sentiment": "positive",
+        "themes": ["comunidade", "categorias", "funcionalidades_recorrentes", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hello! I love this app and have been actively using it since I moved to Nairobi. I organized a beach cleanup event that 14 people attended — it was incredible. I have two feature requests: 1) Please add a 'volunteering' or 'community service' category. I had to tag my cleanup as 'outdoor' which doesn't capture the purpose. 2) Please add recurring events. I want to do monthly cleanups but have to manually create a new event each time. Also, a friend referral feature would help grow the community. Thank you for building this!",
+        "sentiment": "positive",
+        "themes": ["categorias", "funcionalidades_recorrentes", "eventos", "comunidade"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Two weeks in Nairobi and I already organized a beach cleanup with 14 strangers through this social app. Not strangers anymore — they're friends now. If you want to build real community (not just scroll feeds), this app is it. My only complaint is no volunteering category. Fix that and you've got my loyalty forever.",
+        "sentiment": "positive",
+        "themes": ["comunidade", "eventos", "categorias"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P08",
+    "persona_name": "Emma Lindqvist",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "As a UX designer, I notice things. The onboarding has inconsistent button styles. Navigation lacks a progress indicator. The notification system is all-or-nothing. BUT — the event curation is excellent, the interest categories have real depth, and I attended a ceramics workshop, painting class, and nature walk in two weeks. Met people outside my tech bubble which is exactly what I wanted. Fix the UX details and this is a 5.",
+        "sentiment": "positive",
+        "themes": ["ui_ux", "eventos", "notificacoes", "matching", "onboarding"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "Great concept, strong event quality. As a UX professional, the interface has noticeable issues: inconsistent styling, no notification filtering by interest, limited profile gallery (4 photos?!). But the events delivered real value. I met artists, hikers, and tech people — all through one app.",
+        "sentiment": "positive",
+        "themes": ["ui_ux", "notificacoes", "eventos", "matching"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi team, UX designer here — wanted to share some constructive feedback. 1) Onboarding: button styles are inconsistent (primary actions should look different from secondary). Add a progress indicator. 2) Notifications: let users filter by interest category, not just on/off. I got a gaming event notification when I only care about art events. 3) Profile gallery: 4 photos is too few. Let people showcase their interests visually. 4) Event reviews: star ratings without written reviews mean future attendees can't make informed decisions. Despite all this, I love the app and recommended it publicly. These changes would make it exceptional.",
+        "sentiment": "positive",
+        "themes": ["ui_ux", "notificacoes", "onboarding", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Stockholm friends — found an app that actually helps you meet people IRL through activities. Did ceramics, painting, and a nature walk in two weeks. As a UX designer I have THOUGHTS about the interface but the core experience is genuinely great. If you want to get out of the tech bubble and meet diverse people, give it a try.",
+        "sentiment": "positive",
+        "themes": ["eventos", "ui_ux", "comunidade"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P09",
+    "persona_name": "David Park",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "I'm a lonely freshman who plays guitar and this app helped me find a jam session on campus and an open mic night. I performed a song I wrote and people actually liked it. The app needs group chat badly — we had to move to KakaoTalk to keep talking. Also some campus-specific features would be amazing. But for finding your people? It works.",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "comunidade", "funcionalidades_campus"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "From lonely dorm room to creating a campus jam event in 2 weeks. App works for what it promises. Needs: group chat, campus features, and maybe a way to participate without a full profile (I almost didn't sign up because I didn't want to write a bio).",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "funcionalidades_campus", "onboarding"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi, I'm a university student and the app helped me meet other musicians on campus. But we couldn't chat as a group inside the app so we moved to KakaoTalk. That means all future coordination happens outside your platform. If you added group chat, you'd keep users inside the app. Also, is there any plan for campus-specific features? Like being able to filter events by university? That would help students a lot. Thanks.",
+        "sentiment": "neutral",
+        "themes": ["chat", "funcionalidades_campus", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "moved to seoul for uni and didn't know anyone. downloaded this app and found a jam session. played guitar with strangers and now we're forming a band?? if you're a freshman feeling lost, try it. just wish it had group chat so we didn't have to use kakao for everything",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "comunidade"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P10",
+    "persona_name": "Sophie Dubois",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "I work from home alone and days pass without seeing anyone. This app gave me a weekly book club and a language exchange. After two meetings, I replaced my cat photo with a real one — that's how comfortable I feel. Suggestions: don't force photo uploads (let people ease in), add calendar sync, and support recurring events properly. The human connection this app enables is real.",
+        "sentiment": "positive",
+        "themes": ["eventos", "privacidade", "funcionalidades_recorrentes", "onboarding"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "The book club I found here became the highlight of my week. Language exchange was also great. The app respects introverts — you can browse at your own pace. Missing: calendar sync, better event descriptions (book club didn't say which book!), and recurring event support.",
+        "sentiment": "positive",
+        "themes": ["eventos", "funcionalidades_recorrentes", "ui_ux"]
+      },
+      {
+        "type": "support_message",
+        "text": "Bonjour, I want to report that the mandatory photo upload during registration almost made me delete the app. I understand you want real profiles, but forcing a photo immediately creates a barrier for people who need time to trust the platform. I uploaded a cat photo as a workaround. Suggestion: let users upload photos later, after attending their first event. By then they'll trust the community. Also, can you add calendar sync? I keep forgetting event dates because they're only in the app. Merci.",
+        "sentiment": "neutral",
+        "themes": ["onboarding", "privacidade", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "found a book club through this social app and it's now the best part of my week. If you're a freelancer dying of isolation, this is better than another coworking space. real conversations with real people about real books. the app itself is a bit rough around the edges but the connections are genuine.",
+        "sentiment": "positive",
+        "themes": ["eventos", "comunidade"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P11",
+    "persona_name": "Omar Al-Rashid",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Moved to Dubai 6 months ago. In 2 weeks on this app I went to a networking mixer, a desert safari, and a padel match. Made 13 connections. Social life went from zero to excellent. What I need: language/cultural community filters (I searched for Arabic groups — nothing), and a professional profile section. But the events are high quality and people actually show up.",
+        "sentiment": "positive",
+        "themes": ["eventos", "filtros", "comunidade", "matching"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "Fastest I've ever built a social circle. 6 events in 2 weeks, 13 connections, and plans every weekend now. The app does what it says. Just needs cultural/language filters for expats and a faster 'skip to events' onboarding for impatient people like me.",
+        "sentiment": "positive",
+        "themes": ["eventos", "filtros", "onboarding"]
+      },
+      {
+        "type": "support_message",
+        "text": "As an expat in Dubai, cultural and language communities are essential. When I searched for Arabic-speaking groups, I found nothing. Many expats want to connect with people from their home culture while also meeting locals. Please add language and cultural community filters. Also, the mandatory profile setup before seeing events is a barrier — let action-oriented users skip to events and fill in their profile later. The event quality is excellent though. Thank you.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "onboarding", "comunidade", "eventos"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Dubai expats — stop being lonely in your fancy apartments and download this app. Desert safari with strangers became desert safari with friends. Padel matches every Friday now. Networking mixer was better than any LinkedIn event. Only thing missing is Arabic community groups. But overall? Game changer.",
+        "sentiment": "positive",
+        "themes": ["eventos", "comunidade", "filtros"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P12",
+    "persona_name": "Rachel Kim",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "As a teacher, privacy is everything. I was terrified a student would find me. The privacy settings exist but they're hidden and not explained during setup. A parent from my school DID find me — I had to block them manually. Need a 'hide from contacts' feature urgently. That said, the trail run group I found is amazing and the sourdough class was a joy. I just need to feel SAFE using this.",
+        "sentiment": "neutral",
+        "themes": ["privacidade", "eventos", "onboarding", "seguranca"]
+      },
+      {
+        "type": "nps_response",
+        "score": 6,
+        "text": "The events are wonderful — trail running and cooking classes gave me my identity back. But the privacy situation is concerning. Someone from my real life found me on the app and it was uncomfortable. Until there's a 'hide from contacts' feature and better privacy onboarding, I can't recommend it to colleagues who share my concerns.",
+        "sentiment": "neutral",
+        "themes": ["privacidade", "seguranca", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "I need to report a privacy concern. I'm a high school teacher and I specifically set my profile to maximum privacy during setup. Despite this, a parent from my school found my profile through the 'people near you' feature. I had to manually block them. This was very uncomfortable. Please add: 1) A 'hide from phone contacts' feature so people I know can't find me, 2) Better privacy explanations during onboarding — I didn't know 'people near you' would show me to strangers, 3) More granular visibility controls. The events are great and I want to keep using the app, but I need to feel safe. Thank you.",
+        "sentiment": "negative",
+        "themes": ["privacidade", "seguranca", "onboarding"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "trying this social app for finding real-life activities. the trail running group is incredible and the sourdough class was so fun. BUT — someone from my work life found me on it and that was NOT okay. if you're someone who needs separation between social and professional life, be careful with the privacy settings. they need work.",
+        "sentiment": "neutral",
+        "themes": ["privacidade", "eventos", "seguranca"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P13",
+    "persona_name": "Tomas Rivera",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "Good for free events if you can find them. The pitch night was great and I met awesome entrepreneurs. But there's no way to filter by price — I had to click every event to check. No 'happening now' feature for spontaneous plans. And most events cost money which doesn't work for students. More free community events and better filters would make this great.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "eventos", "funcionalidades_espontaneas", "precos"]
+      },
+      {
+        "type": "nps_response",
+        "score": 6,
+        "text": "The concept is good but it feels designed for people with money and time. As a working student with a tight schedule, I need free events and last-minute plans. The app has neither of those as features. Events themselves are good when I find the right ones.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "precos", "funcionalidades_espontaneas"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hey, I'm a university student working full time and I love the idea of this app. But I need two things that don't exist yet: 1) A price filter so I can find FREE events without clicking each one. 2) A 'happening now' or 'last minute' feature for when I suddenly have a free hour and want to do something spontaneous. Most of us students can't plan a week in advance. Thanks.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "precos", "funcionalidades_espontaneas"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "found a free startup pitch night through this new social app. met other hustlers trying to build something. app needs more free events and a filter for price though. not everyone can afford $20 networking dinners 🤷‍♂️",
+        "sentiment": "neutral",
+        "themes": ["eventos", "precos", "filtros"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P14",
+    "persona_name": "Fatima Zahra",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "This app gave me something I couldn't find anywhere else — a space to be myself. The art gallery visit and Women in Jazz night were transformative. I went from hiding behind a nickname to hosting a women's art walk with 8 attendees. What's missing: women-only event filter, better privacy (my profile showed up in 'people near you' even with max settings), and gender-based event restrictions. But the community? Absolutely beautiful.",
+        "sentiment": "positive",
+        "themes": ["privacidade", "eventos", "filtros", "comunidade", "seguranca"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "Transformative experience. But needs cultural sensitivity improvements: women-only event filter, ability to be invisible on 'people near you', and proper gender-based event restrictions instead of writing 'women only' in descriptions and hoping.",
+        "sentiment": "positive",
+        "themes": ["privacidade", "filtros", "seguranca", "diversidade"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hello, I'm writing from a conservative cultural context where my freedom to socialize is limited. This app has been incredibly important for me — I found women who share my interests in art and music, and I've grown more confident. But I need your help with two things: 1) Please add a women-only event filter. I created a 'Women's Art Walk' but had to write 'women only' in the description. There's no enforcement. 2) Even with maximum privacy settings, my profile appears in 'people near you'. For some of us, being visible is genuinely risky. Please add an option to browse and attend events while remaining invisible in discovery. This isn't just a nice-to-have — for some users, it's a safety issue. Thank you for the space you've created.",
+        "sentiment": "positive",
+        "themes": ["privacidade", "seguranca", "filtros", "diversidade"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "There's an app where I found women who love art and jazz and we meet up and it's the most freeing thing. I went from being too scared to show my face to hosting events. If you're a woman looking for a safe space to explore your interests — it's not perfect yet but the community is real.",
+        "sentiment": "positive",
+        "themes": ["comunidade", "eventos", "seguranca", "diversidade"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P15",
+    "persona_name": "Hans Mueller",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 2,
+        "text": "I am 62 years old. The chess club I found through this app was the best thing that happened to me this year. The hiking group was equally wonderful. But the app is nearly unusable. Text is tiny. Buttons have no labels — just icons I cannot understand. I accidentally created an event when trying to join one. My daughter had to install it for me. The events deserve 5 stars. The app deserves 1. Average: 2.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "navegacao", "eventos"]
+      },
+      {
+        "type": "nps_response",
+        "score": 4,
+        "text": "I cannot recommend something that requires help from a family member to use. The events are excellent for someone my age — chess, hiking, classical music. But the app's design excludes older users. No text labels, no large font option, no tutorial. Please make it accessible.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "onboarding"]
+      },
+      {
+        "type": "support_message",
+        "text": "Dear support team, I am a retired engineer, 62 years of age. My daughter installed your app on my telephone because I could not manage the registration process alone. The password requirements were unclear and the interface has no text explanations for the symbols. I accidentally created an event when I intended to join one — the buttons appear identical to me. Despite these difficulties, I found a chess club and a hiking group that have brought me great joy. My request is simple: please make the application usable for older people. Larger text, clear labels on every button, and a simple tutorial at the beginning. We are a growing demographic and we want to participate in social life. Respectfully yours.",
+        "sentiment": "negative",
+        "themes": ["acessibilidade", "ui_ux", "onboarding", "navegacao"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "My daughter convinced me to try a social application on my telephone. The chess club and hiking group I found are wonderful — real people, structured activities, close to home. But operating the application is a daily struggle. Icons without words, tiny text, confusing navigation. Designers: please remember that not everyone is 25 years old.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "ui_ux", "eventos"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P16",
+    "persona_name": "Zara Williams",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Perfect for founders who have no social life. Found a yoga class, meditation session, and founder meetup in my first week. The 30-minute meditation was ideal for my schedule. Problem: I cancelled twice and the app makes you feel guilty about it — cancellations show on your activity. Also no way to filter by event duration or find quick 1-hour activities. For high-commitment people with low-availability, this needs a 'micro-events' category.",
+        "sentiment": "positive",
+        "themes": ["eventos", "filtros", "cancelamento", "duracao_eventos"]
+      },
+      {
+        "type": "nps_response",
+        "score": 7,
+        "text": "Made 6 meaningful connections in 2 weeks. The founder meetup was incredible. But I cancelled 3 out of 8 RSVPs — the app penalizes that visually. Life is unpredictable for founders. Also need: event duration filter and clear end times for every event.",
+        "sentiment": "positive",
+        "themes": ["cancelamento", "filtros", "duracao_eventos", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi, I'm a startup founder and my schedule is chaos. I love this app but I've cancelled 3 events in 2 weeks. Each time, my activity feed shows 'Zara cancelled' which feels like a public shaming. Could you: 1) Make cancellations private or less prominent? Life happens. 2) Add event duration to the discovery page so I can find quick activities? 3) Add clear end times? I left a brunch early because I had a call and didn't know it would run 3 hours. I'm not flaky — I'm overcommitted. The app should accommodate that instead of punishing it. Thanks.",
+        "sentiment": "neutral",
+        "themes": ["cancelamento", "duracao_eventos", "filtros", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "fellow founders: found an app that helps you actually leave your home office. did yoga, meditation, and a founder dinner in 2 weeks. the meditation was 30 min and honestly the best thing I did for myself all month. just don't be like me and RSVP to things you'll cancel — the app calls you out for it lol. needs a 'busy founder' mode.",
+        "sentiment": "positive",
+        "themes": ["eventos", "cancelamento", "duracao_eventos"]
+      }
+    ]
+  }
+]
