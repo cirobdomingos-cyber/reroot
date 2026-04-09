@@ -409,13 +409,14 @@ def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
     if not rsvp_rows:
         return []
 
-    # Get friendships for the requester (accepted only)
+    # Get friendships for the requester (accepted + legacy pending rows)
     friend_ids = set()
     with get_conn() as conn:
         friend_rows = conn.execute(
             """
             SELECT user_a, user_b FROM friendships
-            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            WHERE (user_a = ? OR user_b = ?)
+              AND status IN ('accepted', 'pending')
             """,
             (requesting_google_id, requesting_google_id),
         ).fetchall()
@@ -484,10 +485,15 @@ def _code_to_google_id(code: str) -> Optional[str]:
 
 def upsert_friendship(requester_google_id: str, code: str) -> dict:
     """
-    Create a pending friendship from requester to the user identified by code.
+    Create an accepted friendship from requester to the user identified by code.
+
+    We auto-accept: adding someone by code is already a deliberate social action
+    (the code was shared in person or at an event), so a two-sided accept flow
+    would add pure friction with no safety upside. The `status` column and
+    `accept_friendship()` helper remain in place for a future request/accept flow.
 
     Returns:
-        {'status': 'ok'}             — friendship row inserted (pending)
+        {'status': 'ok'}             — friendship row inserted (accepted)
         {'status': 'self'}           — code resolves to the requester themselves
         {'status': 'already_friends'}— row already exists (any status)
         {'status': 'not_found'}      — code does not match any known user
@@ -512,7 +518,7 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
         conn.execute(
             """
             INSERT INTO friendships (user_a, user_b, status, initiated_by, created_at)
-            VALUES (?, ?, 'pending', ?, ?)
+            VALUES (?, ?, 'accepted', ?, ?)
             """,
             (user_a, user_b, requester_google_id, now),
         )
@@ -541,8 +547,12 @@ def accept_friendship(google_id: str, friend_google_id: str) -> bool:
 
 def get_friends(google_id: str) -> list[dict]:
     """
-    Return all accepted friends of google_id, enriched with name/picture
+    Return all friends of google_id, enriched with name/picture
     from their user_states blob.
+
+    We accept both 'accepted' and 'pending' statuses so that any legacy rows
+    created before auto-accept (which were stuck pending forever) surface
+    correctly without requiring a migration.
 
     Shape: [{ google_id, name, picture, status }]
     """
@@ -550,7 +560,8 @@ def get_friends(google_id: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT user_a, user_b, status FROM friendships
-            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            WHERE (user_a = ? OR user_b = ?)
+              AND status IN ('accepted', 'pending')
             """,
             (google_id, google_id),
         ).fetchall()
