@@ -386,6 +386,39 @@ def _category_icon(cat: str) -> str:
     return {"quiet_social": "☕", "active": "🧘", "creative": "✍️", "community": "🎲"}.get(cat, "🌿")
 
 
+# ── Analytics ──
+
+class AnalyticsEventRequest(BaseModel):
+    event_name: str
+    properties: dict = {}
+    session_id: str = ""
+
+
+@app.post("/analytics/event", status_code=200)
+def track_event(req: AnalyticsEventRequest):
+    """Fire-and-forget analytics ingestion. Never raises to the client."""
+    try:
+        db.insert_analytics_event(
+            event_name=req.event_name,
+            properties_json=json.dumps(req.properties),
+            session_id=req.session_id,
+        )
+    except Exception as e:
+        log.warning(f"Analytics insert failed (non-fatal): {e}")
+    return {"ok": True}
+
+
+@app.get("/analytics/funnel")
+def analytics_funnel():
+    """Admin view: event counts grouped by name — shows onboarding drop-off."""
+    try:
+        rows = db.get_funnel_counts()
+    except Exception as e:
+        log.error(f"Analytics funnel query failed: {e}")
+        raise HTTPException(status_code=500, detail="Analytics query failed")
+    return {"funnel": rows, "total_rows": sum(r["total"] for r in rows)}
+
+
 # ── AI Companion ──
 
 class CompanionRequest(BaseModel):

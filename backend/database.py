@@ -43,7 +43,34 @@ def init_db():
                 error       TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS analytics_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_name      TEXT NOT NULL,
+                properties_json TEXT NOT NULL DEFAULT '{}',
+                session_id      TEXT NOT NULL DEFAULT '',
+                created_at      TEXT NOT NULL
+            )
+        """)
         conn.commit()
+
+
+def insert_analytics_event(event_name: str, properties_json: str, session_id: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO analytics_events (event_name, properties_json, session_id, created_at) VALUES (?, ?, ?, ?)",
+            (event_name, properties_json, session_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+
+
+def get_funnel_counts() -> list[dict]:
+    """Return event counts grouped by event_name, ordered by total desc."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT event_name, COUNT(*) as total FROM analytics_events GROUP BY event_name ORDER BY total DESC"
+        ).fetchall()
+    return [{"event_name": row["event_name"], "total": row["total"]} for row in rows]
 
 
 def upsert_event(ev: EnrichedEvent):
