@@ -1,10 +1,13 @@
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 
 export default function BottomNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { state } = useApp()
   const t = useT()
+  const a11y = state.accessibilityMode
 
   const NAV_ITEMS = [
     {
@@ -71,7 +74,7 @@ export default function BottomNav() {
             onClick={() => navigate(path)}
           >
             {icon(active)}
-            <span className="nav-item__label">{label}</span>
+            <span className={`nav-item__label${a11y ? ' nav-item__label--a11y' : ''}`}>{label}</span>
           </div>
         )
       })}

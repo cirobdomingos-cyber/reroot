@@ -52,6 +52,14 @@ export const T = {
     home_be_first:          'Seja o primeiro',
     home_cohort_completed:  'acabou de completar o framework da Semana 3',
 
+    // ── Filter: price & family ────────────────────────────
+    filter_all_prices:      'Todos',
+    filter_free:            'Grátis',
+    filter_paid:            'Pago',
+    filter_kids_welcome:    'Kids Welcome',
+    tag_free:               'Grátis',
+    tag_kids:               '👶 Kids Welcome',
+
     // ── Events ───────────────────────────────────────────
     events_title:           'Eventos',
     events_sub:             'Curitiba · Cohort Primavera · 24 membros',
@@ -124,6 +132,15 @@ export const T = {
     profile_referral_applied:'🎉 Primeiro mês grátis aplicado!',
     profile_reset:          '↺ Resetar demo',
     profile_language_label: 'Idioma · Language',
+
+    // ── Privacy settings ──────────────────────────────────
+    privacy_title:              'Privacidade',
+    privacy_share_rsvps:        'Compartilhar RSVPs com amigos',
+    privacy_share_rsvps_desc:   'Seus amigos podem ver os eventos que você confirmou',
+    privacy_show_suggestions:   'Aparecer em sugestões de amizade',
+    privacy_show_suggestions_desc: 'Outras pessoas podem encontrar seu perfil',
+    privacy_show_profile:       'Perfil visível para não-amigos',
+    privacy_show_profile_desc:  'Pessoas que não são seus amigos podem ver seu perfil completo',
 
     // ── Diagnostic ───────────────────────────────────────
     diag_header:            'Seu ponto de partida',
@@ -428,11 +445,44 @@ export const T = {
 
     // ── Notification toast ────────────────────────────────
     home_notif_confirmed:  '🔔 Lembrete salvo',
+
+    // ── Post-event attendees ─────────────────────────────
+    people_you_met:     'Pessoas que você conheceu',
+    connect:            'Conectar',
+    already_friends:    'Amigos',
+    no_attendees:       'Nenhum participante encontrado',
+    connecting:         'Conectando...',
+    connect_sent:       'Enviado!',
+
+    // ── Accessibility ─────────────────────────────────────
+    accessibility_mode:        'Modo Acessível',
+    accessibility_description: 'Textos maiores e botões mais fáceis de tocar',
   },
 }
 
 // EN mirrors PT — single source of truth
-T.en = T.pt
+T.en = { ...T.pt }
+
+// EN overrides for post-event attendees
+T.en.people_you_met = 'People you met'
+T.en.connect = 'Connect'
+T.en.already_friends = 'Friends'
+T.en.no_attendees = 'No attendees found'
+T.en.connecting = 'Connecting...'
+T.en.connect_sent = 'Sent!'
+
+// EN overrides for accessibility
+T.en.accessibility_mode = 'Accessibility Mode'
+T.en.accessibility_description = 'Larger text and easier-to-tap buttons'
+
+// EN overrides for privacy settings
+T.en.privacy_title = 'Privacy'
+T.en.privacy_share_rsvps = 'Share RSVPs with friends'
+T.en.privacy_share_rsvps_desc = 'Your friends can see events you confirmed'
+T.en.privacy_show_suggestions = 'Appear in friend suggestions'
+T.en.privacy_show_suggestions_desc = 'Other people can find your profile'
+T.en.privacy_show_profile = 'Profile visible to non-friends'
+T.en.privacy_show_profile_desc = 'Non-friends can see your full profile'
 
 // ── Hook ──────────────────────────────────────────────────
 import { useApp } from '../context/AppContext'
