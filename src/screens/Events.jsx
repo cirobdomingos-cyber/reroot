@@ -659,6 +659,21 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
 function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood, t }) {
   const count = (ev.cohortGoing?.length ?? 0) + (rsvped ? 1 : 0)
   const isVenue = VENUE_CATEGORIES.has(ev.category)
+  const [copied, setCopied] = useState(false)
+
+  function handleWhatsApp() {
+    const link = ev.url || 'reroot.app'
+    const msg = `Vou ao ${ev.name} no ${ev.venue}! 🌿 Você topa também? ${link}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer')
+  }
+
+  function handleCopyLink() {
+    const link = ev.url || window.location.href
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   return (
     <>
@@ -797,6 +812,55 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             {t.events_attended_btn}
           </button>
         )}
+
+        <AnimatePresence>
+          {rsvped && !isVenue && (
+            <motion.div
+              key="share-row"
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              style={{ overflow: 'hidden' }}
+            >
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 14,
+                background: 'white', border: '1px solid var(--border)',
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)', flexShrink: 0 }}>
+                  Avisar amigos:
+                </span>
+                <button
+                  onClick={handleWhatsApp}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 12px', borderRadius: 20,
+                    background: '#25D366', color: 'white',
+                    border: 'none', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  💬 WhatsApp
+                </button>
+                <button
+                  onClick={handleCopyLink}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5,
+                    padding: '6px 12px', borderRadius: 20,
+                    background: copied ? 'var(--sage-pale)' : 'rgba(44,44,44,0.07)',
+                    color: copied ? 'var(--sage)' : 'var(--charcoal-mid)',
+                    border: 'none', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', flexShrink: 0,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {copied ? 'Copiado! ✓' : '🔗 Copiar link'}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {ev.url && (
           <a
