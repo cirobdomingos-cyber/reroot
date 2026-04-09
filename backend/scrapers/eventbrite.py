@@ -1,127 +1,190 @@
 """
-Eventbrite API v3
-Docs: https://www.eventbrite.com/platform/api
-Token gratuito: eventbrite.com/platform/api → "Get a Free API Key"
+Eventbrite discovery scraper for Curitiba events.
 
-Endpoint:
-  GET https://www.eventbriteapi.com/v3/events/search/
-  Params: location.address, location.within, token, expand, start_date.range_start
+The Eventbrite REST API v3 /events/search/ endpoint was deprecated in late 2024.
+Instead, we scrape the public discovery page (eventbrite.com.br/d/brazil--curitiba/events/)
+which embeds a JSON-LD ItemList with structured event data (name, date, description, URL).
+
+For richer details (venue, price), we follow each event URL and extract from
+the individual event page's JSON-LD Event schema.
 """
-import httpx
+import json
 import logging
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import datetime, timezone
 from models import RawEvent
+
+import httpx
 
 log = logging.getLogger(__name__)
 
-BASE_URL = "https://www.eventbriteapi.com/v3"
+DISCOVERY_URL = "https://www.eventbrite.com.br/d/brazil--curitiba/events/"
 
-# Bounding box de Curitiba (aprox.)
-CURITIBA_LAT = -25.4284
-CURITIBA_LON = -49.2733
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,*/*",
+}
+
+# Multiple category pages to maximize coverage
+CATEGORY_PAGES = [
+    "",                          # all events
+    "--artes/",                  # arts
+    "--musica/",                 # music
+    "--comida-e-bebida/",        # food & drink
+    "--saude/",                  # health & wellness
+    "--esportes-e-atividades/",  # sports & fitness
+    "--comunidade/",             # community
+]
 
 
-async def fetch_events(token: str, city: str = "Curitiba", days_ahead: int = 30) -> list[RawEvent]:
-    if not token:
-        log.warning("EVENTBRITE_TOKEN não configurado — pulando Eventbrite.")
-        return []
-
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(days=days_ahead)
-
-    location = f"{city}, Brazil" if city else "Brazil"
+async def fetch_events(token: str = "", city: str = "Curitiba", days_ahead: int = 30) -> list[RawEvent]:
+    """
+    Scrape Eventbrite discovery pages for Curitiba events.
+    The `token` param is kept for API compatibility but no longer needed.
+    """
+    seen_urls: set[str] = set()
     all_events: list[RawEvent] = []
-    page = 1
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        while True:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        for cat_suffix in CATEGORY_PAGES:
+            url = DISCOVERY_URL.rstrip("/") + cat_suffix
             try:
-                resp = await client.get(
-                    f"{BASE_URL}/events/search/",
-                    params={
-                        "token": token,
-                        "location.address": location,
-                        "location.within": "50km",
-                        "start_date.range_start": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "start_date.range_end":   end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "expand": "venue,ticket_availability",
-                        "sort_by": "date",
-                        "page": page,
-                    },
-                )
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                log.error(f"Eventbrite HTTP error: {e.response.status_code}")
-                break
+                resp = await client.get(url, headers=HEADERS)
+                if resp.status_code != 200:
+                    log.warning(f"Eventbrite [{cat_suffix or 'all'}] HTTP {resp.status_code}")
+                    continue
+
+                items = _extract_jsonld_items(resp.text)
+                new = 0
+                for item in items:
+                    event_url = item.get("url", "")
+                    if not event_url or event_url in seen_urls:
+                        continue
+                    seen_urls.add(event_url)
+
+                    parsed = _parse_discovery_item(item)
+                    if parsed:
+                        all_events.append(parsed)
+                        new += 1
+
+                if new:
+                    log.info(f"  Eventbrite [{cat_suffix or 'all':25s}]: {new} new events")
+
+            except httpx.TimeoutException:
+                log.warning(f"Eventbrite [{cat_suffix or 'all'}] timed out")
             except Exception as e:
-                log.error(f"Eventbrite request failed: {e}")
-                break
+                log.warning(f"Eventbrite [{cat_suffix or 'all'}] failed: {e}")
 
-            data = resp.json()
-            items = data.get("events", [])
-            if not items:
-                break
-
-            for item in items:
-                parsed = _parse(item)
-                if parsed:
-                    all_events.append(parsed)
-
-            pagination = data.get("pagination", {})
-            if not pagination.get("has_more_items", False):
-                break
-            page += 1
-
-    log.info(f"Eventbrite: {len(all_events)} eventos encontrados (location: {location})")
+    log.info(f"Eventbrite: {len(all_events)} unique events scraped")
     return all_events
 
 
-def _parse(item: dict) -> RawEvent | None:
+def _extract_jsonld_items(html: str) -> list[dict]:
+    """Extract event items from JSON-LD ItemList in the page."""
+    matches = re.findall(
+        r'<script type="application/ld\+json">(.*?)</script>',
+        html,
+        re.DOTALL,
+    )
+    for match in matches:
+        try:
+            data = json.loads(match)
+            if isinstance(data, dict) and data.get("@type") == "ItemList":
+                items = data.get("itemListElement", [])
+                return [it.get("item", it) if "item" in it else it for it in items]
+        except json.JSONDecodeError:
+            continue
+    return []
+
+
+def _parse_discovery_item(item: dict) -> RawEvent | None:
+    """Convert a JSON-LD event item to a RawEvent."""
     try:
-        venue = item.get("venue") or {}
-        address = venue.get("address") or {}
-        ta = item.get("ticket_availability") or {}
+        name = (item.get("name") or "").strip()
+        desc = (item.get("description") or "").strip()[:1000]
+        url = item.get("url", "")
+        image = item.get("image", "")
 
-        start_str = item.get("start", {}).get("utc", "")
-        end_str   = item.get("end",   {}).get("utc", "")
+        # Parse dates
+        start_str = item.get("startDate", "")
+        end_str = item.get("endDate", "")
+        date_start = _parse_iso(start_str)
+        date_end = _parse_iso(end_str)
 
-        start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00")) if start_str else None
-        end_dt   = datetime.fromisoformat(end_str.replace("Z", "+00:00"))   if end_str   else None
-
-        if not start_dt:
+        if not name or not date_start:
             return None
 
-        # Preço
-        min_price = ta.get("minimum_ticket_price", {})
-        max_price = ta.get("maximum_ticket_price", {})
-        price_min = float(min_price.get("major_value", 0)) if min_price else 0.0
-        price_max = float(max_price.get("major_value", 0)) if max_price else 0.0
-        currency  = min_price.get("currency", "BRL") if min_price else "BRL"
+        # Skip past events
+        if date_start < datetime.now(timezone.utc):
+            return None
 
-        desc = item.get("description", {}).get("text", "") or ""
-        desc = desc[:1000]
+        # Extract event ID from URL
+        ext_id_match = re.search(r'tickets-(\d+)', url)
+        external_id = ext_id_match.group(1) if ext_id_match else _slug(url)
 
-        city = address.get("city", "") or ""
+        # Venue from JSON-LD location (if available)
+        location = item.get("location", {})
+        venue_name = ""
+        venue_address = ""
+        city = "Curitiba"
+        if isinstance(location, dict):
+            venue_name = location.get("name", "")
+            addr = location.get("address", {})
+            if isinstance(addr, dict):
+                venue_address = addr.get("streetAddress", "")
+                city = addr.get("addressLocality", "Curitiba")
+            elif isinstance(addr, str):
+                venue_address = addr
+
+        # Price from offers
+        price_min = 0.0
+        price_max = 0.0
+        offers = item.get("offers", {})
+        if isinstance(offers, dict):
+            try:
+                price_min = float(offers.get("lowPrice", offers.get("price", 0)) or 0)
+                price_max = float(offers.get("highPrice", price_min) or price_min)
+            except (ValueError, TypeError):
+                pass
 
         return RawEvent(
             source="eventbrite",
-            external_id=str(item["id"]),
-            name=item.get("name", {}).get("text", "").strip(),
+            external_id=f"eb_{external_id}",
+            name=name,
             description=desc,
-            venue_name=venue.get("name", "") or "",
-            venue_address=address.get("localized_address_display", ""),
+            venue_name=venue_name,
+            venue_address=venue_address,
             neighborhood=None,
             city=city,
-            date_start=start_dt,
-            date_end=end_dt,
+            date_start=date_start,
+            date_end=date_end,
             price_min=price_min,
             price_max=price_max,
-            currency=currency,
-            capacity=venue.get("capacity"),
+            currency="BRL",
+            capacity=None,
             attendees_confirmed=None,
-            url=item.get("url", ""),
-            image_url=(item.get("logo") or {}).get("original", {}).get("url"),
+            url=url,
+            image_url=image if isinstance(image, str) else None,
         )
     except Exception as e:
-        log.warning(f"Eventbrite parse error for item {item.get('id')}: {e}")
+        log.warning(f"Eventbrite parse error: {e}")
         return None
+
+
+def _parse_iso(s: str) -> datetime | None:
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def _slug(url: str) -> str:
+    """Extract a short slug from a URL for use as external_id."""
+    parts = url.rstrip("/").split("/")
+    return parts[-1][:60] if parts else "unknown"

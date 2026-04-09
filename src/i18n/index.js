@@ -57,6 +57,8 @@ export const T = {
     filter_free:            'Grátis',
     filter_paid:            'Pago',
     filter_kids_welcome:    'Kids Welcome',
+    filter_hide_curated:    'Só reais',
+    filter_hide_curated_on: 'Sem sugestões AI',
     tag_free:               'Grátis',
     tag_kids:               '👶 Kids Welcome',
     tag_curated:            'Sugestão AI',
@@ -487,6 +489,10 @@ T.en.privacy_show_suggestions = 'Appear in friend suggestions'
 T.en.privacy_show_suggestions_desc = 'Other people can find your profile'
 T.en.privacy_show_profile = 'Profile visible to non-friends'
 T.en.privacy_show_profile_desc = 'Non-friends can see your full profile'
+
+// EN overrides for curated filter
+T.en.filter_hide_curated = 'Real only'
+T.en.filter_hide_curated_on = 'No AI suggestions'
 
 // EN overrides for curated/private event badges
 T.en.tag_curated = 'AI Suggestion'

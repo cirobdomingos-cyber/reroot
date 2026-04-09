@@ -5,11 +5,20 @@ import { useApp, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORIES, DATE_FILTERS } from '../data/events'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp } from '../services/api'
-import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
+import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+
+// Source provenance config — drives the badge label/style for every event origin.
+// Add new entries here when new scrapers go live (sympla, lu.ma, etc.).
+const SOURCE_CONFIG = {
+  reroot:     { label: 'Reroot AI',   icon: '✦', bg: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', border: '#CE93D8', color: '#6A1B9A' },
+  sympla:     { label: 'Sympla',      icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
+  eventbrite: { label: 'Eventbrite',  icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
+  meetup:     { label: 'Meetup',      icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
+}
 
 const VENUE_SUBTYPES = [
   { id: 'all',  label: 'Todos' },
@@ -85,6 +94,7 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
+  const [hideCurated, setHideCurated]       = useState(false)
 
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
@@ -169,6 +179,10 @@ export default function Events() {
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
   }
+  // Hide AI-curated suggestions
+  if (hideCurated) {
+    filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
+  }
 
   function getMemberCount(ev) {
     const base = ev.cohortGoing?.length ?? 0
@@ -197,6 +211,8 @@ export default function Events() {
         setNotifToast(ev.name)
         setTimeout(() => setNotifToast(null), 3000)
       }
+      // Schedule post-event reconnect nudge (native only, fires 3h after event start)
+      schedulePostEventNotification(ev)
     } else if (wasRsvped) {
       cancelEventReminder(ev.id)
     }
@@ -384,6 +400,19 @@ export default function Events() {
           }}
         >
           👶 {t.filter_kids_welcome}
+        </button>
+        <button
+          onClick={() => setHideCurated(h => !h)}
+          style={{
+            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+            transition: 'all 0.15s',
+            border: hideCurated ? 'none' : '1px solid var(--border)',
+            background: hideCurated ? '#6A1B9A' : 'transparent',
+            color: hideCurated ? 'white' : 'var(--charcoal-light)',
+          }}
+        >
+          {hideCurated ? `✦ ${t.filter_hide_curated_on}` : `✦ ${t.filter_hide_curated}`}
         </button>
       </div>
 
@@ -619,16 +648,19 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
         {/* Bottom row: badges + RSVP button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-            {ev.isCurated && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-                background: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', color: '#6A1B9A',
-                padding: '2px 8px', borderRadius: 5,
-                display: 'inline-flex', alignItems: 'center', gap: 3,
-              }}>
-                ✦ {t.tag_curated}
-              </span>
-            )}
+            {ev.source && SOURCE_CONFIG[ev.source] && (() => {
+              const src = SOURCE_CONFIG[ev.source]
+              return (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                  background: src.bg, color: src.color,
+                  padding: '2px 8px', borderRadius: 5,
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                }}>
+                  {src.icon} {src.label}
+                </span>
+              )
+            })()}
             {ev.isCustom && (
               <span style={{
                 fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
@@ -723,16 +755,19 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
           📍 {neighborhood}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          {ev.isCurated && (
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-              background: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', color: '#6A1B9A',
-              padding: '1px 7px', borderRadius: 5,
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-            }}>
-              ✦ {t.tag_curated}
-            </span>
-          )}
+          {ev.source && SOURCE_CONFIG[ev.source] && (() => {
+            const src = SOURCE_CONFIG[ev.source]
+            return (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                background: src.bg, color: src.color,
+                padding: '1px 7px', borderRadius: 5,
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+              }}>
+                {src.icon} {src.label}
+              </span>
+            )
+          })()}
           {ev.rating > 0 && (
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--terra)' }}>
               ⭐ {ev.rating}
@@ -830,24 +865,33 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           {ev.name}
         </div>
 
-        {/* Source badge — always visible so user knows what they're looking at */}
-        {(ev.isCurated || ev.isCustom) && (
+        {/* Source badge — always visible so user knows where this event came from */}
+        {(ev.source && SOURCE_CONFIG[ev.source]) ? (() => {
+          const src = SOURCE_CONFIG[ev.source]
+          return (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+              background: src.bg, border: `1px solid ${src.border}`,
+            }}>
+              <span style={{ fontSize: 12 }}>{src.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: src.color, textTransform: 'uppercase' }}>
+                {src.label}
+              </span>
+            </div>
+          )
+        })() : ev.isCustom ? (
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '5px 12px', borderRadius: 8, marginBottom: 10,
-            background: ev.isCustom ? '#FFF3E0' : 'linear-gradient(135deg, #EDE7F6, #D1C4E9)',
-            border: ev.isCustom ? '1px solid #FFB74D' : '1px solid #CE93D8',
+            background: '#FFF3E0', border: '1px solid #FFB74D',
           }}>
-            <span style={{ fontSize: 12 }}>{ev.isCustom ? '★' : '✦'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
-              color: ev.isCustom ? 'var(--terra)' : '#6A1B9A',
-              textTransform: 'uppercase',
-            }}>
-              {ev.isCustom ? t.tag_private_long : t.tag_curated_long}
+            <span style={{ fontSize: 12 }}>★</span>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: 'var(--terra)', textTransform: 'uppercase' }}>
+              {t.tag_private_long}
             </span>
           </div>
-        )}
+        ) : null}
 
         {isVenue && (
           <div style={{
