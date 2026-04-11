@@ -1,0 +1,386 @@
+[
+  {
+    "persona_id": "P17",
+    "persona_name": "Sofia Carvalho",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "Minha terapeuta me indicou. Não esperava nada. Fiquei em prantos lendo o diagnóstico de burnout — foi a primeira coisa em meses que descreveu o que eu estou passando sem julgamento. Fui ao yoga, depois à aquarela. Dois eventos em duas semanas. Para quem não saía de casa há 2 anos, isso é imenso.",
+        "sentiment": "positive",
+        "themes": ["onboarding", "matching", "eventos", "jornada"]
+      },
+      {
+        "type": "nps_response",
+        "score": 10,
+        "text": "Dez porque o chat companheiro me respondeu sobre reintegração social de burnout melhor do que qualquer artigo que eu já li. E porque o botão 'adicionar ao calendário' funciona. Pequeno detalhe, mas sinaliza que o app respeita minha estrutura de vida.",
+        "sentiment": "positive",
+        "themes": ["chat", "ux_detalhes", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Oi! Uma sugestão: quando a gente ganha um badge, não tem notificação. Eu descobri que tinha ganho o 'Primeira Aparição' por acaso, rolando o perfil. Isso devia ser um momento de celebração, não uma tela que você tropeça. Pode adicionar uma notificação ou uma animação quando o badge é conquistado?",
+        "sentiment": "neutral",
+        "themes": ["gamificacao", "notificacoes", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Duas semanas usando o Reroot e já fui a dois eventos. Se você está saindo de um burnout e sente que perdeu sua vida social, esse app foi feito pra você. O 'chat companheiro' é absurdamente bom — não parece robô, parece um amigo que entende o processo.",
+        "sentiment": "positive",
+        "themes": ["chat", "eventos", "matching", "burnout"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P18",
+    "persona_name": "Daniel Kim",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "First social app that has an English mode and actually means it. As a Korean expat in SP, most apps assume you're a Portuguese native. The walking events are perfect when you're still learning the language — you do an activity, language is secondary. Minus one star because some event descriptions aren't translated and the friend code system has zero explanation.",
+        "sentiment": "positive",
+        "themes": ["idioma", "acessibilidade", "eventos", "conexoes"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "The English mode is a genuine differentiator — please expand it. I had to figure out the friend code system by asking a colleague. A simple tooltip saying 'share this code with people you meet at events' would have saved 2 confusing days.",
+        "sentiment": "neutral",
+        "themes": ["idioma", "ui_ux", "conexoes", "amigos_codigo"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hello, I'm using the app in English but many event descriptions are still in Portuguese. Is there a timeline for full event translation? Also — what exactly is the friend code for? I see it in my profile but there's no explanation. I wasted time trying to use it before figuring it out by accident at an event. A short 'what is this?' tooltip would really help. Thank you.",
+        "sentiment": "neutral",
+        "themes": ["idioma", "amigos_codigo", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "2 weeks using Reroot as an expat in SP. The English UI works! Activity-based events (cooking, walking, yoga) are low-pressure for someone still learning Portuguese. I went to 2 events and practiced Portuguese without the anxiety of a language exchange. The friend social feed on the home screen is clever.",
+        "sentiment": "positive",
+        "themes": ["idioma", "eventos", "matching", "feed_amigos"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P19",
+    "persona_name": "Beatriz Santos",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "Eu sou mãe solteira. Os eventos são bons — fui à caminhada com minha filha e foi lindo. Mas demoro 20 minutos para achar algo que eu possa levar ela. Vocês têm o campo 'crianças bem-vindas' nos dados (vi no app), mas não tem filtro para isso. Por favor adicionem. O app de resto é ótimo.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "eventos", "familia", "ui_ux"]
+      },
+      {
+        "type": "nps_response",
+        "score": 5,
+        "text": "Os eventos são bons, a ideia é excelente, mas sem filtro de 'família / crianças' o app me força a trabalhar muito para achar o que preciso. Sou mãe — meu tempo é o recurso mais escasso. Um filtro de 30 segundos viraria um promotor aqui.",
+        "sentiment": "negative",
+        "themes": ["filtros", "familia", "tempo"]
+      },
+      {
+        "type": "support_message",
+        "text": "Olá equipe, tenho uma filha de 7 anos e uso o app principalmente para encontrar atividades para nós duas. Sei que existe um campo 'kidsWelcome' porque o chat companheiro me indicou eventos com esse critério quando pedi. Mas não existe um filtro visual para isso. Toda vez que abro o app sem minha filha e depois com ela, tenho que varrer tudo de novo. Pode adicionar um chip de filtro 'Crianças bem-vindas'? Seria transformador para pais solteiros.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "familia", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Fui à caminhada no Botânico com minha filha de 7 anos pelo Reroot. Ela brincou com outras crianças, eu conversei com adultos pela primeira vez em meses fora do trabalho. O app indica se eventos são 'kid friendly' mas você tem que ler card por card para achar. Precisam de um filtro urgente.",
+        "sentiment": "neutral",
+        "themes": ["eventos", "familia", "filtros"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P20",
+    "persona_name": "Rafael Martins",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Fotógrafo aqui. Encontrei um grupo incrível pelo app em Curitiba — 6 pessoas, mesmo nível de seriedade, encontros semanais. O problema: o app não tem evento recorrente. Recrio manualmente toda semana. Para quem quer criar comunidade (não só eventos), isso é frustrante. Mas o produto em si é sólido.",
+        "sentiment": "positive",
+        "themes": ["eventos", "recorrencia", "comunidade", "criacao_de_eventos"]
+      },
+      {
+        "type": "nps_response",
+        "score": 7,
+        "text": "Bons eventos, comunidade real. Mas as mensagens semanais da jornada param de fazer sentido na semana 3. 'Você apareceu, isso é suficiente' é ótimo para semana 1. Na semana 3, já apareci — agora preciso de um próximo passo. O app não evolui a narrativa com o usuário.",
+        "sentiment": "neutral",
+        "themes": ["jornada", "mensagens_semanais", "retencao"]
+      },
+      {
+        "type": "support_message",
+        "text": "Oi, seria possível adicionar eventos recorrentes na criação de eventos? Tenho um grupo de fotografia que se reúne toda semana e recriar o evento manualmente é trabalhoso. Algo simples: 'Repetir semanalmente / quinzenalmente / mensalmente'. Isso transformaria o app de um diretório de eventos em uma plataforma de comunidade de verdade.",
+        "sentiment": "neutral",
+        "themes": ["eventos", "recorrencia", "criacao_de_eventos", "comunidade"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Feed de amigos no home do Reroot é subestimado. Hoje vi que um contato foi ao mesmo evento de fotografia que eu. Abrimos o app ao mesmo tempo por coincidência — e daí viramos parceiro de rua. Isso é serendipidade com design. A parte chata é não ter evento recorrente — recrio toda semana na mão.",
+        "sentiment": "positive",
+        "themes": ["feed_amigos", "eventos", "recorrencia"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P21",
+    "persona_name": "Emma Johansson",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "Swedish PM on a 6-month work assignment in SP. Downloaded every social app. This is the only one that has a real English mode AND prioritizes activities over chat. I went to 3 events in 2 weeks. The cohort feature — seeing that 'A, C, T are going to this event' — drove every RSVP I made. That's smart design.",
+        "sentiment": "positive",
+        "themes": ["idioma", "eventos", "cohort", "matching"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "The core experience works extremely well for expats. Two suggestions: 1) Chapter names in Journey are in Portuguese even in English mode — small but jarring. 2) Notifications should let you choose categories. I got a notification for a sports event I don't care about and almost turned all notifications off.",
+        "sentiment": "positive",
+        "themes": ["idioma", "jornada", "notificacoes"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hello, I'm using the English version of the app. A few translation gaps: the Journey chapter names ('Reentrada', 'Raízes') appear in Portuguese. The interest selection on onboarding is partially in Portuguese. These are small but they break the immersion of the bilingual experience. Also: can you add category-level notification settings? I want to only be notified about creative and quiet-social events. Thank you.",
+        "sentiment": "neutral",
+        "themes": ["idioma", "notificacoes", "traducao"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "6 months in São Paulo and I finally have a real Brazilian friend. Not an expat friend. An actual Paulistana. We met at a watercolor workshop via Reroot and now we hang out independently. The post-event attendee feature (where you see everyone who went after the event) closed the loop perfectly — I connected 5 minutes after the event ended. 10/10 concept.",
+        "sentiment": "positive",
+        "themes": ["conexoes_pos_evento", "eventos", "idioma"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P22",
+    "persona_name": "André Oliveira",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "Perdi meu melhor amigo há 10 meses. Reroot tem um perfil para luto. Não é marketing — é real. A mensagem da jornada na semana 1 me fez parar e respirar. Fui ao yoga. Fiquei no canto. Ninguém me pressionou. Isso é raro. Na semana 2 usei o 'pausar jornada' quando tive uma semana ruim. O app esperou. Voltei. Fui de volta ao yoga. Reconheci rostos. Algo está mudando.",
+        "sentiment": "positive",
+        "themes": ["jornada", "matching", "eventos", "pausa", "luto"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "A funcionalidade de pausar a jornada deveria ser mais promovida. Para pessoas em luto ou burnout, isso é literalmente o que diferencia abandonar o app de continuar. O chat companheiro também foi além do que eu esperava — respondeu sobre reintegração social pós-luto de forma que pareceu humana.",
+        "sentiment": "positive",
+        "themes": ["pausa", "chat", "luto", "burnout"]
+      },
+      {
+        "type": "support_message",
+        "text": "Uma sugestão delicada: o chat companheiro não esclarece imediatamente que é uma IA. Me peguei fazendo perguntas muito pessoais esperando uma resposta humana. As respostas são boas — mas a ausência de um disclaimer 'essa é uma resposta de IA' pode criar expectativas inadequadas em usuários vulneráveis. Considere adicionar uma linha discreta: 'Mensagens geradas por IA — não substituem apoio profissional.'",
+        "sentiment": "neutral",
+        "themes": ["chat", "etica_ia", "vulnerabilidade"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Não esperava que um app de eventos fosse relevante no processo de luto. O Reroot tem o perfil 'luto', eventos com baixíssima pressão social, e uma função de pausar a jornada para semanas ruins. Nenhum app que conheço trata o usuário adulto assim. Fui a dois eventos. Não falei muito. Mas estava lá.",
+        "sentiment": "positive",
+        "themes": ["luto", "eventos", "pausa", "matching"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P23",
+    "persona_name": "Clara Zhang",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "Chinesa morando em SP há 1 ano. Meu português é funcional mas perco nuance em conversas rápidas. Os eventos baseados em atividade (culinária, yoga, caminhada) removem o idioma como barreira — você faz coisas junto, não precisa ser eloquente. Conheci duas brasileiras em uma aula de culinária. Três semanas depois somos amigas de verdade. Inacreditável.",
+        "sentiment": "positive",
+        "themes": ["idioma", "eventos", "conexoes"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "O feed de amigos na tela inicial é o diferencial. Quando vi que minha conexão ia a um clube do livro, fui junto — e não teria ido sozinha. Prova social a partir de pessoas que você conhece, não de estranhos. Inteligente. Única sugestão: adicionar preferência de idioma no perfil, para eventos bilíngues ou expats encontrarem uns outros.",
+        "sentiment": "positive",
+        "themes": ["feed_amigos", "idioma", "conexoes"]
+      },
+      {
+        "type": "support_message",
+        "text": "Olá, o sistema de código de amigo funciona muito bem quando a outra pessoa já usa o app. Mas uma amiga que conheci no evento não tinha o app ainda — o fluxo quebrou porque ela precisou baixar o app, criar conta e aí sim eu mandei meu código. QR code na tela de perfil resolveria isso: ela scaneia, já abre o app com o perfil dela associado ao meu código.",
+        "sentiment": "neutral",
+        "themes": ["amigos_codigo", "ui_ux", "idioma"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Se você é expat no Brasil e acha que apps brasileiros não foram feitos pra você: o Reroot tem design visual claro o suficiente para usar com português intermediário, e o chat companheiro respondeu minhas perguntas sobre eventos perto da minha casa na Liberdade. Fui à evento, fiz amizade real. Compartilhando aqui.",
+        "sentiment": "positive",
+        "themes": ["idioma", "eventos", "chat"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P24",
+    "persona_name": "Marcos Pereira",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "Aposentei recentemente e estava me sentindo invisível socialmente. O app funcionou — fui a dois eventos e conheci um cara da minha geração que mora a 3 quadras de mim. Mas o login com Google foi difícil, a navegação embaixo tem letras pequenas, e o código de amigo é complicado. Meu filho me ajudou em 3 momentos. Não deveria precisar disso.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "ui_ux", "autenticacao", "amigos_codigo"]
+      },
+      {
+        "type": "nps_response",
+        "score": 6,
+        "text": "A experiência do evento em si foi excelente — 10/10. O app como ferramenta digital foi 4/10 para alguém da minha geração. O modo acessibilidade promete mas parece inativo quando ativado — nada muda visivelmente. Se o app fosse mais simples de operar, seria meu app preferido.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "ui_ux", "eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Bom dia. Sou aposentado, 52 anos. Ativei o 'modo acessibilidade' no perfil mas não percebi nenhuma diferença — as letras continuam do mesmo tamanho, a navegação embaixo continua sem texto maior. Poderia me explicar o que essa opção faz? Outra coisa: não consigo entender o 'código de amigo'. Só consegui usar com ajuda do vizinho que também usa o app. Uma explicação na tela ajudaria muito.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "amigos_codigo", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Tenho 52 anos, recém aposentado, e fui a dois eventos pelo Reroot. Conheci um engenheiro aposentado que mora perto de mim. Pedi ajuda ao filho 3 vezes para usar o app, mas valeu cada vez. Queria que fosse mais fácil para quem não é de tecnologia — mas o conteúdo em si (os eventos) é de primeira qualidade.",
+        "sentiment": "neutral",
+        "themes": ["acessibilidade", "eventos", "ui_ux"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P25",
+    "persona_name": "Isabela Costa",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "Introvertida com ansiedade social aqui. Essa era minha última tentativa antes de desistir de apps. O Reroot entendeu que eu precisava de estrutura, não de chat. Fui a um evento de escrita criativa com 4 pessoas — abri mais do que em qualquer interação dos últimos 2 anos. O app mudou algo. Só queria um filtro de eventos gratuitos.",
+        "sentiment": "positive",
+        "themes": ["matching", "eventos", "filtros", "introversao"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "Seria 9 ou 10 se existisse filtro de preço. Sou estudante. Toda vez que abro o app preciso verificar o preço de cada evento manualmente, ou perguntar pro chat. O chat responde bem, mas um chip de filtro 'Gratuito' resolveria isso em 1 segundo. A seção de pessoas que você conheceu pós-evento também deveria ter mais destaque — descobri por acidente.",
+        "sentiment": "positive",
+        "themes": ["filtros", "preco", "conexoes_pos_evento", "ui_ux"]
+      },
+      {
+        "type": "support_message",
+        "text": "Olá! Duas sugestões rápidas de uma estudante usuária: 1) Filtro de 'Gratuito' nos eventos — sei que existe o campo priceTier nos dados mas não tem filtro na tela. Seria o filtro que eu mais usaria. 2) A seção 'pessoas que você conheceu' depois dos eventos é incrível mas eu não sabia que existia. Apareceu para mim 2 dias depois que o evento acabou e eu quase perdi. Uma notificação ou badge 'novo: veja quem foi ao evento' me ajudaria muito.",
+        "sentiment": "neutral",
+        "themes": ["filtros", "preco", "conexoes_pos_evento", "notificacoes"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "Fui ao meu primeiro evento social em... anos? O Reroot tem eventos de escrita criativa para grupos de 4 pessoas. Sim, 4. Isso é o que funciona para quem tem ansiedade social. App de matchmaking de amigos que respeita introversão. 8/10, precisaria de filtro de eventos gratuitos para chegar a 10.",
+        "sentiment": "positive",
+        "themes": ["eventos", "matching", "introversao", "filtros"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P26",
+    "persona_name": "Tomás Herrera",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 4,
+        "text": "3 anos em SP e finalmente um círculo social que eu escolhi, não que foi padrão. Fui a 4 eventos em 2 semanas — ciclismo, design, fotografia, música. Toda vez o grupo foi para WhatsApp depois. Isso é a maior brecha do produto: os usuários somem do app no momento em que se conectam. Chat de grupo por evento resolveria isso.",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "comunidade", "retencao"]
+      },
+      {
+        "type": "nps_response",
+        "score": 8,
+        "text": "Seria 10 se tivesse: 1) chat de grupo por evento para não precisar ir ao WhatsApp, 2) evento recorrente na criação, 3) quick-post para planos espontâneos. As mensagens da jornada precisam evoluir — semana 1 e semana 3 têm o mesmo tom de 'você é frágil, bom trabalho por aparecer'. Para quem já está engajado, isso cansa.",
+        "sentiment": "positive",
+        "themes": ["chat", "recorrencia", "eventos_espontaneos", "jornada"]
+      },
+      {
+        "type": "support_message",
+        "text": "Feedback de produto de um PM: a funcionalidade dos badges é boa mas o sistema de share é fraco. Quando ganhei um badge, só consegui fazer screenshot para compartilhar — não tem um template nativo. Isso é valor virável desperdiçado. Considerem: ao ganhar um badge, oferecer um card visual otimado para story do Instagram com o nome do usuário e o badge. Share nativo com UTM tracking. Seria o melhor canal de aquisição orgânica que vocês têm.",
+        "sentiment": "neutral",
+        "themes": ["gamificacao", "viralizacao", "marketing", "badges"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "O Reroot me deu o melhor evento de São Paulo de 2026 até agora — um debate de design com 8 pessoas, 3 horas, ainda conversando. O problema é o seguinte: todo grupo que se forma no app migra para WhatsApp em 48h. Se o app tivesse grupo de evento nativo, eu ficaria dentro do Reroot. Sem isso, o app vira vitrine de eventos mas não retém a comunidade. Tenham prioridade nisso.",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "comunidade", "retencao"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P27",
+    "persona_name": "Juliana Ramos",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 3,
+        "text": "Fui a dois eventos e foram ótimos — clube do livro com mulheres, exatamente o que precisava. Mas o app não tem configurações de privacidade. Tem uma seção 'pessoas próximas a você' que aparece sem que eu tenha pedido. Não consigo desativar. Para uma mulher divorciada tentando se reintegrar socialmente, esse tipo de exposição involuntária é assustador. Por favor, adicionem controle de privacidade.",
+        "sentiment": "neutral",
+        "themes": ["privacidade", "seguranca", "eventos", "ui_ux"]
+      },
+      {
+        "type": "nps_response",
+        "score": 5,
+        "text": "Os eventos são bons. A segurança me preocupa. Não consigo controlar quem me vê, não tenho configurações de privacidade no perfil, e a seção 'pessoas próximas' expõe minha localização sem consentimento ativo. Isso deveria ser opt-in, não opt-out. Até isso ser resolvido, sou detratora por segurança, não por qualidade de produto.",
+        "sentiment": "negative",
+        "themes": ["privacidade", "seguranca", "consentimento"]
+      },
+      {
+        "type": "support_message",
+        "text": "Olá, preciso de ajuda. Onde estão as configurações de privacidade do app? Não encontro como: 1) escolher quem pode ver meu perfil, 2) desativar a seção 'pessoas próximas a você', 3) ocultar que participei de um determinado evento. Sou divorciada e uso esse app para reconectar socialmente — não quero que minha localização ou identidade sejam visíveis para qualquer pessoa na plataforma. Isso é um pedido de segurança, não só de preferência.",
+        "sentiment": "negative",
+        "themes": ["privacidade", "seguranca", "suporte"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "O Reroot tem eventos femininos incríveis — clube do livro com mulheres que realmente apareceram, conversa boa, segura. Mas tem um problema sério: não tem configurações de privacidade. Aparece uma seção mostrando 'pessoas perto de você' sem que a gente peça. Para quem está em situação vulnerável (divórcio, separação), isso é assustador. Reportei ao suporte.",
+        "sentiment": "neutral",
+        "themes": ["privacidade", "seguranca", "eventos"]
+      }
+    ]
+  },
+  {
+    "persona_id": "P28",
+    "persona_name": "Kwame Asante",
+    "feedbacks": [
+      {
+        "type": "app_store_review",
+        "rating": 5,
+        "text": "Best social app in São Paulo. Full stop. Went to 4 events in 2 weeks: basketball, music, cycling meetup, design talk. Every single event had real people who showed up. The quality bar is exceptional. Please PLEASE add: 1) group chat per event so I stop migrating to WhatsApp, 2) same-day event posting — I have spontaneous plans and nowhere to post them on this app.",
+        "sentiment": "positive",
+        "themes": ["eventos", "chat", "eventos_espontaneos", "qualidade"]
+      },
+      {
+        "type": "nps_response",
+        "score": 9,
+        "text": "9 because it's the best thing out there. Not 10 because: no group chat, no spontaneous events, and the event creation form is too heavy for quick posts. My personal use case: I want to post 'anyone for football at Ibirapuera in 2 hours?' That's not possible today and it should be.",
+        "sentiment": "positive",
+        "themes": ["chat", "eventos_espontaneos", "criacao_de_eventos"]
+      },
+      {
+        "type": "support_message",
+        "text": "Hi team! Quick product idea from a power user: a 'Quick Post' button on the Events screen — just venue + time + max 10 people. No categories, no required description, no price tier. Just a fast way to say 'who wants to join this in 2 hours?' For spontaneous social plans this would be transformative. Right now every time I try to post something spontaneous I give up at field 5 of the creation form and go to WhatsApp.",
+        "sentiment": "neutral",
+        "themes": ["eventos_espontaneos", "criacao_de_eventos", "ui_ux"]
+      },
+      {
+        "type": "social_media_comment",
+        "text": "The Reroot basketball event had 13 people. THIRTEEN. Not 3 ghosts like every Meetup event. Real people who showed up and played hard. We added each other on the app via friend codes and now I see when they RSVP new events. That friends feed loop is the best social discovery feature I've seen in any app. Give them group chat and they win.",
+        "sentiment": "positive",
+        "themes": ["eventos", "feed_amigos", "chat", "amigos_codigo"]
+      }
+    ]
+  }
+]

@@ -224,6 +224,9 @@ def _extract_event_from_post(
             messages=[{"role": "user", "content": prompt}],
         )
         raw_json = response.content[0].text.strip()
+        # Strip markdown code fences if present
+        raw_json = re.sub(r"^```(?:json)?\s*", "", raw_json)
+        raw_json = re.sub(r"\s*```$", "", raw_json)
         data = json.loads(raw_json)
     except json.JSONDecodeError as e:
         log.warning(f"SESC: Claude returned invalid JSON for post '{title[:40]}': {e}")

@@ -117,6 +117,10 @@ function normalizeBackendEvent(ev) {
     isReal: true,
     dateStart: ev.dateStart,
     dateTag: computeDateTag(ev.dateStart),
+    // Detail-only fields — present when fetched via /events/{id}
+    venueAddress: ev.venueAddress,
+    city: ev.city,
+    imageUrl: ev.imageUrl,
   }
 }
 

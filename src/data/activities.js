@@ -2,6 +2,10 @@
 // Curated Curitiba activities beyond cohort events.
 // These are solo-friendly, low-pressure, and framed for re-entry.
 // No RSVP — just inspiration + Reroot angle on why it helps.
+//
+// `profiles` lists the user profiles that benefit most from this activity.
+// Used by Home.jsx to surface the most relevant activities first.
+// Profile IDs: gentle | explorer | builder | rebounder | depth | steady | curious
 
 export const ACTIVITIES = [
   // ── Parks & Nature ──────────────────────────────────────
@@ -13,6 +17,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #C8E6C9 0%, #81C784 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['gentle', 'steady'],
     address: 'Santo Inácio · Curitiba',
     when: 'Qualquer dia · Nascer ao pôr do sol',
     description: 'O maior parque de Curitiba. Lagos, trilhas de terra e uma quantidade generosa de gente que vai lá simplesmente por ir.',
@@ -27,10 +32,11 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #F8BBD9 0%, #F48FB1 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['gentle', 'steady', 'curious'],
     address: 'Jardim Botânico · Curitiba',
     when: 'Ter–Dom · 06:00–21:00',
     description: 'Um dos cartões postais mais bonitos da cidade. Estufas de ferro, roseiras e gente de todos os tipos.',
-    rerootAngle: 'Sentar num banco entre estranhos relaxados é diferente de estar isolada. É a versão mais suave de prática social.',
+    rerootAngle: 'Sentar num banco entre estranhos relaxados é diferente de estar isolado. É a versão mais suave de prática social.',
     tags: ['grátis', 'icônico', 'câmera na mão'],
   },
   {
@@ -41,6 +47,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #B2DFDB 0%, #80CBC4 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['gentle'],
     address: 'São João · Curitiba',
     when: 'Todos os dias · 06:00–21:00',
     description: 'Parque às margens do Rio Barigui. Mais calmo que o Barigui, com trilha leve e monumento ucraniano.',
@@ -57,6 +64,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #2C2C2C 0%, #4a3728 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['depth', 'gentle', 'curious'],
     address: 'Rua XV de Novembro, 1057 · Centro',
     when: 'Variado · Ver programação',
     description: 'Cinema de arte da Prefeitura de Curitiba. Filmes independentes, sessões de debate e preços acessíveis.',
@@ -71,6 +79,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['depth', 'gentle'],
     address: 'Shopping Palladium · Portão',
     when: 'Todos os dias · Programação variada',
     description: 'Multiplex com as maiores estreias. Ideal para quem quer sair mas com zero exigência social.',
@@ -87,10 +96,11 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #EFEBE9 0%, #D7CCC8 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['depth', 'curious', 'gentle'],
     address: 'Rua Bispo Dom José, 2000 · Batel',
     when: 'Seg–Sáb 09:00–22:00 · Dom 11:00–20:00',
     description: 'Livraria independente de curadoria excelente, com café integrado e uma atmosfera propícia para ficar horas.',
-    rerootAngle: 'Livrarias são um dos poucos lugares onde ficar sozinha por muito tempo não só é aceito — é esperado. Ambiente de baixíssima pressão.',
+    rerootAngle: 'Livrarias são um dos poucos lugares onde ficar sozinho por muito tempo não só é aceito — é esperado. Ambiente de baixíssima pressão.',
     tags: ['café', 'curadoria', 'solo ok'],
   },
   {
@@ -101,6 +111,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #FFF9C4 0%, #F9A825 100%)',
     effort: 'medium',
     soloFriendly: true,
+    profiles: ['curious', 'explorer', 'depth'],
     address: 'Rua Marechal Hermes, 999 · Centro Cívico',
     when: 'Ter–Dom · 10:00–18:00',
     description: 'O famoso "Olho" de Niemeyer. Coleção permanente + exposições temporárias de arte contemporânea.',
@@ -117,6 +128,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #F5DDD1 0%, #C4724A 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['gentle', 'steady', 'depth'],
     address: 'Lucca, Santa Lolla, Vanilla · vários bairros',
     when: 'Manhã ou tarde · 1–2 horas',
     description: 'Escolha um café novo que você nunca foi. Peça algo, abra seu livro ou notebook e fique. Sem mais.',
@@ -133,6 +145,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #FFE0B2 0%, #FF8F00 100%)',
     effort: 'medium',
     soloFriendly: true,
+    profiles: ['explorer', 'builder', 'rebounder', 'curious'],
     address: 'Largo da Ordem · São Francisco',
     when: 'Domingos · 09:00–14:00',
     description: 'A maior feira de artesanato da cidade. Centenas de barracas, comida de rua e muita gente caminhando.',
@@ -147,6 +160,7 @@ export const ACTIVITIES = [
     headerBg: 'linear-gradient(135deg, #FFECB3 0%, #FFC107 100%)',
     effort: 'low',
     soloFriendly: true,
+    profiles: ['rebounder', 'builder', 'explorer', 'steady'],
     address: 'Av. Sete de Setembro, 1865 · Rebouças',
     when: 'Seg–Sáb · 07:00–19:00',
     description: 'Mercado histórico com queijos, embutidos, especiarias e o melhor pastel de frango da cidade.',

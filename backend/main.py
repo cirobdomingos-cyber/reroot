@@ -103,6 +103,9 @@ def health():
         "instagram_configured": bool(settings.instagram_user and settings.instagram_pass),
         "sesc_configured": True,
         "teatro_guaira_configured": True,
+        "catraca_livre_configured": True,
+        "ingresso_configured": True,
+        "ai_gap_fill_configured": bool(settings.anthropic_api_key),
         "google_places_configured": bool(settings.google_places_api_key),
     }
 
@@ -168,9 +171,110 @@ def stats():
         "by_category": by_cat,
         "sources": {
             src: sum(1 for e in events if e.source == src)
-            for src in ["sympla", "eventbrite", "meetup", "instagram", "sesc", "teatro_guaira"]
+            for src in [
+                "sympla", "eventbrite", "meetup", "instagram",
+                "sesc", "teatro_guaira", "catraca_livre", "ingresso",
+                "ai_generated", "submitted",
+            ]
         },
     }
+
+
+# ── User event submission ──────────────────────────────────
+
+class EventSubmission(BaseModel):
+    name: str
+    description: str = ""
+    venue_name: str
+    venue_address: str = ""
+    city: str = "Curitiba"
+    date_start: str                   # ISO 8601 string from frontend
+    price_min: float = 0.0
+    price_max: float = 0.0
+    url: str = ""
+    submitted_by: Optional[str] = None  # google_id
+
+
+async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
+    """Background task: enrich a submitted event with Claude then upsert into events table."""
+    if not settings.anthropic_api_key:
+        return
+
+    from enrichment import EnrichmentPipeline
+    from models import RawEvent
+    from datetime import timezone as tz
+
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            ds = __import__("datetime").datetime.strptime(req.date_start, fmt).replace(tzinfo=tz.utc)
+            break
+        except ValueError:
+            ds = None
+
+    if not ds:
+        log.warning(f"Submission {submission_id}: invalid date_start '{req.date_start}'")
+        return
+
+    raw = RawEvent(
+        source="submitted",
+        external_id=f"sub_{submission_id}",
+        name=req.name[:200],
+        description=req.description[:1000],
+        venue_name=req.venue_name[:200],
+        venue_address=req.venue_address[:300],
+        city=req.city,
+        date_start=ds,
+        price_min=req.price_min,
+        price_max=req.price_max,
+        url=req.url[:500],
+    )
+
+    pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
+    enriched = pipeline.enrich(raw)
+    if not enriched:
+        log.warning(f"Submission {submission_id}: enrichment failed")
+        return
+
+    try:
+        db.upsert_event(enriched)
+        db.mark_submitted_enriched(submission_id, enriched.id)
+        log.info(f"Submission {submission_id}: enriched → {enriched.id} ({enriched.reroot_category})")
+    except Exception as e:
+        log.error(f"Submission {submission_id}: save error: {e}")
+
+
+@app.post("/events/submit", status_code=202)
+async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
+    """
+    Accept a user- or partner-submitted event.
+    The event is recorded immediately; enrichment runs in the background.
+    Returns the submission id so the frontend can poll for status.
+    """
+    # Basic input validation
+    if not req.name or len(req.name.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Event name too short")
+    if len(req.name) > 200 or len(req.description) > 2000:
+        raise HTTPException(status_code=400, detail="Input exceeds maximum length")
+    if not req.venue_name or len(req.venue_name.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Venue name required")
+
+    submission_id = db.insert_submitted_event(
+        name=req.name.strip(),
+        description=req.description.strip(),
+        venue_name=req.venue_name.strip(),
+        venue_address=req.venue_address.strip(),
+        city=req.city.strip() or settings.city,
+        date_start=req.date_start,
+        price_min=req.price_min,
+        price_max=req.price_max,
+        url=req.url.strip(),
+        submitted_by=req.submitted_by,
+    )
+
+    if settings.anthropic_api_key:
+        background_tasks.add_task(_enrich_and_save_submission, submission_id, req)
+
+    return {"ok": True, "submission_id": submission_id, "status": "pending"}
 
 
 # ── User state sync ──
@@ -557,6 +661,7 @@ def _to_frontend(ev, detail: bool = False) -> dict:
     if detail:
         out["description"] = ev.description
         out["venueAddress"] = ev.venue_address
+        out["city"] = ev.city
         out["imageUrl"] = ev.image_url
 
     return out
@@ -682,7 +787,10 @@ CRITICAL RULES:
    Each suggestion needs a name, emoji, short description, and category.
 
 USER CONTEXT:
-- Situation: {situation}
+- Reconnection mode: {situation}
+  (gentle=wants to go slow; explorer=discovering new things; builder=building real bonds;
+   rebounder=ready to jump back in; depth=few deep connections; steady=needs consistency;
+   curious=experimenting with no agenda)
 - Goal: {goal}
 - Week {week}/12
 - Language: {language}

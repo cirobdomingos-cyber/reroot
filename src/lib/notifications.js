@@ -135,19 +135,21 @@ export async function schedulePostEventNotification(event) {
     const { display } = await plugin.checkPermissions()
     if (display !== 'granted') return
 
-    // Calculate notification time: event start + 3h (or +3h from now if no parseable time)
-    const at = new Date()
-    if (event.time) {
+    // Calculate notification time: event dateStart + 3h (fall back to time field, then +3h from now)
+    let at
+    if (event.dateStart) {
+      at = new Date(new Date(event.dateStart).getTime() + 3 * 60 * 60 * 1000)
+    } else if (event.time) {
       const match = event.time.match(/(\d{1,2}):(\d{2})/)
       if (match) {
+        at = new Date()
         at.setHours(parseInt(match[1], 10) + 3, parseInt(match[2], 10), 0, 0)
-        // If that time is already in the past, push to 3h from now
-        if (at < new Date()) at.setTime(Date.now() + 3 * 60 * 60 * 1000)
+        if (at < new Date()) at = new Date(Date.now() + 3 * 60 * 60 * 1000)
       } else {
-        at.setTime(Date.now() + 3 * 60 * 60 * 1000)
+        at = new Date(Date.now() + 3 * 60 * 60 * 1000)
       }
     } else {
-      at.setTime(Date.now() + 3 * 60 * 60 * 1000)
+      at = new Date(Date.now() + 3 * 60 * 60 * 1000)
     }
 
     await plugin.schedule({

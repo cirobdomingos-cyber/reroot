@@ -1,0 +1,206 @@
+[
+  {
+    "persona_id": "P17",
+    "name": "Sofia Carvalho",
+    "age": 31,
+    "city": "São Paulo, Brazil",
+    "life_context": "UX designer at a startup. Worked 70-hour weeks for 2.5 years, cancelled all social plans, gradually lost her social circle. Now 3 months into therapy, starting to recover.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["self-aware", "analytical", "recovering from burnout", "cautious about overcommitting"],
+      "social_style": "Wants to reconnect but fears falling back into overwork mode. Needs structured, time-boxed social activities."
+    },
+    "profile_match": "burnout",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["rebuild friendships lost during burnout", "relearn how to have fun without guilt", "find activities that don't feel like networking"],
+    "frustrations_with_previous_apps": ["Meetup groups were too output-oriented", "Everything felt like networking, not connection", "No app understood WHY she stopped socializing"],
+    "expectations": ["App that understands burnout context", "Low commitment options", "No performance pressure"]
+  },
+  {
+    "persona_id": "P18",
+    "name": "Daniel Kim",
+    "age": 27,
+    "city": "São Paulo, Brazil (Korean expat, 8 months in SP)",
+    "life_context": "QA engineer at a Brazilian fintech. Speaks intermediate Portuguese. Lives alone. Colleagues are friendly but he hasn't built real friendships yet.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["observant", "cautious", "language-anxious", "nostalgic for Seoul social life"],
+      "social_style": "Struggles with language barrier in social settings. Prefers structured activities where language is secondary."
+    },
+    "profile_match": "transplant",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["make friends outside of work", "practice Portuguese in a low-stakes setting", "find Korean or Asian community events"],
+    "frustrations_with_previous_apps": ["InterNations is for older expats", "Tandem only for language exchange, gets romantic", "Language barrier makes casual social apps unusable"],
+    "expectations": ["International/multilingual community", "Activity-first so language is not the only thing they share", "English option in the app"]
+  },
+  {
+    "persona_id": "P19",
+    "name": "Beatriz Santos",
+    "age": 38,
+    "city": "Curitiba, Brazil",
+    "life_context": "HR manager, divorced 8 months ago after a 10-year marriage. Single mother of a 7-year-old daughter. Social circle was mostly couples-based and has largely disappeared.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["resilient", "pragmatic", "protective of her daughter", "proud"],
+      "social_style": "Wants to rebuild adult social life but is constrained by parenting schedule. Most free time is during non-peak hours."
+    },
+    "profile_match": "heartbroken",
+    "tech_relationship": "casual_user",
+    "motivations": ["find other divorced parents for solidarity", "rediscover who she is outside of being a wife", "find family-friendly activities for weekends with her daughter"],
+    "frustrations_with_previous_apps": ["Dating apps feel too soon", "Friend apps feel juvenile", "No app recognizes she needs both adult social time AND mother-daughter activities"],
+    "expectations": ["Family-friendly event options clearly surfaced", "Events at reasonable hours (not 10pm bar nights)", "Privacy — doesn't want divorce details to be visible to strangers"]
+  },
+  {
+    "persona_id": "P20",
+    "name": "Rafael Martins",
+    "age": 44,
+    "city": "Rio de Janeiro, Brazil",
+    "life_context": "Former investment banker, recently transitioned to photography full-time. Has a wide professional network but few true friends. Moved to Rio from SP 2 years ago.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["intellectually restless", "confident", "slightly jaded", "high standards"],
+      "social_style": "Comfortable socially but finds most events superficial. Wants depth, not volume."
+    },
+    "profile_match": "reconnector",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["find photographer community", "build friendships based on shared passion, not career", "prove to himself that life after corporate can be richer"],
+    "frustrations_with_previous_apps": ["LinkedIn is the wrong vibe", "Instagram DMs feel cold", "Most social apps feel like they're for 22-year-olds in crisis"],
+    "expectations": ["Adult, thoughtful community", "Events that reward showing up repeatedly (not just one-offs)", "App that helps him feel like part of a scene, not just a calendar"]
+  },
+  {
+    "persona_id": "P21",
+    "name": "Emma Johansson",
+    "age": 26,
+    "city": "São Paulo, Brazil (Swedish, on 6-month work assignment)",
+    "life_context": "Product manager at a Swedish company's SP office. Highly functional, multilingual, but genuinely lonely in a new country where social norms feel foreign.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["organized", "independent", "culturally curious", "privately frustrated"],
+      "social_style": "Prefers small groups, structured activities, getting to know people over time. Uncomfortable with the Brazilian social expectation of instant warmth."
+    },
+    "profile_match": "transplant",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["build a real social life in Brazil, not just expat bubble", "understand Brazilian culture from the inside", "have friends to call when the work assignment gets hard"],
+    "frustrations_with_previous_apps": ["Internations feels like a corporate networking event", "Language barrier even for a fluent Portuguese speaker (cultural nuance)", "All apps assume you're there long-term — no grace for temporary residents"],
+    "expectations": ["English UI option (exists in Reroot ✓)", "Small group format", "Culturally diverse events, not just generic gatherings"]
+  },
+  {
+    "persona_id": "P22",
+    "name": "André Oliveira",
+    "age": 33,
+    "city": "Curitiba, Brazil",
+    "life_context": "Software developer. Lost his closest friend to suicide 10 months ago. Has been in grief therapy. Ready to start reconnecting but social setbacks feel enormous.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["deep", "careful", "emotionally intelligent", "fragile about rejection"],
+      "social_style": "Cannot do forced positivity. Needs spaces where showing up quietly is enough."
+    },
+    "profile_match": "grief",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["honor his friend by rebuilding life", "find a community of people who don't expect constant happiness", "be around people without having to explain the grief"],
+    "frustrations_with_previous_apps": ["Everything is engineered around fun, FOMO, excitement", "No app understands 'I want to be around people without talking much'", "Social media is actively harmful right now"],
+    "expectations": ["Low-pressure attendance model", "App that doesn't punish you for going quiet", "Feels like it was built for humans, not engagement metrics"]
+  },
+  {
+    "persona_id": "P23",
+    "name": "Clara Zhang",
+    "age": 29,
+    "city": "São Paulo, Brazil (Chinese, 1 year in Brazil)",
+    "life_context": "International trade analyst at a Chinese export company. Portuguese is functional but not fluent. Has a tight-knit Chinese expat circle but wants to expand beyond it.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["hardworking", "proud of her adaptability", "slightly self-conscious about accent"],
+      "social_style": "Comfortable one-on-one, nervous in large groups where she might miss cultural references."
+    },
+    "profile_match": "transplant",
+    "tech_relationship": "casual_user",
+    "motivations": ["make Brazilian friends (not just expat connections)", "improve Portuguese through real interaction", "feel like she belongs in SP, not just works there"],
+    "frustrations_with_previous_apps": ["Most events assume native-level cultural fluency", "Hard to find non-alcohol-centric social settings", "Bilingual events are rare"],
+    "expectations": ["Small group events where she won't get lost", "Activity-based so language is secondary", "Visual, clear UI (language barrier applies to app itself)"]
+  },
+  {
+    "persona_id": "P24",
+    "name": "Marcos Pereira",
+    "age": 52,
+    "city": "Porto Alegre, Brazil",
+    "life_context": "Just retired from 25 years as a civil engineer. Wife still working. Realizes his entire social identity was job-related and has collapsed now that he's retired.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["structured", "practical", "proud of his discipline", "worried about 'becoming irrelevant'"],
+      "social_style": "Used to being in charge. Needs social settings with clear roles and activities."
+    },
+    "profile_match": "grief",
+    "tech_relationship": "resistant_adopter",
+    "motivations": ["fill the social void left by retirement", "find men his age to have real conversations with", "stay mentally active and connected"],
+    "frustrations_with_previous_apps": ["Apps feel designed for young people in crises he doesn't relate to", "Registration is confusing", "Events are for evenings — he's free during the day"],
+    "expectations": ["Daytime events", "Simple, clear navigation", "Community of people at similar life stages"]
+  },
+  {
+    "persona_id": "P25",
+    "name": "Isabela Costa",
+    "age": 21,
+    "city": "Curitiba, Brazil",
+    "life_context": "3rd year architecture student. Lives with roommates but feels isolated — everyone is exhausted and stressed. Online friends feel more real than university ones.",
+    "psychographic": {
+      "introversion_extroversion": "introvert",
+      "traits": ["creative", "anxious", "idealistic", "self-critical"],
+      "social_style": "Freezes in unstructured social settings. Needs activities with clear entry points."
+    },
+    "profile_match": "introvert",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["meet people outside of architecture bubble", "prove to herself she can have a social life", "find creative communities (art, design, writing)"],
+    "frustrations_with_previous_apps": ["Bumble BFF felt like forced friendships", "Eventbrite events are too large and impersonal", "Social anxiety means most social apps make things worse"],
+    "expectations": ["Icebreaker-structured activities", "No penalty for not talking (activity provides cover)", "Option to get to know events before committing"]
+  },
+  {
+    "persona_id": "P26",
+    "name": "Tomás Herrera",
+    "age": 36,
+    "city": "São Paulo, Brazil (Argentine expat, 3 years in SP)",
+    "life_context": "Senior product manager at a Brazilian tech company. Has SP settled — apartment, job, partner — but his social circle is still thin. Wants a friend group he chose, not defaulted into.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["self-aware", "high-energy", "curious", "gets bored easily with shallow connections"],
+      "social_style": "Makes friends easily but has trouble finding depth. Doesn't want surface-level social."
+    },
+    "profile_match": "reconnector",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["intentionally build a friend group (not just work colleagues)", "find intellectual and physical activities (cycling, debates)", "have the social life in SP that he planned but delayed"],
+    "frustrations_with_previous_apps": ["Meetup groups feel superficial and corporate", "Friend-finding apps feel awkward for someone already socially confident", "No app rewards showing up repeatedly to become a regular"],
+    "expectations": ["Recurring event support or at least regulars/community aspect", "Events that scale into friendship, not just one-offs", "Spontaneous options for his impulsive side"]
+  },
+  {
+    "persona_id": "P27",
+    "name": "Juliana Ramos",
+    "age": 45,
+    "city": "Curitiba, Brazil",
+    "life_context": "Teacher, divorced, two teenagers. Her social circle is mostly former couples friends who drifted away. Skeptical of technology and social apps after a bad experience on a dating site.",
+    "psychographic": {
+      "introversion_extroversion": "ambivert",
+      "traits": ["cautious", "warm when comfortable", "tech-resistant", "protective of her reputation"],
+      "social_style": "Needs to build trust slowly. Won't engage with anything that feels 'expose-y' or linked to dating."
+    },
+    "profile_match": "heartbroken",
+    "tech_relationship": "resistant_adopter",
+    "motivations": ["rebuild social life without it being mistaken for dating", "find adult women communities (book clubs, cooking classes)", "feel normal and not judged for her situation"],
+    "frustrations_with_previous_apps": ["Everything eventually feels like it's trying to get you to date", "Location data feels invasive", "Complex apps feel risky — she doesn't trust she won't accidentally share something"],
+    "expectations": ["Clear separation from dating apps in branding and UX", "Privacy-first by default, not opt-in", "Simple enough that she can figure it out herself"]
+  },
+  {
+    "persona_id": "P28",
+    "name": "Kwame Asante",
+    "age": 30,
+    "city": "São Paulo, Brazil (Ghanaian expat, 14 months in SP)",
+    "life_context": "Data engineer at a startup, highly sociable, has built some connections but misses the spontaneous social culture he had in Accra. Everything in SP requires scheduling 2 weeks in advance.",
+    "psychographic": {
+      "introversion_extroversion": "extrovert",
+      "traits": ["high-energy", "warm", "culturally adaptive", "impatient with friction"],
+      "social_style": "Initiates social plans. Loves large groups and spontaneous gatherings. Gets restless with over-planned events."
+    },
+    "profile_match": "transplant",
+    "tech_relationship": "tech-savvy",
+    "motivations": ["replicate the spontaneous social culture of Accra in SP", "find a diverse social circle", "become someone who knows SP nightlife and daily rhythm deeply"],
+    "frustrations_with_previous_apps": ["Everything requires booking days ahead", "Events list is the same 10 things every week", "No way to see what's happening RIGHT NOW"],
+    "expectations": ["Real-time or same-day event discovery", "High-energy community events, not just introverted activities", "Group coordination tools — he always brings people along"]
+  }
+]

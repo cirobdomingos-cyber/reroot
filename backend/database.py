@@ -90,7 +90,81 @@ def init_db():
                 PRIMARY KEY (user_a, user_b)
             )
         """)
+        # One-shot migration: flip any legacy 'pending' friendships to 'accepted'.
+        # Context: an earlier bug created rows with status='pending' and there was
+        # never an accept endpoint, so friendships were invisible to both users.
+        # This normalises historical data on startup; it's a no-op once all rows
+        # are already accepted, so it's safe to ship permanently.
+        conn.execute(
+            "UPDATE friendships SET status = 'accepted' WHERE status = 'pending'"
+        )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS submitted_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                name            TEXT NOT NULL,
+                description     TEXT NOT NULL DEFAULT '',
+                venue_name      TEXT NOT NULL DEFAULT '',
+                venue_address   TEXT NOT NULL DEFAULT '',
+                city            TEXT NOT NULL DEFAULT 'Curitiba',
+                date_start      TEXT NOT NULL,
+                price_min       REAL NOT NULL DEFAULT 0.0,
+                price_max       REAL NOT NULL DEFAULT 0.0,
+                url             TEXT NOT NULL DEFAULT '',
+                submitted_by    TEXT,            -- google_id, optional
+                status          TEXT NOT NULL DEFAULT 'pending',    -- pending | enriched | rejected
+                enriched_event_id TEXT,          -- set after successful enrichment
+                created_at      TEXT NOT NULL
+            )
+        """)
         conn.commit()
+
+
+# ── Submitted events (user/partner submissions) ───────────
+
+def insert_submitted_event(
+    name: str, description: str, venue_name: str, venue_address: str,
+    city: str, date_start: str, price_min: float, price_max: float,
+    url: str, submitted_by: Optional[str] = None,
+) -> int:
+    """Record a user-submitted event. Returns the new row id."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO submitted_events
+              (name, description, venue_name, venue_address, city,
+               date_start, price_min, price_max, url, submitted_by, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (name, description, venue_name, venue_address, city,
+             date_start, price_min, price_max, url, submitted_by, now),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def mark_submitted_enriched(submission_id: int, enriched_event_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE submitted_events SET status='enriched', enriched_event_id=? WHERE id=?",
+            (enriched_event_id, submission_id),
+        )
+        conn.commit()
+
+
+def count_upcoming_events(city: str) -> int:
+    """Count events with date_start in the future — used for gap-fill decision."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) as cnt FROM events
+            WHERE json_extract(payload, '$.city') = ?
+              AND json_extract(payload, '$.date_start') > ?
+            """,
+            (city, now),
+        ).fetchone()
+    return row["cnt"] if row else 0
 
 
 # ── Push subscriptions ─────────────────────────────────────
@@ -343,13 +417,14 @@ def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
     if not rsvp_rows:
         return []
 
-    # Get friendships for the requester (accepted only)
+    # Get friendships for the requester (accepted + legacy pending rows)
     friend_ids = set()
     with get_conn() as conn:
         friend_rows = conn.execute(
             """
             SELECT user_a, user_b FROM friendships
-            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            WHERE (user_a = ? OR user_b = ?)
+              AND status IN ('accepted', 'pending')
             """,
             (requesting_google_id, requesting_google_id),
         ).fetchall()
@@ -418,10 +493,15 @@ def _code_to_google_id(code: str) -> Optional[str]:
 
 def upsert_friendship(requester_google_id: str, code: str) -> dict:
     """
-    Create a pending friendship from requester to the user identified by code.
+    Create an accepted friendship from requester to the user identified by code.
+
+    We auto-accept: adding someone by code is already a deliberate social action
+    (the code was shared in person or at an event), so a two-sided accept flow
+    would add pure friction with no safety upside. The `status` column and
+    `accept_friendship()` helper remain in place for a future request/accept flow.
 
     Returns:
-        {'status': 'ok'}             — friendship row inserted (pending)
+        {'status': 'ok'}             — friendship row inserted (accepted)
         {'status': 'self'}           — code resolves to the requester themselves
         {'status': 'already_friends'}— row already exists (any status)
         {'status': 'not_found'}      — code does not match any known user
@@ -446,7 +526,7 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
         conn.execute(
             """
             INSERT INTO friendships (user_a, user_b, status, initiated_by, created_at)
-            VALUES (?, ?, 'pending', ?, ?)
+            VALUES (?, ?, 'accepted', ?, ?)
             """,
             (user_a, user_b, requester_google_id, now),
         )
@@ -475,8 +555,12 @@ def accept_friendship(google_id: str, friend_google_id: str) -> bool:
 
 def get_friends(google_id: str) -> list[dict]:
     """
-    Return all accepted friends of google_id, enriched with name/picture
+    Return all friends of google_id, enriched with name/picture
     from their user_states blob.
+
+    We accept both 'accepted' and 'pending' statuses so that any legacy rows
+    created before auto-accept (which were stuck pending forever) surface
+    correctly without requiring a migration.
 
     Shape: [{ google_id, name, picture, status }]
     """
@@ -484,7 +568,8 @@ def get_friends(google_id: str) -> list[dict]:
         rows = conn.execute(
             """
             SELECT user_a, user_b, status FROM friendships
-            WHERE (user_a = ? OR user_b = ?) AND status = 'accepted'
+            WHERE (user_a = ? OR user_b = ?)
+              AND status IN ('accepted', 'pending')
             """,
             (google_id, google_id),
         ).fetchall()

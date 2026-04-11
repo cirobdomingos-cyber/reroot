@@ -1,10 +1,11 @@
-export const EVENTS = [
+﻿export const EVENTS = [
   // ── AI-curated events ─────────────────────────────────────
   // These are generated/curated suggestions, NOT scraped from real platforms.
   // Every curated event has isCurated: true so the UI can label them clearly.
   {
     id: 'walk-botanico',
     isCurated: true,
+    source: 'reroot',
     name: 'Caminhada Matinal no Jardim Botânico',
     category: 'quiet_social',
     categoryLabel: 'Encontro Tranquilo',
@@ -17,7 +18,7 @@ export const EVENTS = [
     duration: '09:00 – 11:00',
     headerBg: 'linear-gradient(135deg, #F5DDD1, #EDCBB8)',
     icon: '☕',
-    description: 'Caminhada leve pelo Jardim Botânico de Curitiba com parada para café. Sem pressa, sem exigências — só aparecer já é suficiente. Grupo pequeno e acolhedor.',
+    description: 'Caminhada leve pelo Jardim Botânico de Curitiba com parada para café. Sem pressa, sem exigências â€” só aparecer já é suficiente. Grupo pequeno e acolhedor.',
     price: 'Gratuito',
     priceTier: 'free',
     hasFood: false,
@@ -25,7 +26,7 @@ export const EVENTS = [
     attendeesConfirmed: 12,
     expectedSize: 'small',
     vibeSummary: 'Passeio tranquilo com café no final',
-    rerootReason: 'Ambiente aberto e sem pressão — caminhar lado a lado facilita conversa natural',
+    rerootReason: 'Ambiente aberto e sem pressão â€” caminhar lado a lado facilita conversa natural',
     kidsWelcome: true,
     url: '',
     cohortGoing: [
@@ -36,6 +37,7 @@ export const EVENTS = [
   {
     id: 'aquarela',
     isCurated: true,
+    source: 'reroot',
     name: 'Oficina de Aquarela para Iniciantes',
     category: 'creative',
     categoryLabel: 'Criativo',
@@ -48,7 +50,7 @@ export const EVENTS = [
     duration: '14:00 – 17:00',
     headerBg: 'linear-gradient(135deg, #E4EFE5, #CDDECE)',
     icon: '✍️',
-    description: 'Oficina de aquarela em grupo pequeno. Todo material incluso. Não precisa ter experiência — o processo importa mais que o resultado.',
+    description: 'Oficina de aquarela em grupo pequeno. Todo material incluso. Não precisa ter experiência â€” o processo importa mais que o resultado.',
     price: 'R$ 45',
     priceTier: 'low',
     hasFood: false,
@@ -56,7 +58,7 @@ export const EVENTS = [
     attendeesConfirmed: 8,
     expectedSize: 'small',
     vibeSummary: 'Pinte sem julgamento em grupo íntimo',
-    rerootReason: 'Atividade guiada remove a pressão de socializar — você tem algo para fazer com as mãos',
+    rerootReason: 'Atividade guiada remove a pressão de socializar â€” você tem algo para fazer com as mãos',
     kidsWelcome: false,
     url: '',
     cohortGoing: [],
@@ -64,6 +66,7 @@ export const EVENTS = [
   {
     id: 'yoga-barigui',
     isCurated: true,
+    source: 'reroot',
     name: 'Yoga ao Ar Livre no Parque Barigui',
     category: 'active',
     categoryLabel: 'Ativo',
@@ -84,7 +87,7 @@ export const EVENTS = [
     attendeesConfirmed: 25,
     expectedSize: 'medium',
     vibeSummary: 'Yoga suave com vista para o lago',
-    rerootReason: 'Prática individual em grupo — você pode ser completamente silencioso e tudo bem',
+    rerootReason: 'Prática individual em grupo â€” você pode ser completamente silencioso e tudo bem',
     kidsWelcome: true,
     url: '',
     cohortGoing: [
@@ -95,6 +98,7 @@ export const EVENTS = [
   {
     id: 'ceramica',
     isCurated: true,
+    source: 'reroot',
     name: 'Aula Experimental de Cerâmica',
     category: 'creative',
     categoryLabel: 'Criativo',
@@ -115,7 +119,7 @@ export const EVENTS = [
     attendeesConfirmed: 5,
     expectedSize: 'small',
     vibeSummary: 'Mãos na argila em grupo íntimo',
-    rerootReason: 'Grupo muito pequeno e atividade absorvente — ideal para quem está voltando a socializar',
+    rerootReason: 'Grupo muito pequeno e atividade absorvente â€” ideal para quem está voltando a socializar',
     kidsWelcome: false,
     url: '',
     cohortGoing: [],
@@ -123,6 +127,7 @@ export const EVENTS = [
   {
     id: 'meditacao',
     isCurated: true,
+    source: 'reroot',
     name: 'Meditação Guiada ao Pôr do Sol',
     category: 'quiet_social',
     categoryLabel: 'Encontro Tranquilo',
@@ -143,7 +148,7 @@ export const EVENTS = [
     attendeesConfirmed: 8,
     expectedSize: 'small',
     vibeSummary: 'Silêncio compartilhado com chá no final',
-    rerootReason: 'Meditação é intrinsecamente sem pressão — ideal para quem quer companhia sem demanda social',
+    rerootReason: 'Meditação é intrinsecamente sem pressão â€” ideal para quem quer companhia sem demanda social',
     kidsWelcome: false,
     url: '',
     cohortGoing: [
@@ -154,6 +159,7 @@ export const EVENTS = [
   {
     id: 'leitura',
     isCurated: true,
+    source: 'reroot',
     name: 'Roda de Leitura no Café',
     category: 'quiet_social',
     categoryLabel: 'Encontro Tranquilo',
@@ -174,7 +180,7 @@ export const EVENTS = [
     attendeesConfirmed: 10,
     expectedSize: 'small',
     vibeSummary: 'Leitura silenciosa acompanhada de café',
-    rerootReason: 'Ler junto é social sem ser exigente — zero pressão para falar',
+    rerootReason: 'Ler junto é social sem ser exigente â€” zero pressão para falar',
     kidsWelcome: false,
     url: '',
     cohortGoing: [
@@ -184,6 +190,7 @@ export const EVENTS = [
   {
     id: 'jogos',
     isCurated: true,
+    source: 'reroot',
     name: 'Noite de Jogos de Tabuleiro',
     category: 'community',
     categoryLabel: 'Comunidade',
@@ -196,7 +203,7 @@ export const EVENTS = [
     duration: '19:00 – 22:00',
     headerBg: 'linear-gradient(135deg, #FFF3E0, #FFE0B2)',
     icon: '🎲',
-    description: 'Jogos de tabuleiro modernos com explicação para iniciantes. A estrutura do jogo tira o peso da conversa — você tem algo concreto para fazer.',
+    description: 'Jogos de tabuleiro modernos com explicação para iniciantes. A estrutura do jogo tira o peso da conversa â€” você tem algo concreto para fazer.',
     price: 'Gratuito',
     priceTier: 'free',
     hasFood: true,
@@ -204,7 +211,7 @@ export const EVENTS = [
     attendeesConfirmed: 18,
     expectedSize: 'medium',
     vibeSummary: 'Diversão estruturada com petiscos',
-    rerootReason: 'Jogos dão estrutura natural para interação — sem small talk forçado',
+    rerootReason: 'Jogos dão estrutura natural para interação â€” sem small talk forçado',
     kidsWelcome: true,
     url: '',
     cohortGoing: [
@@ -217,6 +224,7 @@ export const EVENTS = [
   {
     id: 'voluntariado',
     isCurated: true,
+    source: 'reroot',
     name: 'Voluntariado no Jardim Comunitário',
     category: 'community',
     categoryLabel: 'Comunidade',
@@ -237,7 +245,7 @@ export const EVENTS = [
     attendeesConfirmed: 12,
     expectedSize: 'small',
     vibeSummary: 'Plante junto e leve verduras para casa',
-    rerootReason: 'Trabalho manual em grupo cria conexão sem exigir habilidade social — propósito compartilhado',
+    rerootReason: 'Trabalho manual em grupo cria conexão sem exigir habilidade social â€” propósito compartilhado',
     kidsWelcome: true,
     url: '',
     cohortGoing: [
@@ -248,6 +256,7 @@ export const EVENTS = [
   {
     id: 'trilha-tangua',
     isCurated: true,
+    source: 'reroot',
     name: 'Trilha Leve no Parque Tanguá',
     category: 'active',
     categoryLabel: 'Ativo',
@@ -278,6 +287,7 @@ export const EVENTS = [
   {
     id: 'feira-batel',
     isCurated: true,
+    source: 'reroot',
     name: 'Feira de Produtores do Batel',
     category: 'community',
     categoryLabel: 'Comunidade',
@@ -309,6 +319,7 @@ export const EVENTS = [
   {
     id: 'foto-celular',
     isCurated: true,
+    source: 'reroot',
     name: 'Workshop de Fotografia com Celular',
     category: 'creative',
     categoryLabel: 'Criativo',
@@ -329,7 +340,7 @@ export const EVENTS = [
     attendeesConfirmed: 10,
     expectedSize: 'small',
     vibeSummary: 'Fotografe o centro histórico com novo olhar',
-    rerootReason: 'Foco na atividade dá propósito ao passeio — socialização é efeito colateral natural',
+    rerootReason: 'Foco na atividade dá propósito ao passeio â€” socialização é efeito colateral natural',
     kidsWelcome: false,
     url: '',
     cohortGoing: [],
@@ -337,6 +348,7 @@ export const EVENTS = [
   {
     id: 'pedal',
     isCurated: true,
+    source: 'reroot',
     name: 'Pedal Leve pela Ciclovia',
     category: 'active',
     categoryLabel: 'Ativo',
@@ -367,6 +379,7 @@ export const EVENTS = [
   {
     id: 'bar-hop-house',
     isCurated: true,
+    source: 'reroot',
     name: 'Hop House Brew Pub',
     category: 'bars_cafes',
     categoryLabel: 'Bar & Café',
@@ -386,7 +399,7 @@ export const EVENTS = [
     attendeesConfirmed: 0,
     expectedSize: 'medium',
     vibeSummary: 'Cervejas artesanais com mesas compartilhadas',
-    rerootReason: 'Mesas grandes e ambiente casual — fácil sentar perto de desconhecidos sem ser estranho',
+    rerootReason: 'Mesas grandes e ambiente casual â€” fácil sentar perto de desconhecidos sem ser estranho',
     kidsWelcome: false,
     url: '',
     cohortGoing: [
@@ -396,6 +409,7 @@ export const EVENTS = [
   {
     id: 'bar-wonka',
     isCurated: true,
+    source: 'reroot',
     name: 'Wonka Bar',
     category: 'bars_cafes',
     categoryLabel: 'Bar & Café',
@@ -407,7 +421,7 @@ export const EVENTS = [
     duration: '18:00 – 01:00',
     headerBg: 'linear-gradient(135deg, #3d2d25, #5a3d2e)',
     icon: '🍸',
-    description: 'Bar de coquetéis no Batel com área externa tranquila. Iluminação baixa, playlist chill. Popular entre 25–35 anos. Boa opção para um drink calmo.',
+    description: 'Bar de coquetéis no Batel com área externa tranquila. Iluminação baixa, playlist chill. Popular entre 25â€“35 anos. Boa opção para um drink calmo.',
     price: 'R$ 30–60',
     priceTier: 'medium',
     hasFood: true,
@@ -415,7 +429,7 @@ export const EVENTS = [
     attendeesConfirmed: 0,
     expectedSize: 'medium',
     vibeSummary: 'Coquetéis e clima relax no Batel',
-    rerootReason: 'Área externa permite ficar no seu canto — sem pressão de pista de dança ou multidão',
+    rerootReason: 'Área externa permite ficar no seu canto â€” sem pressão de pista de dança ou multidão',
     kidsWelcome: false,
     url: '',
     cohortGoing: [],
@@ -423,6 +437,7 @@ export const EVENTS = [
   {
     id: 'cafe-lucca-venue',
     isCurated: true,
+    source: 'reroot',
     name: 'Café Lucca',
     category: 'bars_cafes',
     categoryLabel: 'Bar & Café',
@@ -434,7 +449,7 @@ export const EVENTS = [
     duration: '08:00 – 22:00',
     headerBg: 'linear-gradient(135deg, #F5DDD1, #EDCBB8)',
     icon: '☕',
-    description: 'Café aconchegante no centro com Wi-Fi, tomadas e estante de livros. Ambiente silencioso e acolhedor. Muitas pessoas vão sozinhas — ninguém olha estranho.',
+    description: 'Café aconchegante no centro com Wi-Fi, tomadas e estante de livros. Ambiente silencioso e acolhedor. Muitas pessoas vão sozinhas â€” ninguém olha estranho.',
     price: 'R$ 10–25',
     priceTier: 'low',
     hasFood: true,
@@ -442,7 +457,7 @@ export const EVENTS = [
     attendeesConfirmed: 0,
     expectedSize: 'small',
     vibeSummary: 'Café silencioso com livros e Wi-Fi',
-    rerootReason: 'Ir a um café sozinho é o primeiro passo para normalizar sair de casa — zero expectativa social',
+    rerootReason: 'Ir a um café sozinho é o primeiro passo para normalizar sair de casa â€” zero expectativa social',
     kidsWelcome: true,
     url: '',
     cohortGoing: [
@@ -452,6 +467,7 @@ export const EVENTS = [
   {
     id: 'bar-basement',
     isCurated: true,
+    source: 'reroot',
     name: 'Basement English Pub',
     category: 'bars_cafes',
     categoryLabel: 'Bar & Café',
@@ -482,6 +498,7 @@ export const EVENTS = [
   {
     id: 'cafe-stockholm',
     isCurated: true,
+    source: 'reroot',
     name: 'Stockholm Café & Brunch',
     category: 'bars_cafes',
     categoryLabel: 'Bar & Café',
@@ -501,7 +518,7 @@ export const EVENTS = [
     attendeesConfirmed: 0,
     expectedSize: 'small',
     vibeSummary: 'Brunch nórdico com mesas compartilhadas',
-    rerootReason: 'Mesas coletivas normalizam estar sozinho em público — o primeiro passo mais suave que existe',
+    rerootReason: 'Mesas coletivas normalizam estar sozinho em público â€” o primeiro passo mais suave que existe',
     kidsWelcome: false,
     url: '',
     cohortGoing: [],
@@ -524,3 +541,4 @@ export const DATE_FILTERS = [
   { id: 'next_week',     label: 'Próxima semana' },
   { id: 'anytime',       label: 'Sempre aberto' },
 ]
+

@@ -38,9 +38,9 @@ CATEGORY_META = {
 }
 
 ENRICHMENT_PROMPT = """\
-Você analisa eventos sociais para o Reroot — um app de recuperação social para pessoas \
-(principalmente mulheres 35-55) reconstruindo vida social após divórcio ou transição importante. \
-O foco é eventos de baixa pressão, ambiente íntimo, onde aparecer já é suficiente.
+Você analisa eventos sociais para o Reroot — um app de reconexão social para qualquer pessoa \
+reconstruindo ou expandindo sua vida social. O foco é eventos de baixa pressão, \
+ambiente acolhedor, onde aparecer já é suficiente.
 
 EVENTO:
 Nome: {name}
@@ -180,3 +180,100 @@ class EnrichmentPipeline:
 
         log.info(f"Enriquecimento: {len(results)} ok, {skipped} falhas (de {min(len(raws), max_events)} tentativas)")
         return results
+
+    def generate_events(self, city: str = "Curitiba", count: int = 15) -> list:
+        """
+        Gera eventos plausíveis via Claude quando as fontes externas estão secas.
+        Retorna RawEvent-compliant dicts; o chamador deve converter e enriquecer.
+        Usa claude-haiku (rápido e barato). Custo estimado: ~$0.003 por batch.
+        """
+        from datetime import date, timedelta
+        import random
+        from models import RawEvent
+
+        today = date.today()
+        # anchor dates spread 2-4 weeks ahead
+        date_hints = [
+            (today + timedelta(days=d)).strftime("%Y-%m-%d")
+            for d in sorted(random.sample(range(7, 29), min(count, 21)))
+        ]
+
+        prompt = f"""\
+Gere {count} eventos sociais realistas para {city} para as próximas semanas.
+Esses eventos devem ser adequados para o Reroot — ambientes acolhedores, grupos
+pequenos ou médios, baixa pressão social. Não use eventos genéricos demais.
+
+Data de hoje: {today}
+Distribua os eventos nessas datas sugeridas: {', '.join(date_hints[:8])}
+
+Categorias desejadas (distribua uniformemente):
+- quiet_social: rodas de conversa, caminhas em grupo, meetups de leitura
+- active: yoga ao ar livre, pilates, trilha, dança
+- creative: oficina de aquarela, clube do livro, fotografia, cerâmica
+- community: feira de economia solidária, voluntariado, jardim comunitário
+
+Locais reais de {city} para usar:
+Jardim Botânico, Parque Barigui, Parque Tingui, SESC CIC, Casa da Memória,
+Libraria da Vila Batel, Atelê São Francisco, MON (Museu Oscar Niemeyer),
+Bosque Alemão, Passeio Público, Largo da Ordem, Rua XV de Novembro.
+
+Retorne SOMENTE o array JSON (sem markdown, sem texto extra):
+[
+  {{
+    "name": "Nome do evento",
+    "description": "Descrição em 1-2 frases em português",
+    "venue_name": "Nome do local real em {city}",
+    "venue_address": "Bairro ou endereço em {city}",
+    "date_start": "YYYY-MM-DDTHH:MM:00",
+    "price_min": 0.0,
+    "price_max": 0.0
+  }}
+]
+"""
+        try:
+            resp = self.client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            items = json.loads(raw)
+        except Exception as e:
+            log.error(f"generate_events Claude error: {e}")
+            return []
+
+        from datetime import timezone as tz
+        events: list[RawEvent] = []
+        for item in items if isinstance(items, list) else []:
+            try:
+                ds_str = item.get("date_start", "")
+                ds = None
+                for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+                    try:
+                        ds = datetime.strptime(ds_str, fmt).replace(tzinfo=tz.utc)
+                        break
+                    except ValueError:
+                        pass
+                if not ds or ds < datetime.now(tz.utc):
+                    continue
+                slug = re.sub(r"[^a-z0-9]", "_", item.get("name", "evento").lower())[:40]
+                events.append(RawEvent(
+                    source="ai_generated",
+                    external_id=f"ai_{slug}_{ds.strftime('%Y%m%d')}",
+                    name=item.get("name", "Evento")[:200],
+                    description=item.get("description", "")[:1000],
+                    venue_name=item.get("venue_name", city)[:200],
+                    venue_address=item.get("venue_address", city)[:300],
+                    city=city,
+                    date_start=ds,
+                    price_min=float(item.get("price_min", 0)),
+                    price_max=float(item.get("price_max", 0)),
+                    url="",
+                ))
+            except Exception as e:
+                log.debug(f"generate_events item parse error: {e}")
+
+        log.info(f"generate_events: {len(events)} eventos gerados por IA para {city}")
+        return events
