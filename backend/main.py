@@ -10,7 +10,7 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -18,7 +18,7 @@ import httpx
 from anthropic import Anthropic
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -888,6 +888,236 @@ async def companion_chat(req: CompanionRequest):
         "suggestions": data.get("suggestions", []),
         "tone": data.get("tone", "encouraging"),
     }
+
+
+# ── Groups ────────────────────────────────────────────────
+
+class GroupCreateRequest(BaseModel):
+    google_id: str
+    name: str
+    description: str = ""
+    visibility: str = "private"  # 'public' | 'private'
+
+
+class GroupUpdateRequest(BaseModel):
+    google_id: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class GroupJoinRequest(BaseModel):
+    google_id: str
+    invite_code: str
+
+
+class GroupEventCreateRequest(BaseModel):
+    google_id: str
+    name: str
+    description: str = ""
+    venue: str = ""
+    date_start: str
+    date_end: Optional[str] = None
+    visibility: str = "members"  # 'public' | 'members'
+
+
+@app.post("/groups")
+def create_group(req: GroupCreateRequest):
+    """Create a new group. Creator becomes admin automatically."""
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="Group name is required")
+    group = db.create_group(
+        google_id=req.google_id,
+        name=req.name.strip(),
+        description=req.description.strip(),
+        visibility=req.visibility,
+    )
+    return group
+
+
+@app.get("/groups")
+def list_groups(google_id: str):
+    """List all groups a user belongs to."""
+    groups = db.get_groups_for_user(google_id)
+    # Attach next upcoming event for each group
+    for g in groups:
+        events = db.get_group_events(g["id"], is_member=True)
+        now = datetime.now(timezone.utc).isoformat()
+        upcoming = [e for e in events if e["date_start"] >= now[:10]]
+        g["next_event"] = upcoming[0] if upcoming else None
+    return {"groups": groups}
+
+
+@app.get("/groups/{group_id}")
+def get_group(group_id: str, google_id: str):
+    """Get group detail with members and events."""
+    group = db.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    role = db.get_group_member_role(group_id, google_id)
+    is_member = role is not None
+
+    # Private groups require membership to view
+    if group["visibility"] == "private" and not is_member:
+        raise HTTPException(status_code=403, detail="This is a private group")
+
+    members = db.get_group_members(group_id) if is_member else []
+    events = db.get_group_events(group_id, is_member=is_member)
+
+    return {
+        **group,
+        "role": role,
+        "is_member": is_member,
+        "members": members,
+        "events": events,
+    }
+
+
+@app.put("/groups/{group_id}")
+def update_group(group_id: str, req: GroupUpdateRequest):
+    """Update group info. Requires admin role."""
+    role = db.get_group_member_role(group_id, req.google_id)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update the group")
+    db.update_group(group_id, name=req.name, description=req.description, visibility=req.visibility)
+    return {"ok": True}
+
+
+@app.delete("/groups/{group_id}")
+def delete_group(group_id: str, google_id: str):
+    """Delete a group. Requires admin role."""
+    group = db.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if group["created_by"] != google_id:
+        raise HTTPException(status_code=403, detail="Only the group creator can delete it")
+    db.delete_group(group_id)
+    return {"ok": True}
+
+
+@app.post("/groups/join")
+def join_group(req: GroupJoinRequest):
+    """Join a group via invite code."""
+    group = db.get_group_by_invite_code(req.invite_code)
+    if not group:
+        return {"status": "not_found"}
+    already = not db.join_group(group["id"], req.google_id)
+    if already:
+        return {"status": "already_member", "group": group}
+    return {"status": "ok", "group": group}
+
+
+@app.delete("/groups/{group_id}/members/{member_google_id}")
+def remove_group_member(group_id: str, member_google_id: str, google_id: str):
+    """Remove a member from a group (admin) or leave (self)."""
+    if google_id != member_google_id:
+        role = db.get_group_member_role(group_id, google_id)
+        if role != "admin":
+            raise HTTPException(status_code=403, detail="Only admins can remove members")
+    db.leave_group(group_id, member_google_id)
+    return {"ok": True}
+
+
+@app.post("/groups/{group_id}/events")
+def create_group_event(group_id: str, req: GroupEventCreateRequest):
+    """Create an event within a group. Any member can create events."""
+    role = db.get_group_member_role(group_id, req.google_id)
+    if role is None:
+        raise HTTPException(status_code=403, detail="Must be a group member to create events")
+    event = db.create_group_event(
+        group_id=group_id,
+        google_id=req.google_id,
+        name=req.name.strip(),
+        description=req.description.strip(),
+        venue=req.venue.strip(),
+        date_start=req.date_start,
+        date_end=req.date_end,
+        visibility=req.visibility,
+    )
+    return event
+
+
+@app.get("/groups/{group_id}/events")
+def list_group_events(group_id: str, google_id: str = ""):
+    """List events for a group. Non-members see only public events."""
+    is_member = bool(google_id and db.get_group_member_role(group_id, google_id))
+    events = db.get_group_events(group_id, is_member=is_member)
+    return {"events": events}
+
+
+@app.delete("/groups/{group_id}/events/{event_id}")
+def delete_group_event(group_id: str, event_id: str, google_id: str):
+    """Delete a group event. Admins or the event creator can delete."""
+    event = db.get_group_event(event_id)
+    if not event or event["group_id"] != group_id:
+        raise HTTPException(status_code=404, detail="Event not found in this group")
+    role = db.get_group_member_role(group_id, google_id)
+    if role != "admin" and event["created_by"] != google_id:
+        raise HTTPException(status_code=403, detail="Only admins or the event creator can delete")
+    db.delete_group_event(event_id)
+    return {"ok": True}
+
+
+# ── Group Calendar Feed (iCal subscription) ──────────────
+
+def _to_ical_date(iso_str: str) -> str:
+    """Convert ISO 8601 date string to iCal DTSTART format (YYYYMMDDTHHMMSSZ)."""
+    # Handle various formats: 2026-04-15, 2026-04-15T19:00, 2026-04-15T19:00:00
+    clean = iso_str.replace("-", "").replace(":", "")
+    if "T" not in clean:
+        clean += "T000000"
+    # Ensure exactly 15 chars: YYYYMMDDTHHMMSS
+    clean = clean[:15]
+    if len(clean) < 15:
+        clean = clean.ljust(15, "0")
+    return clean + "Z"
+
+
+@app.get("/groups/feed/{feed_token}.ics")
+def group_calendar_feed(feed_token: str):
+    """
+    iCal subscription feed for a group's events.
+    No auth required — the feed_token acts as a bearer token.
+    Subscribe via webcal:// in Google Calendar or Apple Calendar.
+    """
+    group = db.get_group_by_feed_token(feed_token)
+    if not group:
+        raise HTTPException(status_code=404, detail="Calendar feed not found")
+
+    events = db.get_group_events(group["id"], is_member=True)
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Reroot//Group Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{group['name']}",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+    ]
+
+    for ev in events:
+        lines.append("BEGIN:VEVENT")
+        lines.append(f"UID:{ev['id']}@reroot.app")
+        lines.append(f"DTSTART:{_to_ical_date(ev['date_start'])}")
+        if ev.get("date_end"):
+            lines.append(f"DTEND:{_to_ical_date(ev['date_end'])}")
+        lines.append(f"SUMMARY:{ev['name']}")
+        if ev.get("venue"):
+            lines.append(f"LOCATION:{ev['venue']}")
+        if ev.get("description"):
+            lines.append(f"DESCRIPTION:{ev['description'][:500]}")
+        lines.append("END:VEVENT")
+
+    lines.append("END:VCALENDAR")
+
+    ical_content = "\r\n".join(lines) + "\r\n"
+    return PlainTextResponse(
+        content=ical_content,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="{group["name"]}.ics"'},
+    )
 
 
 # ── Web Push Notifications ──

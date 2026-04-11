@@ -408,6 +408,85 @@ export async function getFriends(googleId) {
  * Sends the full event catalog so the LLM always has events to recommend
  * (works even when the scraper DB is empty — offline-first pattern).
  */
+// ── Groups API ────────────────────────────────────────────
+
+export async function createGroup(googleId, { name, description = '', visibility = 'private' }) {
+  const res = await fetchWithTimeout(`${BASE_URL}/groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ google_id: googleId, name, description, visibility }),
+  })
+  if (!res.ok) throw new Error(`Create group failed: ${res.status}`)
+  return res.json()
+}
+
+export async function fetchGroups(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/groups?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) return (await res.json()).groups
+  } catch {
+    // Backend unavailable
+  }
+  return []
+}
+
+export async function fetchGroupDetail(groupId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}?google_id=${encodeURIComponent(googleId)}`
+  )
+  if (!res.ok) throw new Error(`Group detail failed: ${res.status}`)
+  return res.json()
+}
+
+export async function joinGroup(googleId, inviteCode) {
+  const res = await fetchWithTimeout(`${BASE_URL}/groups/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ google_id: googleId, invite_code: inviteCode }),
+  })
+  if (!res.ok) throw new Error(`Join group failed: ${res.status}`)
+  return res.json()
+}
+
+export async function leaveGroup(groupId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(googleId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Leave group failed: ${res.status}`)
+  return res.json()
+}
+
+export async function createGroupEvent(groupId, googleId, eventData) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, ...eventData }),
+    },
+  )
+  if (!res.ok) throw new Error(`Create group event failed: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteGroupEvent(groupId, eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events/${encodeURIComponent(eventId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Delete group event failed: ${res.status}`)
+  return res.json()
+}
+
+export function getGroupCalendarFeedUrl(feedToken) {
+  const base = BASE_URL || window.location.origin
+  return `${base}/groups/feed/${feedToken}.ics`
+}
+
+
 export async function askCompanion({ message, situation, goal, week, language, history = [], eventsContext = [] }) {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), 15_000) // 15s timeout for LLM

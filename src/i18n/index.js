@@ -491,6 +491,60 @@ export const T = {
     friends_count_one:       'amigo',
     friends_count_many:      'amigos',
 
+    // ── Groups ───────────────────────────────────────────────
+    nav_groups:             'Grupos',
+    groups_title:           'Meus Grupos',
+    groups_empty:           'Você ainda não faz parte de nenhum grupo.',
+    groups_empty_sub:       'Crie um grupo ou entre com um código de convite.',
+    groups_create:          'Criar Grupo',
+    groups_create_title:    'Novo Grupo',
+    groups_name:            'Nome do grupo',
+    groups_name_placeholder:'ex: Yoga às sextas, Trilheiros CWB...',
+    groups_description:     'Descrição (opcional)',
+    groups_desc_placeholder:'Sobre o que é esse grupo...',
+    groups_visibility:      'Visibilidade',
+    groups_public:          'Público',
+    groups_private:         'Privado',
+    groups_public_desc:     'Qualquer pessoa pode encontrar',
+    groups_private_desc:    'Só com código de convite',
+    groups_save:            'Criar',
+    groups_cancel:          'Cancelar',
+    groups_members:         'membros',
+    groups_next_event:      'Próximo evento',
+    groups_no_events:       'Sem eventos futuros',
+    groups_invite:          'Convidar',
+    groups_invite_title:    'Convidar para o grupo',
+    groups_invite_code:     'Código de convite',
+    groups_invite_copy:     'Copiar código',
+    groups_invite_copied:   'Copiado!',
+    groups_invite_whatsapp: 'Enviar via WhatsApp',
+    groups_calendar:        'Assinar Calendário',
+    groups_calendar_title:  'Assinar calendário do grupo',
+    groups_calendar_google: 'Google Calendar',
+    groups_calendar_ics:    'Copiar link iCal',
+    groups_calendar_copied: 'Link copiado!',
+    groups_add_event:       'Novo Evento',
+    groups_event_name:      'Nome do evento',
+    groups_event_venue:     'Local',
+    groups_event_date:      'Data e hora',
+    groups_event_end:       'Fim (opcional)',
+    groups_event_desc:      'Descrição (opcional)',
+    groups_event_visibility:'Visibilidade do evento',
+    groups_event_members:   'Só membros',
+    groups_event_public:    'Público',
+    groups_event_save:      'Criar evento',
+    groups_leave:           'Sair do grupo',
+    groups_delete:          'Excluir grupo',
+    groups_admin:           'Admin',
+    groups_join_title:      'Entrar no grupo',
+    groups_join_success:    'Você entrou no grupo!',
+    groups_join_already:    'Você já faz parte deste grupo.',
+    groups_join_not_found:  'Código de convite não encontrado.',
+    groups_join_btn:        'Entrar',
+    groups_join_code_label: 'Código de convite',
+    groups_join_code_placeholder: 'Cole o código aqui',
+    groups_back:            'Voltar',
+
     // ── Accessibility ─────────────────────────────────────
     accessibility_mode:        'Modo Acessível',
     accessibility_description: 'Textos maiores e botões mais fáceis de tocar',
@@ -511,6 +565,60 @@ T.en.connect_sent = 'Sent!'
 // EN overrides for accessibility
 T.en.accessibility_mode = 'Accessibility Mode'
 T.en.accessibility_description = 'Larger text and easier-to-tap buttons'
+
+// EN overrides for groups
+T.en.nav_groups = 'Groups'
+T.en.groups_title = 'My Groups'
+T.en.groups_empty = "You're not in any groups yet."
+T.en.groups_empty_sub = 'Create a group or join with an invite code.'
+T.en.groups_create = 'Create Group'
+T.en.groups_create_title = 'New Group'
+T.en.groups_name = 'Group name'
+T.en.groups_name_placeholder = 'e.g. Friday Yoga, Hiking CWB...'
+T.en.groups_description = 'Description (optional)'
+T.en.groups_desc_placeholder = 'What is this group about...'
+T.en.groups_visibility = 'Visibility'
+T.en.groups_public = 'Public'
+T.en.groups_private = 'Private'
+T.en.groups_public_desc = 'Anyone can find it'
+T.en.groups_private_desc = 'Invite code only'
+T.en.groups_save = 'Create'
+T.en.groups_cancel = 'Cancel'
+T.en.groups_members = 'members'
+T.en.groups_next_event = 'Next event'
+T.en.groups_no_events = 'No upcoming events'
+T.en.groups_invite = 'Invite'
+T.en.groups_invite_title = 'Invite to group'
+T.en.groups_invite_code = 'Invite code'
+T.en.groups_invite_copy = 'Copy code'
+T.en.groups_invite_copied = 'Copied!'
+T.en.groups_invite_whatsapp = 'Send via WhatsApp'
+T.en.groups_calendar = 'Subscribe to Calendar'
+T.en.groups_calendar_title = 'Subscribe to group calendar'
+T.en.groups_calendar_google = 'Google Calendar'
+T.en.groups_calendar_ics = 'Copy iCal link'
+T.en.groups_calendar_copied = 'Link copied!'
+T.en.groups_add_event = 'New Event'
+T.en.groups_event_name = 'Event name'
+T.en.groups_event_venue = 'Location'
+T.en.groups_event_date = 'Date and time'
+T.en.groups_event_end = 'End (optional)'
+T.en.groups_event_desc = 'Description (optional)'
+T.en.groups_event_visibility = 'Event visibility'
+T.en.groups_event_members = 'Members only'
+T.en.groups_event_public = 'Public'
+T.en.groups_event_save = 'Create event'
+T.en.groups_leave = 'Leave group'
+T.en.groups_delete = 'Delete group'
+T.en.groups_admin = 'Admin'
+T.en.groups_join_title = 'Join group'
+T.en.groups_join_success = 'You joined the group!'
+T.en.groups_join_already = "You're already in this group."
+T.en.groups_join_not_found = 'Invite code not found.'
+T.en.groups_join_btn = 'Join'
+T.en.groups_join_code_label = 'Invite code'
+T.en.groups_join_code_placeholder = 'Paste the code here'
+T.en.groups_back = 'Back'
 
 // EN overrides for privacy settings
 T.en.privacy_title = 'Privacy'

@@ -3,6 +3,7 @@ SQLite simples com TTL. Sem ORM — sqlite3 puro é suficiente aqui.
 Grain: um evento enriquecido por (source, external_id).
 """
 import hashlib
+import secrets
 import sqlite3
 import json
 from datetime import datetime, timezone
@@ -91,10 +92,6 @@ def init_db():
             )
         """)
         # One-shot migration: flip any legacy 'pending' friendships to 'accepted'.
-        # Context: an earlier bug created rows with status='pending' and there was
-        # never an accept endpoint, so friendships were invisible to both users.
-        # This normalises historical data on startup; it's a no-op once all rows
-        # are already accepted, so it's safe to ship permanently.
         conn.execute(
             "UPDATE friendships SET status = 'accepted' WHERE status = 'pending'"
         )
@@ -110,10 +107,45 @@ def init_db():
                 price_min       REAL NOT NULL DEFAULT 0.0,
                 price_max       REAL NOT NULL DEFAULT 0.0,
                 url             TEXT NOT NULL DEFAULT '',
-                submitted_by    TEXT,            -- google_id, optional
-                status          TEXT NOT NULL DEFAULT 'pending',    -- pending | enriched | rejected
-                enriched_event_id TEXT,          -- set after successful enrichment
+                submitted_by    TEXT,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                enriched_event_id TEXT,
                 created_at      TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id           TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                description  TEXT NOT NULL DEFAULT '',
+                visibility   TEXT NOT NULL DEFAULT 'private',
+                invite_code  TEXT UNIQUE NOT NULL,
+                feed_token   TEXT UNIQUE NOT NULL,
+                created_by   TEXT NOT NULL,
+                created_at   TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_members (
+                group_id    TEXT NOT NULL,
+                google_id   TEXT NOT NULL,
+                role        TEXT NOT NULL DEFAULT 'member',
+                joined_at   TEXT NOT NULL,
+                PRIMARY KEY (group_id, google_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_events (
+                id           TEXT PRIMARY KEY,
+                group_id     TEXT NOT NULL,
+                name         TEXT NOT NULL,
+                description  TEXT NOT NULL DEFAULT '',
+                venue        TEXT NOT NULL DEFAULT '',
+                date_start   TEXT NOT NULL,
+                date_end     TEXT,
+                created_by   TEXT NOT NULL,
+                visibility   TEXT NOT NULL DEFAULT 'members',
+                created_at   TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -598,3 +630,224 @@ def get_friends(google_id: str) -> list[dict]:
                 "status": row["status"],
             })
     return friends
+
+
+# ── Groups ────────────────────────────────────────────────
+
+def create_group(google_id: str, name: str, description: str = "", visibility: str = "private") -> dict:
+    """Create a group and add the creator as admin. Returns the new group dict."""
+    now = datetime.now(timezone.utc).isoformat()
+    group_id = f"grp_{secrets.token_hex(8)}"
+    invite_code = secrets.token_hex(4).upper()  # 8 chars, WhatsApp-friendly
+    feed_token = secrets.token_hex(16)  # 32 chars, unguessable for calendar feed
+
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO groups (id, name, description, visibility, invite_code, feed_token, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (group_id, name, description, visibility, invite_code, feed_token, google_id, now),
+        )
+        conn.execute(
+            "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'admin', ?)",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+
+    return {
+        "id": group_id, "name": name, "description": description,
+        "visibility": visibility, "invite_code": invite_code,
+        "feed_token": feed_token, "created_by": google_id, "created_at": now,
+    }
+
+
+def get_groups_for_user(google_id: str) -> list[dict]:
+    """Return all groups a user belongs to, with member count and role."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT g.*, gm.role,
+                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
+               FROM groups g
+               JOIN group_members gm ON g.id = gm.group_id
+               WHERE gm.google_id = ?
+               ORDER BY g.created_at DESC""",
+            (google_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_group(group_id: str) -> Optional[dict]:
+    """Return a single group by ID, or None."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM groups WHERE id = ?", (group_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_group_by_invite_code(invite_code: str) -> Optional[dict]:
+    """Look up a group by its invite code (case-insensitive)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM groups WHERE invite_code = ?", (invite_code.upper(),)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_group_by_feed_token(feed_token: str) -> Optional[dict]:
+    """Look up a group by its calendar feed token."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM groups WHERE feed_token = ?", (feed_token,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_group(group_id: str, name: Optional[str] = None, description: Optional[str] = None, visibility: Optional[str] = None) -> bool:
+    """Update group fields. Returns True if a row was modified."""
+    updates = []
+    params = []
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if visibility is not None:
+        updates.append("visibility = ?")
+        params.append(visibility)
+    if not updates:
+        return False
+    params.append(group_id)
+    with get_conn() as conn:
+        cur = conn.execute(f"UPDATE groups SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def delete_group(group_id: str) -> None:
+    """Delete a group and all its members and events."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM group_events WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+        conn.commit()
+
+
+def get_group_member_role(group_id: str, google_id: str) -> Optional[str]:
+    """Return the user's role in the group ('admin' or 'member'), or None if not a member."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT role FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+    return row["role"] if row else None
+
+
+def join_group(group_id: str, google_id: str) -> bool:
+    """Add a user to a group as a member. Returns False if already a member."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+        if existing:
+            return False
+        conn.execute(
+            "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def leave_group(group_id: str, google_id: str) -> bool:
+    """Remove a user from a group. Returns True if removed."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_group_members(group_id: str) -> list[dict]:
+    """Return all members of a group with profile info from user_states."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT google_id, role, joined_at FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
+            (group_id,),
+        ).fetchall()
+
+    members = []
+    with get_conn() as conn:
+        for row in rows:
+            gid = row["google_id"]
+            state_row = conn.execute(
+                "SELECT state_json FROM user_states WHERE google_id = ?", (gid,),
+            ).fetchone()
+            name = gid
+            picture = ""
+            if state_row:
+                try:
+                    state = json.loads(state_row["state_json"])
+                    name = state.get("userName") or gid
+                    picture = (state.get("googleUser") or {}).get("picture", "")
+                except Exception:
+                    pass
+            members.append({
+                "google_id": gid, "name": name, "picture": picture,
+                "role": row["role"], "joined_at": row["joined_at"],
+            })
+    return members
+
+
+# ── Group Events ──────────────────────────────────────────
+
+def create_group_event(
+    group_id: str, google_id: str, name: str, description: str = "",
+    venue: str = "", date_start: str = "", date_end: Optional[str] = None,
+    visibility: str = "members",
+) -> dict:
+    """Create an event within a group. Returns the new event dict."""
+    now = datetime.now(timezone.utc).isoformat()
+    event_id = f"grp_ev_{secrets.token_hex(6)}"
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO group_events (id, group_id, name, description, venue, date_start, date_end, created_by, visibility, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, group_id, name, description, venue, date_start, date_end, google_id, visibility, now),
+        )
+        conn.commit()
+    return {
+        "id": event_id, "group_id": group_id, "name": name,
+        "description": description, "venue": venue,
+        "date_start": date_start, "date_end": date_end,
+        "created_by": google_id, "visibility": visibility, "created_at": now,
+    }
+
+
+def get_group_events(group_id: str, is_member: bool = True) -> list[dict]:
+    """Return events for a group. Non-members only see public events."""
+    query = "SELECT * FROM group_events WHERE group_id = ?"
+    params = [group_id]
+    if not is_member:
+        query += " AND visibility = 'public'"
+    query += " ORDER BY date_start ASC"
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_group_event(event_id: str) -> Optional[dict]:
+    """Return a single group event by ID."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM group_events WHERE id = ?", (event_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def delete_group_event(event_id: str) -> bool:
+    """Delete a group event. Returns True if deleted."""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM group_events WHERE id = ?", (event_id,))
+        conn.commit()
+        return cur.rowcount > 0
