@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeCurrentWeek, getChapter, getProfile } from '../context/AppContext'
 import { useT } from '../i18n'
 import { EVENTS } from '../data/events'
+import { ACTIVITIES } from '../data/activities'
 import { scheduleEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
-import { fetchFriendsFeed, fetchGroups } from '../services/api'
-import WeekCalendar from '../components/WeekCalendar'
+import { usePushNotifications } from '../lib/usePushNotifications'
+import { fetchFriendsFeed } from '../services/api'
 
 function getGreetingKey() {
   const h = new Date().getHours()
@@ -16,79 +17,86 @@ function getGreetingKey() {
   return 'greeting_evening'
 }
 
+function daysUntilMonday() {
+  const day = new Date().getDay() // 0=Sun, 1=Mon
+  if (day === 1) return 0
+  return (8 - day) % 7
+}
+
+// Simple confetti burst using framer-motion
+const CONFETTI_PIECES = ['🌿', '✨', '🌱', '⭐', '💚']
+function ConfettiBurst() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', borderRadius: 24 }}>
+      {CONFETTI_PIECES.map((emoji, i) => (
+        <motion.div key={i}
+          initial={{ opacity: 1, y: 0, x: 0, scale: 0.5 }}
+          animate={{
+            opacity: 0,
+            y: -80 - Math.random() * 40,
+            x: (i - 2) * 30,
+            scale: 1.2,
+          }}
+          transition={{ duration: 0.9, delay: i * 0.06, ease: 'easeOut' }}
+          style={{
+            position: 'absolute',
+            bottom: 20, left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: 20,
+          }}
+        >
+          {emoji}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
 export default function Home() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
 
-  const [notifToast, setNotifToast] = useState(null)
-  const [friendsFeed, setFriendsFeed] = useState([])
-  const [groupEventsPending, setGroupEventsPending] = useState([])
-  const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
-  const [journeyOpen, setJourneyOpen] = useState(false)
+  const [showConfetti, setShowConfetti] = useState(false)
+  const [showReflectModal, setShowReflectModal] = useState(false)
+  const [reflectWord, setReflectWord] = useState('')
+  const [checkInDone, setCheckInDone] = useState(false)
+  const [notifToast, setNotifToast] = useState(null) // event name string
+  const [shareCopied, setShareCopied] = useState(false)
+  const [pushSuccess, setPushSuccess] = useState(false)
+  const { subscribe: subscribePush, dismiss: dismissPush, loading: pushLoading } = usePushNotifications()
 
+  // Friends feed — fetched on mount when user is logged in
+  const [friendsFeed, setFriendsFeed] = useState([])
   useEffect(() => {
     const googleId = state.googleUser?.id
     if (!googleId) return
     fetchFriendsFeed(googleId).then(events => {
       setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
     })
-    // Fetch group events — split into pending vs already RSVPd
-    fetchGroups(googleId).then(groups => {
-      const pending = []
-      const accepted = []
-      for (const g of groups) {
-        if (g.next_event) {
-          const ev = { ...g.next_event, group_name: g.name, group_id: g.id }
-          if (state.rsvps[g.next_event.id]) {
-            accepted.push(ev)
-          } else {
-            pending.push(ev)
-          }
-        }
-      }
-      setGroupEventsPending(pending)
-      setGroupEventsAccepted(accepted)
-    })
   }, [state.googleUser?.id])
 
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
-  const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
-
-  // Upcoming RSVPd events (future only)
-  const now = Date.now()
-  const upcomingRsvps = EVENTS.filter(ev =>
-    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
-  ).slice(0, 3)
-
-  // Suggested events (not RSVPd, low pressure first)
+  const progressPct = Math.round((currentWeek / state.totalWeeks) * 100)
   const profile = getProfile(state.userSituation)
-  const priorityCats = profile?.priorityCategories ?? []
-  const suggestedEvents = EVENTS
-    .filter(ev => !state.rsvps[ev.id])
-    .sort((a, b) => {
-      const ai = priorityCats.indexOf(a.category)
-      const bi = priorityCats.indexOf(b.category)
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-    })
-    .slice(0, 3)
+  const profileCopy = t.profiles?.[state.userSituation]
+  const prescriptionCount = profile?.prescriptionIntensity ?? 1
 
-  // Post-event reconnect
-  const reconnectEvent = EVENTS.find(ev =>
-    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() <= now
-  )
+  // First event pick: lowest-pressure event not yet RSVPd
+  const dayZeroEvent = EVENTS.find(e => e.isLowPressure && !state.rsvps[e.id]) ?? EVENTS[0]
 
-  async function handleQuickRsvp(ev) {
-    dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
-    const ok = await scheduleEventReminder(ev)
+  async function handleDayZeroSave() {
+    dispatch({ type: 'SAVE_DAY_ZERO', payload: { eventId: dayZeroEvent.id } })
+    setShowConfetti(true)
+    setTimeout(() => setShowConfetti(false), 1200)
+    const ok = await scheduleEventReminder(dayZeroEvent)
     if (ok) {
-      setNotifToast(ev.name)
+      setNotifToast(dayZeroEvent.name)
       setTimeout(() => setNotifToast(null), 3000)
     }
   }
 
-<<<<<<< Updated upstream
   function saveReflection() {
     if (!reflectWord.trim()) return
     dispatch({ type: 'SAVE_REFLECTION', payload: { word: reflectWord.trim() } })
@@ -156,10 +164,171 @@ export default function Home() {
     state: w < currentWeek ? 'done' : w === currentWeek ? 'current' : 'future',
   }))
 
-=======
->>>>>>> Stashed changes
   return (
     <div>
+      {/* Month-end win card */}
+      <AnimatePresence>
+        {showMonthEnd && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}
+            style={{
+              margin: '10px 16px 0',
+              background: 'linear-gradient(135deg, #C4724A 0%, #E8956D 100%)',
+              borderRadius: 20, padding: '16px 18px',
+              position: 'relative', overflow: 'hidden',
+            }}
+          >
+            <div style={{
+              position: 'absolute', right: -16, top: -16,
+              width: 80, height: 80, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.1)', pointerEvents: 'none',
+            }}/>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>
+                  {t.home_month_sub}
+                </div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: 'white', marginBottom: 8 }}>
+                  {t.home_month_title} 🌿
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {[
+                    { val: rsvpCount, lbl: t.home_stat_rsvpd },
+                    { val: state.eventsAttended, lbl: t.home_stat_attended },
+                    { val: state.reflections.length, lbl: 'Reflexões' },
+                  ].map(({ val, lbl }) => (
+                    <div key={lbl} style={{ color: 'white' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700 }}>{val}</div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>{lbl}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', marginLeft: 8 }}>
+                <button
+                  onClick={() => dispatch({ type: 'DISMISS_MONTH_END' })}
+                  style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {t.home_month_dismiss}
+                </button>
+                <button
+                  onClick={handleShare}
+                  style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+                >
+                  {shareCopied ? 'Copiado!' : `${t.home_month_share} →`}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Weekly check-in card */}
+      <AnimatePresence>
+        {showWeeklyCheckIn && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.3 }}
+            style={{ margin: '10px 16px 0', background: 'white', borderRadius: 20, overflow: 'hidden', boxShadow: 'var(--shadow)' }}
+          >
+            <div style={{ background: 'linear-gradient(135deg, #2C3A2D 0%, #1e2d2e 100%)', padding: '14px 16px 12px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(158,201,162,0.8)', marginBottom: 4 }}>
+                {t.home_checkin_label}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>
+                {t.home_checkin_q} {prevWeek}?
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                {t.home_checkin_sub}
+              </div>
+            </div>
+            <div style={{ padding: '14px 16px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                {(t.home_checkin_emojis ?? ['😰','😐','🙂','😊','🎉']).map((emoji, i) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      dispatch({ type: 'SAVE_WEEKLY_CHECKIN', payload: { week: prevWeek, emoji } })
+                      setCheckInDone(true)
+                    }}
+                    style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
+                    }}
+                  >
+                    <span style={{ fontSize: 28 }}>{emoji}</span>
+                    <span style={{ fontSize: 9, color: 'var(--charcoal-light)', fontWeight: 600 }}>
+                      {(t.home_checkin_emo_lbl ?? ['Difícil','Ok','Bem','Ótimo','Incrível!'])[i]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Push notification opt-in card */}
+      <AnimatePresence>
+        {showPushPrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3 }}
+            style={{
+              margin: '10px 16px 0', background: 'white', borderRadius: 20,
+              boxShadow: 'var(--shadow)', padding: '14px 16px',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}
+          >
+            <span style={{ fontSize: 28, flexShrink: 0 }}>🔔</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.3 }}>
+                Receber lembrete semanal?
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+                Uma notificação toda semana para o check-in.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button
+                onClick={dismissPush}
+                style={{ fontSize: 12, color: 'var(--charcoal-mid)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 8px' }}
+              >
+                Agora não
+              </button>
+              <button
+                onClick={async () => { const ok = await subscribePush(); if (ok) setPushSuccess(true) }}
+                disabled={pushLoading}
+                style={{
+                  fontSize: 13, fontWeight: 700, color: 'white',
+                  background: 'linear-gradient(135deg, #7A9E7E 0%, #4e7a3a 100%)',
+                  border: 'none', borderRadius: 10, padding: '8px 14px', cursor: 'pointer',
+                  opacity: pushLoading ? 0.7 : 1,
+                }}
+              >
+                {pushLoading ? '…' : 'Ativar 🔔'}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pushSuccess && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }} transition={{ duration: 0.3 }}
+            style={{
+              margin: '10px 16px 0', background: '#E4EFE5', borderRadius: 16,
+              padding: '10px 14px', fontSize: 13, color: '#2C3A2D', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <span>✅</span> Lembretes semanais ativados!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Greeting */}
       <div style={{ padding: '14px 20px 4px' }}>
         <div style={{ fontSize: 13, color: 'var(--charcoal-mid)' }}>{t[getGreetingKey()]},</div>
@@ -231,88 +400,293 @@ export default function Home() {
             </div>
           ))}
         </div>
-=======
-      {/* Quick stats bar */}
-      <div style={{
-        display: 'flex', gap: 8, margin: '8px 16px 14px', justifyContent: 'space-between',
-      }}>
-        {[
-          { val: rsvpCount, lbl: t.home_stat_rsvpd, color: 'var(--sage)' },
-          { val: state.eventsAttended ?? 0, lbl: t.home_stat_attended, color: 'var(--terra)' },
-          { val: friendsFeed.length, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9' },
-        ].map(({ val, lbl, color }) => (
-          <div key={lbl} style={{
-            flex: 1, background: 'white', borderRadius: 14, padding: '12px 10px',
-            textAlign: 'center', border: '1px solid var(--border)',
-          }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div>
-            <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', marginTop: 2 }}>{lbl}</div>
-          </div>
-        ))}
->>>>>>> Stashed changes
       </div>
 
-      {/* Week Calendar */}
-      <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
-      <WeekCalendar
-        rsvpEvents={[
-          ...EVENTS.filter(ev => state.rsvps[ev.id] && ev.dateStart),
-          ...groupEventsAccepted.map(ev => ({
-            ...ev, dateStart: ev.date_start, icon: '👥',
-            headerBg: 'linear-gradient(135deg, var(--sage-pale), #e8f0e9)',
-            venue: ev.group_name,
-          })),
-        ]}
-        groupEvents={groupEventsPending}
-        language={state.language || 'pt'}
-        onEventTap={(ev, type) => {
-          if (type === 'group' && ev.group_id) navigate(`/groups/${ev.group_id}`)
-          else navigate('/events', { state: { openEventId: ev.id } })
-        }}
-        onGroupRsvp={(ev) => {
-          dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
-          // Move from pending to accepted
-          setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
-          setGroupEventsAccepted(prev => [...prev, ev])
-        }}
-      />
-
-
-
-      {/* Post-event reconnect card — surfaces PostEventAttendees to users who don't tap back into past events */}
-=======
-      {/* Post-event reconnect nudge */}
->>>>>>> Stashed changes
-      {reconnectEvent && (
-        <div
-          style={{
-            margin: '0 16px 12px', background: 'var(--sage-pale)', borderRadius: 16,
-            padding: '14px 16px', border: '1px solid rgba(122,158,126,0.25)', cursor: 'pointer',
-          }}
-          onClick={() => navigate('/events', { state: { openEventId: reconnectEvent.id } })}
-        >
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 4 }}>
-            🤝 {t.home_reconnect_label ?? 'Você foi ao evento?'}
+      {/* Friends feed — "Amigos também vão" */}
+      {/* Only shown when user has NOT disabled "show in friend suggestions" privacy toggle */}
+      {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
+        <div style={{ margin: '0 16px 12px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+            Amigos também vão
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
-            {reconnectEvent.name}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
-            {t.home_reconnect_cta ?? 'Veja quem esteve lá e conecte-se →'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {friendsFeed.map(ev => (
+              <div
+                key={ev.event_id}
+                style={{
+                  background: 'white',
+                  borderRadius: 14,
+                  border: '1px solid var(--border)',
+                  padding: '10px 13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {ev.event_name}
+                  </div>
+                  {ev.event_venue && (
+                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+                      {ev.event_venue}
+                    </div>
+                  )}
+                </div>
+                {/* Avatar circles */}
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  {ev.friends_going.slice(0, 4).map((friend, i) => (
+                    <img
+                      key={friend.name + i}
+                      src={friend.picture}
+                      alt={friend.name}
+                      title={friend.name}
+                      style={{
+                        width: 26, height: 26, borderRadius: '50%',
+                        border: '2px solid white',
+                        marginLeft: i === 0 ? 0 : -8,
+                        objectFit: 'cover',
+                      }}
+                      onError={e => { e.currentTarget.style.display = 'none' }}
+                    />
+                  ))}
+                  {ev.friends_going.length > 4 && (
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      border: '2px solid white',
+                      background: 'var(--sage-light)',
+                      marginLeft: -8,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700, color: 'white',
+                    }}>
+                      +{ev.friends_going.length - 4}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Upcoming RSVPs */}
-      {upcomingRsvps.length > 0 && (
-        <>
-          <div className="section-label">{t.home_upcoming_label ?? 'Seus próximos eventos'}</div>
-          <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {upcomingRsvps.map(ev => (
-              <div key={ev.id} onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
+
+
+      {/* Post-event reconnect card — surfaces PostEventAttendees to users who don't tap back into past events */}
+      {reconnectEvent && (
+        <div
+          style={{
+            margin: '0 16px 12px',
+            background: 'var(--sage-pale)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            border: '1px solid rgba(122,158,126,0.25)',
+            cursor: 'pointer',
+          }}
+          onClick={() => navigate('/events', { state: { openEventId: reconnectEvent.id } })}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 4 }}>
+            {state.language === 'pt' ? '🤝 Você foi ao evento?' : '🤝 Did you attend?'}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+            {reconnectEvent.name}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+            {state.language === 'pt'
+              ? 'Veja quem esteve lá e conecte-se com quem você conheceu. →'
+              : 'See who was there and connect with people you met. →'}
+          </div>
+        </div>
+      )}
+
+      {/* Day-zero win mechanic */}
+      {!state.dayZeroSaved && (
+        <div style={{ margin: '0 16px 12px', position: 'relative' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e2d2e 0%, #2C3A2D 100%)',
+            borderRadius: 24, padding: 20, overflow: 'hidden', position: 'relative',
+          }}>
+            {showConfetti && <ConfettiBurst />}
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: 'rgba(158,201,162,0.8)', marginBottom: 6 }}>
+              {t.home_day_zero_title}
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 14, lineHeight: 1.4 }}>
+              {t.home_day_zero_sub}
+            </div>
+            <div style={{
+              background: 'rgba(255,255,255,0.08)', borderRadius: 14,
+              padding: '12px 14px', marginBottom: 14,
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                background: dayZeroEvent.headerBg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+              }}>{dayZeroEvent.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>{dayZeroEvent.name}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                  {dayZeroEvent.date} · {dayZeroEvent.time}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleDayZeroSave}
+              style={{
+                width: '100%', padding: '13px', borderRadius: 14, fontSize: 14,
+                fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: '#9EC9A2', color: '#1e2d2e',
+                transition: 'all 0.15s',
+              }}
+            >
+              {t.home_day_zero_save}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Day-zero saved confirmation */}
+      {state.dayZeroSaved && (
+        <div style={{ margin: '0 16px 4px' }}>
+          <div style={{
+            background: 'var(--sage-pale)', borderRadius: 14, padding: '10px 16px',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ color: 'var(--sage)', fontSize: 18 }}>✓</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--sage)' }}>
+                {t.home_day_zero_saved}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
+                {t.home_day_zero_going} — {EVENTS.find(e => e.id === state.dayZeroEventId)?.name}
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <AddToCalendar event={EVENTS.find(e => e.id === state.dayZeroEventId)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Event-day banner */}
+      {thisWeekRsvp && (
+        <div style={{ margin: '8px 16px 0' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #D4A256 0%, #E8B86D 100%)',
+            borderRadius: 16, padding: '12px 16px',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 26, flexShrink: 0 }}>{thisWeekRsvp.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(255,255,255,0.75)', marginBottom: 2 }}>
+                {t.home_event_today_label}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'white', lineHeight: 1.3 }}>
+                {thisWeekRsvp.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
+                {thisWeekRsvp.date} · {thisWeekRsvp.time}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' }}>
+              <button
+                onClick={() => navigate('/events')}
+                style={{
+                  background: 'rgba(255,255,255,0.25)', border: 'none', borderRadius: 10,
+                  padding: '6px 10px', fontSize: 11, fontWeight: 700, color: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                {t.home_event_today_view}
+              </button>
+              <AddToCalendar event={thisWeekRsvp} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reflection nudge */}
+      {showReflectNudge && (
+        <div style={{ margin: '8px 16px 0' }}>
+          <div style={{
+            background: 'white', borderRadius: 16, padding: '14px 16px',
+            boxShadow: 'var(--shadow-sm)',
+            display: 'flex', alignItems: 'center', gap: 12,
+            borderLeft: '3px solid var(--terra)',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 2 }}>
+                {t.home_reflect_title}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
+                {t.home_reflect_sub}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowReflectModal(true)}
+              style={{
+                padding: '8px 14px', borderRadius: 10, fontSize: 12,
+                fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: 'var(--terra)', color: 'white', flexShrink: 0,
+              }}
+            >
+              {t.home_reflect_btn}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Prescription */}
+      <div className="section-label">{t.home_prescription_label}</div>
+      <div style={{ margin: '0 16px 12px' }}>
+        {/* Prescription pad header */}
+        <div style={{
+          background: 'white', borderRadius: '16px 16px 0 0',
+          padding: '10px 16px 8px',
+          borderBottom: '1px dashed var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>💊</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--charcoal)' }}>
+                Rx · {t.home_prescription_protocol} {currentWeek}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
+                {t.home_prescription_sub}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            {daysLeft === 0 ? (
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--sage)', background: 'var(--sage-pale)', padding: '3px 8px', borderRadius: 8 }}>
+                {t.home_rx_fresh}
+              </div>
+            ) : (
+              <div style={{ fontSize: 10, color: 'var(--charcoal-light)', lineHeight: 1.4 }}>
+                {t.home_rx_refreshes}<br/>
+                <strong style={{ color: 'var(--charcoal)' }}>{daysLeft} {t.home_rx_days}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--terra-pale)', borderRadius: '0 0 16px 16px', padding: '10px 12px 12px' }}>
+          {(() => {
+            const priorityCats = profile?.priorityCategories ?? []
+            const sorted = [...EVENTS].sort((a, b) => {
+              const ai = priorityCats.indexOf(a.category)
+              const bi = priorityCats.indexOf(b.category)
+              return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+            })
+            return sorted.slice(0, prescriptionCount)
+          })().map(ev => {
+            const rsvped = !!state.rsvps[ev.id]
+            const going = ev.cohortGoing.length + (rsvped ? 1 : 0)
+            return (
+              <div key={ev.id} onClick={() => navigate('/events')} style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 background: 'white', borderRadius: 14, padding: '11px 14px',
-                cursor: 'pointer', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
+                marginBottom: 8, cursor: 'pointer', boxShadow: 'var(--shadow-sm)',
               }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: 12,
@@ -323,53 +697,81 @@ export default function Home() {
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
                   <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
                 </div>
-                <AddToCalendar event={ev} />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Friends activity feed */}
-      {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
-        <>
-          <div className="section-label">{t.home_friends_going_label ?? 'Amigos também vão'}</div>
-          <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {friendsFeed.slice(0, 3).map(ev => (
-              <div key={ev.event_id} style={{
-                background: 'white', borderRadius: 14, border: '1px solid var(--border)',
-                padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 12,
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {ev.event_name}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {rsvped && <AddToCalendar event={ev} />}
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+                    background: 'var(--sage-pale)', padding: '3px 8px', borderRadius: 8,
+                  }}>
+                    {going === 0 ? t.home_be_first : `${going} ${t.home_going}`}
                   </div>
-                  {ev.event_venue && (
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.event_venue}</div>
-                  )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  {ev.friends_going.slice(0, 3).map((friend, i) => (
-                    <img key={friend.name + i} src={friend.picture} alt={friend.name}
-                      referrerPolicy="no-referrer"
-                      style={{
-                        width: 26, height: 26, borderRadius: '50%', border: '2px solid white',
-                        marginLeft: i === 0 ? 0 : -8, objectFit: 'cover',
-                      }}
-                      onError={e => { e.currentTarget.style.display = 'none' }}
-                    />
-                  ))}
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
-                    {ev.friends_going.length} {t.friends_feed_going ?? 'vão'}
-                  </span>
-                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Cohort activity */}
+      <div className="section-label">{t.home_cohort_label}</div>
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="avatar-stack">
+            {EVENTS[0].cohortGoing.slice(0, 3).map(p => (
+              <div key={p.name} className="avatar" style={{ background: p.color, width: 30, height: 30, fontSize: 11 }}>
+                {p.initial}
               </div>
             ))}
           </div>
-        </>
-      )}
+          <div style={{ flex: 1, fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4 }}>
+            <strong style={{ color: 'var(--charcoal)' }}>
+              {EVENTS[0].cohortGoing.length + (state.rsvps[EVENTS[0].id] ? 1 : 0)} {t.home_cohort_going}
+            </strong>{' '}
+            {EVENTS[0].name}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {state.rsvps[EVENTS[0].id] && <AddToCalendar event={EVENTS[0]} />}
+            <button
+              className="btn btn--primary"
+              style={{ width: 'auto', padding: '6px 14px', fontSize: 11, borderRadius: 10 }}
+              onClick={() => dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: EVENTS[0].id } })}
+            >
+              {state.rsvps[EVENTS[0].id] ? t.home_going : t.home_rsvp}
+            </button>
+          </div>
+        </div>
+        <div className="divider"/>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="avatar" style={{ background: '#5B8DD9', width: 30, height: 30, fontSize: 11 }}>M</div>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4 }}>
+            <strong style={{ color: 'var(--charcoal)' }}>Marcos</strong>{' '}{t.home_cohort_completed}
+          </div>
+        </div>
+      </div>
 
-<<<<<<< Updated upstream
+      {/* Framework teaser */}
+      <div className="section-label">{t.home_framework_label}</div>
+      <div style={{ margin: '0 16px 16px', cursor: 'pointer' }} className="card card--sage" onClick={() => navigate('/journey')}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1,
+            background: 'white', color: 'var(--sage)', padding: '3px 8px', borderRadius: 6,
+          }}>
+            {t.home_framework_badge} {currentWeek}
+          </span>
+          <span style={{ fontSize: 18, color: 'var(--sage)' }}>→</span>
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+          The Re-entry Ritual
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+          {t.home_framework_desc}
+        </div>
+        <div style={{ marginTop: 12, fontSize: 11, color: 'var(--sage)', fontWeight: 600 }}>
+          {t.home_framework_verified}
+        </div>
+      </div>
+
       {/* Activity ideas section */}
       <div className="section-label">{t.home_activities_label}</div>
       <div style={{ fontSize: 11, color: 'var(--charcoal-light)', margin: '-6px 16px 10px', lineHeight: 1.4 }}>
@@ -409,161 +811,28 @@ export default function Home() {
                 padding: '9px 12px',
                 borderLeft: '3px solid var(--sage)',
               }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18, background: ev.headerBg, flexShrink: 0,
-                }}>{ev.icon}</div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 3 }}>
+                  {t.home_activity_reroot}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--charcoal)', lineHeight: 1.5 }}>
+                  {act.rerootAngle}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {going > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--sage)' }}>
-                    {going} {t.home_going ?? 'vão'}
-                  </span>
-                )}
-                <button
-                  onClick={() => handleQuickRsvp(ev)}
-                  style={{
-                    padding: '6px 12px', borderRadius: 10, fontSize: 11,
-                    fontWeight: 700, cursor: 'pointer', border: 'none',
-                    background: 'var(--sage)', color: 'white',
-                  }}
-                >
-                  {t.home_rsvp ?? 'Vou!'}
-                </button>
->>>>>>> Stashed changes
-              </div>
-            </div>
-          )
-        })}
-        <button
-          onClick={() => navigate('/events')}
-          style={{
-            width: '100%', padding: '12px', borderRadius: 14, fontSize: 13,
-            fontWeight: 600, cursor: 'pointer', border: '1.5px solid var(--border)',
-            background: 'none', color: 'var(--charcoal-mid)',
-          }}
-        >
-          {t.home_see_all_events ?? 'Ver todos os eventos →'}
-        </button>
-      </div>
-
-      {/* Community highlights */}
-      <div className="section-label">{t.home_community_label ?? 'Comunidade'}</div>
-      <div style={{ margin: '0 16px 12px' }}>
-        <div
-          onClick={() => navigate('/community')}
-          style={{
-            background: 'linear-gradient(135deg, #C4724A 0%, #E08D5E 100%)',
-            borderRadius: 16, padding: '16px 18px', cursor: 'pointer',
-            color: 'white',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                {t.home_community_cta ?? 'Amigos & Grupos'}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
-                {t.home_community_sub ?? 'Conecte-se com pessoas e entre em grupos'}
-              </div>
-            </div>
-            <span style={{ fontSize: 24 }}>👥</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Your Journey — collapsed, secondary */}
-      <div style={{ margin: '0 16px 16px' }}>
-        <div
-          onClick={() => setJourneyOpen(o => !o)}
-          style={{
-            background: 'white', borderRadius: journeyOpen ? '16px 16px 0 0' : 16,
-            padding: '14px 16px', cursor: 'pointer',
-            border: '1px solid var(--border)',
-            borderBottom: journeyOpen ? '1px dashed var(--border)' : '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 18 }}>🌿</span>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
-                {t.home_journey_card_title ?? 'Sua Jornada'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
-                {t.home_week ?? 'Semana'} {currentWeek} · {chapter.name}
-              </div>
-            </div>
-          </div>
-          <motion.span
-            animate={{ rotate: journeyOpen ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}
-          >
-            ▼
-          </motion.span>
-        </div>
-
-        <AnimatePresence>
-          {journeyOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div style={{
-                background: 'white', borderRadius: '0 0 16px 16px',
-                padding: '14px 16px', border: '1px solid var(--border)', borderTop: 'none',
-              }}>
-                {/* Progress bar */}
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ height: 6, borderRadius: 3, background: 'var(--cream)', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${Math.round((currentWeek / (state.totalWeeks || 12)) * 100)}%`,
-                      borderRadius: 3, background: chapter.color, transition: 'width 0.8s ease',
-                    }}/>
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', marginTop: 4 }}>
-                    {t.home_week ?? 'Semana'} {currentWeek} {t.home_of ?? 'de'} {state.totalWeeks || 12}
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                  {[
-                    { val: rsvpCount, lbl: t.home_stat_rsvpd },
-                    { val: state.eventsAttended ?? 0, lbl: t.home_stat_attended },
-                    { val: state.reflections?.length ?? 0, lbl: 'Reflexões' },
-                  ].map(({ val, lbl }) => (
-                    <div key={lbl}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--charcoal)' }}>{val}</div>
-                      <div style={{ fontSize: 10, color: 'var(--charcoal-mid)' }}>{lbl}</div>
-                    </div>
+              {act.tags && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  {act.tags.map(tag => (
+                    <span key={tag} style={{
+                      fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6,
+                      background: 'var(--cream)', color: 'var(--charcoal-mid)',
+                      border: '1px solid var(--border)',
+                    }}>{tag}</span>
                   ))}
                 </div>
-
-                <button
-                  onClick={() => navigate('/journey')}
-                  style={{
-                    width: '100%', padding: '11px', borderRadius: 12, fontSize: 13,
-                    fontWeight: 600, cursor: 'pointer', border: 'none',
-                    background: 'var(--sage)', color: 'white',
-                  }}
-                >
-                  {t.home_framework_open ?? 'Abrir Jornada →'}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
 
       {/* Notification toast */}
       <AnimatePresence>
@@ -581,9 +850,72 @@ export default function Home() {
           >
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed ?? 'Lembrete agendado'}</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reflection modal */}
+      <AnimatePresence>
+        {showReflectModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+              display: 'flex', alignItems: 'flex-end', zIndex: 200,
+            }}
+            onClick={e => { if (e.target === e.currentTarget) setShowReflectModal(false) }}
+          >
+            <motion.div
+              initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
+              transition={{ type: 'spring', damping: 25 }}
+              style={{
+                background: 'white', borderRadius: '24px 24px 0 0',
+                padding: '24px 20px 40px', width: '100%',
+              }}
+            >
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 20px' }}/>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 16 }}>
+                {t.home_reflect_modal_title}
+              </div>
+              <input
+                autoFocus
+                value={reflectWord}
+                onChange={e => setReflectWord(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveReflection()}
+                placeholder={t.home_reflect_placeholder}
+                maxLength={40}
+                style={{
+                  width: '100%', padding: '13px 16px', borderRadius: 14,
+                  border: '1.5px solid var(--border)', fontSize: 15,
+                  color: 'var(--charcoal)', outline: 'none',
+                  background: 'var(--cream)',
+                  marginBottom: 14,
+                }}
+              />
+              <button
+                onClick={saveReflection}
+                disabled={!reflectWord.trim()}
+                style={{
+                  width: '100%', padding: '14px', borderRadius: 14, fontSize: 14,
+                  fontWeight: 700, cursor: reflectWord.trim() ? 'pointer' : 'default',
+                  border: 'none', marginBottom: 10,
+                  background: reflectWord.trim() ? 'var(--charcoal)' : 'var(--border)',
+                  color: reflectWord.trim() ? 'white' : 'var(--charcoal-light)',
+                  opacity: reflectWord.trim() ? 1 : 0.6,
+                }}
+              >
+                {t.home_reflect_save}
+              </button>
+              <button
+                onClick={() => setShowReflectModal(false)}
+                style={{ width: '100%', padding: '10px', fontSize: 13, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                {t.home_reflect_cancel}
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
