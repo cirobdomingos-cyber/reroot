@@ -69,7 +69,7 @@ function Avatar({ name, picture, size = 42 }) {
   )
 }
 
-export default function Friends() {
+export default function Friends({ embedded = false }) {
   const { state } = useApp()
   const t = useT()
   const googleId = state.googleUser?.id
@@ -133,10 +133,12 @@ export default function Friends() {
   if (!googleId) {
     return (
       <div>
-        <div className="screen-header">
-          <div className="screen-header__title">{t.friends_title}</div>
-          <div className="screen-header__sub">{t.friends_sub}</div>
-        </div>
+        {!embedded && (
+          <div className="screen-header">
+            <div className="screen-header__title">{t.friends_title}</div>
+            <div className="screen-header__sub">{t.friends_sub}</div>
+          </div>
+        )}
         <LoginGate t={t} />
       </div>
     )
@@ -148,12 +150,14 @@ export default function Friends() {
   return (
     <div>
       {/* Header */}
-      <div className="screen-header">
-        <div className="screen-header__title">{t.friends_title}</div>
-        <div className="screen-header__sub">
-          {friendCount} {countLabel} · {t.friends_sub}
+      {!embedded && (
+        <div className="screen-header">
+          <div className="screen-header__title">{t.friends_title}</div>
+          <div className="screen-header__sub">
+            {friendCount} {countLabel} · {t.friends_sub}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* My code card */}
       <div style={{ margin: '4px 16px 14px' }}>

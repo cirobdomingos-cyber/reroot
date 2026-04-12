@@ -9,6 +9,9 @@ export const T = {
     nav_events:  'Eventos',
     nav_journey: 'Jornada',
     nav_friends: 'Amigos',
+    nav_community: 'Comunidade',
+    community_tab_friends: 'Amigos',
+    community_tab_groups: 'Grupos',
     nav_profile: 'Perfil',
 
     // ── Onboarding ────────────────────────────────────────
@@ -566,7 +569,10 @@ T.en.connect_sent = 'Sent!'
 T.en.accessibility_mode = 'Accessibility Mode'
 T.en.accessibility_description = 'Larger text and easier-to-tap buttons'
 
-// EN overrides for groups
+// EN overrides for community
+T.en.nav_community = 'Community'
+T.en.community_tab_friends = 'Friends'
+T.en.community_tab_groups = 'Groups'
 T.en.nav_groups = 'Groups'
 T.en.groups_title = 'My Groups'
 T.en.groups_empty = "You're not in any groups yet."

@@ -37,35 +37,8 @@ export default function BottomNav() {
       ),
     },
     {
-      path: '/groups',
-      label: t.nav_groups,
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-          <path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-      ),
-    },
-    {
-      path: '/journey',
-      label: t.nav_journey,
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-          <path d="M2 17l10 5 10-5"/>
-          <path d="M2 12l10 5 10-5"/>
-        </svg>
-      ),
-    },
-    {
-      path: '/friends',
-      label: t.nav_friends,
+      path: '/community',
+      label: t.nav_community,
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}

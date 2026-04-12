@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { fetchGroups, createGroup, joinGroup } from '../services/api'
 
-export default function Groups() {
+export default function Groups({ embedded = false }) {
   const { state } = useApp()
   const t = useT()
   const navigate = useNavigate()
@@ -17,14 +17,21 @@ export default function Groups() {
   const [showJoin, setShowJoin] = useState(false)
 
   useEffect(() => {
-    if (!googleId) return
-    fetchGroups(googleId).then(g => { setGroups(g); setLoading(false) })
+    if (!googleId) { setLoading(false); return }
+    fetchGroups(googleId).then(g => { setGroups(g); setLoading(false) }).catch(() => setLoading(false))
   }, [googleId])
 
   async function handleCreate(data) {
-    const group = await createGroup(googleId, data)
-    setGroups(prev => [{ ...group, member_count: 1, role: 'admin', next_event: null }, ...prev])
-    setShowCreate(false)
+    try {
+      console.log('[Groups] createGroup', { googleId, data })
+      const group = await createGroup(googleId, data)
+      console.log('[Groups] created', group)
+      setGroups(prev => [{ ...group, member_count: 1, role: 'admin', next_event: null }, ...prev])
+      setShowCreate(false)
+    } catch (err) {
+      console.error('[Groups] create failed', err)
+      alert(t.groups_create_error ?? 'Erro ao criar grupo. Verifique sua conexão.')
+    }
   }
 
   async function handleJoin(code) {
@@ -39,14 +46,35 @@ export default function Groups() {
     return result
   }
 
+  if (!googleId) {
+    return (
+      <div style={{ padding: '16px 16px 100px' }}>
+        {!embedded && (
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0, marginBottom: 16 }}>
+            {t.groups_title}
+          </h1>
+        )}
+        <div style={{
+          margin: '16px 0', padding: '20px', background: 'white', borderRadius: 16,
+          border: '1px solid var(--border)', textAlign: 'center',
+          color: 'var(--charcoal-mid)', fontSize: 13, lineHeight: 1.5,
+        }}>
+          {t.groups_login_required ?? 'Entre com Google para criar e participar de grupos.'}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ padding: '16px 16px 100px' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>
-          {t.groups_title}
-        </h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        {!embedded && (
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>
+            {t.groups_title}
+          </h1>
+        )}
+        <div style={{ display: 'flex', gap: 8, marginLeft: embedded ? 0 : 'auto' }}>
           <button onClick={() => setShowJoin(true)} style={actionBtnStyle}>
             {t.groups_join_btn}
           </button>
