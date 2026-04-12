@@ -12,6 +12,13 @@ import PartnerIntro   from './screens/PartnerIntro'
 import Diagnostic     from './screens/Diagnostic'
 import Home           from './screens/Home'
 import Events         from './screens/Events'
+<<<<<<< Updated upstream
+=======
+import Community      from './screens/Community'
+import Groups         from './screens/Groups'
+import GroupDetail    from './screens/GroupDetail'
+import JoinGroup      from './screens/JoinGroup'
+>>>>>>> Stashed changes
 import Journey        from './screens/Journey'
 import Profile        from './screens/Profile'
 
@@ -106,6 +113,14 @@ export default function App() {
             />
             <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
+<<<<<<< Updated upstream
+=======
+            <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
+            <Route path="/groups"  element={<Navigate to="/community" replace />} />
+            <Route path="/friends" element={<Navigate to="/community" replace />} />
+            <Route path="/groups/:groupId" element={<AnimatedPage><GroupDetail /></AnimatedPage>} />
+            <Route path="/join/:inviteCode" element={<AnimatedPage><JoinGroup /></AnimatedPage>} />
+>>>>>>> Stashed changes
             <Route path="/journey" element={<AnimatedPage><Journey /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

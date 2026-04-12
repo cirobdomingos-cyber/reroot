@@ -8,6 +8,13 @@ export const T = {
     nav_home:    'Início',
     nav_events:  'Eventos',
     nav_journey: 'Jornada',
+<<<<<<< Updated upstream
+=======
+    nav_friends: 'Amigos',
+    nav_community: 'Comunidade',
+    community_tab_friends: 'Amigos',
+    community_tab_groups: 'Grupos',
+>>>>>>> Stashed changes
     nav_profile: 'Perfil',
 
     // ── Onboarding ────────────────────────────────────────
@@ -481,6 +488,66 @@ T.en.connect_sent = 'Sent!'
 T.en.accessibility_mode = 'Accessibility Mode'
 T.en.accessibility_description = 'Larger text and easier-to-tap buttons'
 
+<<<<<<< Updated upstream
+=======
+// EN overrides for community
+T.en.nav_community = 'Community'
+T.en.community_tab_friends = 'Friends'
+T.en.community_tab_groups = 'Groups'
+T.en.nav_groups = 'Groups'
+T.en.groups_title = 'My Groups'
+T.en.groups_empty = "You're not in any groups yet."
+T.en.groups_empty_sub = 'Create a group or join with an invite code.'
+T.en.groups_create = 'Create Group'
+T.en.groups_create_title = 'New Group'
+T.en.groups_name = 'Group name'
+T.en.groups_name_placeholder = 'e.g. Friday Yoga, Hiking CWB...'
+T.en.groups_description = 'Description (optional)'
+T.en.groups_desc_placeholder = 'What is this group about...'
+T.en.groups_visibility = 'Visibility'
+T.en.groups_public = 'Public'
+T.en.groups_private = 'Private'
+T.en.groups_public_desc = 'Anyone can find it'
+T.en.groups_private_desc = 'Invite code only'
+T.en.groups_save = 'Create'
+T.en.groups_cancel = 'Cancel'
+T.en.groups_members = 'members'
+T.en.groups_next_event = 'Next event'
+T.en.groups_no_events = 'No upcoming events'
+T.en.groups_invite = 'Invite'
+T.en.groups_invite_title = 'Invite to group'
+T.en.groups_invite_code = 'Invite code'
+T.en.groups_invite_copy = 'Copy code'
+T.en.groups_invite_copied = 'Copied!'
+T.en.groups_invite_whatsapp = 'Send via WhatsApp'
+T.en.groups_calendar = 'Subscribe to Calendar'
+T.en.groups_calendar_title = 'Subscribe to group calendar'
+T.en.groups_calendar_google = 'Google Calendar'
+T.en.groups_calendar_ics = 'Copy iCal link'
+T.en.groups_calendar_copied = 'Link copied!'
+T.en.groups_add_event = 'New Event'
+T.en.groups_event_name = 'Event name'
+T.en.groups_event_venue = 'Location'
+T.en.groups_event_date = 'Date and time'
+T.en.groups_event_end = 'End (optional)'
+T.en.groups_event_desc = 'Description (optional)'
+T.en.groups_event_visibility = 'Event visibility'
+T.en.groups_event_members = 'Members only'
+T.en.groups_event_public = 'Public'
+T.en.groups_event_save = 'Create event'
+T.en.groups_leave = 'Leave group'
+T.en.groups_delete = 'Delete group'
+T.en.groups_admin = 'Admin'
+T.en.groups_join_title = 'Join group'
+T.en.groups_join_success = 'You joined the group!'
+T.en.groups_join_already = "You're already in this group."
+T.en.groups_join_not_found = 'Invite code not found.'
+T.en.groups_join_btn = 'Join'
+T.en.groups_join_code_label = 'Invite code'
+T.en.groups_join_code_placeholder = 'Paste the code here'
+T.en.groups_back = 'Back'
+
+>>>>>>> Stashed changes
 // EN overrides for privacy settings
 T.en.privacy_title = 'Privacy'
 T.en.privacy_share_rsvps = 'Share RSVPs with friends'

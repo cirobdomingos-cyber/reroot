@@ -3,15 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp, computeBadges, computeCurrentWeek, getChapter, CHAPTERS } from '../context/AppContext'
 import { useT } from '../i18n'
-import { TIMELINE } from '../data/framework'
-import { getMyFriendCode, addFriend, getFriends } from '../services/api'
-
 export default function Profile() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
-  const [referralCode, setReferralCode] = useState('')
-  const [referralApplied, setReferralApplied] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(state.userName)
   const [showPauseSheet, setShowPauseSheet] = useState(false)
@@ -19,53 +14,7 @@ export default function Profile() {
   const [paused, setPaused] = useState(state.isPaused)
   const [selectedBadge, setSelectedBadge] = useState(null)
 
-  // Friends state
-  const [friendCode, setFriendCode] = useState(null)
-  const [friendCodeLoading, setFriendCodeLoading] = useState(false)
-  const [friends, setFriends] = useState([])
-  const [friendsLoading, setFriendsLoading] = useState(false)
-  const [addCodeInput, setAddCodeInput] = useState('')
-  const [addResult, setAddResult] = useState(null) // { status, friend_name? }
-  const [addLoading, setAddLoading] = useState(false)
-
   const googleId = state.googleUser?.id
-
-  useEffect(() => {
-    if (!googleId) return
-    setFriendCodeLoading(true)
-    getMyFriendCode(googleId).then(code => {
-      setFriendCode(code)
-      setFriendCodeLoading(false)
-    })
-    setFriendsLoading(true)
-    getFriends(googleId).then(list => {
-      setFriends(list ?? [])
-      setFriendsLoading(false)
-    })
-  }, [googleId])
-
-  async function handleAddFriend() {
-    if (!addCodeInput.trim() || !googleId || addLoading) return
-    setAddLoading(true)
-    setAddResult(null)
-    const result = await addFriend(googleId, addCodeInput.trim().toUpperCase())
-    setAddResult(result)
-    setAddLoading(false)
-    if (result?.status === 'ok') {
-      setAddCodeInput('')
-      // Refresh friends list
-      getFriends(googleId).then(list => setFriends(list ?? []))
-    }
-  }
-
-  function handleWhatsApp() {
-    const text = `Oi! Usa meu código ${friendCode} no Reroot para a gente conectar 🌿 reroot.app`
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
-  }
-
-  function handleCopyCode() {
-    if (friendCode) navigator.clipboard.writeText(friendCode).catch(() => {})
-  }
 
   const badges = computeBadges(state)
   const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
@@ -119,16 +68,6 @@ export default function Profile() {
     setShowPauseSheet(false)
     setShowCancelConfirm(true)
   }
-
-  const enrichedTimeline = TIMELINE.map(item => {
-    const itemState = item.week < currentWeek ? 'done'
-      : item.week === currentWeek ? 'current'
-      : 'locked'
-    const note = item.week === currentWeek
-      ? `${rsvpCount} RSVP'd · ${state.eventsAttended} attended`
-      : item.note
-    return { ...item, state: itemState, note }
-  })
 
   // 12-week grid for "weeks shown up"
   const weeksShownUp = state.weeksShownUp ?? []
@@ -333,230 +272,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Friends */}
-      <div className="section-label">Amigos</div>
-      <div style={{ margin: '0 16px 12px' }}>
-        {!googleId ? (
-          <div className="card" style={{ textAlign: 'center', fontSize: 13, color: 'var(--charcoal-mid)', padding: '16px' }}>
-            Entre com Google para conectar com amigos 🌿
-          </div>
-        ) : (
-          <>
-            {/* Your invite code */}
-            <div className="card" style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
-                Seu código de convite
-              </div>
-              {friendCodeLoading ? (
-                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>Carregando...</div>
-              ) : friendCode ? (
-                <>
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10,
-                  }}>
-                    <div style={{
-                      fontSize: 22, fontWeight: 800, letterSpacing: 3,
-                      color: 'var(--terra)', flex: 1,
-                    }}>
-                      {friendCode}
-                    </div>
-                    <button
-                      onClick={handleCopyCode}
-                      style={{
-                        padding: '7px 14px', borderRadius: 10, fontSize: 12,
-                        fontWeight: 700, border: '1.5px solid var(--border)',
-                        background: 'white', cursor: 'pointer', color: 'var(--charcoal)',
-                      }}
-                    >
-                      Copiar
-                    </button>
-                    <button
-                      onClick={handleWhatsApp}
-                      style={{
-                        padding: '7px 14px', borderRadius: 10, fontSize: 12,
-                        fontWeight: 700, border: 'none',
-                        background: '#25D366', cursor: 'pointer', color: 'white',
-                      }}
-                    >
-                      WhatsApp
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)', lineHeight: 1.5 }}>
-                    {state.language === 'pt'
-                      ? 'Troque esse código com pessoas que você conheceu nos eventos para se conectar aqui no app.'
-                      : 'Share this code with people you meet at events to connect here in the app.'}
-                  </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
-                  Código não disponível no momento
-                </div>
-              )}
-            </div>
-
-            {/* Add a friend */}
-            <div className="card" style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 10 }}>
-                Adicionar amigo
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: addResult ? 10 : 0 }}>
-                <input
-                  value={addCodeInput}
-                  onChange={e => { setAddCodeInput(e.target.value.toUpperCase()); setAddResult(null) }}
-                  onKeyDown={e => e.key === 'Enter' && handleAddFriend()}
-                  placeholder="Código do amigo"
-                  maxLength={12}
-                  style={{
-                    flex: 1, padding: '10px 14px',
-                    border: '1.5px solid var(--border)',
-                    borderRadius: 12, fontSize: 13,
-                    background: 'var(--cream)', outline: 'none',
-                    color: 'var(--charcoal)', letterSpacing: 2, fontWeight: 700,
-                  }}
-                />
-                <button
-                  onClick={handleAddFriend}
-                  disabled={addLoading || !addCodeInput.trim()}
-                  className="btn btn--sage"
-                  style={{ width: 'auto', padding: '10px 18px', fontSize: 13, opacity: addLoading || !addCodeInput.trim() ? 0.5 : 1 }}
-                >
-                  {addLoading ? '...' : 'Adicionar'}
-                </button>
-              </div>
-              {addResult && (
-                <div style={{
-                  fontSize: 13, fontWeight: 600, padding: '8px 12px',
-                  borderRadius: 10,
-                  background: addResult.status === 'ok' ? 'var(--sage-pale)' : 'var(--terra-pale)',
-                  color: addResult.status === 'ok' ? 'var(--sage)' : 'var(--terra)',
-                }}>
-                  {addResult.status === 'ok' && `✓ ${addResult.friend_name ?? 'Amigo'} adicionado!`}
-                  {addResult.status === 'self' && 'Esse é o seu próprio código 😅'}
-                  {addResult.status === 'already_friends' && 'Vocês já são amigos!'}
-                  {addResult.status === 'not_found' && 'Código inválido'}
-                  {!addResult.status && 'Erro ao conectar. Tente novamente.'}
-                </div>
-              )}
-            </div>
-
-            {/* Friends list */}
-            <div className="card">
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 10 }}>
-                Seus amigos
-              </div>
-              {friendsLoading ? (
-                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>Carregando...</div>
-              ) : friends.length === 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', fontStyle: 'italic', padding: '8px 0' }}>
-                  Nenhum amigo ainda. Compartilhe seu código! 🌿
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {friends.map(friend => (
-                    <div key={friend.google_id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {friend.picture ? (
-                        <img
-                          src={friend.picture}
-                          alt={friend.name}
-                          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: 38, height: 38, borderRadius: '50%',
-                          background: 'var(--terra)', color: 'white',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 16, fontWeight: 700, flexShrink: 0,
-                        }}>
-                          {(friend.name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>{friend.name}</div>
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>
-                        Amigo ✓
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Reflections journal */}
-      <div className="section-label">{t.profile_journal_label}</div>
-      <div style={{ margin: '0 16px 12px' }} className="card">
-        {state.reflections.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', padding: '8px 0', fontStyle: 'italic' }}>
-            {t.profile_journal_empty}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {state.reflections.map((r, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 12px',
-                background: 'var(--cream)', borderRadius: 12,
-              }}>
-                <div style={{
-                  width: 3, height: 24, borderRadius: 2,
-                  background: 'var(--sage-light)', flexShrink: 0,
-                }}/>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', fontStyle: 'italic' }}>
-                    "{r.word}"
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
-                    {new Date(r.date).toLocaleDateString(state.language === 'pt' ? 'pt-BR' : 'en-US', { month: 'short', day: 'numeric' })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Timeline */}
-      <div className="section-label">{t.profile_timeline_label}</div>
-      <div style={{ padding: '0 16px' }}>
-        {enrichedTimeline.map((item, idx) => {
-          const isLast = idx === enrichedTimeline.length - 1
-          const dotColor = item.state === 'done' ? 'var(--sage-pale)'
-            : item.state === 'current' ? 'var(--terra-pale)' : '#F0F0F0'
-          const dotEmoji = item.state === 'done' ? '✓' : item.state === 'current' ? '→' : '🔒'
-
-          return (
-            <div key={item.week} style={{ display: 'flex', gap: 12, position: 'relative' }}>
-              {!isLast && (
-                <div style={{ position: 'absolute', left: 15, top: 32, bottom: 0, width: 2, background: 'var(--border)' }}/>
-              )}
-              <div style={{ width: 32, flexShrink: 0 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', background: dotColor,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, position: 'relative', zIndex: 1,
-                  opacity: item.state === 'locked' ? 0.45 : 1,
-                  boxShadow: item.state === 'current' ? '0 0 0 4px var(--terra-pale)' : 'none',
-                }}>
-                  {dotEmoji}
-                </div>
-              </div>
-              <div style={{ flex: 1, paddingBottom: 20 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--charcoal-light)' }}>
-                  {item.label}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', opacity: item.state === 'locked' ? 0.45 : 1 }}>
-                  {item.event}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{item.note}</div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
       {/* Badges */}
       <div className="section-label">{t.profile_badges_label}</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '0 16px' }}>
@@ -607,71 +322,6 @@ export default function Profile() {
             </div>
           )
         })}
-      </div>
-
-      {/* Membership */}
-      <div className="section-label">{t.profile_membership_label}</div>
-      <div style={{ margin: '0 16px 12px' }} className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)' }}>{t.profile_membership_title}</div>
-            <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>{t.profile_membership_sub}</div>
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--terra)' }}>
-            {state.language === 'pt' ? 'R$99' : '$19.99'}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--charcoal-light)' }}>/mo</span>
-          </div>
-        </div>
-        <div className="divider"/>
-        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.8 }}>
-          {t.profile_feature_1}<br/>
-          {t.profile_feature_2}<br/>
-          {t.profile_feature_3}<br/>
-          {t.profile_feature_4}
-        </div>
-        <div className="divider"/>
-        <button
-          onClick={() => setShowPauseSheet(true)}
-          style={{ fontSize: 12, color: 'var(--charcoal-mid)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
-        >
-          {t.profile_pause_btn} →
-        </button>
-      </div>
-
-      {/* Referral */}
-      <div style={{ margin: '0 16px 12px' }} className="card card--sage">
-        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
-          {t.profile_referral_label}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 14 }}>
-          {t.profile_referral_sub}
-        </div>
-        {referralApplied ? (
-          <div style={{ textAlign: 'center', padding: 12, background: 'var(--sage-pale)', borderRadius: 12, color: 'var(--sage)', fontSize: 13, fontWeight: 600 }}>
-            {t.profile_referral_applied}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              value={referralCode}
-              onChange={e => setReferralCode(e.target.value)}
-              placeholder={t.profile_referral_placeholder}
-              style={{
-                flex: 1, padding: '11px 14px',
-                border: '1.5px solid rgba(122,158,126,0.4)',
-                borderRadius: 12, fontSize: 13,
-                background: 'rgba(255,255,255,0.7)',
-                outline: 'none', color: 'var(--charcoal)',
-              }}
-            />
-            <button
-              className="btn btn--sage"
-              style={{ width: 'auto', padding: '11px 18px', fontSize: 13 }}
-              onClick={() => referralCode.trim() && setReferralApplied(true)}
-            >
-              {t.profile_referral_btn}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Language toggle */}
