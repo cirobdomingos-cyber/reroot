@@ -92,6 +92,12 @@ Regras:
 """
 
 
+# Debug capture — top-level keys + a sample of values from the first post
+# of the most recent scrape. Surfaced via /admin/apify-debug so we can see
+# the actual Apify payload shape without poking through Railway logs.
+LAST_POST_DEBUG: dict = {}
+
+
 async def fetch_events(
     anthropic_api_key: str,
     apify_token: str,
@@ -125,6 +131,28 @@ async def fetch_events(
         return []
 
     log.info(f"Instagram (Apify): {len(posts)} posts coletados, extraindo eventos...")
+
+    # Debug capture: stash a redacted view of the first post so we can
+    # introspect actor schema via /admin/apify-debug. Strings are
+    # truncated; nested objects keep only their top-level keys.
+    if posts:
+        sample = posts[0]
+        captured = {}
+        for k, v in sample.items():
+            if isinstance(v, str):
+                captured[k] = v[:100] + ("…" if len(v) > 100 else "")
+            elif isinstance(v, dict):
+                captured[k] = {"<dict-keys>": list(v.keys())[:30]}
+            elif isinstance(v, list):
+                captured[k] = f"<list len={len(v)}>"
+            else:
+                captured[k] = v
+        LAST_POST_DEBUG.clear()
+        LAST_POST_DEBUG.update({
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "top_level_keys": list(sample.keys()),
+            "sample": captured,
+        })
 
     # Update last_scraped_at + cached profile metadata for each handle that
     # returned at least one post. Apify's instagram-scraper actor varies

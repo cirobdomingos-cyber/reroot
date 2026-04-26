@@ -1840,6 +1840,18 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     return {"ok": True}
 
 
+@app.get("/admin/apify-debug")
+def admin_apify_debug(requesting_email: str = ""):
+    """
+    Founder-only debug surface — returns the redacted top-level shape of
+    the most recent Apify post payload. Used to introspect actor schema
+    drift when profile enrichment isn't finding fields. Temporary.
+    """
+    _require_founder(requesting_email)
+    from scrapers.instagram_apify import LAST_POST_DEBUG
+    return LAST_POST_DEBUG or {"empty": True, "hint": "Run /events/refresh first"}
+
+
 @app.post("/admin/ig-accounts/seed-defaults")
 def admin_seed_default_ig_accounts(requesting_email: str = ""):
     """Force-seed the starter list (only inserts missing handles)."""
