@@ -49,19 +49,19 @@ APIFY_RUN_URL = (
 APIFY_TIMEOUT_S = 240
 
 EXTRACTION_PROMPT = """\
-Você está extraindo informações de eventos a partir de legendas do Instagram \
+Você está extraindo informações de eventos a partir de posts do Instagram \
 de contas curitibanas (cafés, museus, espaços culturais, coletivos, curadores).
-Hoje é {today}. A pessoa que vai usar essa informação está em Curitiba (PR, Brasil).
 
 Conta: @{handle}
-Data do post: {post_date}
+Data do POST: {post_date}   ← âncora pra datas relativas
+Hoje (data do scrape): {today}
 Legenda:
 {caption}
 
-Sua tarefa: decidir se a legenda anuncia um evento ESPECÍFICO em Curitiba ou \
-região metropolitana com uma data identificável (próxima ou recém-passada por \
-até 1 dia). Se NÃO for um evento específico (foto pessoal, propaganda genérica, \
-"passou aqui hoje", lista de dicas, recap), responda {{"is_event": false}}.
+Sua tarefa: decidir se o post anuncia um evento ESPECÍFICO em Curitiba ou \
+região metropolitana com uma data identificável. Se NÃO for um evento específico \
+(foto pessoal, propaganda genérica, "passou aqui hoje", lista de dicas, recap), \
+responda {{"is_event": false}}.
 
 Responda SOMENTE JSON válido (sem markdown, sem texto extra):
 {{
@@ -71,24 +71,31 @@ Responda SOMENTE JSON válido (sem markdown, sem texto extra):
   "venue_name": "<local específico, ou nome da conta como fallback>",
   "venue_address": "<endereço/bairro em Curitiba, ou vazio>",
   "neighborhood": "<bairro em Curitiba, ou vazio>",
-  "date_start": "<YYYY-MM-DDTHH:MM:SS — combine com a data do post quando o \
-post diz 'sábado', 'amanhã', etc.>",
+  "date_start": "<YYYY-MM-DDTHH:MM:SS — ver REGRA DE DATA abaixo>",
   "date_end": "<YYYY-MM-DDTHH:MM:SS ou null>",
   "price_min": <número, 0 se gratuito>,
   "price_max": <número, 0 se gratuito>
 }}
 
-Regras:
-- Se a legenda diz "sábado 18h" ou "amanhã às 20h", calcule a data absoluta a \
-  partir da data do post.
-- Se NÃO há horário específico, use 19:00 para shows/encontros à noite, 14:00 \
-  para tarde, 10:00 para manhã.
-- Se a legenda menciona apenas "dezembro" ou "em breve" sem data específica, \
-  responda {{"is_event": false}}.
+REGRA DE DATA — leia com atenção, é o erro mais comum:
+1. Se há uma data ABSOLUTA no post ("21 de abril", "25/04", "Sábado, 25 de Abril \
+de 2026"), use ESSA data. Inclui datas que aparecem na imagem (use a imagem \
+anexada). NÃO recompute.
+2. Se há uma data RELATIVA na legenda ("amanhã", "sábado", "terça que vem", \
+"hoje"), calcule a partir da DATA DO POST ({post_date}), NUNCA da data do scrape \
+({today}). Exemplo: post de 16/04 dizendo "terça que vem" → 21/04, não 28/04.
+3. Se a legenda menciona apenas "dezembro" ou "em breve" sem data específica, \
+responda {{"is_event": false}}.
+4. Sanity check: a data resultante deve estar entre {post_date} e {post_date} + \
+30 dias. Se ficar fora, revise — provavelmente errou a âncora.
+
+Outras regras:
+- Se NÃO há horário específico, use 19:00 (shows/encontros à noite), 14:00 \
+(tarde), 10:00 (manhã).
 - Eventos fora de Curitiba ou da Região Metropolitana → {{"is_event": false}}.
 - "Gratuito", "entrada franca", "rolê livre" → preço 0.
-- O fallback do venue_name deve ser o próprio nome da conta (ex: "Café Lucca") \
-  porque muitas postagens são "venha ao nosso lugar" sem repetir o local.
+- venue_name fallback: nome da conta (ex: "Café Lucca") quando o post diz \
+"venha ao nosso lugar" sem repetir o local.
 """
 
 
@@ -459,11 +466,22 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
         caption=caption[:1500],
     )
 
+    # Build a multimodal user message — the post image is essential when
+    # the date is printed on the poster (extremely common on IG event
+    # flyers) and the caption alone is ambiguous ("hoje carai!", etc.).
+    # Falls back to text-only when no image URL is available.
+    content_blocks: list = [{"type": "text", "text": prompt}]
+    if image_url and image_url.startswith("http"):
+        content_blocks.insert(0, {
+            "type": "image",
+            "source": {"type": "url", "url": image_url},
+        })
+
     try:
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": content_blocks}],
         )
         raw_text = response.content[0].text.strip()
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
@@ -486,6 +504,20 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
     from datetime import timedelta
     if date_start < datetime.now(timezone.utc) - timedelta(hours=12):
         return None
+
+    # Sanity bound: a post almost never announces something more than ~2
+    # months out. If Claude lands a date way outside that window, the
+    # anchor was probably wrong (e.g. used scrape-date instead of post-date).
+    # Drop rather than ship a wrong date — better to miss it than mislead.
+    post_dt = _parse_iso(post_date) if post_date else None
+    if post_dt:
+        max_window = post_dt + timedelta(days=60)
+        if date_start > max_window:
+            log.warning(
+                f"IG: dropping @{handle}/{shortcode} — date_start {date_start.date()} "
+                f"is >60d after post_date {post_dt.date()} (anchor mismatch?)"
+            )
+            return None
 
     date_end = _parse_iso(data.get("date_end"))
 
