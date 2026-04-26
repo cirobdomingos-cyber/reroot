@@ -161,14 +161,19 @@ def init_db():
                 added_by_email      TEXT NOT NULL DEFAULT ''
             )
         """)
-        # Migrate existing tables: add added_by_email if it's missing (SQLite
+        # Migrate existing tables: add columns if they're missing (SQLite
         # has no IF NOT EXISTS for ALTER, so we try-and-swallow).
-        try:
-            conn.execute(
-                "ALTER TABLE tracked_ig_accounts ADD COLUMN added_by_email TEXT NOT NULL DEFAULT ''"
-            )
-        except sqlite3.OperationalError:
-            pass  # column already present
+        for col_def in (
+            "ADD COLUMN added_by_email TEXT NOT NULL DEFAULT ''",
+            # IG profile enrichment — captured from Apify's first post per handle.
+            "ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN profile_pic_url TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN bio_snippet TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
+            except sqlite3.OperationalError:
+                pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS curators (
                 email           TEXT PRIMARY KEY,            -- lowercased email
@@ -562,6 +567,26 @@ def delete_ig_account(handle: str) -> bool:
         cur = conn.execute("DELETE FROM tracked_ig_accounts WHERE handle = ?", (handle,))
         conn.commit()
         return cur.rowcount > 0
+
+
+def update_ig_account_profile(handle: str, display_name: str = "",
+                              profile_pic_url: str = "", bio_snippet: str = "") -> None:
+    """
+    Update the profile-level metadata for a tracked IG account. Called
+    after a scrape with the first post's owner data so the admin UI can
+    show real profile pictures and display names.
+    """
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        return
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE tracked_ig_accounts
+               SET display_name = ?, profile_pic_url = ?, bio_snippet = ?
+               WHERE handle = ?""",
+            (display_name[:200], profile_pic_url[:500], bio_snippet[:500], handle),
+        )
+        conn.commit()
 
 
 def mark_ig_account_scraped(handle: str) -> None:

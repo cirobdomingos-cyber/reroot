@@ -331,6 +331,7 @@ export default function AdminIgAccounts() {
                   busy={busy}
                   onToggle={toggleEnabled}
                   onDelete={deleteAccount}
+                  onOpenSource={(h) => navigate(`/sources/${encodeURIComponent('ig:' + h)}`)}
                 />
               ))}
             </div>
@@ -587,7 +588,9 @@ function NotACuratorMessage({ email }) {
 }
 
 
-function AccountRow({ acc, busy, onToggle, onDelete }) {
+function AccountRow({ acc, busy, onToggle, onDelete, onOpenSource }) {
+  const futureCount = acc.future_events ?? 0
+  const pic = acc.profile_pic_url
   return (
     <div style={{
       background: 'white', border: '1px solid var(--border)',
@@ -595,6 +598,24 @@ function AccountRow({ acc, busy, onToggle, onDelete }) {
       opacity: acc.enabled ? 1 : 0.55,
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
+      {/* Profile pic — captured from Apify's first post; falls back to
+          Instagram glyph when not yet enriched. */}
+      <div style={{
+        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+        background: 'var(--cream)', overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 18,
+      }}>
+        {pic ? (
+          <img
+            src={pic}
+            alt={acc.handle}
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : '📷'}
+      </div>
       <button
         onClick={() => onToggle(acc)}
         disabled={busy}
@@ -631,9 +652,9 @@ function AccountRow({ acc, busy, onToggle, onDelete }) {
             </span>
           )}
         </div>
-        {acc.label && (
+        {(acc.display_name || acc.label) && (
           <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-            {acc.label}
+            {acc.display_name || acc.label}
           </div>
         )}
         <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 4 }}>
@@ -641,10 +662,28 @@ function AccountRow({ acc, busy, onToggle, onDelete }) {
             ? `Último scrape: ${new Date(acc.last_scraped_at).toLocaleString('pt-BR')}`
             : 'Ainda não scrapeada'}
           {' · '}
-          {`${acc.last_event_count || 0} eventos no último run`}
+          {`${acc.last_event_count || 0} no último run`}
           {acc.added_by_email && ` · adicionado por ${acc.added_by_email}`}
         </div>
       </div>
+
+      {/* Future-event count chip — clickable, opens this handle's source page */}
+      <button
+        onClick={() => onOpenSource?.(acc.handle)}
+        disabled={!futureCount}
+        title={futureCount ? `Ver ${futureCount} evento${futureCount === 1 ? '' : 's'} próximo${futureCount === 1 ? '' : 's'}` : 'Sem eventos próximos'}
+        style={{
+          fontSize: 11, fontWeight: 700,
+          background: futureCount > 0 ? 'var(--terra-pale)' : 'transparent',
+          color: futureCount > 0 ? 'var(--terra)' : 'var(--charcoal-light)',
+          border: futureCount > 0 ? '1px solid var(--terra-pale)' : '1px solid var(--border)',
+          padding: '4px 10px', borderRadius: 8,
+          cursor: futureCount > 0 ? 'pointer' : 'default',
+          flexShrink: 0,
+        }}
+      >
+        {futureCount} →
+      </button>
 
       <button
         onClick={() => onDelete(acc.handle)}

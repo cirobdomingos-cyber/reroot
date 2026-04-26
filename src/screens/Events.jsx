@@ -191,11 +191,22 @@ export default function Events() {
     setSearchOpen(false)
   }
 
-  // Merge user-created custom events into the list
+  // Merge user-created custom events into the list, then sort the whole
+  // thing by date_start ASC so closest-future events appear at the top.
+  // Items without a parseable date sink to the bottom (custom events
+  // without a date, anytime venues without dateStart). Events the
+  // backend already returns in this order, but customs need merging.
   const customEventsForFilter = (state.customEvents || []).filter(ev =>
     activeFilter === 'all' || ev.category === activeFilter
   )
-  const allDisplayEvents = [...customEventsForFilter, ...events]
+  const allDisplayEvents = [...customEventsForFilter, ...events].sort((a, b) => {
+    const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
+    const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
+    if (Number.isNaN(ta)) return 1
+    if (Number.isNaN(tb)) return -1
+    return ta - tb
+  })
 
   // Apply search + date/venue filter
   let filteredEvents = allDisplayEvents
@@ -1000,6 +1011,29 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
               ⭐ {ev.rating}
             </span>
           )}
+          {ev.openNow === true && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+              background: 'var(--sage-pale)', padding: '1px 7px',
+              borderRadius: 6,
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--sage)',
+              }}/>
+              Aberto agora
+            </span>
+          )}
+          {ev.openNow === false && (
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: 'var(--charcoal-light)',
+              background: 'rgba(44,44,44,0.06)', padding: '1px 7px',
+              borderRadius: 6,
+            }}>
+              Fechado
+            </span>
+          )}
           {ev.price && (
             <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{ev.price}</span>
           )}
@@ -1128,16 +1162,48 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
           </div>
         ) : null}
 
-        {isVenue && (
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            background: 'var(--terra-pale)', padding: '4px 10px', borderRadius: 8,
-            fontSize: 10, fontWeight: 700, color: 'var(--terra)',
-            textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
-          }}>
-            {t.events_venue_open}
-          </div>
-        )}
+        {isVenue && (() => {
+          // Open-now status comes from Google Places (open_now boolean).
+          // True/false → live status pill; null → fallback to "Sempre aberto".
+          if (ev.openNow === true) {
+            return (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'var(--sage-pale)', padding: '4px 10px', borderRadius: 8,
+                fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+                textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+              }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: 'var(--sage)',
+                }}/>
+                Aberto agora
+              </div>
+            )
+          }
+          if (ev.openNow === false) {
+            return (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(44,44,44,0.07)', padding: '4px 10px', borderRadius: 8,
+                fontSize: 10, fontWeight: 700, color: 'var(--charcoal-mid)',
+                textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+              }}>
+                Fechado agora
+              </div>
+            )
+          }
+          return (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--terra-pale)', padding: '4px 10px', borderRadius: 8,
+              fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+            }}>
+              {t.events_venue_open}
+            </div>
+          )
+        })()}
 
         {/* Rating row for venues */}
         {isVenue && ev.rating > 0 && (

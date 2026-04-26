@@ -126,10 +126,30 @@ async def fetch_events(
 
     log.info(f"Instagram (Apify): {len(posts)} posts coletados, extraindo eventos...")
 
-    # Update last_scraped_at for each handle that returned at least one post
-    handles_with_data = {p.get("ownerUsername", "").lower() for p in posts if p.get("ownerUsername")}
+    # Update last_scraped_at + cached profile metadata for each handle that
+    # returned at least one post. Apify returns owner fields per post; we
+    # use the first one we see per handle as a best-effort profile snapshot.
+    handles_with_data: set[str] = set()
+    profile_seen: dict[str, dict] = {}
+    for p in posts:
+        h = (p.get("ownerUsername") or "").lower()
+        if not h:
+            continue
+        handles_with_data.add(h)
+        if h not in profile_seen:
+            profile_seen[h] = {
+                "display_name": (p.get("ownerFullName") or "").strip(),
+                "profile_pic_url": (p.get("ownerProfilePicUrl") or "").strip(),
+            }
     for handle in handles_with_data:
         db.mark_ig_account_scraped(handle)
+        meta = profile_seen.get(handle, {})
+        if meta.get("display_name") or meta.get("profile_pic_url"):
+            db.update_ig_account_profile(
+                handle=handle,
+                display_name=meta.get("display_name", ""),
+                profile_pic_url=meta.get("profile_pic_url", ""),
+            )
 
     client = AsyncAnthropic(api_key=anthropic_api_key)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")

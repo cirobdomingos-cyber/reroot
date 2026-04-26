@@ -619,11 +619,12 @@ def list_sources():
             continue
         instagram.append({
             "handle": acc["handle"],
-            "label": acc.get("label") or f"@{acc['handle']}",
+            "label": acc.get("display_name") or acc.get("label") or f"@{acc['handle']}",
             "category": acc.get("category", ""),
             "url": f"https://www.instagram.com/{acc['handle']}/",
             "last_scraped_at": acc.get("last_scraped_at"),
             "future_events": by_handle.get(acc["handle"], 0),
+            "profile_pic_url": acc.get("profile_pic_url") or "",
         })
     instagram.sort(key=lambda s: (-s["future_events"], s["label"]))
 
@@ -1026,6 +1027,12 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
     name = place["name"]
     place_id = place["place_id"]
     types = place.get("types", [])
+    # Google's nearbysearch returns opening_hours.open_now as a boolean
+    # (when the venue has hours data registered). It's present today —
+    # absent for parks and some institutions. Surface it as `openNow` so
+    # the frontend can show an "Aberto agora" pill.
+    opening = place.get("opening_hours") or {}
+    open_now = opening.get("open_now") if isinstance(opening, dict) else None
 
     _price_labels = {0: "Gratuito", 1: "R$ até 30", 2: "R$ 30–60", 3: "R$ 60–100", 4: "R$ 100+"}
     _price_tiers  = {0: "free", 1: "low", 2: "mid", 3: "high", 4: "high"}
@@ -1067,6 +1074,7 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
         "isReal": True,
         "rating": rating,
         "placeSubtype": "cafe" if is_cafe else "bar",
+        "openNow": open_now,  # True | False | None (None = unknown / not registered)
     }
 
 
@@ -1797,9 +1805,14 @@ def admin_list_ig_accounts(requesting_email: str = ""):
     """
     List tracked Instagram accounts. Open to any authenticated user — even
     non-curators can see the catalog (transparency makes the system trusted).
+    Each row is enriched with `future_events` so the admin UI can show
+    real-time yield per handle and link to that handle's source page.
     """
+    accounts = db.list_ig_accounts()
+    counts = db.count_future_events_by_ig_handle()
+    enriched = [{**a, "future_events": counts.get(a["handle"], 0)} for a in accounts]
     return {
-        "accounts": db.list_ig_accounts(),
+        "accounts": enriched,
         "is_curator": db.is_curator(requesting_email),
         "is_founder": db.is_founder(requesting_email),
     }

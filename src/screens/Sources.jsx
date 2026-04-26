@@ -85,6 +85,7 @@ export default function Sources() {
                 <SourceRow
                   key={s.handle}
                   icon="📷"
+                  picUrl={s.profile_pic_url}
                   label={s.label}
                   blurb={s.category ? `@${s.handle} · ${s.category}` : `@${s.handle}`}
                   count={s.future_events}
@@ -120,7 +121,7 @@ function Section({ title, sub, children }) {
 }
 
 
-function SourceRow({ icon, label, blurb, count, officialUrl, onOpen }) {
+function SourceRow({ icon, picUrl, label, blurb, count, officialUrl, onOpen }) {
   return (
     <div
       onClick={onOpen}
@@ -132,11 +133,20 @@ function SourceRow({ icon, label, blurb, count, officialUrl, onOpen }) {
       }}
     >
       <div style={{
-        width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+        width: 40, height: 40, borderRadius: picUrl ? '50%' : 11, flexShrink: 0,
         background: 'var(--cream)', fontSize: 20,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden',
       }}>
-        {icon}
+        {picUrl ? (
+          <img
+            src={picUrl}
+            alt={label}
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.style.display = 'none' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : icon}
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
