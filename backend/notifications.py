@@ -1,54 +1,71 @@
 """
-Email notifications via Resend (https://resend.com).
+Email notifications via SMTP (Gmail by default).
 
 Used to notify the founder after each scrape completes with a summary of
 new events found per source. Best-effort — silent on failure so the
 scrape pipeline never fails because the email transport blipped.
 
-Free tier: 100 emails/day. The sandbox sender `onboarding@resend.dev`
-works without DNS setup but only delivers to the workspace owner's
-verified email. Plenty for a single-founder summary.
+Setup (Gmail):
+  1. Enable 2FA on the Google account
+  2. Visit myaccount.google.com/apppasswords → generate a 16-char App Password
+  3. Set env vars:
+       SMTP_USER = your.email@gmail.com
+       SMTP_PASSWORD = the 16-char App Password (NOT your regular password)
 """
+import asyncio
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formataddr
 from typing import Optional
-
-import httpx
 
 import database as db
 
 log = logging.getLogger(__name__)
 
-RESEND_ENDPOINT = "https://api.resend.com/emails"
 
-
-async def send_email(api_key: str, from_addr: str, to: str,
-                     subject: str, html: str, text: Optional[str] = None) -> bool:
-    """Returns True on 200/202; False otherwise. Never raises."""
-    if not api_key:
-        log.info("Resend API key not set — skipping email send")
-        return False
-    payload = {
-        "from": from_addr,
-        "to": [to],
-        "subject": subject,
-        "html": html,
-    }
+def _send_smtp_sync(host: str, port: int, user: str, password: str,
+                    from_addr: str, to: str,
+                    subject: str, html: str, text: Optional[str] = None) -> bool:
+    """Synchronous SMTP send. Called from a thread via asyncio.to_thread."""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to
     if text:
-        payload["text"] = text
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                RESEND_ENDPOINT,
-                json=payload,
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-        if r.status_code in (200, 202):
-            return True
-        log.warning(f"Resend HTTP {r.status_code}: {r.text[:200]}")
-        return False
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(user, [to], msg.as_string())
+        return True
     except Exception as e:
-        log.warning(f"Resend send failed: {e}")
+        log.warning(f"SMTP send failed: {e}")
         return False
+
+
+async def send_email(settings, to: str, subject: str,
+                     html: str, text: Optional[str] = None) -> bool:
+    """Returns True on success, False otherwise. Never raises."""
+    if not settings.smtp_user or not settings.smtp_password:
+        log.info("SMTP credentials not set — skipping email send")
+        return False
+    from_addr = settings.smtp_from or formataddr(("auê", settings.smtp_user))
+    return await asyncio.to_thread(
+        _send_smtp_sync,
+        host=settings.smtp_host,
+        port=settings.smtp_port,
+        user=settings.smtp_user,
+        password=settings.smtp_password,
+        from_addr=from_addr,
+        to=to,
+        subject=subject,
+        html=html,
+        text=text,
+    )
 
 
 async def send_scrape_summary(settings, run_started_iso: str) -> None:
@@ -56,7 +73,7 @@ async def send_scrape_summary(settings, run_started_iso: str) -> None:
     Build and send a per-source summary of the scrape that started at
     `run_started_iso`. Looks up `refresh_log` rows for that window.
     """
-    if not settings.resend_api_key:
+    if not settings.smtp_user or not settings.smtp_password:
         return
     rows = db.get_refresh_logs_since(run_started_iso)
     if not rows:
@@ -66,7 +83,6 @@ async def send_scrape_summary(settings, run_started_iso: str) -> None:
     total_updated = sum((r.get("events_updated") or 0) for r in rows)
     errors = [r for r in rows if (r.get("error") or "").strip()]
 
-    # Sort sources: those with new events first, then by source name
     rows_sorted = sorted(
         rows,
         key=lambda r: (-(r.get("events_new") or 0), r.get("source") or ""),
@@ -135,8 +151,7 @@ async def send_scrape_summary(settings, run_started_iso: str) -> None:
         f"Catálogo agora: {total_in_db} eventos\n"
     )
     ok = await send_email(
-        api_key=settings.resend_api_key,
-        from_addr=settings.resend_from_email,
+        settings=settings,
         to=settings.founder_email,
         subject=subject,
         html=html,

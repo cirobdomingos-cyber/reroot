@@ -55,12 +55,15 @@ class Settings(BaseSettings):
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
     founder_email: str = "ciro.b.domingos@gmail.com"
-    # Email — used to send scrape summaries to the founder. Resend free
-    # tier supports the sandbox sender `onboarding@resend.dev` without
-    # DNS setup; recipient must match the account owner of the Resend
-    # workspace until a custom domain is verified.
-    resend_api_key: str = ""
-    resend_from_email: str = "auê <onboarding@resend.dev>"
+    # Email — used to send scrape summaries to the founder. Defaults to
+    # Gmail SMTP. Set SMTP_USER + SMTP_PASSWORD (an App Password generated
+    # at myaccount.google.com/apppasswords, NOT the regular password) to
+    # enable. SMTP_FROM defaults to the user; override for a custom display.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # falls back to smtp_user if empty
 
 
 settings = Settings()
