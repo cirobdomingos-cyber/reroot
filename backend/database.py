@@ -202,9 +202,17 @@ def init_db():
                 google_id   TEXT NOT NULL DEFAULT '',
                 text        TEXT NOT NULL,
                 context     TEXT NOT NULL DEFAULT '',  -- screen / route hint
-                created_at  TEXT NOT NULL
+                created_at  TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'open'  -- open | concluded | canceled
             )
         """)
+        # Migrate older feedback rows that predate the status field
+        try:
+            conn.execute(
+                "ALTER TABLE feedback ADD COLUMN status TEXT NOT NULL DEFAULT 'open'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_events (
                 id           TEXT PRIMARY KEY,
@@ -473,11 +481,32 @@ def insert_feedback(email: str, text: str, google_id: str = "",
 
 
 def list_feedback(limit: int = 200) -> list[dict]:
+    """Sort: open feedback first (newest first), then resolved (newest first)."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?", (limit,)
+            """SELECT * FROM feedback
+               ORDER BY (status = 'open') DESC, created_at DESC
+               LIMIT ?""",
+            (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def update_feedback_status(feedback_id: int, status: str) -> Optional[dict]:
+    if status not in ('open', 'concluded', 'canceled'):
+        raise ValueError(f"invalid status: {status}")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE feedback SET status = ? WHERE id = ?",
+            (status, feedback_id),
+        )
+        if cur.rowcount == 0:
+            return None
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM feedback WHERE id = ?", (feedback_id,)
+        ).fetchone()
+    return dict(row) if row else None
 
 
 # ── Tracked Instagram accounts ─────────────────────────────

@@ -1925,6 +1925,24 @@ def admin_list_feedback(requesting_email: str = "", limit: int = 200):
     return {"feedback": db.list_feedback(limit=limit)}
 
 
+class FeedbackStatusUpdate(BaseModel):
+    status: str            # 'open' | 'concluded' | 'canceled'
+    requesting_email: str = ""
+
+
+@app.patch("/admin/feedback/{feedback_id}")
+def admin_update_feedback_status(feedback_id: int, req: FeedbackStatusUpdate):
+    """Founder-only: mark a feedback as concluded, canceled, or reopen."""
+    _require_founder(req.requesting_email)
+    try:
+        updated = db.update_feedback_status(feedback_id, req.status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not updated:
+        raise HTTPException(status_code=404, detail="Feedback não encontrado")
+    return {"feedback": updated}
+
+
 # ── Web Push Notifications ──
 #
 # VAPID key pair — in production, generate your own and store in env vars.

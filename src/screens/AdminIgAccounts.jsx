@@ -357,13 +357,39 @@ export default function AdminIgAccounts() {
         />
       )}
 
-      {isFounder && <FeedbackSection feedback={feedback} />}
+      {isFounder && (
+        <FeedbackSection
+          feedback={feedback}
+          email={email}
+          onReload={load}
+          busy={busy}
+          setBusy={setBusy}
+        />
+      )}
     </div>
   )
 }
 
 
-function FeedbackSection({ feedback }) {
+function FeedbackSection({ feedback, email, onReload, busy, setBusy }) {
+  async function setStatus(fbId, status) {
+    setBusy(true)
+    try {
+      const r = await fetch(`${API_BASE}/admin/feedback/${fbId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, requesting_email: email }),
+      })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      await onReload()
+    } catch (e) {
+      alert(`Falha ao atualizar status: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
+  const openCount = feedback.filter(f => (f.status || 'open') === 'open').length
+
   return (
     <div style={{
       marginTop: 32, paddingTop: 24,
@@ -373,8 +399,7 @@ function FeedbackSection({ feedback }) {
         💬 Feedback dos usuários
       </h2>
       <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
-        Mensagens enviadas por feedbackers. Os {feedback.length} mais recentes,
-        novos primeiro.
+        {openCount} aberto{openCount === 1 ? '' : 's'} de {feedback.length} total. Abertos primeiro, resolvidos abaixo.
       </p>
       {feedback.length === 0 ? (
         <div style={{
@@ -386,46 +411,88 @@ function FeedbackSection({ feedback }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {feedback.map(fb => (
-            <div
-              key={fb.id}
-              style={{
-                background: 'white', border: '1px solid var(--border)',
-                borderRadius: 12, padding: '12px 14px',
-              }}
-            >
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                marginBottom: 6, gap: 8,
-              }}>
+          {feedback.map(fb => {
+            const status = fb.status || 'open'
+            const isOpen = status === 'open'
+            const statusMeta = {
+              open:      { label: 'Aberto',     color: 'var(--charcoal-mid)', bg: 'transparent' },
+              concluded: { label: '✓ Concluído', color: 'var(--sage)',         bg: 'var(--sage-pale)' },
+              canceled:  { label: '✕ Cancelado', color: '#B71C1C',             bg: '#FFEBEE' },
+            }[status]
+            return (
+              <div
+                key={fb.id}
+                style={{
+                  background: 'white', border: '1px solid var(--border)',
+                  borderRadius: 12, padding: '12px 14px',
+                  opacity: isOpen ? 1 : 0.65,
+                }}
+              >
                 <div style={{
-                  fontSize: 12, fontWeight: 700, color: 'var(--charcoal)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  flex: 1, minWidth: 0,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                  marginBottom: 6, gap: 8,
                 }}>
-                  {fb.email}
+                  <div style={{
+                    fontSize: 12, fontWeight: 700, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    flex: 1, minWidth: 0,
+                  }}>
+                    {fb.email}
+                  </div>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5,
+                    color: statusMeta.color, background: statusMeta.bg,
+                    textTransform: 'uppercase', letterSpacing: 0.4, flexShrink: 0,
+                  }}>
+                    {statusMeta.label}
+                  </span>
+                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', flexShrink: 0 }}>
+                    {new Date(fb.created_at).toLocaleString('pt-BR')}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', flexShrink: 0 }}>
-                  {new Date(fb.created_at).toLocaleString('pt-BR')}
+                <div style={{
+                  fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5,
+                  whiteSpace: 'pre-line',
+                }}>
+                  {fb.text}
+                </div>
+                {fb.context && (
+                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 6 }}>
+                    📍 {fb.context}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                  {isOpen ? (
+                    <>
+                      <button onClick={() => setStatus(fb.id, 'concluded')} disabled={busy} style={statusBtn('var(--sage)')}>
+                        ✓ Concluir
+                      </button>
+                      <button onClick={() => setStatus(fb.id, 'canceled')} disabled={busy} style={statusBtn('#B71C1C')}>
+                        ✕ Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => setStatus(fb.id, 'open')} disabled={busy} style={statusBtn('var(--charcoal-light)')}>
+                      ↺ Reabrir
+                    </button>
+                  )}
                 </div>
               </div>
-              <div style={{
-                fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5,
-                whiteSpace: 'pre-line',
-              }}>
-                {fb.text}
-              </div>
-              {fb.context && (
-                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 6 }}>
-                  📍 {fb.context}
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
   )
+}
+
+
+function statusBtn(color) {
+  return {
+    padding: '5px 10px', borderRadius: 8,
+    border: `1px solid ${color}`, background: 'white', color,
+    fontWeight: 700, fontSize: 11, cursor: 'pointer',
+  }
 }
 
 // ── Subcomponents ─────────────────────────────────────────

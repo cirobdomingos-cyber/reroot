@@ -52,6 +52,12 @@ export default function MyRsvps() {
                           .sort((a, b) => b.parsed - a.parsed)
   const undated  = entries.filter(e => Number.isNaN(e.parsed))
 
+  // Favorited venues — distinct from RSVPs. Stored per place id with the
+  // minimum metadata needed to render a row + open the venue detail.
+  const favoritePlaces = Object.entries(state.favorites || {}).map(([id, info]) => ({
+    id, ...info,
+  }))
+
   // Friend RSVPs — backend returns event_id/event_name/event_venue/event_date
   // (the friends_feed shape, not the catalog shape). Exclude events the user
   // already RSVPd to (already in "Próximos") and any without future dates.
@@ -141,6 +147,57 @@ export default function MyRsvps() {
         <Section title={`Próximos · ${upcoming.length}`}>
           {upcoming.map(e => (
             <RsvpRow key={e.id} entry={e} onOpen={openEvent} onCancel={unRsvp} />
+          ))}
+        </Section>
+      )}
+
+      {favoritePlaces.length > 0 && (
+        <Section title={`♥ Lugares favoritos · ${favoritePlaces.length}`}>
+          {favoritePlaces.map(place => (
+            <div
+              key={place.id}
+              onClick={() => navigate('/events', { state: { openEventId: place.id } })}
+              style={{
+                background: 'white', borderRadius: 14, padding: '12px 14px',
+                border: '1px solid var(--border)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}
+            >
+              <div style={{
+                width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                background: place.headerBg || 'var(--cream)', fontSize: 18,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {place.icon || '♥'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {place.name || place.id}
+                </div>
+                {place.venue && (
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                    {place.venue}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (!confirm(`Remover "${place.name || place.id}" dos favoritos?`)) return
+                  dispatch({ type: 'TOGGLE_FAVORITE', payload: { placeId: place.id } })
+                }}
+                title="Remover dos favoritos"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 18, color: '#E91E63', padding: 6,
+                }}
+              >
+                ♥
+              </button>
+            </div>
           ))}
         </Section>
       )}

@@ -11,6 +11,8 @@ import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
+import AddToGroupSheet from '../components/AddToGroupSheet'
+import { shareLink, appLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
@@ -128,6 +130,8 @@ export default function Events() {
   // Friends' RSVPs — feeds the friend-dot in the week strip. Only fetched
   // when the user is signed in.
   const [friendsFeed, setFriendsFeed]       = useState([])
+  // Add-to-group sheet target. null = sheet closed.
+  const [addToGroupEvent, setAddToGroupEvent] = useState(null)
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -252,6 +256,18 @@ export default function Events() {
   }
 
   async function handleRsvpToggle(ev) {
+    // Venues (cafés, bares, parques, livrarias, cinemas) don't have a date —
+    // "saving" them is favoriting, not RSVPing. Route to the favorites state.
+    if (VENUE_CATEGORIES.has(ev.category)) {
+      dispatch({
+        type: 'TOGGLE_FAVORITE',
+        payload: {
+          placeId: ev.id, name: ev.name, venue: ev.venue,
+          icon: ev.icon, headerBg: ev.headerBg,
+        },
+      })
+      return
+    }
     const wasRsvped = !!state.rsvps[ev.id]
     dispatch({
       type: 'TOGGLE_RSVP',
@@ -570,8 +586,14 @@ export default function Events() {
                   >
                     <VenueRow
                       ev={ev}
-                      saved={rsvped}
-                      onSave={() => handleRsvpToggle(ev)}
+                      favorited={!!state.favorites?.[ev.id]}
+                      onFavorite={() => dispatch({
+                        type: 'TOGGLE_FAVORITE',
+                        payload: {
+                          placeId: ev.id, name: ev.name, venue: ev.venue,
+                          icon: ev.icon, headerBg: ev.headerBg,
+                        },
+                      })}
                       onOpen={() => openDetail(ev.id)}
                       t={t}
                     />
@@ -596,6 +618,7 @@ export default function Events() {
                     onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
+                    onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(ev) : null}
                     t={t}
                   />
                 </motion.div>
@@ -681,10 +704,15 @@ export default function Events() {
             ) : (
               <DetailPanel
                 event={detailEvent}
-                rsvped={!!state.rsvps[detailEvent.id]}
+                rsvped={
+                  VENUE_CATEGORIES.has(detailEvent.category)
+                    ? !!state.favorites?.[detailEvent.id]
+                    : !!state.rsvps[detailEvent.id]
+                }
                 friendsGoing={friendsByEventId[detailEvent.id] || []}
                 onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
+                onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 onAttended={() => {
@@ -698,6 +726,12 @@ export default function Events() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AddToGroupSheet
+        open={!!addToGroupEvent}
+        onClose={() => setAddToGroupEvent(null)}
+        event={addToGroupEvent}
+      />
     </div>
   )
 }
@@ -736,7 +770,7 @@ function SourceBadge({ ev, onSourceTap }) {
 }
 
 
-function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, onSourceTap, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, onSourceTap, onAddToGroup, t }) {
   // Split "Venue Name · Neighborhood" into two parts
   const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -879,6 +913,20 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <AddToCalendar event={ev} />
+            {onAddToGroup && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onAddToGroup() }}
+                title="Adicionar a um grupo"
+                style={{
+                  background: 'none', border: '1px solid var(--border)',
+                  borderRadius: 10, cursor: 'pointer',
+                  padding: '5px 9px', fontSize: 13,
+                  color: 'var(--charcoal-mid)',
+                }}
+              >
+                👥
+              </button>
+            )}
             <button
               className="btn btn--primary"
               style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10 }}
@@ -895,7 +943,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
 
 // ── VenueRow ──────────────────────────────────────────────────────────────────
 
-function VenueRow({ ev, saved, onSave, onOpen, t }) {
+function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
   const subtype = getSubtype(ev)
   // Split "Name · Neighborhood" reliably
   const [, neighborhood] = ev.venue?.includes(' · ')
@@ -974,44 +1022,42 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
         </div>
       </div>
 
-      {/* Save button + calendar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <AddToCalendar event={ev} />
-        <button
-          onClick={e => { e.stopPropagation(); onSave() }}
-          style={{
-            padding: '7px 14px', borderRadius: 10,
-            fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-            border: saved ? 'none' : '1.5px solid var(--border)',
-            background: saved ? 'var(--sage)' : 'transparent',
-            color: saved ? 'white' : 'var(--charcoal-mid)',
-          }}
-        >
-          {saved ? `✓ ${t.events_saved_check}` : t.events_save}
-        </button>
-      </div>
+      {/* Favorite heart */}
+      <button
+        onClick={e => { e.stopPropagation(); onFavorite() }}
+        title={favorited ? 'Remover dos favoritos' : 'Favoritar este lugar'}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 22, padding: 6, flexShrink: 0,
+          color: favorited ? '#E91E63' : 'var(--charcoal-light)',
+          transition: 'transform 0.15s',
+          transform: favorited ? 'scale(1.05)' : 'scale(1)',
+        }}
+      >
+        {favorited ? '♥' : '♡'}
+      </button>
     </div>
   )
 }
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, userNeighborhood, t }) {
+function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
-  const [copied, setCopied] = useState(false)
+  const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
 
-  function handleWhatsApp() {
-    const link = ev.url || 'aue.app'
-    const msg = `Vou ao ${ev.name} no ${ev.venue}! 🎉 Bora junto? ${link}`
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer')
-  }
-
-  function handleCopyLink() {
-    const link = ev.url || window.location.href
-    navigator.clipboard.writeText(link).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+  // Share message — works for both catalog and custom events. Custom events
+  // don't have a public URL, so we fall back to the app homepage; the text
+  // body carries the details (name, venue, date) so the recipient gets the
+  // gist even without a clickable preview.
+  async function handleShare() {
+    const url = ev.url && !ev.isCustom ? ev.url : appLink('/events')
+    const dateStr = ev.date ? ` · ${ev.date}` : ''
+    const venueStr = ev.venue ? ` no ${ev.venue}` : ''
+    const text = `${ev.name}${venueStr}${dateStr}`
+    const result = await shareLink({ url, title: ev.name, text })
+    setShareStatus(result)
+    setTimeout(() => setShareStatus(null), 2200)
   }
 
   return (
@@ -1238,6 +1284,38 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
             ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
             : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
           }
+        </button>
+
+        {onAddToGroup && !isVenue && (
+          <button
+            onClick={onAddToGroup}
+            style={{
+              width: '100%', marginTop: 10,
+              padding: '12px', borderRadius: 12,
+              background: 'transparent', border: '1.5px solid var(--border)',
+              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            👥 Adicionar a um grupo
+          </button>
+        )}
+
+        <button
+          onClick={handleShare}
+          style={{
+            width: '100%', marginTop: 10,
+            padding: '12px', borderRadius: 12,
+            background: 'transparent', border: '1.5px solid var(--border)',
+            color: shareStatus ? 'var(--sage)' : 'var(--charcoal-mid)',
+            borderColor: shareStatus ? 'var(--sage)' : 'var(--border)',
+            fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          {shareStatus === 'shared' ? '✓ Compartilhado'
+            : shareStatus === 'copied' ? '✓ Link copiado'
+            : shareStatus === 'failed' ? '✕ Falhou'
+            : '📤 Compartilhar'}
         </button>
 
         {rsvped && (

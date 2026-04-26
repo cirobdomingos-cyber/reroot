@@ -86,6 +86,11 @@ const INITIAL_STATE = {
   // having to cross-reference the live catalog (which may be paginated/
   // filtered and miss the event the user RSVPd to).
   rsvps: {},
+  // Favorited venues — separate from rsvps. RSVP = "I'm going to this dated
+  // event"; favorite = "I want to remember this place". Stored as
+  // {placeId: {name, venue, icon}} keyed by event id (venues are events
+  // with category in VENUE_CATEGORIES). Synced via the user_state blob.
+  favorites: {},
   eventsAttended: 0,    // incremented via "Mark attended"
   frameworkRead: false,
 
@@ -189,6 +194,18 @@ function reducer(state, action) {
           ? state.interests.filter(i => i !== interest)
           : [...state.interests, interest],
       }
+    }
+
+    case 'TOGGLE_FAVORITE': {
+      // payload: { placeId, name?, venue?, icon?, headerBg? }
+      const { placeId, name, venue, icon, headerBg } = action.payload
+      const next = { ...state.favorites }
+      if (next[placeId]) {
+        delete next[placeId]
+      } else {
+        next[placeId] = { name, venue, icon, headerBg }
+      }
+      return { ...state, favorites: next }
     }
 
     case 'TOGGLE_RSVP': {
