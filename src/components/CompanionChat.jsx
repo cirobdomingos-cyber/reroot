@@ -271,7 +271,7 @@ function CompanionMessage({ msg, onEventClick, onRsvp, rsvps, onCreateEvent, lan
                     borderTop: '1px solid var(--border)', paddingTop: 8,
                   }}>
                     <button
-                      onClick={() => onRsvp?.(ev.id)}
+                      onClick={() => onRsvp?.(ev)}
                       style={{
                         flex: 1, padding: '8px 0', borderRadius: 10,
                         border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
@@ -354,22 +354,20 @@ export default function CompanionChat({ open, onClose }) {
   const currentWeek = computeCurrentWeek(state.joinedAt)
   const chapter = getChapter(currentWeek)
 
-  // Load all available events once (static + live) so we can send them as context
+  // Load the live event catalog so the companion can recommend from it.
+  // Falls back to the embedded EVENTS list only when the backend is offline
+  // — those static events have stale hardcoded dates and shouldn't be the
+  // primary source.
   useEffect(() => {
     async function loadEvents() {
-      // Start with static embedded events (always available)
-      let events = [...EVENTS]
-      // Try to fetch live events as bonus
       try {
         const { events: liveEvents } = await fetchEvents('all')
         if (liveEvents?.length > 0) {
-          const ids = new Set(events.map(e => e.id))
-          for (const ev of liveEvents) {
-            if (!ids.has(ev.id)) events.push(ev)
-          }
+          setAllEvents(liveEvents)
+          return
         }
-      } catch { /* static events are enough */ }
-      setAllEvents(events)
+      } catch { /* fall through to static */ }
+      setAllEvents([...EVENTS])
     }
     if (open && allEvents.length === 0) loadEvents()
   }, [open, allEvents.length])
@@ -393,8 +391,11 @@ export default function CompanionChat({ open, onClose }) {
     navigate('/events', { state: { openEventId: ev.id } })
   }
 
-  function handleRsvp(eventId) {
-    dispatch({ type: 'TOGGLE_RSVP', payload: { eventId } })
+  function handleRsvp(ev) {
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: { eventId: ev.id, dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
+    })
   }
 
   function handleStartCreate(suggestion) {
@@ -430,7 +431,6 @@ export default function CompanionChat({ open, onClose }) {
       isLowPressure: true,
       isCustom: true,
       createdBy: state.userName || 'You',
-      cohortGoing: [],
     }
 
     dispatch({ type: 'ADD_CUSTOM_EVENT', payload: event })
@@ -498,8 +498,8 @@ export default function CompanionChat({ open, onClose }) {
 
   const suggestions = SUGGESTIONS[lang] || SUGGESTIONS.pt
   const welcomeMsg = lang === 'pt'
-    ? `Oi${state.userName ? `, ${state.userName}` : ''}! Sou seu companheiro Reroot. Me conta como se sente ou o que tem vontade de fazer — eu te ajudo a encontrar algo bom pra essa semana.`
-    : `Hey${state.userName ? `, ${state.userName}` : ''}! I'm your Reroot companion. Tell me how you're feeling or what you'd like to do — I'll help you find something good for this week.`
+    ? `Oi${state.userName ? `, ${state.userName}` : ''}! Sou seu companheiro do auê. Me conta o que tem vontade de fazer ou com quem quer sair — eu te ajudo a achar algo bom pra essa semana.`
+    : `Hey${state.userName ? `, ${state.userName}` : ''}! I'm your auê companion. Tell me what you'd like to do or who you want to go with — I'll help you find something good for this week.`
 
   return (
     <AnimatePresence>
@@ -541,7 +541,7 @@ export default function CompanionChat({ open, onClose }) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)' }}>
-                {lang === 'pt' ? 'Companheiro Reroot' : 'Reroot Companion'}
+                {lang === 'pt' ? 'Companheiro do auê' : 'auê Companion'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
                 {lang === 'pt'

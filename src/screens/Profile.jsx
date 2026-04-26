@@ -1,51 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useApp, computeBadges, computeCurrentWeek, getChapter, CHAPTERS } from '../context/AppContext'
+import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
+import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import Avatar from '../components/Avatar'
+
 export default function Profile() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(state.userName)
-  const [showPauseSheet, setShowPauseSheet] = useState(false)
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
-  const [paused, setPaused] = useState(state.isPaused)
-  const [selectedBadge, setSelectedBadge] = useState(null)
-
-  const googleId = state.googleUser?.id
-
-  const badges = computeBadges(state)
-  const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
-  const currentWeek = computeCurrentWeek(state.joinedAt)
-  const chapter = getChapter(currentWeek)
-
-  // Badge celebration — detect newly earned badges and show overlay
-  const earnedBadgeIds = badges.filter(b => b.earned).map(b => b.id).join(',')
-  const prevEarnedRef = useRef(null)
-  const [celebratingBadge, setCelebratingBadge] = useState(null)
-
-  useEffect(() => {
-    if (prevEarnedRef.current === null) {
-      // First render — initialize without firing celebration
-      prevEarnedRef.current = earnedBadgeIds
-      return
-    }
-    if (earnedBadgeIds !== prevEarnedRef.current) {
-      const prevIds = prevEarnedRef.current.split(',').filter(Boolean)
-      const currentIds = earnedBadgeIds.split(',').filter(Boolean)
-      const newlyEarned = currentIds.filter(id => !prevIds.includes(id))
-      prevEarnedRef.current = earnedBadgeIds
-      if (newlyEarned.length > 0) {
-        const badge = badges.find(b => b.id === newlyEarned[0])
-        if (badge) {
-          setCelebratingBadge(badge)
-          setTimeout(() => setCelebratingBadge(null), 6000)
-        }
-      }
-    }
-  }, [earnedBadgeIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function saveName() {
     if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
@@ -58,117 +23,26 @@ export default function Profile() {
     window.location.reload()
   }
 
-  function handlePause() {
-    dispatch({ type: 'SET_PAUSED', payload: true })
-    setPaused(true)
-    setShowPauseSheet(false)
-  }
-
-  function handleCancelTap() {
-    setShowPauseSheet(false)
-    setShowCancelConfirm(true)
-  }
-
-  // 12-week grid for "weeks shown up"
-  const weeksShownUp = state.weeksShownUp ?? []
-
   return (
     <div>
-      {/* Badge earned celebration overlay */}
-      <AnimatePresence>
-        {celebratingBadge && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
-              zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-            onClick={() => setCelebratingBadge(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.7, y: 24 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ type: 'spring', damping: 20, stiffness: 280 }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: 'white', borderRadius: 24, padding: '32px 28px',
-                textAlign: 'center', maxWidth: 300, margin: '0 20px',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
-              }}
-            >
-              <div style={{ fontSize: 60, marginBottom: 12 }}>{celebratingBadge.icon}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.5, color: 'var(--sage)', marginBottom: 4 }}>
-                {state.language === 'pt' ? 'Conquista desbloqueada!' : 'Badge unlocked!'}
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 8 }}>{celebratingBadge.name}</div>
-              <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 20 }}>{celebratingBadge.desc}</div>
-              <button
-                onClick={async () => {
-                  const text = state.language === 'pt'
-                    ? `Conquistei o badge "${celebratingBadge.name}" no Reroot! ${celebratingBadge.icon}`
-                    : `Unlocked the "${celebratingBadge.name}" badge on Reroot! ${celebratingBadge.icon}`
-                  if (navigator.share) {
-                    try { await navigator.share({ title: 'Reroot', text }) } catch {}
-                  } else {
-                    navigator.clipboard.writeText(text).catch(() => {})
-                  }
-                  setCelebratingBadge(null)
-                }}
-                style={{
-                  width: '100%', padding: 13, borderRadius: 14, border: 'none',
-                  background: 'var(--sage)', color: 'white', fontSize: 14,
-                  fontWeight: 700, cursor: 'pointer', marginBottom: 8,
-                }}
-              >
-                {state.language === 'pt' ? 'Compartilhar conquista →' : 'Share achievement →'}
-              </button>
-              <button
-                onClick={() => setCelebratingBadge(null)}
-                style={{ fontSize: 12, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                {state.language === 'pt' ? 'Fechar' : 'Close'}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Sign-in card — only when no Google account is connected. Lets
+          users who skipped onboarding sign in later (needed for curator
+          access, friend code, RSVP sync). */}
+      {!state.googleUser && <SignInCard dispatch={dispatch} />}
 
       {/* Hero */}
       <div style={{
         background: 'linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%)',
-        padding: '16px 24px 28px', textAlign: 'center', color: 'white',
-        position: 'relative',
+        padding: '20px 24px 28px', textAlign: 'center', color: 'white',
       }}>
-        {/* Gear icon */}
-        <button
-          onClick={() => setShowPauseSheet(true)}
-          style={{
-            position: 'absolute', top: 16, right: 20,
-            background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: '50%',
-            width: 34, height: 34, cursor: 'pointer', fontSize: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >⚙️</button>
-
-        {state.googleUser?.picture ? (
-          <img
-            src={state.googleUser.picture}
-            alt={state.userName}
-            style={{
-              width: 72, height: 72, borderRadius: '50%',
-              margin: '0 auto 12px', display: 'block',
-              border: '3px solid rgba(255,255,255,0.2)',
-              objectFit: 'cover',
-            }}
+        <div style={{ margin: '0 auto 12px', width: 72 }}>
+          <Avatar
+            src={state.googleUser?.picture}
+            name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
+            size={72}
+            bordered
           />
-        ) : (
-          <div className="avatar avatar--lg" style={{ background: 'var(--terra)', margin: '0 auto 12px' }}>
-            {(state.userName || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
+        </div>
 
         {editingName ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
@@ -185,147 +59,53 @@ export default function Profile() {
                 outline: 'none', textAlign: 'center', width: 160,
               }}
             />
-            <button onClick={saveName} style={{ fontSize: 18, color: 'var(--sage-light)', background: 'none', border: 'none', cursor: 'pointer' }}>✓</button>
+            <button
+              onClick={saveName}
+              style={{ fontSize: 18, color: 'var(--sage-light)', background: 'none', border: 'none', cursor: 'pointer' }}
+            >✓</button>
           </div>
         ) : (
           <div
             style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', cursor: 'pointer' }}
-            onClick={() => { setNameInput(state.userName); setEditingName(true) }}
+            onClick={() => { setNameInput(state.userName || ''); setEditingName(true) }}
           >
-            <span style={{ fontSize: 20, fontWeight: 700 }}>{state.userName}</span>
+            <span style={{ fontSize: 20, fontWeight: 700 }}>{state.userName || '—'}</span>
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>✎</span>
           </div>
         )}
 
         {state.googleUser?.email && (
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+          <div style={{
+            fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
             {state.googleUser.email}
-          </div>
-        )}
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
-          {t.profile_cohort}
-        </div>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: paused ? 'rgba(255,255,255,0.15)' : 'var(--terra)', padding: '5px 14px',
-          borderRadius: 20, fontSize: 11, fontWeight: 700, marginTop: 10,
-        }}>
-          {paused ? t.profile_paused_badge : t.profile_member_badge}
-        </div>
-        {paused && (
-          <button
-            onClick={() => {
-              dispatch({ type: 'SET_PAUSED', payload: false })
-              setPaused(false)
-            }}
-            style={{
-              marginTop: 10, background: 'var(--sage)', color: 'white',
-              border: 'none', borderRadius: 20, padding: '7px 20px',
-              fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            ▶ {t.profile_resume_btn ?? 'Retomar jornada'}
-          </button>
-        )}
-      </div>
-
-      {/* Weeks shown up — 12-week grid */}
-      <div className="section-label">{t.profile_weeks_shown}</div>
-      <div style={{ margin: '0 16px 12px' }} className="card">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
-          {Array.from({ length: 12 }, (_, i) => {
-            const week = i + 1
-            const shown = weeksShownUp.includes(week)
-            const isCurrent = week === currentWeek
-            const isPast = week < currentWeek
-            const chapterForWeek = CHAPTERS.find(c => c.weeks.includes(week))
-            return (
-              <div key={week} style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: '100%', aspectRatio: '1', borderRadius: 10,
-                  background: shown ? chapterForWeek?.color ?? 'var(--sage)' : 'transparent',
-                  border: shown ? 'none'
-                    : isCurrent ? `2px solid ${chapter.color}`
-                    : isPast ? '2px dashed var(--border)'
-                    : '2px solid var(--border)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: shown ? 12 : 11,
-                  color: shown ? 'white' : 'var(--charcoal-light)',
-                  fontWeight: 700,
-                  opacity: !isPast && !isCurrent ? 0.5 : 1,
-                }}>
-                  {shown ? '✓' : week}
-                </div>
-                <div style={{
-                  fontSize: 9, marginTop: 3,
-                  color: isCurrent ? 'var(--charcoal)' : 'var(--charcoal-light)',
-                  fontWeight: isCurrent ? 700 : 400,
-                }}>
-                  W{week}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        <div style={{ marginTop: 12, textAlign: 'center', fontSize: 12, color: 'var(--charcoal-mid)' }}>
-          <strong style={{ color: 'var(--charcoal)' }}>{weeksShownUp.length}</strong> {t.profile_weeks_shown?.toLowerCase?.() ?? 'weeks shown up'}
-        </div>
-      </div>
-
-      {/* Badges */}
-      <div className="section-label">{t.profile_badges_label}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '0 16px' }}>
-        {badges.map(badge => {
-          const isSelected = selectedBadge === badge.id
-          return (
-            <div
-              key={badge.id}
-              onClick={() => setSelectedBadge(isSelected ? null : badge.id)}
+            <button
+              onClick={() => {
+                if (confirm('Sair da conta Google? Você pode voltar a entrar quando quiser.')) {
+                  dispatch({ type: 'SET_GOOGLE_USER', payload: null })
+                }
+              }}
               style={{
-                background: 'white', borderRadius: 14, padding: '12px 14px',
-                flex: '1 1 calc(33% - 8px)', textAlign: 'center',
-                boxShadow: isSelected ? '0 0 0 2px var(--sage)' : 'var(--shadow-sm)',
-                opacity: badge.earned ? 1 : 0.35,
-                filter: badge.earned ? 'none' : 'grayscale(1)',
-                transition: 'all 0.2s', position: 'relative',
-                cursor: 'pointer',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'rgba(255,255,255,0.55)', fontSize: 11, padding: 0,
+                textDecoration: 'underline',
               }}
             >
-              {badge.earned && (
-                <div style={{
-                  position: 'absolute', top: -4, right: -4,
-                  width: 14, height: 14, borderRadius: '50%',
-                  background: 'var(--sage)', border: '2px solid white',
-                  fontSize: 8, color: 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700,
-                }}>✓</div>
-              )}
-              <div style={{ fontSize: 24, marginBottom: 4 }}>{badge.icon}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.2 }}>{badge.name}</div>
-              <AnimatePresence>
-                {isSelected && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    style={{ overflow: 'hidden' }}
-                  >
-                    <div style={{
-                      fontSize: 10, color: badge.earned ? 'var(--sage)' : 'var(--charcoal-light)',
-                      marginTop: 6, lineHeight: 1.4,
-                    }}>
-                      {badge.desc}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )
-        })}
+              sair
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Minha vibe — profile picker */}
+      <VibeSection state={state} dispatch={dispatch} />
+
+      {/* Feedback — only visible to users granted the feedbacker role */}
+      <FeedbackSection state={state} />
+
       {/* Language toggle */}
-      <div style={{ margin: '0 16px 12px' }} className="card">
+      <div style={{ margin: '16px 16px 12px' }} className="card">
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
           {t.profile_language_label}
         </div>
@@ -388,17 +168,20 @@ export default function Profile() {
           🔒 {t.privacy_title ?? 'Privacy'}
         </div>
         {[
-          { key: 'shareRsvps',             label: t.privacy_share_rsvps ?? 'Share RSVPs with friends',        desc: t.privacy_share_rsvps_desc ?? 'Your friends can see events you confirmed' },
+          { key: 'shareRsvps',              label: t.privacy_share_rsvps ?? 'Share RSVPs with friends',         desc: t.privacy_share_rsvps_desc ?? 'Your friends can see events you confirmed' },
           { key: 'showInFriendSuggestions', label: t.privacy_show_suggestions ?? 'Appear in friend suggestions', desc: t.privacy_show_suggestions_desc ?? 'Other people can find your profile' },
           { key: 'showProfileToStrangers',  label: t.privacy_show_profile ?? 'Profile visible to non-friends',   desc: t.privacy_show_profile_desc ?? 'Non-friends can see your full profile' },
-        ].map(({ key, label, desc }) => {
+        ].map(({ key, label, desc }, i, arr) => {
           const value = state.privacy?.[key] ?? (key === 'shareRsvps' ? state.shareRsvps : false)
           return (
-            <div key={key} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 0',
-              borderBottom: key !== 'showProfileToStrangers' ? '1px solid var(--border)' : 'none',
-            }}>
+            <div
+              key={key}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 0',
+                borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+              }}
+            >
               <div style={{ flex: 1, paddingRight: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{label}</div>
                 <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
@@ -425,8 +208,8 @@ export default function Profile() {
         })}
       </div>
 
-      {/* Redo onboarding + Reset */}
-      <div style={{ padding: '4px 16px 20px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      {/* Redo onboarding + Reset (dev affordances) */}
+      <div style={{ padding: '4px 16px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <button
           onClick={() => {
             dispatch({ type: 'REDO_ONBOARDING' })
@@ -434,132 +217,282 @@ export default function Profile() {
           }}
           style={{ fontSize: 12, color: 'var(--terra)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
         >
-          {t.profile_redo_onboarding ?? 'Redo onboarding'}
+          {t.profile_redo_onboarding ?? 'Refazer onboarding'}
         </button>
-        <button onClick={handleReset} style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button
+          onClick={handleReset}
+          style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
+        >
           {t.profile_reset}
         </button>
       </div>
+    </div>
+  )
+}
 
-      {/* Pause/Cancel sheet */}
-      <AnimatePresence>
-        {showPauseSheet && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+
+// ── Feedback — gated by is_feedbacker role ────────────────
+// Pulls the role from /admin/curators (open to any authenticated user;
+// returns is_feedbacker for the requester). Renders nothing when the
+// flag is false, so non-feedbackers don't see this section.
+function FeedbackSection({ state }) {
+  const email = state.googleUser?.email
+  const googleId = state.googleUser?.id
+  const [allowed, setAllowed] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [status, setStatus] = useState(null) // 'sent' | 'error' | null
+  const API_BASE = import.meta.env.VITE_API_URL ??
+    (import.meta.env.DEV ? 'http://localhost:8000' : '')
+
+  useEffect(() => {
+    if (!email) { setAllowed(false); return }
+    let cancelled = false
+    fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled) setAllowed(!!data?.is_feedbacker) })
+      .catch(() => { if (!cancelled) setAllowed(false) })
+    return () => { cancelled = true }
+  }, [email, API_BASE])
+
+  async function submit() {
+    if (text.trim().length < 5 || submitting) return
+    setSubmitting(true)
+    setStatus(null)
+    try {
+      const r = await fetch(`${API_BASE}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text.trim(),
+          context: window.location.hash || '',
+          requesting_email: email,
+          google_id: googleId || '',
+        }),
+      })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      setText('')
+      setStatus('sent')
+      setTimeout(() => { setOpen(false); setStatus(null) }, 1500)
+    } catch {
+      setStatus('error')
+    }
+    setSubmitting(false)
+  }
+
+  if (!allowed) return null
+
+  return (
+    <div style={{ margin: '16px 16px 0' }} className="card">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: open ? 12 : 0 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+            💬 Mandar feedback
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+            Você foi liberado pra opinar sobre o app. Sugestões, bugs, ideias.
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen(v => !v)}
+          style={{
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 600,
+            color: 'var(--charcoal-mid)', cursor: 'pointer', flexShrink: 0, marginLeft: 12,
+          }}
+        >
+          {open ? 'fechar' : 'abrir'}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="O que tá funcionando, o que tá travando, o que faltaria…"
+            rows={4}
+            maxLength={4000}
             style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-              display: 'flex', alignItems: 'flex-end', zIndex: 200,
+              width: '100%', resize: 'vertical', minHeight: 80,
+              padding: '10px 12px', borderRadius: 10,
+              border: '1px solid var(--border)',
+              fontSize: 13, fontFamily: 'inherit', outline: 'none',
+              boxSizing: 'border-box',
             }}
-            onClick={e => { if (e.target === e.currentTarget) setShowPauseSheet(false) }}
-          >
-            <motion.div
-              initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-              transition={{ type: 'spring', damping: 25 }}
+          />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginTop: 8, gap: 10,
+          }}>
+            <div style={{ fontSize: 11, color: status === 'sent' ? 'var(--sage)' : status === 'error' ? '#B71C1C' : 'var(--charcoal-light)' }}>
+              {status === 'sent' ? 'Enviado, valeu! ✓'
+                : status === 'error' ? 'Falhou — tenta de novo.'
+                : `${text.length}/4000`}
+            </div>
+            <button
+              onClick={submit}
+              disabled={text.trim().length < 5 || submitting}
               style={{
-                background: 'white', borderRadius: '24px 24px 0 0',
-                padding: '24px 20px 44px', width: '100%',
+                padding: '8px 16px', borderRadius: 10, border: 'none',
+                background: 'var(--sage)', color: 'white',
+                fontSize: 12, fontWeight: 700,
+                cursor: text.trim().length < 5 || submitting ? 'not-allowed' : 'pointer',
+                opacity: text.trim().length < 5 || submitting ? 0.5 : 1,
               }}
             >
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 20px' }}/>
-              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 20 }}>
-                {t.profile_pause_title}
-              </div>
+              {submitting ? 'Enviando…' : 'Mandar'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
-              {/* Pause option — primary */}
+
+// ── "Minha vibe" — profile picker ─────────────────────────
+// Lets the user pick (or change) their profile any time. Profile drives
+// the default mood + the order of suggestions on Home. Setting null
+// clears the profile back to "no preference".
+function VibeSection({ state, dispatch }) {
+  const [editing, setEditing] = useState(false)
+  const profile = state.profile ? PROFILES[state.profile] : null
+  const profiles = Object.values(PROFILES)
+
+  function pick(profileId) {
+    dispatch({ type: 'SET_PROFILE', payload: profileId })
+    setEditing(false)
+  }
+
+  return (
+    <div style={{ margin: '16px 16px 0' }} className="card">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editing ? 14 : 0 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+            Minha vibe
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+            {profile
+              ? `${profile.emoji} ${profile.label} · ${profile.blurb}`
+              : 'Sem preferência — sugestões em ordem de data.'}
+          </div>
+        </div>
+        <button
+          onClick={() => setEditing(v => !v)}
+          style={{
+            background: 'transparent', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 600,
+            color: 'var(--charcoal-mid)', cursor: 'pointer', flexShrink: 0,
+            marginLeft: 12,
+          }}
+        >
+          {editing ? 'fechar' : 'trocar'}
+        </button>
+      </div>
+
+      {editing && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+        }}>
+          {profiles.map(p => {
+            const selected = state.profile === p.id
+            return (
               <button
-                onClick={handlePause}
+                key={p.id}
+                onClick={() => pick(p.id)}
                 style={{
-                  width: '100%', background: 'var(--sage-pale)', border: 'none',
-                  borderRadius: 16, padding: '16px', marginBottom: 10,
-                  cursor: 'pointer', textAlign: 'left',
+                  background: selected ? 'var(--sage-pale)' : 'white',
+                  border: `1.5px solid ${selected ? 'var(--sage)' : 'var(--border)'}`,
+                  borderRadius: 12, padding: '12px 10px',
+                  textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', gap: 4,
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--sage)', marginBottom: 4 }}>
-                  ⏸ {t.profile_pause_option}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>{t.profile_pause_sub}</div>
-              </button>
-
-              {/* Cancel option — secondary, smaller */}
-              <button
-                onClick={handleCancelTap}
-                style={{
-                  width: '100%', background: 'transparent', border: 'none',
-                  padding: '10px 16px', marginBottom: 10,
-                  cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
-                  {t.profile_cancel_option}
+                <div style={{ fontSize: 22, lineHeight: 1 }}>{p.emoji}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>{p.label}</div>
+                <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', lineHeight: 1.35 }}>
+                  {p.blurb}
                 </div>
               </button>
-
-              <button
-                onClick={() => setShowPauseSheet(false)}
-                style={{ width: '100%', padding: '10px', fontSize: 13, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                {t.profile_close}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Cancel confirmation — retention message */}
-      <AnimatePresence>
-        {showCancelConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-              display: 'flex', alignItems: 'flex-end', zIndex: 200,
-            }}
-            onClick={e => { if (e.target === e.currentTarget) setShowCancelConfirm(false) }}
-          >
-            <motion.div
-              initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-              transition={{ type: 'spring', damping: 25 }}
+            )
+          })}
+          {state.profile && (
+            <button
+              onClick={() => pick(null)}
               style={{
-                background: 'white', borderRadius: '24px 24px 0 0',
-                padding: '28px 24px 44px', width: '100%',
+                gridColumn: 'span 2',
+                background: 'transparent', border: '1px dashed var(--border)',
+                borderRadius: 10, padding: '8px', fontSize: 12,
+                color: 'var(--charcoal-light)', cursor: 'pointer',
               }}
             >
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)', margin: '0 auto 24px' }}/>
+              Limpar perfil (sem preferência)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
-              <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>🌿</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.4, marginBottom: 8 }}>
-                  {t.profile_cancel_msg_pre} {currentWeek} {t.profile_cancel_msg_of}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.6 }}>
-                  {t.profile_cancel_msg_post}
-                </div>
-              </div>
 
-              {/* Pause instead — primary offer */}
-              <button
-                onClick={() => { handlePause(); setShowCancelConfirm(false) }}
-                className="btn btn--sage"
-                style={{ marginBottom: 10 }}
-              >
-                ⏸ {t.profile_pause_offer}
-              </button>
+// ── Sign-in card for unauthenticated users ────────────────
+function SignInCard({ dispatch }) {
+  const googleBtnRef = useRef(null)
+  const googleConfigured = isGoogleConfigured()
 
-              {/* Final cancel */}
-              <button
-                onClick={() => setShowCancelConfirm(false)}
-                style={{
-                  width: '100%', padding: '12px', fontSize: 12,
-                  color: 'var(--charcoal-light)', background: 'none',
-                  border: 'none', cursor: 'pointer',
-                }}
-              >
-                {t.profile_go_back}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+  useEffect(() => {
+    if (!googleConfigured) return
+    const cleanup = mountGoogleButton(googleBtnRef, (googleUser) => {
+      dispatch({ type: 'SET_GOOGLE_USER', payload: googleUser })
+      if (googleUser.givenName || googleUser.name) {
+        dispatch({
+          type: 'SET_NAME',
+          payload: googleUser.givenName || googleUser.name.split(' ')[0],
+        })
+      }
+    })
+    return cleanup
+  }, [dispatch, googleConfigured])
+
+  function handleMockSignIn() {
+    dispatch({ type: 'SET_GOOGLE_USER', payload: MOCK_GOOGLE_USER })
+    dispatch({ type: 'SET_NAME', payload: MOCK_GOOGLE_USER.givenName })
+  }
+
+  return (
+    <div style={{
+      margin: '14px 16px 0',
+      background: 'white',
+      borderRadius: 14,
+      padding: 16,
+      border: '1px solid var(--border)',
+      boxShadow: 'var(--shadow-sm)',
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
+        Entrar com Google
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--charcoal-light)', lineHeight: 1.5, marginBottom: 12 }}>
+        Faça login pra salvar eventos, virar curador de Instagram e
+        sincronizar entre dispositivos.
+      </div>
+      {googleConfigured ? (
+        <div ref={googleBtnRef} />
+      ) : (
+        <button
+          onClick={handleMockSignIn}
+          style={{
+            width: '100%', padding: '10px 16px',
+            border: 'none', borderRadius: 10,
+            background: 'var(--charcoal)', color: 'white',
+            fontWeight: 700, fontSize: 13, cursor: 'pointer',
+          }}
+        >
+          Entrar (modo demo)
+        </button>
+      )}
     </div>
   )
 }

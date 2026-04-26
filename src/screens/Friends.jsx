@@ -1,5 +1,5 @@
 /**
- * Friends — social tab for discovering and managing your cohort connections.
+ * Friends — social tab for discovering and managing your auê connections.
  *
  * Sections (top to bottom):
  *   1. My code card — shareable friend code + copy button.
@@ -11,8 +11,11 @@
  * (each API helper in services/api.js returns null/[] on failure).
  */
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
+import Avatar from '../components/Avatar'
+import { shareLink, appLink } from '../lib/share'
 import { useT } from '../i18n'
 import {
   getMyFriendCode,
@@ -46,32 +49,10 @@ function Section({ label, children, style }) {
   )
 }
 
-function Avatar({ name, picture, size = 42 }) {
-  if (picture) {
-    return (
-      <img
-        src={picture}
-        alt={name}
-        referrerPolicy="no-referrer"
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-      />
-    )
-  }
-  return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: 'var(--terra-pale)', color: 'var(--terra)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.4, fontWeight: 700,
-    }}>
-      {(name || '?')[0].toUpperCase()}
-    </div>
-  )
-}
-
 export default function Friends({ embedded = false }) {
   const { state } = useApp()
   const t = useT()
+  const navigate = useNavigate()
   const googleId = state.googleUser?.id
 
   const [myCode, setMyCode] = useState(null)
@@ -108,6 +89,22 @@ export default function Friends({ embedded = false }) {
       setTimeout(() => setCopied(false), 1800)
     } catch {
       // Clipboard unavailable — no-op
+    }
+  }
+
+  async function handleShareLink() {
+    if (!myCode) return
+    const url = appLink(`/friend/${myCode}`)
+    const myName = state.userName || state.googleUser?.givenName || 'um amigo'
+    const result = await shareLink({
+      url,
+      title: 'auê',
+      text: `${myName} quer te adicionar como amigo no auê. Clica pra aceitar:`,
+    })
+    trackEvent('friend_link_shared', { result })
+    if (result === 'copied') {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
     }
   }
 
@@ -165,9 +162,9 @@ export default function Friends({ embedded = false }) {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           style={{
-            background: 'linear-gradient(135deg, #C4724A 0%, #E08D5E 100%)',
+            background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
             borderRadius: 20, padding: '18px 20px', color: 'white',
-            boxShadow: '0 6px 18px rgba(196,114,74,0.35)',
+            boxShadow: '0 6px 18px rgba(232,98,63,0.35)',
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.85, marginBottom: 4 }}>
@@ -185,17 +182,36 @@ export default function Friends({ embedded = false }) {
             <button
               onClick={handleCopy}
               disabled={!myCode}
+              title="Copiar só o código"
               style={{
-                padding: '8px 14px', borderRadius: 10, border: 'none',
+                padding: '8px 12px', borderRadius: 10, border: 'none',
                 background: 'rgba(255,255,255,0.22)', color: 'white',
                 fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
                 opacity: myCode ? 1 : 0.5,
               }}
             >
-              {copied ? t.friends_code_copied : t.friends_code_copy}
+              {copied ? '✓' : '📋'}
             </button>
           </div>
-          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 8 }}>
+
+          {/* Primary CTA — share a tappable link instead of just the code.
+              Uses Web Share API (native sheet on phones) with clipboard fallback. */}
+          <button
+            onClick={handleShareLink}
+            disabled={!myCode}
+            style={{
+              width: '100%', marginTop: 12,
+              padding: '11px 16px', borderRadius: 12, border: 'none',
+              background: 'rgba(255,255,255,0.95)', color: 'var(--sage)',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              opacity: myCode ? 1 : 0.5,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >
+            🔗 Compartilhar link de convite
+          </button>
+
+          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 10, lineHeight: 1.45 }}>
             {t.friends_my_code_hint}
           </div>
         </motion.div>
@@ -281,12 +297,17 @@ export default function Friends({ embedded = false }) {
             border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
           }}>
             {friends.map((f, i) => (
-              <div key={f.google_id ?? f.friend_code ?? i} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 0',
-                borderBottom: i < friends.length - 1 ? '1px solid var(--border)' : 'none',
-              }}>
-                <Avatar name={f.name} picture={f.picture} />
+              <div
+                key={f.google_id ?? f.friend_code ?? i}
+                onClick={() => f.google_id && navigate(`/friends/${encodeURIComponent(f.google_id)}`)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 0',
+                  borderBottom: i < friends.length - 1 ? '1px solid var(--border)' : 'none',
+                  cursor: f.google_id ? 'pointer' : 'default',
+                }}
+              >
+                <Avatar name={f.name} src={f.picture} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
                     fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
@@ -300,6 +321,11 @@ export default function Friends({ embedded = false }) {
                     </div>
                   )}
                 </div>
+                {f.google_id && (
+                  <div style={{ fontSize: 16, color: 'var(--charcoal-light)', flexShrink: 0 }}>
+                    →
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -318,24 +344,45 @@ export default function Friends({ embedded = false }) {
           </div>
         ) : (
           feed.map(ev => (
-            <div key={ev.id} style={{
-              background: 'white', borderRadius: 14, padding: '12px 14px',
-              border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
-              marginBottom: 8,
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', marginBottom: 4 }}>
-                {ev.name}
+            <div
+              key={ev.event_id}
+              onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
+              style={{
+                background: 'white', borderRadius: 14, padding: '12px 14px',
+                border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
+                marginBottom: 8, cursor: 'pointer',
+              }}
+            >
+              <div style={{
+                fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', marginBottom: 4,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {ev.event_name}
               </div>
               <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
-                {ev.date} {ev.time ? `· ${ev.time}` : ''} {ev.venue ? `· ${ev.venue}` : ''}
+                {formatFeedDate(ev.event_date)}{ev.event_venue ? ` · ${ev.event_venue}` : ''}
               </div>
               {ev.friends_going && ev.friends_going.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ display: 'flex' }}>
                     {ev.friends_going.slice(0, 4).map((f, i) => (
-                      <div key={f.google_id ?? i} style={{ marginLeft: i === 0 ? 0 : -8 }}>
-                        <Avatar name={f.name} picture={f.picture} size={26} />
-                      </div>
+                      <button
+                        key={f.google_id ?? i}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (f.google_id) navigate(`/friends/${encodeURIComponent(f.google_id)}`)
+                        }}
+                        disabled={!f.google_id}
+                        title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
+                        style={{
+                          background: 'none', border: 'none', padding: 0,
+                          marginLeft: i === 0 ? 0 : -8,
+                          cursor: f.google_id ? 'pointer' : 'default',
+                          borderRadius: '50%',
+                        }}
+                      >
+                        <Avatar name={f.name} src={f.picture} size={26} />
+                      </button>
                     ))}
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)' }}>
@@ -351,4 +398,19 @@ export default function Friends({ embedded = false }) {
       <div style={{ height: 24 }}/>
     </div>
   )
+}
+
+const _PT_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const _PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+function formatFeedDate(isoStr) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  if (Number.isNaN(d.getTime())) return ''
+  const wd = _PT_WEEKDAYS[d.getDay()]
+  const mo = _PT_MONTHS[d.getMonth()]
+  const time = d.getHours() || d.getMinutes()
+    ? ` · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    : ''
+  return `${wd}, ${d.getDate()} ${mo}${time}`
 }

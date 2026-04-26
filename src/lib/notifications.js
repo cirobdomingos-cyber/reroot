@@ -1,4 +1,4 @@
-// ── Reroot Notifications ────────────────────────────────────
+// ── auê Notifications ────────────────────────────────────
 // Abstracts over:
 //   - @capacitor/local-notifications (native Android/iOS)
 //   - browser Notification API (web/PWA fallback)

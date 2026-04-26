@@ -10,55 +10,52 @@ export function computeCurrentWeek(joinedAt) {
 }
 
 // ── Profile system ─────────────────────────────────────────
-// Profiles describe HOW someone wants to reconnect, not WHY they disconnected.
-// This makes them universal — no life event required to identify with one.
+// Profiles are vibe shortcuts — they don't gate anything, they just set
+// the user's default mood and the priority order of moods on the Home
+// "Eventos para você" suggestions. A user can always switch moods
+// manually on the Events screen regardless of their profile.
+//
+// Each profile lists `priorityMoods` from highest to lowest preference.
+// The Home prescription sorts events so those matching priority[0] come
+// first, then priority[1], etc. Events not in any priority mood drop to
+// the bottom but still show.
 export const PROFILES = {
-  gentle: {
-    id: 'gentle', emoji: '🌿',
-    prescriptionIntensity: 1,
-    priorityCategories: ['quiet_social', 'creative'],
-    activityFirst: true,
+  tranquilo: {
+    id: 'tranquilo',
+    label: 'Tranquilo',
+    emoji: '🌿',
+    blurb: 'Lugares calmos, encontros pequenos, pra ir no seu ritmo.',
+    defaultMood: 'tranquilo',
+    priorityMoods: ['tranquilo', 'criativo', 'cultural'],
   },
-  explorer: {
-    id: 'explorer', emoji: '🧭',
-    prescriptionIntensity: 2,
-    priorityCategories: ['community', 'active', 'creative'],
-    activityFirst: false,
+  curioso: {
+    id: 'curioso',
+    label: 'Curioso',
+    emoji: '🎭',
+    blurb: 'Exposições, peças, oficinas — tudo que tá em cartaz.',
+    defaultMood: 'cultural',
+    priorityMoods: ['cultural', 'criativo', 'comunidade'],
   },
-  builder: {
-    id: 'builder', emoji: '🤝',
-    prescriptionIntensity: 2,
-    priorityCategories: ['community', 'bars_cafes', 'quiet_social'],
-    activityFirst: false,
+  animado: {
+    id: 'animado',
+    label: 'Animado',
+    emoji: '🎉',
+    blurb: 'Encontros maiores, esportes, gente nova.',
+    defaultMood: 'comunidade',
+    priorityMoods: ['comunidade', 'ativo', 'all'],
   },
-  rebounder: {
-    id: 'rebounder', emoji: '⚡',
-    prescriptionIntensity: 2,
-    priorityCategories: ['active', 'community', 'bars_cafes'],
-    activityFirst: false,
-  },
-  depth: {
-    id: 'depth', emoji: '☕',
-    prescriptionIntensity: 1,
-    priorityCategories: ['quiet_social', 'creative'],
-    activityFirst: false,
-  },
-  steady: {
-    id: 'steady', emoji: '📅',
-    prescriptionIntensity: 1,
-    priorityCategories: ['quiet_social', 'community'],
-    activityFirst: false,
-  },
-  curious: {
-    id: 'curious', emoji: '🔍',
-    prescriptionIntensity: 2,
-    priorityCategories: ['creative', 'active', 'community'],
-    activityFirst: false,
+  familia: {
+    id: 'familia',
+    label: 'Família',
+    emoji: '👨‍👩‍👧',
+    blurb: 'Programas que cabem com criança junto.',
+    defaultMood: 'familia',
+    priorityMoods: ['familia', 'comunidade', 'cultural'],
   },
 }
 
-export function getProfile(situation) {
-  return PROFILES[situation] ?? null
+export function getProfile(profileId) {
+  return PROFILES[profileId] ?? null
 }
 
 // ── Chapter system ─────────────────────────────────────────
@@ -84,7 +81,11 @@ const INITIAL_STATE = {
   interests: ['Coffee & Conversation', 'Creative Writing', 'Book Clubs'],
   totalWeeks: 12,
   language: 'pt',               // 'pt' | 'en'
-  rsvps: {},            // eventId → true
+  // eventId → { dateStart, name, venue } when RSVPd; undefined when not.
+  // Stores enough metadata to compute the upcoming-events count without
+  // having to cross-reference the live catalog (which may be paginated/
+  // filtered and miss the event the user RSVPd to).
+  rsvps: {},
   eventsAttended: 0,    // incremented via "Mark attended"
   frameworkRead: false,
 
@@ -102,9 +103,11 @@ const INITIAL_STATE = {
   // Weeks shown up tracking (week numbers where user took action)
   weeksShownUp: [],             // [1, 2, 3, ...] — week numbers
 
-  // User profile (from IdentityMirror steps 0+1)
-  userSituation: null,  // 'gentle' | 'explorer' | 'builder' | 'rebounder' | 'depth' | 'steady' | 'curious'
-  userGoal: null,       // 'friends' | 'partner' | 'community' | 'self'
+  // User profile — picks a default mood and the priority order of moods
+  // on Home suggestions. One of: 'tranquilo' | 'curioso' | 'animado' |
+  // 'familia' | null (skipped). Can be changed any time on the Profile
+  // screen. See PROFILES dict above for what each one means.
+  profile: null,
 
   // Diagnostic seen
   diagnosticSeen: false,
@@ -149,14 +152,19 @@ function reducer(state, action) {
       return { ...state, hasJoined: true, joinedAt: state.joinedAt ?? Date.now() }
 
     case 'COMPLETE_IDENTITY_MIRROR':
+      // Vestigial — the IdentityMirror screen is bypassed. Kept so any
+      // stale reducer call doesn't crash; never updates profile though.
       return {
         ...state,
         identityMirrorCompleted: true,
-        identityPastLife: action.payload.pastLife,
-        identityCurrentFeel: action.payload.currentFeel,
-        userSituation: action.payload.situation ?? state.userSituation,
-        userGoal: action.payload.goal ?? state.userGoal,
+        identityPastLife: action.payload?.pastLife,
+        identityCurrentFeel: action.payload?.currentFeel,
       }
+
+    case 'SET_PROFILE':
+      // payload is a profile id ('tranquilo', 'curioso', 'animado',
+      // 'familia') or null to clear it.
+      return { ...state, profile: action.payload }
 
     case 'COMPLETE_QUESTIONNAIRE':
       return {
@@ -184,21 +192,27 @@ function reducer(state, action) {
     }
 
     case 'TOGGLE_RSVP': {
-      const { eventId } = action.payload
-      const current = !!state.rsvps[eventId]
+      // payload: { eventId, dateStart?, name?, venue? }
+      // dateStart/name/venue are optional but recommended — without them
+      // the upcoming count can't filter past events accurately.
+      const { eventId, dateStart, name, venue } = action.payload
+      const wasRsvped = !!state.rsvps[eventId]
+      const next = { ...state.rsvps }
+      if (wasRsvped) {
+        delete next[eventId]
+      } else {
+        next[eventId] = { dateStart, name, venue }
+      }
       const currentWeek = computeCurrentWeek(state.joinedAt)
-      const weeksShownUp = !current && !state.weeksShownUp.includes(currentWeek)
+      const weeksShownUp = !wasRsvped && !state.weeksShownUp.includes(currentWeek)
         ? [...state.weeksShownUp, currentWeek]
         : state.weeksShownUp
-      return {
-        ...state,
-        rsvps: { ...state.rsvps, [eventId]: !current },
-        weeksShownUp,
-      }
+      return { ...state, rsvps: next, weeksShownUp }
     }
 
     case 'SAVE_DAY_ZERO': {
-      const { eventId } = action.payload
+      // payload: { eventId, dateStart?, name?, venue? }
+      const { eventId, dateStart, name, venue } = action.payload
       const currentWeek = computeCurrentWeek(state.joinedAt)
       const weeksShownUp = !state.weeksShownUp.includes(currentWeek)
         ? [...state.weeksShownUp, currentWeek]
@@ -207,7 +221,7 @@ function reducer(state, action) {
         ...state,
         dayZeroSaved: true,
         dayZeroEventId: eventId,
-        rsvps: { ...state.rsvps, [eventId]: true },
+        rsvps: { ...state.rsvps, [eventId]: { dateStart, name, venue } },
         weeksShownUp,
       }
     }
@@ -257,12 +271,23 @@ function reducer(state, action) {
       return { ...state, language: action.payload }
 
     case 'SET_GOOGLE_USER': {
-      if (!action.payload) return { ...state, googleUser: null }
+      // Logout — clear the Google identity AND the cached display name.
+      // Without clearing userName, Profile keeps showing the previous
+      // user's name and avatar initial after they sign out.
+      if (!action.payload) {
+        return { ...state, googleUser: null, userName: '' }
+      }
       const { id, name, givenName, email, picture } = action.payload
+      // If a different Google account is signing in, take their name as the
+      // new display name. (When the same account re-logs in, we preserve
+      // a custom name the user might have edited via the Profile pencil.)
+      const isSameUser = state.googleUser?.id === id
       return {
         ...state,
         googleUser: { id, name, givenName, email, picture },
-        userName: !state.userName ? (givenName || name.split(' ')[0]) : state.userName,
+        userName: isSameUser && state.userName
+          ? state.userName
+          : (givenName || name.split(' ')[0] || ''),
       }
     }
 
@@ -296,7 +321,10 @@ function reducer(state, action) {
       return {
         ...state,
         customEvents: [...state.customEvents, ev],
-        rsvps: { ...state.rsvps, [ev.id]: true },
+        rsvps: {
+          ...state.rsvps,
+          [ev.id]: { dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
+        },
       }
     }
 
@@ -318,7 +346,7 @@ function reducer(state, action) {
         dayZeroEventId:           remote.dayZeroEventId           ?? state.dayZeroEventId,
         identityPastLife:         remote.identityPastLife         ?? state.identityPastLife,
         identityCurrentFeel:      remote.identityCurrentFeel      ?? state.identityCurrentFeel,
-        userSituation:            remote.userSituation            ?? state.userSituation,
+        profile:                  remote.profile                  ?? state.profile,
         userGoal:                 remote.userGoal                 ?? state.userGoal,
         frameworkRead:            remote.frameworkRead            ?? state.frameworkRead,
         diagnosticSeen:           remote.diagnosticSeen           ?? state.diagnosticSeen,
@@ -343,7 +371,7 @@ function reducer(state, action) {
         aiPartnerMessage: undefined,
         identityPastLife: null,
         identityCurrentFeel: null,
-        userSituation: null,
+        profile: null,
         userGoal: null,
         googleUser: null,
         userName: '',
@@ -410,7 +438,7 @@ export function computeBadges(state) {
 // ── Context setup ──────────────────────────────────────────
 const AppContext = createContext(null)
 
-const STORAGE_KEY = 'reroot_state'
+const STORAGE_KEY = 'aue_state'
 
 function loadState() {
   try {
@@ -423,6 +451,18 @@ function loadState() {
         ...INITIAL_STATE.privacy,
         shareRsvps: parsed.shareRsvps ?? true,
       }
+    }
+    // Migrate legacy rsvps shape: boolean-true → empty metadata object.
+    // Old shape was `{[id]: true}`; new shape is `{[id]: {dateStart, name, venue}}`.
+    // Without dateStart we can't filter past events, but the entry counts.
+    if (parsed.rsvps && typeof parsed.rsvps === 'object') {
+      const migrated = {}
+      for (const [id, value] of Object.entries(parsed.rsvps)) {
+        if (value === true) migrated[id] = {}              // legacy truthy
+        else if (value && typeof value === 'object') migrated[id] = value
+        // value === false / null / undefined → not RSVPd, skip
+      }
+      parsed.rsvps = migrated
     }
     return parsed
   } catch {

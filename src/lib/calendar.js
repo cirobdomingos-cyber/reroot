@@ -1,5 +1,5 @@
 // Calendar utility — generates ICS files and Google Calendar links
-// for Reroot event recommendations.
+// for auê event recommendations.
 
 const PT_MONTHS = {
   Jan: 0, Fev: 1, Mar: 2, Abr: 3, Mai: 4, Jun: 5,
@@ -63,17 +63,17 @@ export function generateICS(event) {
   const durationMs = parseDurationMinutes(event.duration) * 60 * 1000;
   const end = new Date(start.getTime() + durationMs);
 
-  const description = `${event.description}\\n\\nPor que o Reroot recomenda: ${event.rerootReason}`;
+  const description = `${event.description}\\n\\nPor que o auê recomenda: ${event.pitch}`;
 
   // CRLF line endings per RFC 5545
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Reroot//Event Export//EN",
+    "PRODID:-//aue//Event Export//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
-    `UID:${event.id}@reroot.app`,
+    `UID:${event.id}@aue.app`,
     `DTSTAMP:${toICSDate(new Date())}`,
     `DTSTART:${toICSDate(start)}`,
     `DTEND:${toICSDate(end)}`,
@@ -91,7 +91,7 @@ export function generateICS(event) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `reroot-${event.id}.ics`;
+  anchor.download = `aue-${event.id}.ics`;
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
@@ -108,7 +108,7 @@ export function getGoogleCalendarURL(event) {
   const durationMs = parseDurationMinutes(event.duration) * 60 * 1000;
   const end = new Date(start.getTime() + durationMs);
 
-  const details = `${event.description}\n\nPor que o Reroot recomenda: ${event.rerootReason}`;
+  const details = `${event.description}\n\nPor que o auê recomenda: ${event.pitch}`;
 
   const params = new URLSearchParams({
     action: "TEMPLATE",

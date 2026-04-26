@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -35,7 +36,7 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("reroot")
+log = logging.getLogger("aue")
 
 
 # ── Settings (lê do .env) ──
@@ -47,9 +48,13 @@ class Settings(BaseSettings):
     eventbrite_token: str = ""
     instagram_user: str = ""
     instagram_pass: str = ""
+    apify_api_token: str = ""
     google_places_api_key: str = ""
     city: str = "Curitiba"
     refresh_interval_hours: int = 6
+    # Founder is auto-seeded as a curator at startup. Override via env var if
+    # the app changes hands.
+    founder_email: str = "ciro.b.domingos@gmail.com"
 
 
 settings = Settings()
@@ -60,6 +65,22 @@ settings = Settings()
 async def lifespan(app: FastAPI):
     db.init_db()
     log.info(f"DB inicializado em {db.DB_PATH}")
+
+    # Seed Instagram tracking list on first run so the admin UI isn't empty.
+    _seed_default_ig_accounts()
+
+    # Make sure the founder is always a curator. They can grant the role to
+    # anyone else from the admin UI; this seed ensures they can log in.
+    try:
+        db.add_curator(
+            email=settings.founder_email,
+            added_by_email="system",
+            notes="Founder",
+            is_founder_flag=True,
+        )
+        log.info(f"Founder curator ensured: {settings.founder_email}")
+    except Exception as e:
+        log.warning(f"Failed to seed founder curator: {e}")
 
     if settings.anthropic_api_key:
         start_scheduler(settings, run_immediately=True)
@@ -75,8 +96,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Reroot API",
-    description="Eventos sociais de Curitiba para re-entrada social",
+    title="auê API",
+    description="Catálogo de eventos sociais de Curitiba — shows, exposições, feiras, oficinas, encontros pequenos.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -100,7 +121,8 @@ def health():
         "anthropic_configured": bool(settings.anthropic_api_key),
         "sympla_configured": bool(settings.sympla_token),
         "eventbrite_configured": bool(settings.eventbrite_token),
-        "instagram_configured": bool(settings.instagram_user and settings.instagram_pass),
+        "instagram_configured": bool(settings.apify_api_token),
+        "apify_configured": bool(settings.apify_api_token),
         "sesc_configured": True,
         "teatro_guaira_configured": True,
         "catraca_livre_configured": True,
@@ -110,9 +132,46 @@ def health():
     }
 
 
+# Each mood maps to a filter spec applied AFTER the DB fetch. Keeping this
+# translation in the API layer (not in SQL) lets us mix kind-based filters
+# (tranquilo/ativo/criativo/comunidade — backed by ev.kind) with
+# source-based filters (cultural — institutional sources only) and flag
+# filters (familia → kids_welcome). New moods plug in without touching SQL.
+_MOOD_KIND = {
+    "tranquilo":  "quiet_social",
+    "ativo":      "active",
+    "criativo":   "creative",
+    "comunidade": "community",
+}
+_MOOD_SOURCES = {
+    # Institutional curators — museums, theatres, public-cultural orgs
+    "cultural": {"mon", "sesc", "teatro_guaira", "ingresso", "catraca_livre"},
+}
+
+
+def _mood_predicate(mood: Optional[str]):
+    """
+    Return a callable(EnrichedEvent) -> bool that decides whether an event
+    matches the given mood. None / 'all' matches everything.
+    """
+    if not mood or mood == "all":
+        return lambda ev: True
+    if mood in _MOOD_KIND:
+        target = _MOOD_KIND[mood]
+        return lambda ev: ev.kind == target
+    if mood in _MOOD_SOURCES:
+        sources = _MOOD_SOURCES[mood]
+        return lambda ev: ev.source in sources
+    if mood == "familia":
+        return lambda ev: bool(ev.kids_welcome)
+    # Unknown mood — fail open (show everything) rather than show nothing
+    return lambda ev: True
+
+
 @app.get("/events")
 def list_events(
     category: Optional[str] = None,
+    mood: Optional[str] = None,
     good_only: bool = False,
     price_tier: Optional[str] = None,
     kids_welcome: Optional[bool] = None,
@@ -120,24 +179,211 @@ def list_events(
 ):
     """
     Retorna eventos enriquecidos prontos para o frontend.
-    category: quiet_social | active | creative | community | all
+
+    The default is the BROAD view: every real Curitiba event the catalog
+    has (subject only to hard sanity filters — region, virtual placeholder,
+    closed esoteric venues). Pass `good_only=true` for the curated view.
+
+    mood: tranquilo | ativo | criativo | comunidade | cultural | familia | all
+    category: legacy alias (quiet_social|active|creative|community|all). When
+      both `mood` and `category` are passed, `mood` wins.
     price_tier: free | paid (paid = anything that is not free)
     kids_welcome: true to filter only family-friendly events
     """
-    events = db.get_events(
+    # If a kind-aligned mood was requested, push it down to the DB filter
+    # (smaller result set out of SQL = less memory). Source/flag-based moods
+    # get applied in Python after the fetch.
+    db_category = category if category and category != "all" else None
+    if mood and mood in _MOOD_KIND:
+        db_category = _MOOD_KIND[mood]
+    mood_pred = _mood_predicate(mood)
+
+    # Pull more than `limit` from DB so the cleanup pass can drop near-duplicates
+    # and out-of-region events without leaving us short of results.
+    raw = db.get_events(
         city=settings.city,
         good_only=good_only,
-        category=category if category != "all" else None,
+        category=db_category,
         price_tier=price_tier,
         kids_welcome=kids_welcome,
-        limit=limit,
+        limit=limit * 3,
     )
+    cleaned = [
+        ev for ev in raw
+        if _is_in_curitiba(ev)
+        and _passes_content_filter(ev, curated=good_only)
+        and mood_pred(ev)
+    ]
+    deduped = _dedupe_events(cleaned)[:limit]
 
     return {
-        "events": [_to_frontend(ev) for ev in events],
-        "total": len(events),
+        "events": [_to_frontend(ev) for ev in deduped],
+        "total": len(deduped),
         "city": settings.city,
     }
+
+
+# Portuguese stopwords + connectors that don't carry meaning for event-name
+# similarity. Tuned for the typical Curitiba event title — short, descriptive,
+# often uses "no/do/da/de/em" articles and edition markers ("3ª edição").
+_PT_STOPWORDS = frozenset({
+    "a", "o", "as", "os", "um", "uma", "uns", "umas",
+    "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+    "para", "pra", "por", "com", "sem",
+    "e", "ou", "mas",
+    "ao", "aos", "à", "às",
+    "the", "of", "in", "at", "and", "to", "for",
+    "edicao", "edição", "edition", "ed",
+})
+
+def _name_tokens(name: str) -> frozenset[str]:
+    """
+    Normalize a name to a token set for fuzzy matching:
+      lowercase, strip accents, drop punctuation, split on whitespace,
+      drop stopwords + tokens shorter than 3 chars (a/no/de/etc.).
+    """
+    if not name:
+        return frozenset()
+    # NFKD strips combining marks (à → a, ç → c, é → e)
+    folded = unicodedata.normalize("NFKD", name)
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    folded = folded.lower()
+    # Replace anything non-alphanumeric with whitespace
+    folded = re.sub(r"[^a-z0-9]+", " ", folded)
+    tokens = folded.split()
+    return frozenset(t for t in tokens if len(t) >= 3 and t not in _PT_STOPWORDS)
+
+
+def _dedupe_events(events):
+    """
+    Drop events that are likely the same thing scraped from multiple sources.
+
+    Two-pass dedup:
+      1. Exact match on (normalized name, dateStart day) — fast hash lookup.
+      2. Fuzzy match: token-set Jaccard ≥ 0.6 between names AND either same
+         day or both undated. Catches near-misses like "Caça à Arte no MON
+         sem Paredes" vs "Caça à Arte - MON sem Paredes" vs "MON sem Paredes
+         — Arte ao Ar Livre" — same program, different scrapers.
+
+    First occurrence wins; downstream sources are dropped silently. Sources
+    are typically ordered upstream so that canonical sources (museum site)
+    arrive before secondary mentions (Instagram), keeping the better record.
+    """
+    JACCARD_THRESHOLD = 0.6
+    out = []
+    for ev in events:
+        ev_day = ev.date_start.date().isoformat() if ev.date_start else ""
+        ev_tokens = _name_tokens(ev.name)
+        is_dup = False
+        for kept in out:
+            kept_day = kept.date_start.date().isoformat() if kept.date_start else ""
+            # Date gate: same day, or both undated (likely an ongoing program)
+            if ev_day != kept_day:
+                continue
+            kept_tokens = _name_tokens(kept.name)
+            if not ev_tokens or not kept_tokens:
+                # Fall back to exact-name compare when one side has no tokens
+                if ev.name.strip().lower() == kept.name.strip().lower():
+                    is_dup = True
+                    break
+                continue
+            inter = len(ev_tokens & kept_tokens)
+            union = len(ev_tokens | kept_tokens)
+            if union and inter / union >= JACCARD_THRESHOLD:
+                is_dup = True
+                break
+        if not is_dup:
+            out.append(ev)
+    return out
+
+
+# Cities that have shown up in scraped data despite NOT being Curitiba.
+# Used as a deny-list at API time so retroactively bad events vanish without
+# requiring a DB migration. New scrapers should also filter at ingest time.
+_NON_CURITIBA_TOKENS = (
+    "vacaria", "caçador", "cacador", "joaçaba", "joacaba", "concórdia",
+    "concordia", "videira", "canoinhas", "rio do sul", "toledo",
+    "londrina", "maringá", "maringa", "florianópolis", "florianopolis",
+    "porto alegre", "são paulo", "sao paulo", "rio de janeiro",
+)
+
+
+# Name/description keywords that signal an event we never want to recommend
+# regardless of what the LLM enrichment said. Defense-in-depth: the prompt
+# tells Claude to flag these false, and this catches the cases it misses.
+# HARD content deny — always applied, regardless of curated mode. These are
+# events nobody opening Reroot wants to discover: closed initiatic groups
+# and virtual placeholder leaks.
+_HARD_CONTENT_DENY_TOKENS = (
+    # closed religious rituals / esoteric initiatic groups
+    "ritualística", "ritualistica", "convocação ritual", "convocacao ritual",
+    "rosacruz", "rosicrucian", "iipc", "espiritualidade iniciática",
+    "h. spencer lewis", "conselho de solace", "auditório solace",
+    # virtual signals — these are scraper leaks, not real Curitiba events
+    "virtual event", "evento virtual", "live webinar", "online webinar",
+)
+
+# CURATED content deny — only applied when the user asks for the curated view.
+# These ARE legitimate Curitiba events; they just aren't a fit for the original
+# Reroot "low-pressure social re-entry" vibe. In broad/all-events mode users
+# can still see them.
+_CURATED_CONTENT_DENY_TOKENS = (
+    # business / networking / career
+    "founders", "ceos", "career fair", "job fair", "feira de carreira",
+    "marketing day", "growth marketing", "vendas b2b",
+    "semana s do comércio", "semana s do comercio",
+    # technical / corporate training
+    "treinamento técnico", "treinamento tecnico", "certificação técnica",
+)
+
+# Specific venues we know belong to closed esoteric/private groups in Curitiba.
+# Anything happening here gets dropped regardless of name. Hard filter.
+_VENUE_DENY_SUBSTRINGS = (
+    "nicarágua, 2620", "nicaragua, 2620",  # AMORC / Templo Rosacruz Curitiba
+)
+
+
+def _passes_content_filter(ev, curated: bool = False) -> bool:
+    """
+    Drop events whose name/description/venue match a deny-list.
+
+    Hard rules (always): closed esoteric groups, virtual placeholders, AMORC
+    temple address. These are filtered even in the broad "Tudo" view.
+
+    Curated rules (only when curated=True): business networking, career
+    fairs, corporate training. These are real Curitiba events but not the
+    original Reroot vibe — broad-view users can still see them.
+    """
+    blob = f"{ev.name} {ev.description or ''}".lower()
+    if any(token in blob for token in _HARD_CONTENT_DENY_TOKENS):
+        return False
+    venue_blob = f"{ev.venue_name or ''} {ev.venue_address or ''}".lower()
+    if any(token in venue_blob for token in _VENUE_DENY_SUBSTRINGS):
+        return False
+    if curated and any(token in blob for token in _CURATED_CONTENT_DENY_TOKENS):
+        return False
+    return True
+
+
+def _is_in_curitiba(ev) -> bool:
+    """
+    Heuristic that drops two kinds of bad events left over in the DB from older
+    scrapes:
+      1. Empty venue_name AND empty venue_address — almost always a virtual or
+         placeholder event the discovery page leaked in.
+      2. venue/address/neighborhood that explicitly names another Brazilian
+         city we know our scrapers have leaked.
+    """
+    venue = (ev.venue_name or "").strip()
+    addr = (ev.venue_address or "").strip()
+    if not venue and not addr:
+        return False
+
+    haystack = " ".join([venue.lower(), addr.lower(), (ev.neighborhood or "").lower()])
+    for token in _NON_CURITIBA_TOKENS:
+        if token in haystack:
+            return False
+    return True
 
 
 @app.get("/events/{event_id}")
@@ -163,18 +409,19 @@ def stats():
     events = db.get_events(city=settings.city, good_only=False, limit=200)
     by_cat: dict = {}
     for ev in events:
-        by_cat[ev.reroot_category] = by_cat.get(ev.reroot_category, 0) + 1
+        by_cat[ev.kind] = by_cat.get(ev.kind, 0) + 1
 
     return {
         "total": len(events),
-        "good_for_reroot": sum(1 for e in events if e.good_for_reroot),
+        "is_curated": sum(1 for e in events if e.is_curated),
         "by_category": by_cat,
         "sources": {
             src: sum(1 for e in events if e.source == src)
             for src in [
                 "sympla", "eventbrite", "meetup", "instagram",
                 "sesc", "teatro_guaira", "catraca_livre", "ingresso",
-                "ai_generated", "submitted",
+                "mon", "turismo_curitiba",
+                "ai_generated", "submitted", "aue_original",
             ]
         },
     }
@@ -238,7 +485,7 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
     try:
         db.upsert_event(enriched)
         db.mark_submitted_enriched(submission_id, enriched.id)
-        log.info(f"Submission {submission_id}: enriched → {enriched.id} ({enriched.reroot_category})")
+        log.info(f"Submission {submission_id}: enriched → {enriched.id} ({enriched.kind})")
     except Exception as e:
         log.error(f"Submission {submission_id}: save error: {e}")
 
@@ -377,6 +624,24 @@ def friends_my_code(google_id: str):
     return {"code": db.get_friend_code(google_id)}
 
 
+@app.get("/friends/lookup")
+def friends_lookup(code: str):
+    """
+    Resolve an invite code to the inviter's profile (name + picture) so the
+    AddFriend screen can show a confirmation before committing the friendship.
+    Returns 404 if the code doesn't match a known user.
+    """
+    google_id = db._code_to_google_id(code)
+    if not google_id:
+        raise HTTPException(status_code=404, detail="Código inválido ou usuário não encontrado.")
+    state = db.get_user_state(google_id) or {}
+    return {
+        "google_id": google_id,
+        "name": state.get("userName") or "",
+        "picture": (state.get("googleUser") or {}).get("picture") or "",
+    }
+
+
 @app.post("/friends/add")
 def friends_add(req: FriendAddRequest):
     """
@@ -453,6 +718,7 @@ def friends_feed(google_id: str):
             }
         friend_info = friend_map.get(rsvp["google_id"], {})
         grouped[eid]["friends_going"].append({
+            "google_id": rsvp["google_id"],
             "name": friend_info.get("name", rsvp["google_id"]),
             "picture": friend_info.get("picture", ""),
         })
@@ -574,7 +840,7 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
     if ratings_total:
         vibe += f" · {ratings_total:,} avaliações".replace(",", ".")
 
-    reroot_reason = _places_reroot_reason(category, is_cafe)
+    pitch = _places_pitch(category, is_cafe)
     maps_url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
 
     return {
@@ -596,7 +862,7 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
         "attendeesConfirmed": ratings_total,
         "expectedSize": "intimate" if price_level <= 1 else "medium",
         "vibeSummary": vibe.strip(" ·"),
-        "rerootReason": reroot_reason,
+        "pitch": pitch,
         "url": maps_url,
         "cohortGoing": [],
         "source": "places",
@@ -606,7 +872,7 @@ def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
     }
 
 
-def _places_reroot_reason(category: str, is_cafe: bool) -> str:
+def _places_pitch(category: str, is_cafe: bool) -> str:
     reasons = {
         "bars_cafes": (
             "Um café solo é o primeiro passo. Lugar com movimento, sem compromisso."
@@ -630,18 +896,39 @@ def _to_frontend(ev, detail: bool = False) -> dict:
     price_label = _format_price(ev.price_min, ev.price_max, ev.currency)
     member_count = ev.attendees_confirmed  # "popularidade real"
 
+    # Reroot Originals are evergreen suggestions, not scheduled events.
+    is_original = ev.source == "aue_original"
+
+    # Long-running events (museum exhibitions, programs) often started months
+    # ago but are still on. Showing their start date misleads — surface the
+    # END date as "Em cartaz até …" instead.
+    today = datetime.now(timezone.utc).date()
+    is_ongoing = (
+        not is_original
+        and ev.date_end is not None
+        and ev.date_start.date() < today
+        and ev.date_end.date() >= today
+    )
+
+    if is_original:
+        date_label = "Sempre disponível"
+    elif is_ongoing:
+        date_label = f"Em cartaz até {_format_event_date(ev.date_end)}"
+    else:
+        date_label = _format_event_date(ev.date_start)
+
     out = {
         "id": ev.id,
         "name": ev.name,
-        "category": ev.reroot_category,
+        "category": ev.kind,
         "categoryLabel": ev.category_label,
         "categoryEmoji": ev.category_emoji,
         "venue": f"{ev.venue_name} · {ev.neighborhood}",
-        "date": ev.date_start.strftime("%d de %b").lstrip("0"),   # "12 de Abr"
-        "time": ev.date_start.strftime("%H:%M"),
-        "duration": _duration(ev),
+        "date": date_label,
+        "time": "" if (is_original or is_ongoing) else ev.date_start.strftime("%H:%M"),
+        "duration": "" if (is_original or is_ongoing) else _duration(ev),
         "headerBg": ev.header_gradient,
-        "icon": _category_icon(ev.reroot_category),
+        "icon": _category_icon(ev.kind),
         "price": price_label,
         "priceTier": ev.price_tier,
         "kidsWelcome": ev.kids_welcome,
@@ -650,8 +937,12 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         "attendeesConfirmed": member_count,
         "expectedSize": ev.expected_size,
         "vibeSummary": ev.vibe_summary,
-        "rerootReason": ev.reroot_reason,
-        "url": ev.url,
+        "pitch": ev.pitch,
+        # Fall back to a Google Maps search for the venue when we don't have
+        # a canonical event URL (e.g. seed events, partner-submitted events
+        # without a registration link). Better to show "Ver no mapa" than a
+        # dead button.
+        "url": ev.url or _venue_maps_url(ev),
         # cohortGoing simulado — em produção viria de uma tabela de RSVPs
         "cohortGoing": [],
         "source": ev.source,
@@ -665,6 +956,40 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         out["imageUrl"] = ev.image_url
 
     return out
+
+
+def _venue_maps_url(ev) -> str:
+    """
+    Build a Google Maps search URL for an event's venue. Used as a fallback
+    when the event itself has no canonical URL.
+    Returns "" if we don't have enough venue info to make a useful search.
+    """
+    parts = [p for p in (ev.venue_name, ev.neighborhood) if p and p.strip()]
+    if not parts:
+        return ""
+    parts.append("Curitiba")
+    from urllib.parse import quote_plus
+    query = quote_plus(" ".join(parts))
+    return f"https://www.google.com/maps/search/?api=1&query={query}"
+
+
+_PT_WEEKDAYS_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+_PT_MONTHS_SHORT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                    "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+
+def _format_event_date(dt: datetime) -> str:
+    """
+    Localized short date in pt-BR. "Sáb, 25 Abr" by default; tacks on the year
+    when the event is in a different year than today so the user never has to
+    guess (e.g. "Sáb, 25 Abr 2027").
+    """
+    weekday = _PT_WEEKDAYS_SHORT[dt.weekday()]
+    month = _PT_MONTHS_SHORT[dt.month - 1]
+    base = f"{weekday}, {dt.day} {month}"
+    if dt.year != datetime.now(timezone.utc).year:
+        base += f" {dt.year}"
+    return base
 
 
 def _format_price(min_p: float, max_p: float, currency: str) -> str:
@@ -768,8 +1093,9 @@ class CompanionRequest(BaseModel):
 
 
 COMPANION_SYSTEM_PROMPT = """\
-You are the Reroot Companion — a warm, direct AI guide inside a social re-entry \
-app for people rebuilding their social life after isolation.
+You are the auê Companion — a warm, direct AI guide inside an app that \
+aggregates everything happening in Curitiba (Brazil). Users come to you \
+when they want to find something to do this week, alone or with friends.
 
 CRITICAL RULES:
 1. ALWAYS recommend events from the catalog when remotely relevant. Be generous \
@@ -996,6 +1322,26 @@ def delete_group(group_id: str, google_id: str):
     return {"ok": True}
 
 
+@app.get("/groups/by-invite/{invite_code}")
+def get_group_by_invite(invite_code: str):
+    """
+    Resolve an invite code to the group's public info (name, member count) so
+    the JoinGroup screen can show a confirmation before joining.
+    Doesn't add the user to the group — that's a separate POST.
+    """
+    group = db.get_group_by_invite_code(invite_code)
+    if not group:
+        raise HTTPException(status_code=404, detail="Grupo não encontrado para esse código.")
+    member_count = sum(1 for _ in db.get_group_members(group["id"]))
+    return {
+        "id": group["id"],
+        "name": group["name"],
+        "description": group.get("description") or "",
+        "visibility": group["visibility"],
+        "member_count": member_count,
+    }
+
+
 @app.post("/groups/join")
 def join_group(req: GroupJoinRequest):
     """Join a group via invite code."""
@@ -1099,7 +1445,7 @@ def group_calendar_feed(feed_token: str):
 
     for ev in events:
         lines.append("BEGIN:VEVENT")
-        lines.append(f"UID:{ev['id']}@reroot.app")
+        lines.append(f"UID:{ev['id']}@aue.app")
         lines.append(f"DTSTART:{_to_ical_date(ev['date_start'])}")
         if ev.get("date_end"):
             lines.append(f"DTEND:{_to_ical_date(ev['date_end'])}")
@@ -1120,6 +1466,258 @@ def group_calendar_feed(feed_token: str):
     )
 
 
+# ── Admin: tracked Instagram accounts ─────────────────────
+#
+# These power the Apify-backed Instagram scraper. The admin UI under
+# /admin/ig-accounts lets you add, enable/disable, label and remove handles.
+# No auth gate today — this is a single-user dev tool. Add bearer-token
+# protection before exposing it on prod.
+
+
+class IgAccountUpsert(BaseModel):
+    handle: str
+    label: str = ""
+    category: str = ""
+    enabled: bool = True
+    notes: str = ""
+    requesting_email: str = ""  # logged-in user's email — checked against curators
+
+
+class CuratorAdd(BaseModel):
+    email: str
+    notes: str = ""
+    requesting_email: str = ""  # must be a founder
+    # Role flags — at least one must be true. Founders cannot be granted via
+    # this endpoint (founder bootstrap is config-time only).
+    is_curator: bool = True
+    is_feedbacker: bool = False
+
+
+class CuratorRoleUpdate(BaseModel):
+    is_curator: bool
+    is_feedbacker: bool
+    requesting_email: str = ""  # must be a founder
+
+
+class FeedbackSubmit(BaseModel):
+    text: str
+    context: str = ""              # screen / route hint
+    requesting_email: str = ""     # logged-in user — must be a feedbacker
+    google_id: str = ""
+
+
+def _require_curator(email: str) -> str:
+    """
+    Verify the requesting email belongs to a curator. Returns the
+    normalized email on success. Raises 401/403 otherwise.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado para gerenciar contas.")
+    if not db.is_curator(email):
+        raise HTTPException(
+            status_code=403,
+            detail="Sua conta não é curadora. Peça pro fundador te liberar.",
+        )
+    return email
+
+
+def _require_founder(email: str) -> str:
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado.")
+    if not db.is_founder(email):
+        raise HTTPException(
+            status_code=403, detail="Apenas o fundador pode gerenciar curadores.",
+        )
+    return email
+
+
+def _require_feedbacker(email: str) -> str:
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado.")
+    if not db.is_feedbacker(email):
+        raise HTTPException(
+            status_code=403,
+            detail="Sua conta não tem permissão de feedback. Peça pro fundador te liberar.",
+        )
+    return email
+
+
+# Curated starter handles. These are GUESSES based on common Curitiba culture
+# accounts; many will be wrong (the test scrape revealed @mon_oficial is a
+# Chevette page, not the museum). Use the admin UI to fix them quickly.
+_DEFAULT_IG_ACCOUNTS = [
+    # Cultural venues
+    {"handle": "museuoscarniemeyer", "label": "MON — Museu Oscar Niemeyer", "category": "museu"},
+    {"handle": "sescpr",              "label": "SESC Paraná",                "category": "cultural"},
+    {"handle": "pacodaliberdade",     "label": "Paço da Liberdade",          "category": "cultural"},
+    {"handle": "teatroguaira",        "label": "Teatro Guaíra",              "category": "teatro"},
+    {"handle": "memorialdecuritiba",  "label": "Memorial de Curitiba",       "category": "cultural"},
+    # Curators / aggregators
+    {"handle": "curitibacuriosa",     "label": "Curitiba Curiosa",           "category": "curador"},
+    {"handle": "curitibasecreta",     "label": "Curitiba Secreta",           "category": "curador"},
+    {"handle": "ondeircuritiba",      "label": "Onde Ir Curitiba",           "category": "curador"},
+    # Cafés / small venues
+    {"handle": "cafelucca",           "label": "Café Lucca",                 "category": "cafe"},
+    {"handle": "cafecomjogos",        "label": "Café com Jogos",             "category": "cafe"},
+    # Wellness / outdoor
+    {"handle": "yogacuritiba",        "label": "Yoga Curitiba",              "category": "wellness"},
+    {"handle": "parquebariguioficial","label": "Parque Barigui",             "category": "parque"},
+    # Music / nightlife
+    {"handle": "hardcorecuritiba",    "label": "Hardcore Curitiba",          "category": "musica"},
+    {"handle": "brewbarganda",        "label": "Brew Bar Ganda",             "category": "bar"},
+    # Books / literature
+    {"handle": "livrariaarcangelo",   "label": "Livraria Arcângelo",         "category": "livraria"},
+]
+
+
+def _seed_default_ig_accounts() -> None:
+    """One-time seed: if the table is empty, populate with starter handles."""
+    if db.list_ig_accounts():
+        return
+    for acc in _DEFAULT_IG_ACCOUNTS:
+        try:
+            db.upsert_ig_account(**acc, added_by_email="system")
+        except Exception as e:
+            log.warning(f"Falha seedando {acc['handle']}: {e}")
+    log.info(f"Seeded {len(_DEFAULT_IG_ACCOUNTS)} starter Instagram accounts")
+
+
+@app.get("/admin/ig-accounts")
+def admin_list_ig_accounts(requesting_email: str = ""):
+    """
+    List tracked Instagram accounts. Open to any authenticated user — even
+    non-curators can see the catalog (transparency makes the system trusted).
+    """
+    return {
+        "accounts": db.list_ig_accounts(),
+        "is_curator": db.is_curator(requesting_email),
+        "is_founder": db.is_founder(requesting_email),
+    }
+
+
+@app.post("/admin/ig-accounts")
+def admin_upsert_ig_account(req: IgAccountUpsert):
+    email = _require_curator(req.requesting_email)
+    handle = req.handle.strip().lstrip("@")
+    if not re.match(r"^[A-Za-z0-9._]{1,30}$", handle):
+        raise HTTPException(status_code=400, detail="Handle inválido (use letras, números, '.' ou '_')")
+    return {"account": db.upsert_ig_account(
+        handle=handle, label=req.label.strip(), category=req.category.strip(),
+        enabled=req.enabled, notes=req.notes.strip(),
+        added_by_email=email,
+    )}
+
+
+@app.delete("/admin/ig-accounts/{handle}")
+def admin_delete_ig_account(handle: str, requesting_email: str = ""):
+    _require_curator(requesting_email)
+    ok = db.delete_ig_account(handle)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    return {"ok": True}
+
+
+@app.post("/admin/ig-accounts/seed-defaults")
+def admin_seed_default_ig_accounts(requesting_email: str = ""):
+    """Force-seed the starter list (only inserts missing handles)."""
+    email = _require_curator(requesting_email)
+    inserted = 0
+    for acc in _DEFAULT_IG_ACCOUNTS:
+        try:
+            existing = db.list_ig_accounts()
+            if not any(a["handle"] == acc["handle"] for a in existing):
+                db.upsert_ig_account(**acc, added_by_email=email)
+                inserted += 1
+        except Exception:
+            pass
+    return {"inserted": inserted, "total_defaults": len(_DEFAULT_IG_ACCOUNTS)}
+
+
+# ── Curator management (founder-only) ─────────────────────
+
+
+@app.get("/admin/curators")
+def admin_list_curators(requesting_email: str = ""):
+    """
+    Anyone authenticated can see the permissioned-users list (transparency).
+    Only the founder can add or remove or change roles — enforced on the
+    mutating endpoints below.
+    """
+    return {
+        "curators": db.list_curators(),
+        "is_founder": db.is_founder(requesting_email),
+        "is_curator": db.is_curator(requesting_email),
+        "is_feedbacker": db.is_feedbacker(requesting_email),
+    }
+
+
+@app.post("/admin/curators")
+def admin_add_curator(req: CuratorAdd):
+    founder_email = _require_founder(req.requesting_email)
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Email inválido")
+    if not (req.is_curator or req.is_feedbacker):
+        raise HTTPException(status_code=400, detail="Marque pelo menos um papel (curador ou feedbacker).")
+    return {"curator": db.add_curator(
+        email=email, added_by_email=founder_email, notes=req.notes.strip(),
+        is_founder_flag=False,
+        is_curator_flag=req.is_curator,
+        is_feedbacker_flag=req.is_feedbacker,
+    )}
+
+
+@app.patch("/admin/curators/{email}")
+def admin_update_curator_roles(email: str, req: CuratorRoleUpdate):
+    _require_founder(req.requesting_email)
+    if not (req.is_curator or req.is_feedbacker):
+        # Both off ⇒ remove the row. update_curator_roles handles the cleanup.
+        pass
+    updated = db.update_curator_roles(
+        email=email,
+        is_curator_flag=req.is_curator,
+        is_feedbacker_flag=req.is_feedbacker,
+    )
+    return {"curator": updated}
+
+
+@app.delete("/admin/curators/{email}")
+def admin_remove_curator(email: str, requesting_email: str = ""):
+    _require_founder(requesting_email)
+    if email.strip().lower() == requesting_email.strip().lower():
+        raise HTTPException(status_code=400, detail="Você não pode remover a si mesmo.")
+    ok = db.remove_curator(email)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Curador não encontrado (ou é o fundador, que não pode ser removido).")
+    return {"ok": True}
+
+
+# ── Feedback ──────────────────────────────────────────────
+
+
+@app.post("/feedback")
+def submit_feedback(req: FeedbackSubmit):
+    email = _require_feedbacker(req.requesting_email)
+    text = (req.text or "").strip()
+    if len(text) < 5:
+        raise HTTPException(status_code=400, detail="Feedback muito curto.")
+    if len(text) > 4000:
+        raise HTTPException(status_code=400, detail="Feedback muito longo (máx. 4000 chars).")
+    return {"feedback": db.insert_feedback(
+        email=email, text=text, google_id=req.google_id, context=req.context,
+    )}
+
+
+@app.get("/admin/feedback")
+def admin_list_feedback(requesting_email: str = "", limit: int = 200):
+    """Founder-only: read submitted feedback, newest first."""
+    _require_founder(requesting_email)
+    return {"feedback": db.list_feedback(limit=limit)}
+
+
 # ── Web Push Notifications ──
 #
 # VAPID key pair — in production, generate your own and store in env vars.
@@ -1127,8 +1725,8 @@ def group_calendar_feed(feed_token: str):
 # Generate production keys: py -m py_vapid --gen
 VAPID_PRIVATE_KEY = "nOAa5iExKg1EvBMkLblGvg"
 VAPID_PUBLIC_KEY  = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBZuhbr6lT5E12OwvTPrBa5ygw"
-VAPID_CLAIMS = {"sub": "mailto:admin@reroot.app"}
-WEEKLY_PUSH_MESSAGE = "Hora do check-in semanal no Reroot! Como foi sua semana? 🌿"
+VAPID_CLAIMS = {"sub": "mailto:admin@aue.app"}
+WEEKLY_PUSH_MESSAGE = "Olha o auê do fim de semana — vai junto? 🎉"
 
 
 class PushSubscriptionBody(BaseModel):

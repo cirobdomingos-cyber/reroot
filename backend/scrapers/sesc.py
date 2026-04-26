@@ -39,6 +39,17 @@ BASE_URL = "https://www.sescpr.com.br"
 WP_POSTS_URL = f"{BASE_URL}/wp-json/wp/v2/posts"
 PROGRAMACAO_URL = f"{BASE_URL}/programacao/"
 
+# SESC has units across all of Paraná. We only want Curitiba metro events.
+# Match against the venue text after extraction; even if Claude misjudges,
+# this catches unit names that obviously belong to other cities.
+_NON_CURITIBA_SESC_UNITS = (
+    "sesc toledo", "sesc londrina", "sesc maringá", "sesc maringa",
+    "sesc cascavel", "sesc foz", "sesc ponta grossa", "sesc guarapuava",
+    "sesc paranaguá", "sesc paranagua", "sesc caiobá", "sesc caioba",
+    "sesc são josé do rio preto", "sesc apucarana", "sesc umuarama",
+    "etapa toledo", "etapa londrina", "etapa maringá", "etapa cascavel",
+)
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept-Language": "pt-BR,pt;q=0.9",
@@ -64,24 +75,32 @@ PTBR_MONTHS: dict[str, int] = {
 EXTRACTION_PROMPT = """\
 You are extracting structured event information from a SESC Paraná WordPress post.
 SESC is a Brazilian cultural institution that hosts free and low-cost events
-(concerts, workshops, cinema, exhibitions, dance, theatre) at its units in Curitiba.
+(concerts, workshops, cinema, exhibitions, dance, theatre) at its units across
+Paraná state. We ONLY want events that happen at SESC units in Curitiba or its
+metropolitan region (Pinhais, São José dos Pinhais, Araucária, Colombo, etc.).
 
 Post title: {title}
 Post date: {post_date}
 Post content:
 {content}
 
-If this post is announcing an upcoming event (with a specific date in the future),
-extract the details. If it is a news article about a past event, a general
-announcement without a specific date, or not about an event, respond with:
-{{"is_event": false}}
+If this post is announcing an upcoming event AT A SESC UNIT IN CURITIBA OR RMC
+(with a specific date in the future), extract the details.
+
+Respond with {{"is_event": false}} if ANY of the following are true:
+- Event happens at SESC Toledo, SESC Londrina, SESC Maringá, SESC Cascavel,
+  SESC Foz do Iguaçu, SESC Ponta Grossa, SESC Guarapuava, SESC Paranaguá,
+  SESC Caiobá, or any other unit OUTSIDE Curitiba metropolitan region.
+- Post is a news article about a past event.
+- General announcement without a specific date.
+- Not about an event.
 
 Respond ONLY with valid JSON (no markdown, no extra text):
 {{
   "is_event": true,
   "name": "<event name in Portuguese>",
   "description": "<brief description in Portuguese, max 200 chars>",
-  "venue_name": "<SESC unit name, e.g. SESC Portão or SESC Batel, or empty>",
+  "venue_name": "<SESC unit name, e.g. SESC Portão or SESC Água Verde, or empty>",
   "venue_address": "<address if mentioned or empty>",
   "neighborhood": "<neighborhood if mentioned or empty>",
   "date_start": "<YYYY-MM-DDTHH:MM:SS — best guess from content and post date>",
@@ -95,7 +114,8 @@ Rules:
 - SESC events are almost always free (gratuito) — default to 0 if price not explicit
 - If the event date appears to be in the past relative to today ({today}), respond with {{"is_event": false}}
 - If no time is mentioned, use 10:00 for workshops/exhibitions, 19:00 for shows/concerts
-- Prefer the specific SESC unit name (SESC Portão, SESC Batel, SESC Água Verde, etc.)
+- Prefer the specific Curitiba-region SESC unit name (SESC Portão, SESC Água Verde,
+  SESC Paço da Liberdade, SESC Esquina, SESC Hauer, SESC Pinhais)
 """
 
 
@@ -238,6 +258,16 @@ def _extract_event_from_post(
     if not data.get("is_event", False):
         return None
 
+    # Defensive check: even if Claude judged this an event, drop anything
+    # whose extracted venue or title points to a non-Curitiba SESC unit.
+    venue_blob = (
+        f"{data.get('venue_name', '')} {data.get('venue_address', '')} "
+        f"{data.get('neighborhood', '')} {data.get('name', title)}"
+    ).lower()
+    if any(unit in venue_blob for unit in _NON_CURITIBA_SESC_UNITS):
+        log.debug(f"SESC: dropped non-Curitiba unit event '{title[:50]}'")
+        return None
+
     try:
         date_start = datetime.fromisoformat(data["date_start"])
         if date_start.tzinfo is None:
@@ -306,6 +336,11 @@ async def _fetch_via_html(client: httpx.AsyncClient, today: datetime) -> list[Ra
 
         date_start = _parse_ptbr_date(ev.get("date", ""))
         if not date_start or date_start < today:
+            continue
+
+        # Skip non-Curitiba SESC units
+        venue_blob = f"{ev.get('venue', '')} {title}".lower()
+        if any(unit in venue_blob for unit in _NON_CURITIBA_SESC_UNITS):
             continue
 
         url = ev.get("url", "") or PROGRAMACAO_URL

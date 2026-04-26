@@ -1,19 +1,47 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useApp, computeCurrentWeek, getChapter, getProfile } from '../context/AppContext'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
-import { EVENTS } from '../data/events'
 import { scheduleEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
-import { fetchFriendsFeed, fetchGroups } from '../services/api'
+import { fetchEvents, fetchFriendsFeed, fetchGroups, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
+import Avatar from '../components/Avatar'
 
 function getGreetingKey() {
   const h = new Date().getHours()
   if (h < 12) return 'greeting_morning'
   if (h < 18) return 'greeting_afternoon'
   return 'greeting_evening'
+}
+
+// Mood→event matching, used to order Home suggestions by the user's profile.
+// Mirrors the backend's _MOOD_KIND / _MOOD_SOURCES / familia logic so the
+// frontend can re-rank without a round-trip.
+const _MOOD_KIND = {
+  tranquilo:  'quiet_social',
+  ativo:      'active',
+  criativo:   'creative',
+  comunidade: 'community',
+}
+const _CULTURAL_SOURCES = new Set([
+  'mon', 'sesc', 'teatro_guaira', 'ingresso', 'catraca_livre',
+])
+
+function eventMatchesMood(ev, mood) {
+  if (!mood || mood === 'all') return true
+  if (mood in _MOOD_KIND) return ev.category === _MOOD_KIND[mood]
+  if (mood === 'cultural') return _CULTURAL_SOURCES.has(ev.source)
+  if (mood === 'familia') return !!ev.kidsWelcome
+  return false
+}
+
+function eventPriorityRank(ev, priorityMoods) {
+  for (let i = 0; i < priorityMoods.length; i++) {
+    if (eventMatchesMood(ev, priorityMoods[i])) return i
+  }
+  return Number.MAX_SAFE_INTEGER
 }
 
 export default function Home() {
@@ -25,7 +53,16 @@ export default function Home() {
   const [friendsFeed, setFriendsFeed] = useState([])
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
-  const [journeyOpen, setJourneyOpen] = useState(false)
+  // Live event catalog — fetched from backend instead of using the stale
+  // static EVENTS array. Drives suggestions, RSVP cards, and reconnect.
+  const [allEvents, setAllEvents] = useState([])
+
+  useEffect(() => {
+    // Fetch the live catalog (broad "Tudo" view — same as Events screen).
+    fetchEvents('all').then(({ events }) => {
+      setAllEvents(events || [])
+    }).catch(() => setAllEvents([]))
+  }, [])
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -50,37 +87,71 @@ export default function Home() {
       setGroupEventsPending(pending)
       setGroupEventsAccepted(accepted)
     })
+    // Refetch friends feed when the tab regains focus — covers the case
+    // where a friend RSVPd while the app was in background.
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        fetchFriendsFeed(googleId).then(events => {
+          setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
   }, [state.googleUser?.id])
 
-  const currentWeek = computeCurrentWeek(state.joinedAt)
-  const chapter = getChapter(currentWeek)
-  const rsvpCount = Object.values(state.rsvps).filter(Boolean).length
-
-  // Upcoming RSVPd events (future only)
+  // Upcoming RSVPd events (future only) — drives the "Confirmados" count.
+  // Computed directly from state.rsvps (which stores dateStart per RSVP)
+  // so the count is accurate even if the live `allEvents` catalog doesn't
+  // include this specific event (paginated, filtered by mood, or a custom
+  // user-created event). Entries without a dateStart are legacy holdovers
+  // from the old boolean-shaped rsvps; they DON'T count, so the tile
+  // doesn't inflate with stale data the user can't easily clean up.
   const now = Date.now()
-  const upcomingRsvps = EVENTS.filter(ev =>
-    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
-  ).slice(0, 3)
+  const upcomingRsvpIds = Object.entries(state.rsvps)
+    .filter(([_id, info]) => {
+      if (!info?.dateStart) return false
+      const t = Date.parse(info.dateStart)
+      return !Number.isNaN(t) && t > now
+    })
+    .map(([id]) => id)
+  const rsvpCount = upcomingRsvpIds.length
 
-  // Suggested events (not RSVPd, low pressure first)
-  const profile = getProfile(state.userSituation)
-  const priorityCats = profile?.priorityCategories ?? []
-  const suggestedEvents = EVENTS
+  // upcomingRsvps below is used for the "Seus próximos eventos" card —
+  // there we DO need full event metadata, so we fall back to allEvents.
+  const upcomingRsvps = allEvents.filter(ev =>
+    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
+  )
+
+  // Suggested events — events the user hasn't RSVPd to, ordered by the
+  // user's profile preference (if set) then by date. Profile picks the
+  // priority order of moods; events matching priority[0] come first,
+  // then priority[1], etc. Events not in any priority mood drop to the
+  // bottom but still surface.
+  const profile = state.profile ? PROFILES[state.profile] : null
+  const priorityMoods = profile?.priorityMoods ?? []
+  const suggestedEvents = allEvents
     .filter(ev => !state.rsvps[ev.id])
     .sort((a, b) => {
-      const ai = priorityCats.indexOf(a.category)
-      const bi = priorityCats.indexOf(b.category)
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+      const ra = eventPriorityRank(a, priorityMoods)
+      const rb = eventPriorityRank(b, priorityMoods)
+      if (ra !== rb) return ra - rb
+      const da = a.dateStart ? new Date(a.dateStart).getTime() : 0
+      const db = b.dateStart ? new Date(b.dateStart).getTime() : 0
+      return da - db
     })
     .slice(0, 3)
 
-  // Post-event reconnect
-  const reconnectEvent = EVENTS.find(ev =>
+  // Post-event reconnect — the most recent past RSVP (if any)
+  const reconnectEvent = allEvents.find(ev =>
     state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() <= now
   )
 
   async function handleQuickRsvp(ev) {
-    dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: { eventId: ev.id, dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
+    })
     const ok = await scheduleEventReminder(ev)
     if (ok) {
       setNotifToast(ev.name)
@@ -90,27 +161,82 @@ export default function Home() {
 
   return (
     <div>
-      {/* Greeting */}
+      {/* Brand + avatar. Home is the anchor screen, so we lead with the
+          "auê" wordmark (sage, mirrors the Onboarding mark) and tuck the
+          greeting into a secondary line. The avatar shortcuts to Profile —
+          replaces the old Perfil bottom-nav tab. */}
       <div style={{ padding: '14px 20px 4px' }}>
-        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)' }}>{t[getGreetingKey()]},</div>
-        <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--charcoal)' }}>
-          {state.userName || t.home_default_name} 👋
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, marginBottom: 6,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+            <div style={{
+              fontSize: 32, fontWeight: 800, letterSpacing: -0.8,
+              color: 'var(--sage)', lineHeight: 1,
+            }}>
+              auê
+            </div>
+            <div style={{
+              fontSize: 9, fontWeight: 700, color: 'var(--charcoal-light)',
+              textTransform: 'uppercase', letterSpacing: 1.5,
+              whiteSpace: 'nowrap',
+            }}>
+              Curitiba que acontece
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/profile')}
+            aria-label={t.nav_profile ?? 'Perfil'}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 0, flexShrink: 0,
+              borderRadius: '50%',
+            }}
+          >
+            <Avatar
+              src={state.googleUser?.picture}
+              name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
+              size={40}
+            />
+          </button>
+        </div>
+        <div style={{
+          fontSize: 13, color: 'var(--charcoal-mid)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {t[getGreetingKey()]}, <span style={{ color: 'var(--charcoal)', fontWeight: 700 }}>
+            {state.userName || t.home_default_name}
+          </span> 👋
         </div>
       </div>
 
-      {/* Quick stats bar */}
+      {/* Quick stats bar — both tiles route to /my-rsvps (RSVPs tab),
+          which now shows the user's RSVPs *and* friends' upcoming RSVPs
+          in one place. */}
       <div style={{
         display: 'flex', gap: 8, margin: '8px 16px 14px', justifyContent: 'space-between',
       }}>
         {[
-          { val: rsvpCount, lbl: t.home_stat_rsvpd, color: 'var(--sage)' },
-          { val: state.eventsAttended ?? 0, lbl: t.home_stat_attended, color: 'var(--terra)' },
-          { val: friendsFeed.length, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9' },
-        ].map(({ val, lbl, color }) => (
-          <div key={lbl} style={{
-            flex: 1, background: 'white', borderRadius: 14, padding: '12px 10px',
-            textAlign: 'center', border: '1px solid var(--border)',
-          }}>
+          {
+            val: rsvpCount, lbl: t.home_stat_rsvpd, color: 'var(--sage)',
+            onTap: rsvpCount > 0 ? () => navigate('/my-rsvps') : null,
+          },
+          {
+            val: friendsFeed.length, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9',
+            onTap: friendsFeed.length > 0 ? () => navigate('/my-rsvps') : null,
+          },
+        ].map(({ val, lbl, color, onTap }) => (
+          <div
+            key={lbl}
+            onClick={onTap || undefined}
+            style={{
+              flex: 1, background: 'white', borderRadius: 14, padding: '12px 10px',
+              textAlign: 'center', border: '1px solid var(--border)',
+              cursor: onTap ? 'pointer' : 'default',
+              transition: 'transform 0.1s',
+            }}
+          >
             <div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div>
             <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', marginTop: 2 }}>{lbl}</div>
           </div>
@@ -121,7 +247,7 @@ export default function Home() {
       <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
       <WeekCalendar
         rsvpEvents={[
-          ...EVENTS.filter(ev => state.rsvps[ev.id] && ev.dateStart),
+          ...allEvents.filter(ev => state.rsvps[ev.id] && ev.dateStart),
           ...groupEventsAccepted.map(ev => ({
             ...ev, dateStart: ev.date_start, icon: '👥',
             headerBg: 'linear-gradient(135deg, var(--sage-pale), #e8f0e9)',
@@ -139,7 +265,27 @@ export default function Home() {
           }
         }}
         onGroupRsvp={(ev) => {
-          dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+          // Group event RSVP — local state + backend sync (so friends see
+          // it via /friends/feed). dateStart on group events comes back
+          // from /groups as `date_start`.
+          dispatch({
+            type: 'TOGGLE_RSVP',
+            payload: {
+              eventId: ev.id,
+              dateStart: ev.date_start || ev.dateStart || '',
+              name: ev.name,
+              venue: ev.group_name || ev.venue || '',
+            },
+          })
+          if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
+            syncRsvp(state.googleUser.id, {
+              id: ev.id,
+              name: ev.name,
+              venue: ev.group_name || ev.venue || '',
+              dateStart: ev.date_start || ev.dateStart || '',
+              url: '',
+            }, true)
+          }
           // Move from pending to accepted
           setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
           setGroupEventsAccepted(prev => [...prev, ev])
@@ -172,7 +318,7 @@ export default function Home() {
         <>
           <div className="section-label">{t.home_upcoming_label ?? 'Seus próximos eventos'}</div>
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {upcomingRsvps.map(ev => (
+            {upcomingRsvps.slice(0, 3).map(ev => (
               <div key={ev.id} onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 background: 'white', borderRadius: 14, padding: '11px 14px',
@@ -194,41 +340,74 @@ export default function Home() {
         </>
       )}
 
-      {/* Friends activity feed */}
+      {/* Friends activity feed — events friends are going to. Includes
+          events the user hasn't RSVPd to yet, so it works as discovery
+          ("oh, the gang is going to that"). Tap a row to open the event;
+          tap the section header to see the full list in Community. */}
       {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
         <>
-          <div className="section-label">{t.home_friends_going_label ?? 'Amigos também vão'}</div>
+          <div
+            className="section-label"
+            onClick={() => navigate('/community')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          >
+            <span>{t.home_friends_going_label ?? 'Amigos vão'}</span>
+            <span style={{ fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 600 }}>
+              {t.home_see_all ?? 'Ver tudo'} →
+            </span>
+          </div>
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {friendsFeed.slice(0, 3).map(ev => (
-              <div key={ev.event_id} style={{
-                background: 'white', borderRadius: 14, border: '1px solid var(--border)',
-                padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 12,
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {ev.event_name}
+            {friendsFeed.slice(0, 3).map(ev => {
+              const userIsGoing = !!state.rsvps[ev.event_id]
+              return (
+                <div
+                  key={ev.event_id}
+                  onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
+                  style={{
+                    background: 'white', borderRadius: 14, border: '1px solid var(--border)',
+                    padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {ev.event_name}
+                      {userIsGoing && (
+                        <span style={{
+                          marginLeft: 8, fontSize: 9, fontWeight: 700,
+                          padding: '2px 6px', borderRadius: 5,
+                          background: 'var(--sage-pale)', color: 'var(--sage)',
+                          letterSpacing: 0.3,
+                        }}>
+                          VOCÊ TAMBÉM
+                        </span>
+                      )}
+                    </div>
+                    {ev.event_venue && (
+                      <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.event_venue}</div>
+                    )}
                   </div>
-                  {ev.event_venue && (
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.event_venue}</div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    {ev.friends_going.slice(0, 3).map((friend, i) => (
+                      <div
+                        key={friend.name + i}
+                        style={{
+                          marginLeft: i === 0 ? 0 : -8,
+                          // White ring around overlapping stacked avatars
+                          boxShadow: '0 0 0 2px white',
+                          borderRadius: '50%',
+                        }}
+                      >
+                        <Avatar name={friend.name} src={friend.picture} size={26} />
+                      </div>
+                    ))}
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
+                      {ev.friends_going.length} {t.friends_feed_going ?? 'vão'}
+                    </span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  {ev.friends_going.slice(0, 3).map((friend, i) => (
-                    <img key={friend.name + i} src={friend.picture} alt={friend.name}
-                      referrerPolicy="no-referrer"
-                      style={{
-                        width: 26, height: 26, borderRadius: '50%', border: '2px solid white',
-                        marginLeft: i === 0 ? 0 : -8, objectFit: 'cover',
-                      }}
-                      onError={e => { e.currentTarget.style.display = 'none' }}
-                    />
-                  ))}
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
-                    {ev.friends_going.length} {t.friends_feed_going ?? 'vão'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
@@ -236,47 +415,37 @@ export default function Home() {
       {/* Suggested events */}
       <div className="section-label">{t.home_suggested_label ?? 'Eventos para você'}</div>
       <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {suggestedEvents.map(ev => {
-          const going = ev.cohortGoing.length
-          return (
-            <div key={ev.id} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: 'white', borderRadius: 14, padding: '11px 14px',
-              boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
+        {suggestedEvents.map(ev => (
+          <div key={ev.id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'white', borderRadius: 14, padding: '11px 14px',
+            boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
+          }}>
+            <div onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
+              display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer',
             }}>
-              <div onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
-                display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer',
-              }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18, background: ev.headerBg, flexShrink: 0,
-                }}>{ev.icon}</div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {going > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--sage)' }}>
-                    {going} {t.home_going ?? 'vão'}
-                  </span>
-                )}
-                <button
-                  onClick={() => handleQuickRsvp(ev)}
-                  style={{
-                    padding: '6px 12px', borderRadius: 10, fontSize: 11,
-                    fontWeight: 700, cursor: 'pointer', border: 'none',
-                    background: 'var(--sage)', color: 'white',
-                  }}
-                >
-                  {t.home_rsvp ?? 'Vou!'}
-                </button>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, background: ev.headerBg, flexShrink: 0,
+              }}>{ev.icon}</div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
               </div>
             </div>
-          )
-        })}
+            <button
+              onClick={() => handleQuickRsvp(ev)}
+              style={{
+                padding: '6px 12px', borderRadius: 10, fontSize: 11,
+                fontWeight: 700, cursor: 'pointer', border: 'none',
+                background: 'var(--sage)', color: 'white', flexShrink: 0,
+              }}
+            >
+              {t.home_rsvp ?? 'Vou!'}
+            </button>
+          </div>
+        ))}
         <button
           onClick={() => navigate('/events')}
           style={{
@@ -295,7 +464,7 @@ export default function Home() {
         <div
           onClick={() => navigate('/community')}
           style={{
-            background: 'linear-gradient(135deg, #C4724A 0%, #E08D5E 100%)',
+            background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
             borderRadius: 16, padding: '16px 18px', cursor: 'pointer',
             color: 'white',
           }}
@@ -312,94 +481,6 @@ export default function Home() {
             <span style={{ fontSize: 24 }}>👥</span>
           </div>
         </div>
-      </div>
-
-      {/* Your Journey — collapsed, secondary */}
-      <div style={{ margin: '0 16px 16px' }}>
-        <div
-          onClick={() => setJourneyOpen(o => !o)}
-          style={{
-            background: 'white', borderRadius: journeyOpen ? '16px 16px 0 0' : 16,
-            padding: '14px 16px', cursor: 'pointer',
-            border: '1px solid var(--border)',
-            borderBottom: journeyOpen ? '1px dashed var(--border)' : '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 18 }}>🌿</span>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
-                {t.home_journey_card_title ?? 'Sua Jornada'}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
-                {t.home_week ?? 'Semana'} {currentWeek} · {chapter.name}
-              </div>
-            </div>
-          </div>
-          <motion.span
-            animate={{ rotate: journeyOpen ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}
-          >
-            ▼
-          </motion.span>
-        </div>
-
-        <AnimatePresence>
-          {journeyOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              style={{ overflow: 'hidden' }}
-            >
-              <div style={{
-                background: 'white', borderRadius: '0 0 16px 16px',
-                padding: '14px 16px', border: '1px solid var(--border)', borderTop: 'none',
-              }}>
-                {/* Progress bar */}
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ height: 6, borderRadius: 3, background: 'var(--cream)', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${Math.round((currentWeek / (state.totalWeeks || 12)) * 100)}%`,
-                      borderRadius: 3, background: chapter.color, transition: 'width 0.8s ease',
-                    }}/>
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', marginTop: 4 }}>
-                    {t.home_week ?? 'Semana'} {currentWeek} {t.home_of ?? 'de'} {state.totalWeeks || 12}
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
-                  {[
-                    { val: rsvpCount, lbl: t.home_stat_rsvpd },
-                    { val: state.eventsAttended ?? 0, lbl: t.home_stat_attended },
-                    { val: state.reflections?.length ?? 0, lbl: 'Reflexões' },
-                  ].map(({ val, lbl }) => (
-                    <div key={lbl}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--charcoal)' }}>{val}</div>
-                      <div style={{ fontSize: 10, color: 'var(--charcoal-mid)' }}>{lbl}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => navigate('/journey')}
-                  style={{
-                    width: '100%', padding: '11px', borderRadius: 12, fontSize: 13,
-                    fontWeight: 600, cursor: 'pointer', border: 'none',
-                    background: 'var(--sage)', color: 'white',
-                  }}
-                >
-                  {t.home_framework_open ?? 'Abrir Jornada →'}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* Notification toast */}

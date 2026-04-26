@@ -1,4 +1,4 @@
-// ── Reroot i18n — PT (default) / EN ───────────────────────
+// ── auê i18n — PT (default) / EN ───────────────────────
 // Usage: const t = useT()  →  t.nav_home, t.events_title, etc.
 // Add new keys to BOTH locales or the app will fall back to the key name.
 
@@ -72,7 +72,7 @@ export const T = {
 
     // ── Events ───────────────────────────────────────────
     events_title:           'Eventos',
-    events_sub:             'Curitiba · Cohort Primavera · 24 membros',
+    events_sub:             'Tudo que tá rolando em Curitiba',
     events_live:            '🟢 Ao vivo',
     events_static:          '🌿 Curitiba',
     events_search:          'Buscar eventos, locais...',
@@ -125,18 +125,18 @@ export const T = {
 
     // ── Profile ───────────────────────────────────────────
     profile_cohort:         'Cohort Primavera Curitiba · 24 membros',
-    profile_member_badge:   '🌿 Membro Reroot · R$99/mês',
+    profile_member_badge:   '🌿 Membro auê · R$99/mês',
     profile_timeline_label: 'Linha do tempo',
     profile_badges_label:   'Badges conquistados',
     profile_membership_label:'Assinatura',
-    profile_membership_title:'Membro Reroot',
+    profile_membership_title:'Membro auê',
     profile_membership_sub: 'Acesso completo · Cobrado mensalmente',
     profile_feature_1:      '✓ Frameworks semanais de IA (revisados por terapeutas)',
     profile_feature_2:      '✓ Eventos curados do cohort · Curitiba',
     profile_feature_3:      '✓ Cohort de 24 membros · Primavera 2026',
     profile_feature_4:      '✓ Rastreamento de jornada e badges de marcos',
     profile_referral_label: 'Indicado pelo seu terapeuta?',
-    profile_referral_sub:   'Muitos terapeutas recomendam o Reroot como estrutura entre sessões. Insira o código deles para ter o primeiro mês grátis.',
+    profile_referral_sub:   'Muitos terapeutas recomendam o auê como estrutura entre sessões. Insira o código deles para ter o primeiro mês grátis.',
     profile_referral_placeholder: 'ex: TERAPIA2026',
     profile_referral_btn:   'Aplicar',
     profile_referral_applied:'🎉 Primeiro mês grátis aplicado!',
@@ -206,12 +206,12 @@ export const T = {
 
     // ── PartnerIntro ──────────────────────────────────────
     partner_setting_up:     'Configurando seu',
-    partner_companion_title:'companheiro reroot',
+    partner_companion_title:'companheiro auê',
     partner_continue:       'Continuar →',
     partner_build:          'Criar meu companheiro →',
     partner_building_title: 'Criando seu companheiro...',
     partner_building_sub:   'Personalizando seu arco de 12 semanas',
-    partner_companion_label:'Seu Companheiro Reroot',
+    partner_companion_label:'Seu Companheiro auê',
     partner_companion_sub:  'IA · Metodologia revisada por terapeutas',
     partner_week1_label:    'Sua semana 1 começa com',
     partner_begin:          'Começar Semana 1 →',
@@ -474,7 +474,7 @@ export const T = {
 
     // ── Friends screen ────────────────────────────────────
     friends_title:           'Amigos',
-    friends_sub:             'Conecte-se com seu cohort',
+    friends_sub:             'Veja pra onde a galera tá indo',
     friends_my_code_label:   'Seu código',
     friends_my_code_hint:    'Compartilhe pra adicionar amigos',
     friends_code_copy:       'Copiar',
@@ -486,7 +486,7 @@ export const T = {
     friends_add_success:     'Amigo adicionado!',
     friends_add_error:       'Código inválido ou já é seu amigo',
     friends_list_label:      'Seus amigos',
-    friends_list_empty:      'Você ainda não tem amigos no reroot. Adicione alguém pelo código ou conecte-se em um evento.',
+    friends_list_empty:      'Você ainda não tem amigos no auê. Adicione alguém pelo código ou conecte-se em um evento.',
     friends_feed_label:      'Para onde seus amigos estão indo',
     friends_feed_empty:      'Nenhum amigo confirmou presença em eventos próximos.',
     friends_feed_going:      'indo',

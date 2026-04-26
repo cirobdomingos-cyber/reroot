@@ -1,23 +1,15 @@
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
+import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { trackEvent } from '../services/api'
 
-const ALL_INTERESTS = [
-  'Café & Conversa', 'Caminhadas', 'Escrita Criativa', 'Yoga',
-  'Clube do Livro', 'Arte & Museus', 'Culinária', 'Música ao Vivo',
-  'Jogos de Mesa', 'Fotografia',
-]
-
-const COHORT_AVATARS = [
-  { initial: 'M', color: '#C4724A' },
-  { initial: 'K', color: '#7A9E7E' },
-  { initial: 'T', color: '#9B7EB8' },
-  { initial: 'J', color: '#5B8DD9' },
-  { initial: 'R', color: '#E08D5E' },
-]
+// Onboarding (post-pivot) — two short steps:
+//   1. Welcome + sign-in (Google or visitor).
+//   2. Vibe picker — sets state.profile, which seeds the default mood and
+//      orders Home suggestions. Skippable.
+// Either step finishes by JOIN_COHORTing and navigating to /home.
 
 function LangToggle({ language, dispatch }) {
   return (
@@ -45,247 +37,211 @@ export default function Onboarding() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const t = useT()
-  const [name, setName] = useState(state.googleUser?.givenName ?? state.userName ?? '')
-  const [neighborhood, setNeighborhood] = useState(state.neighborhood)
   const googleBtnRef = useRef(null)
   const googleConfigured = isGoogleConfigured()
+  // 'welcome' = step 1 (sign-in/visitor), 'vibe' = step 2 (profile picker)
+  const [step, setStep] = useState('welcome')
 
-  // Track that the user reached step 0 (the entry point of onboarding)
-  useEffect(() => {
-    trackEvent('onboarding_started')
-  }, [])
+  useEffect(() => { trackEvent('onboarding_started') }, [])
 
   useEffect(() => {
-    if (!googleConfigured) return
+    if (!googleConfigured || step !== 'welcome') return
     const cleanup = mountGoogleButton(googleBtnRef, (googleUser) => {
       dispatch({ type: 'SET_GOOGLE_USER', payload: googleUser })
-      setName(googleUser.givenName || googleUser.name.split(' ')[0])
+      dispatch({ type: 'SET_NAME', payload: googleUser.givenName || googleUser.name?.split(' ')[0] || '' })
+      trackEvent('onboarding_signed_in', { method: 'google' })
+      setStep('vibe')
     })
     return cleanup
-  }, [dispatch, googleConfigured])
+  }, [dispatch, googleConfigured, step])
 
   function handleMockGoogle() {
     dispatch({ type: 'SET_GOOGLE_USER', payload: MOCK_GOOGLE_USER })
-    setName(MOCK_GOOGLE_USER.givenName)
+    dispatch({ type: 'SET_NAME', payload: MOCK_GOOGLE_USER.givenName })
+    trackEvent('onboarding_signed_in', { method: 'mock' })
+    setStep('vibe')
   }
 
-  function handleClearGoogle() {
-    dispatch({ type: 'SET_GOOGLE_USER', payload: null })
-    setName('')
+  function handleSkipSignin() {
+    trackEvent('onboarding_signed_in', { method: 'skip' })
+    setStep('vibe')
   }
 
-  function handleJoin() {
-    if (name.trim()) dispatch({ type: 'SET_NAME', payload: name.trim() })
-    dispatch({ type: 'SET_NEIGHBORHOOD', payload: neighborhood })
+  function finishOnboarding(profileId) {
+    if (profileId) dispatch({ type: 'SET_PROFILE', payload: profileId })
     dispatch({ type: 'JOIN_COHORT' })
-    trackEvent('cohort_joined', { step_name: 'onboarding' })
-    navigate('/partner-intro')
+    trackEvent('cohort_joined', {
+      step_name: 'onboarding',
+      profile: profileId || 'none',
+    })
+    navigate('/home')
   }
-
-  const canJoin = name.trim().length > 0
 
   return (
     <div style={{
       minHeight: '100%',
-      background: 'linear-gradient(165deg, #2C2C2C 0%, #3d2d25 100%)',
-      display: 'flex',
-      flexDirection: 'column',
+      background: 'linear-gradient(165deg, #1E3A5F 0%, #2C2C2C 100%)',
+      display: 'flex', flexDirection: 'column',
     }}>
-
-      {/* Logo + lang toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px 0', color: 'white' }}>
+      {/* Logo + lang toggle (always visible) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 20px 0', color: 'white',
+      }}>
         <div>
-          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
-            re<span style={{ color: 'var(--terra-light)' }}>root</span>
+          <div style={{
+            fontSize: 44, fontWeight: 800, letterSpacing: -1.2,
+            color: 'var(--sage)',
+            lineHeight: 1,
+          }}>
+            auê
           </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 2, marginTop: 1 }}>
-            {t.onboarding_tagline}
+          <div style={{
+            fontSize: 10, color: 'rgba(255,255,255,0.45)',
+            textTransform: 'uppercase', letterSpacing: 2, marginTop: 6,
+          }}>
+            Curitiba que acontece
           </div>
         </div>
         <LangToggle language={state.language} dispatch={dispatch} />
       </div>
 
-      {/* Cohort card */}
-      <div style={{
-        margin: '14px 20px 0',
-        background: 'rgba(255,255,255,0.07)',
-        border: '1px solid rgba(255,255,255,0.12)',
-        borderRadius: 24, padding: 20, color: 'white',
-      }}>
-        {/* Live badge */}
+      {step === 'welcome' ? (
+        <WelcomeStep
+          googleConfigured={googleConfigured}
+          googleBtnRef={googleBtnRef}
+          onMockGoogle={handleMockGoogle}
+          onSkip={handleSkipSignin}
+          privacyText={t.onboarding_privacy}
+        />
+      ) : (
+        <VibeStep onPick={finishOnboarding} />
+      )}
+    </div>
+  )
+}
+
+// ── Step 1: welcome / sign-in ─────────────────────────────
+function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, privacyText }) {
+  return (
+    <>
+      <div style={{ flex: 1, padding: '40px 20px 0', color: 'white' }}>
         <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: 'var(--terra)', padding: '4px 12px',
-          borderRadius: 20, fontSize: 10, fontWeight: 700,
-          textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12,
+          fontSize: 28, fontWeight: 700, lineHeight: 1.25, marginBottom: 14,
         }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'white', display: 'block' }}/>
-          {t.onboarding_cohort_badge}
+          Tudo que tá rolando<br />em Curitiba,<br />
+          <span style={{ color: 'var(--sage)' }}>com a galera junto.</span>
         </div>
+        <div style={{
+          fontSize: 14, color: 'rgba(255,255,255,0.7)',
+          lineHeight: 1.55, maxWidth: 360,
+        }}>
+          Shows, exposições, feiras, oficinas, encontros pequenos.
+          Reunidos de Sympla, Eventbrite, MON, SESC, Catraca Livre e
+          Instagram — atualizado todo dia.
+        </div>
+      </div>
 
-        <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3, marginBottom: 6 }}>
-          {t.onboarding_headline}<br />
-          <span style={{ color: 'var(--terra-light)' }}>{t.onboarding_cohort_name}</span>
-        </div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', marginBottom: 16, lineHeight: 1.5 }}>
-          {t.onboarding_subtitle}
-        </div>
-
-        {/* Member row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div className="avatar-stack">
-            {COHORT_AVATARS.map(({ initial, color }) => (
-              <div key={initial} className="avatar" style={{ background: color }}>{initial}</div>
-            ))}
-          </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{t.onboarding_members}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>{t.onboarding_closes}</div>
-          </div>
-        </div>
-
-        {/* Google Sign-In */}
-        {state.googleUser ? (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'rgba(255,255,255,0.1)', borderRadius: 12,
-            padding: '10px 14px', marginBottom: 14,
-          }}>
-            <img
-              src={state.googleUser.picture}
-              alt=""
-              style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>
-                {state.googleUser.name}
-              </div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 1 }}>
-                {state.googleUser.email}
-              </div>
-            </div>
-            <button
-              onClick={handleClearGoogle}
-              style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
-            >
-              Trocar ×
-            </button>
-          </div>
+      <div style={{
+        background: 'var(--cream)', borderRadius: '28px 28px 0 0',
+        padding: '24px 20px 32px', marginTop: 24,
+      }}>
+        {googleConfigured ? (
+          <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }} />
         ) : (
-          <div style={{ marginBottom: 14 }}>
-            {googleConfigured ? (
-              <div ref={googleBtnRef} style={{ borderRadius: 12, overflow: 'hidden' }} />
-            ) : (
-              /* Mock Google button — shown when VITE_GOOGLE_CLIENT_ID is not set */
-              <button
-                onClick={handleMockGoogle}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                  background: 'white', border: 'none', borderRadius: 10,
-                  padding: '11px 16px', cursor: 'pointer',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-                }}
-              >
-                {/* Google "G" logo */}
-                <svg width="18" height="18" viewBox="0 0 18 18">
-                  <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-                  <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-                  <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z"/>
-                  <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/>
-                </svg>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#3c4043', fontFamily: 'Roboto, sans-serif' }}>
-                  Continue with Google
-                </span>
-              </button>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 0' }}>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.12)' }}/>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>
-                {t.onboarding_or ?? 'ou continue manualmente'}
-              </span>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.12)' }}/>
-            </div>
-          </div>
+          <button className="btn btn--primary" onClick={onMockGoogle} style={{ marginBottom: 10 }}>
+            Entrar com Google
+          </button>
         )}
 
-        {/* Name input */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 1 }}>
-            {t.onboarding_name_label}
-          </div>
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder={t.onboarding_name_placeholder}
-            maxLength={30}
-            style={{
-              width: '100%', background: 'rgba(255,255,255,0.08)',
-              border: `1px solid ${name.trim() ? 'rgba(122,158,126,0.6)' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: 12, padding: '10px 14px',
-              color: 'white', fontSize: 14, outline: 'none', transition: 'border-color 0.2s',
-            }}
-          />
-        </div>
-
-        {/* Neighborhood input */}
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 1 }}>
-            {t.onboarding_neighborhood_label}
-          </div>
-          <input
-            value={neighborhood}
-            onChange={e => setNeighborhood(e.target.value)}
-            placeholder={t.onboarding_neighborhood_placeholder}
-            style={{
-              width: '100%', background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 12, padding: '10px 14px',
-              color: 'white', fontSize: 14, outline: 'none',
-            }}
-          />
-        </div>
-
-        {/* Interests */}
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-          {t.onboarding_interests_label}
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-          {ALL_INTERESTS.map(interest => {
-            const selected = state.interests.includes(interest)
-            return (
-              <button
-                key={interest}
-                onClick={() => dispatch({ type: 'TOGGLE_INTEREST', payload: { interest } })}
-                style={{
-                  padding: '6px 12px', borderRadius: 20, fontSize: 12,
-                  fontWeight: selected ? 600 : 400,
-                  border: `1px solid ${selected ? 'var(--sage)' : 'rgba(255,255,255,0.2)'}`,
-                  background: selected ? 'var(--sage)' : 'transparent',
-                  color: selected ? 'white' : 'rgba(255,255,255,0.8)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}
-              >
-                {interest}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* CTA */}
-      <div style={{ background: 'var(--cream)', borderRadius: '28px 28px 0 0', padding: '20px 20px 36px', marginTop: 16 }}>
         <button
-          className="btn btn--primary"
-          onClick={handleJoin}
-          disabled={!canJoin}
-          style={{ opacity: canJoin ? 1 : 0.45 }}
+          onClick={onSkip}
+          style={{
+            width: '100%', background: 'transparent',
+            border: '1px solid var(--border)', borderRadius: 12,
+            padding: '12px 16px', fontSize: 14, fontWeight: 600,
+            color: 'var(--charcoal-mid)', cursor: 'pointer',
+          }}
         >
-          {t.onboarding_join_btn}
+          Continuar como visitante
         </button>
-        <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--charcoal-light)', marginTop: 10, lineHeight: 1.6 }}>
-          {t.onboarding_privacy}
+
+        <div style={{
+          textAlign: 'center', fontSize: 11, color: 'var(--charcoal-light)',
+          marginTop: 14, lineHeight: 1.6,
+        }}>
+          {privacyText ?? 'Sem cadastro complicado. Você pode entrar com Google quando quiser salvar eventos ou virar curador.'}
         </div>
       </div>
-    </div>
+    </>
+  )
+}
+
+// ── Step 2: vibe picker ───────────────────────────────────
+function VibeStep({ onPick }) {
+  const profiles = Object.values(PROFILES)
+  return (
+    <>
+      <div style={{ flex: 1, padding: '32px 20px 0', color: 'white' }}>
+        <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.3, marginBottom: 8 }}>
+          Que vibe combina<br />com você hoje?
+        </div>
+        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 24 }}>
+          Isso só ajuda a ordenar as sugestões na Home. Pode mudar depois.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {profiles.map(p => (
+            <button
+              key={p.id}
+              onClick={() => onPick(p.id)}
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                border: '1.5px solid rgba(255,255,255,0.14)',
+                borderRadius: 18,
+                padding: '20px 14px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                color: 'white',
+                transition: 'all 0.15s',
+                minHeight: 140,
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(232, 98, 63, 0.18)'
+                e.currentTarget.style.borderColor = 'var(--sage)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'
+              }}
+            >
+              <div style={{ fontSize: 32, lineHeight: 1 }}>{p.emoji}</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{p.label}</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+                {p.blurb}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{
+        background: 'var(--cream)', borderRadius: '28px 28px 0 0',
+        padding: '20px 20px 32px', marginTop: 24,
+      }}>
+        <button
+          onClick={() => onPick(null)}
+          style={{
+            width: '100%', background: 'transparent',
+            border: '1px solid var(--border)', borderRadius: 12,
+            padding: '12px 16px', fontSize: 14, fontWeight: 600,
+            color: 'var(--charcoal-mid)', cursor: 'pointer',
+          }}
+        >
+          Pular →
+        </button>
+      </div>
+    </>
   )
 }

@@ -29,13 +29,45 @@ BR_TZ = timezone(timedelta(hours=-3))
 log = logging.getLogger(__name__)
 
 DISCOVERY_URLS = [
+    # Default discovery + chronological listing
     "https://www.sympla.com.br/eventos/curitiba-pr",
     "https://www.sympla.com.br/eventos/curitiba-pr?d=upcoming",
+    # Category-specific listings — broaden coverage so the catalog isn't
+    # dominated by whichever category Sympla featured that day.
     "https://www.sympla.com.br/eventos/curitiba-pr?c=festas-e-shows",
     "https://www.sympla.com.br/eventos/curitiba-pr?c=gastronomia",
     "https://www.sympla.com.br/eventos/curitiba-pr?c=cursos-e-workshops",
     "https://www.sympla.com.br/eventos/curitiba-pr?c=esportes",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=teatros-espetaculos-e-cinema",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=arte-cinema-e-lazer",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=infantil",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=passeios-e-tours",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=games-e-geek",
+    "https://www.sympla.com.br/eventos/curitiba-pr?c=saude-e-bem-estar",
 ]
+
+# Curitiba metro region — used to relax the city-equality check.
+# Many Sympla events are tagged "Curitiba" while their venue is in another
+# city, so we keep the explicit deny-list for venue/address screening.
+_CURITIBA_REGION = {
+    "curitiba",
+    "pinhais", "são josé dos pinhais", "sao jose dos pinhais", "araucária",
+    "araucaria", "colombo", "almirante tamandaré", "almirante tamandare",
+    "campo largo", "piraquara", "fazenda rio grande", "lapa",
+    "quatro barras", "campina grande do sul", "rio branco do sul",
+    "mandirituba", "tijucas do sul", "contenda", "itaperuçu", "itaperucu",
+}
+
+# Cities the Sympla discovery feed has historically leaked. Even when Sympla
+# itself tags the event "Curitiba", the venue text gives it away. Catching
+# these at ingest is cheaper than re-checking on every API call.
+_NON_CURITIBA_VENUE_TOKENS = (
+    "vacaria", "caçador", "cacador", "joaçaba", "joacaba", "concórdia",
+    "concordia", "videira", "canoinhas", "rio do sul", "toledo",
+    "londrina", "maringá", "maringa", "florianópolis", "florianopolis",
+    "porto alegre", "são paulo", "sao paulo", "rio de janeiro",
+    "lages", "blumenau", "joinville", "chapecó", "chapeco",
+)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -75,9 +107,9 @@ async def fetch_events(token: str = "", city: str = "Curitiba", days_ahead: int 
         # Phase 2: Fetch each event page and parse the __NEXT_DATA__ hydration blob.
         all_events: list[RawEvent] = []
         skipped_other_city = 0
+        skipped_other_venue = 0
         skipped_no_data = 0
-        target_city = city.strip().lower()
-        for url in event_urls[:30]:  # cap to avoid hammering
+        for url in event_urls[:60]:  # cap to avoid hammering
             try:
                 resp = await client.get(url, headers=HEADERS)
                 if resp.status_code != 200:
@@ -86,10 +118,22 @@ async def fetch_events(token: str = "", city: str = "Curitiba", days_ahead: int 
                 if not parsed:
                     skipped_no_data += 1
                     continue
+
                 ev_city = (parsed.city or "").strip().lower()
-                if target_city and ev_city != target_city:
+                # First gate: when Sympla gives us a city, it must be Curitiba
+                # or RMC. Empty city is allowed through to the venue gate.
+                if ev_city and ev_city not in _CURITIBA_REGION:
                     skipped_other_city += 1
                     continue
+                # Second gate: even if Sympla says "Curitiba", the venue text
+                # often reveals the real location (e.g. "Faculdade Senac Caçador").
+                venue_blob = (
+                    f"{parsed.venue_name or ''} {parsed.venue_address or ''}"
+                ).lower()
+                if any(token in venue_blob for token in _NON_CURITIBA_VENUE_TOKENS):
+                    skipped_other_venue += 1
+                    continue
+
                 all_events.append(parsed)
             except Exception as e:
                 log.warning(f"Sympla event page failed ({url[:50]}): {e}")
@@ -97,6 +141,7 @@ async def fetch_events(token: str = "", city: str = "Curitiba", days_ahead: int 
     log.info(
         f"Sympla: {len(all_events)} events extracted "
         f"({skipped_other_city} dropped for wrong city, "
+        f"{skipped_other_venue} dropped for non-Curitiba venue, "
         f"{skipped_no_data} unparseable)"
     )
     return all_events

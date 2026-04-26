@@ -51,13 +51,13 @@ class EnrichedEvent(BaseModel):
     attendees_confirmed: int = 0
 
     # ── Campos extraídos pelo Claude ──────────────────────────
-    reroot_category: str            # quiet_social | active | creative | community
+    kind: str                       # quiet_social | active | creative | community
     category_label: str             # "Encontro Tranquilo"
     category_emoji: str             # "🌿"
     has_food: bool
-    is_low_pressure: bool           # bom para re-entrada social
-    good_for_reroot: bool
-    reroot_reason: str              # "Ambiente íntimo, sem expectativa de performance"
+    is_low_pressure: bool           # baixa pressão social
+    is_curated: bool                # passa o filtro do modo "Curado" do app
+    pitch: str                      # "Ambiente íntimo, sem expectativa de performance"
     kids_welcome: bool = False       # family-friendly / kids allowed
     price_tier: str                 # "free" | "low" | "medium" | "high"
     vibe_summary: str               # frase curta para o card

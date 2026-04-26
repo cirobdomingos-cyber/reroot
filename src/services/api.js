@@ -16,7 +16,7 @@ const TIMEOUT_MS = 5000
 // ── Client error reporter ─────────────────────────────────
 // Fire-and-forget. Never throws. Used to surface silent failures in production.
 function getSessionId() {
-  const KEY = 'reroot_session_id'
+  const KEY = 'aue_session_id'
   let id = sessionStorage.getItem(KEY)
   if (!id) {
     id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
@@ -72,6 +72,22 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+// Drop events whose date is before today (in the user's local timezone).
+// We compare against start-of-today, not "now", so an event scheduled for this
+// morning still shows in the afternoon — losing same-day discovery would hurt
+// the prescription experience more than seeing one already-started event helps.
+// Evergreen entries (no dateStart, e.g. "Aberto toda semana", Google Places) are kept.
+function dropPastEvents(events) {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const cutoff = startOfToday.getTime()
+  return events.filter(ev => {
+    if (!ev.dateStart) return true
+    const t = Date.parse(ev.dateStart)
+    return Number.isNaN(t) || t >= cutoff
+  })
+}
+
 function computeDateTag(dateStartIso) {
   if (!dateStartIso) return 'anytime'
   const now = new Date()
@@ -102,7 +118,6 @@ function normalizeBackendEvent(ev) {
     headerBg: ev.headerBg,
     icon: ev.icon,
     description: ev.description || '',
-    cohortGoing: ev.cohortGoing || [],
     price: ev.price,
     priceTier: ev.priceTier,
     kidsWelcome: ev.kidsWelcome ?? false,
@@ -111,7 +126,7 @@ function normalizeBackendEvent(ev) {
     attendeesConfirmed: ev.attendeesConfirmed,
     expectedSize: ev.expectedSize,
     vibeSummary: ev.vibeSummary,
-    rerootReason: ev.rerootReason,
+    pitch: ev.pitch,
     url: ev.url,
     source: ev.source || 'live',
     isReal: true,
@@ -124,8 +139,11 @@ function normalizeBackendEvent(ev) {
   }
 }
 
-// Categories backed by Google Places instead of the events DB
-const PLACES_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+// Mood IDs that route to Google Places (not /events). These are venue
+// browsers, not scheduled events.
+const PLACES_MOODS = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
+// Old export name kept for any straggler imports
+const PLACES_CATEGORIES = PLACES_MOODS
 
 async function fetchPlaces(type) {
   try {
@@ -143,28 +161,33 @@ async function fetchPlaces(type) {
   return null
 }
 
-export async function fetchEvents(category = 'all') {
-  // For venue-type categories, try Google Places first
-  if (category && PLACES_CATEGORIES.has(category)) {
-    const result = await fetchPlaces(category)
+export async function fetchEvents(mood = 'all', { curated = false } = {}) {
+  // Venue-type "moods" route to Google Places, not /events. They're a
+  // separate browse mode — venues you can drop into anytime.
+  if (mood && PLACES_MOODS.has(mood)) {
+    const result = await fetchPlaces(mood)
     if (result) return result
   }
 
-  // Always start with embedded data (works offline, in native app, etc.)
-  const filtered = category && category !== 'all'
-    ? EVENTS.filter(e => e.category === category)
+  // Static fallback: filter by event.category if it's a known kind. The
+  // newer moods (cultural, familia) don't map cleanly to the static EVENTS
+  // shape — we just return the unfiltered list and let the backend take
+  // over when it's reachable. EVENTS is empty in production anyway.
+  const filtered = mood && mood !== 'all'
+    ? EVENTS.filter(e => e.category === mood)
     : EVENTS
 
   // Try backend as a bonus — don't block on it
   try {
-    const url = category && category !== 'all'
-      ? `${BASE_URL}/events?category=${category}&limit=20`
-      : `${BASE_URL}/events?limit=20`
+    const params = new URLSearchParams({ limit: '40' })
+    if (mood && mood !== 'all') params.set('mood', mood)
+    if (curated) params.set('good_only', 'true')
+    const url = `${BASE_URL}/events?${params.toString()}`
 
     const res = await fetchWithTimeout(url)
     if (res.ok) {
       const data = await res.json()
-      const liveEvents = (data.events || []).map(normalizeBackendEvent)
+      const liveEvents = dropPastEvents((data.events || []).map(normalizeBackendEvent))
       if (liveEvents.length > 0) {
         return { events: liveEvents, source: 'live', city: data.city || 'Curitiba' }
       }
@@ -173,7 +196,7 @@ export async function fetchEvents(category = 'all') {
     // Backend unavailable — that's fine, use embedded data
   }
 
-  return { events: filtered, source: 'local', city: 'Curitiba' }
+  return { events: dropPastEvents(filtered), source: 'local', city: 'Curitiba' }
 }
 
 export async function fetchEventDetail(eventId) {
@@ -280,8 +303,13 @@ export async function syncRsvp(googleId, event, isRsvped) {
             event_id: event.id,
             event_name: event.name,
             event_venue: event.venue,
-            event_date: event.date,
-            event_url: event.url ?? null,
+            // Send the ISO date (event.dateStart) so the backend can
+            // compare it against today.isoformat() in /friends/feed.
+            // event.date is the display string ("Sex, 25 Abr") and
+            // breaks the lexicographic past/future filter.
+            event_date: event.dateStart || event.date || '',
+            // Pydantic rejects null on a string field — coerce to empty.
+            event_url: event.url || '',
           }),
         })
       : await fetch(
@@ -364,6 +392,30 @@ export async function fetchEventAttendees(eventId, googleId) {
 }
 
 // ── Friends API ────────────────────────────────────────────
+
+export async function lookupFriendInvite(code) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/lookup?code=${encodeURIComponent(code)}`
+    )
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+export async function lookupGroupInvite(inviteCode) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/groups/by-invite/${encodeURIComponent(inviteCode)}`
+    )
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
 
 export async function getMyFriendCode(googleId) {
   try {

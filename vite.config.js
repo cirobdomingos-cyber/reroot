@@ -14,19 +14,28 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon.svg'],
       manifest: {
-        id: 'app.reroot',
-        name: 'Reroot — Vida Social',
-        short_name: 'Reroot',
-        description: 'Redescubra sua vida social em Curitiba. Eventos com baixa pressão, locais acolhedores e uma comunidade que entende você.',
-        theme_color: '#7A9E7E',
-        background_color: '#FAF8F5',
+        id: 'app.aue',
+        name: 'auê — Curitiba que acontece',
+        short_name: 'auê',
+        description: 'Tudo o que está acontecendo em Curitiba num lugar só, com a galera junto. Shows, exposições, feiras, oficinas — atualizado todo dia.',
+        theme_color: '#E8623F',
+        background_color: '#FCF5EB',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
         start_url: '/?source=pwa',
         lang: 'pt-BR',
-        categories: ['lifestyle', 'social'],
+        categories: ['lifestyle', 'social', 'entertainment'],
         icons: [
+          // SVG comes first so capable browsers prefer it (always crisp,
+          // already on the new auê brand). The PNGs below are fallbacks
+          // and STILL SHOW THE OLD REROOT LEAF until regenerated — see
+          // scripts/render-icons.js (run `node scripts/render-icons.js`).
+          {
+            src: 'icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+          },
           {
             src: 'icon-192x192.png',
             sizes: '192x192',

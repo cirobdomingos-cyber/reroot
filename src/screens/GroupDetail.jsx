@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
+import Avatar from '../components/Avatar'
+import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
-  leaveGroup, getGroupCalendarFeedUrl, syncRsvp,
+  leaveGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -21,6 +23,7 @@ export default function GroupDetail() {
   const [showInvite, setShowInvite] = useState(false)
   const [showCalendar, setShowCalendar] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
+  const [showCatalog, setShowCatalog]   = useState(false)
 
   useEffect(() => {
     if (!googleId || !groupId) return
@@ -47,12 +50,20 @@ export default function GroupDetail() {
 
   function handleRsvp(event) {
     const eventId = event.id
-    const isRsvped = !state.rsvps[eventId]
-    dispatch({ type: 'TOGGLE_RSVP', eventId })
+    const willBeRsvped = !state.rsvps[eventId]
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: {
+        eventId,
+        dateStart: event.date_start || event.dateStart || '',
+        name: event.name,
+        venue: event.venue || '',
+      },
+    })
     syncRsvp(googleId, {
       id: eventId, name: event.name, venue: event.venue || '',
       date: event.date_start || '', url: '',
-    }, isRsvped)
+    }, willBeRsvped)
   }
 
   if (loading) return <p style={{ textAlign: 'center', marginTop: 60, color: 'var(--charcoal-mid)' }}>{t.events_loading}</p>
@@ -84,16 +95,18 @@ export default function GroupDetail() {
       </div>
 
       {/* Member avatars */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: -4, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         {(group.members || []).slice(0, 8).map((m, i) => (
-          <div key={m.google_id} title={m.name} style={{
-            width: 32, height: 32, borderRadius: '50%', border: '2px solid white',
-            background: m.picture ? `url(${m.picture}) center/cover` : 'var(--sage)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 700, color: 'white',
-            marginLeft: i > 0 ? -8 : 0,
-          }}>
-            {!m.picture && m.name?.[0]?.toUpperCase()}
+          <div
+            key={m.google_id}
+            title={m.name}
+            style={{
+              marginLeft: i > 0 ? -8 : 0,
+              boxShadow: '0 0 0 2px white',
+              borderRadius: '50%',
+            }}
+          >
+            <Avatar name={m.name} src={m.picture} size={32} />
           </div>
         ))}
         <span style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginLeft: 8 }}>
@@ -105,6 +118,7 @@ export default function GroupDetail() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <ActionBtn label={`💬 ${t.groups_invite}`} onClick={() => setShowInvite(true)} />
         <ActionBtn label={`📅 ${t.groups_calendar}`} onClick={() => setShowCalendar(true)} />
+        <ActionBtn label="🌍 Do catálogo" onClick={() => setShowCatalog(true)} />
         <ActionBtn label={`+ ${t.groups_add_event}`} onClick={() => setShowAddEvent(true)} accent />
       </div>
 
@@ -150,6 +164,7 @@ export default function GroupDetail() {
       <InviteSheet open={showInvite} onClose={() => setShowInvite(false)} group={group} t={t} />
       <CalendarSheet open={showCalendar} onClose={() => setShowCalendar(false)} group={group} feedUrl={feedUrl} t={t} />
       <AddEventSheet open={showAddEvent} onClose={() => setShowAddEvent(false)} onSave={handleAddEvent} t={t} />
+      <CatalogPickerSheet open={showCatalog} onClose={() => setShowCatalog(false)} onPick={handleAddEvent} />
     </div>
   )
 }
@@ -204,16 +219,34 @@ function ActionBtn({ label, onClick, accent }) {
 
 function InviteSheet({ open, onClose, group, t }) {
   const [copied, setCopied] = useState(false)
+  const [shareStatus, setShareStatus] = useState(null)
+  const inviteUrl = appLink(`/join/${group.invite_code}`)
 
-  function handleCopy() {
+  function handleCopyCode() {
     navigator.clipboard.writeText(group.invite_code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
+  async function handleShare() {
+    const result = await shareLink({
+      url: inviteUrl,
+      title: 'auê',
+      text: `Bora entrar no grupo "${group.name}" no auê?`,
+    })
+    setShareStatus(result)
+    if (result === 'copied') {
+      // The link (not just the code) was copied to clipboard
+      setTimeout(() => setShareStatus(null), 2500)
+    } else if (result === 'shared') {
+      onClose()
+    } else {
+      setTimeout(() => setShareStatus(null), 2500)
+    }
+  }
+
   function handleWhatsApp() {
-    const appUrl = `${window.location.origin}/join/${group.invite_code}`
-    const msg = `Join "${group.name}" on Reroot! 🌿 ${appUrl}`
+    const msg = `Bora pro grupo "${group.name}" no auê! 🎉 ${inviteUrl}`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener')
     onClose()
   }
@@ -225,9 +258,22 @@ function InviteSheet({ open, onClose, group, t }) {
         <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: 3, color: 'var(--charcoal)' }}>
           {group.invite_code}
         </div>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 6 }}>
+          ou compartilhe o link direto abaixo
+        </div>
       </div>
-      <SheetButton icon="📋" label={copied ? t.groups_invite_copied : t.groups_invite_copy} onClick={handleCopy} />
+      <SheetButton
+        icon="🔗"
+        label={
+          shareStatus === 'copied' ? 'Link copiado ✓'
+          : shareStatus === 'shared' ? 'Compartilhado ✓'
+          : 'Compartilhar link de convite'
+        }
+        onClick={handleShare}
+        accent="var(--sage)"
+      />
       <SheetButton icon="💬" label={t.groups_invite_whatsapp} onClick={handleWhatsApp} accent="#25D366" />
+      <SheetButton icon="📋" label={copied ? 'Código copiado ✓' : 'Copiar só o código'} onClick={handleCopyCode} />
     </BottomSheet>
   )
 }
@@ -325,6 +371,133 @@ function AddEventSheet({ open, onClose, onSave, t }) {
           {saving ? '...' : t.groups_event_save}
         </button>
       </form>
+    </BottomSheet>
+  )
+}
+
+
+// ── Catalog picker — import a public Curitiba event into this group ──
+//
+// Loads the upcoming events catalog (same source as the Events tab),
+// hides AI-curated entries (catalog convention), and lets the member
+// search + tap one to add. Selected event is mirrored into group_events
+// — name, venue, ISO start, description (with "Ver original" footer
+// when a URL exists). Visibility defaults to 'members'.
+function CatalogPickerSheet({ open, onClose, onPick }) {
+  const [events, setEvents] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(null) // event id being submitted
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    fetchEvents('all').then(({ events: evs }) => {
+      if (cancelled) return
+      const now = Date.now()
+      const future = (evs || [])
+        .filter(ev => !ev.isCurated)
+        .filter(ev => ev.dateStart && Date.parse(ev.dateStart) > now)
+        .sort((a, b) => Date.parse(a.dateStart) - Date.parse(b.dateStart))
+      setEvents(future)
+      setLoading(false)
+    }).catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [open])
+
+  const filtered = query.trim()
+    ? events.filter(ev => {
+        const q = query.toLowerCase()
+        return ev.name.toLowerCase().includes(q) || ev.venue?.toLowerCase().includes(q)
+      })
+    : events
+
+  async function handlePick(ev) {
+    if (adding) return
+    setAdding(ev.id)
+    const desc = (ev.description || '').trim()
+    const urlSuffix = ev.url ? `\n\nVer original: ${ev.url}` : ''
+    try {
+      await onPick({
+        name: ev.name,
+        venue: ev.venue || '',
+        date_start: ev.dateStart,
+        date_end: null,
+        description: (desc + urlSuffix).slice(0, 1000),
+        visibility: 'members',
+      })
+      onClose()
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Adicionar do catálogo">
+      <input
+        placeholder="Buscar evento ou local…"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        style={{
+          width: '100%', padding: '10px 12px',
+          borderRadius: 10, border: '1px solid var(--border)',
+          fontSize: 13, marginBottom: 10,
+        }}
+      />
+      {loading ? (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
+          Carregando…
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
+          {query ? 'Nada encontrado.' : 'Sem eventos próximos.'}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '52vh', overflowY: 'auto' }}>
+          {filtered.slice(0, 60).map(ev => {
+            const day = ev.dateStart?.slice(0, 10)
+            const time = ev.dateStart?.slice(11, 16)
+            const isAdding = adding === ev.id
+            return (
+              <button
+                key={ev.id}
+                onClick={() => handlePick(ev)}
+                disabled={isAdding}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'white', border: '1px solid var(--border)',
+                  borderRadius: 12, padding: '10px 12px',
+                  textAlign: 'left', cursor: isAdding ? 'default' : 'pointer',
+                  opacity: isAdding ? 0.6 : 1,
+                }}
+              >
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18, background: ev.headerBg || 'var(--cream)',
+                }}>
+                  {ev.icon || '📅'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {ev.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
+                    {day}{time ? ` · ${time}` : ''}{ev.venue ? ` · ${ev.venue}` : ''}
+                  </div>
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>
+                  {isAdding ? '…' : '+'}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </BottomSheet>
   )
 }

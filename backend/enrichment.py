@@ -8,7 +8,7 @@ Para cada RawEvent, o Claude extrai:
   - Faixa de preço
   - Resumo de vibe
   - Tamanho esperado
-  - good_for_reroot: bool com justificativa
+  - is_curated: bool com justificativa
 
 Portfolio signal: isso é um LLM enrichment pipeline — pattern muito pedido
 em entrevistas de analytics engineering + AI engineering.
@@ -38,9 +38,12 @@ CATEGORY_META = {
 }
 
 ENRICHMENT_PROMPT = """\
-Você analisa eventos sociais para o Reroot — um app de reconexão social para qualquer pessoa \
-reconstruindo ou expandindo sua vida social. O foco é eventos de baixa pressão, \
-ambiente acolhedor, onde aparecer já é suficiente.
+Você analisa eventos sociais para o auê — um app que agrega tudo o que está \
+acontecendo em Curitiba (PR, Brasil) pra qualquer pessoa que quer ter uma \
+vida social ativa, sozinha ou com a galera. O modo "Curado" prioriza \
+ambientes acolhedores e baixa pressão; o modo "Tudo" mostra também shows \
+grandes, networking e festas. Sua decisão sobre `is_curated` define em \
+qual modo o evento aparece.
 
 EVENTO:
 Nome: {name}
@@ -53,26 +56,53 @@ Confirmados: {confirmed}
 
 Responda SOMENTE com JSON válido (sem markdown, sem texto extra):
 {{
-  "reroot_category": "quiet_social" | "active" | "creative" | "community",
+  "kind": "quiet_social" | "active" | "creative" | "community",
   "has_food": true | false,
   "is_low_pressure": true | false,
-  "good_for_reroot": true | false,
-  "reroot_reason": "<frase curta em português explicando por que é bom ou ruim para re-entrada social>",
+  "is_curated": true | false,
+  "pitch": "<frase curta em português explicando por que é bom OU ruim pra socializar tranquilo>",
   "price_tier": "free" | "low" | "medium" | "high",
   "vibe_summary": "<frase de 1 linha descrevendo a experiência, em português>",
   "expected_size": "small" | "medium" | "large",
   "neighborhood_guess": "<bairro de Curitiba ou vazio se não souber>"
 }}
 
-Critérios:
-- quiet_social: cafés, caminhadas, encontros pequenos, rodas de conversa
-- active: yoga, esportes, dança, trilha
-- creative: oficinas, escrita, fotografia, pintura, teatro
-- community: feiras, voluntariado, eventos de bairro
-- good_for_reroot = true se: ambiente acolhedor, grupos pequenos-médios, não exige performance social
-- good_for_reroot = false se: balada, evento de networking agressivo, show lotado, festival
-- price_tier: free=R$0, low=até R$50, medium=R$50-150, high=acima de R$150
-- expected_size: small=<30, medium=30-200, large=200+
+REGRAS DURAS — is_curated = false sempre que QUALQUER UMA destas se aplicar:
+- Evento fora de Curitiba ou da Região Metropolitana (não vale Toledo, Caçador, \
+  Vacaria, Joaçaba, Concórdia, outras cidades de SC/RS/SP, etc.)
+- Evento virtual / online / webinar / livestream
+- Networking de negócios, "founders", "CEOs", "líderes", "marketing", "vendas", \
+  feira de carreira, job fair, recrutamento
+- Treinamento técnico ou profissional (TI, alarmes, cursos corporativos)
+- Painel/seminário governamental, político ou institucional
+- Ritual religioso fechado, culto, convocação ritualística, palestra esotérica/espiritual \
+  de grupo iniciático (Rosacruz, IIPC, etc.)
+- Show massivo, festival grande (>500 pessoas), balada, festa universitária
+- Evento exclusivamente para pais/crianças quando o app não está filtrando por isso
+- Evento de captação/venda disfarçado (ex: "palestra gratuita" que é gancho de \
+  curso pago, multinível)
+
+is_curated = true APENAS quando:
+- Acontece em Curitiba ou RMC, presencial
+- Ambiente acolhedor, com espaço pra conversar ou simplesmente estar
+- Pessoa pode ir sozinha sem se sentir deslocada
+- Não exige expertise prévia, performance, dress code, ou "puxar assunto"
+- Exemplos típicos: clube do livro, oficina de cerâmica, yoga no parque, feira de \
+  bairro, caminhada em grupo, sarau pequeno, jogos de tabuleiro em bar, café com \
+  música ao vivo, voluntariado leve
+
+CATEGORIAS (use o melhor encaixe em "kind"):
+- quiet_social: cafés, caminhadas, rodas de conversa, clube do livro, jogos calmos
+- active: yoga, dança social iniciante, trilha leve, pilates, corrida em grupo
+- creative: oficinas (aquarela, cerâmica, escrita, foto), saraus pequenos
+- community: feiras de bairro, voluntariado, jardins comunitários, encontros temáticos
+
+OUTROS CAMPOS:
+- is_low_pressure: true se a pessoa pode chegar sozinha e ficar quieta sem ser notada
+- price_tier: free=R$0, low=até R$50, medium=R$50–150, high=>R$150
+- expected_size: small=<30, medium=30–200, large=200+
+- pitch: SE is_curated=false, comece com "Não recomendado: <motivo curto>". \
+  SE true, descreva em uma frase por que vale a pena.
 """
 
 
@@ -117,7 +147,10 @@ class EnrichmentPipeline:
             log.error(f"Claude API error para '{raw.name}': {e}")
             return None
 
-        category = data.get("reroot_category", "community")
+        # `data.get(k, default)` returns None when the key exists with a null
+        # value — Claude sometimes emits `"kind": null`. Fall back to the
+        # safe default in that case using `or`.
+        category = data.get("kind") or "community"
         emoji, label = CATEGORY_META.get(category, ("🤝", "Comunidade"))
         gradient = CATEGORY_GRADIENTS.get(category, CATEGORY_GRADIENTS["community"])
 
@@ -127,52 +160,64 @@ class EnrichmentPipeline:
             or raw.city
         )
 
-        return EnrichedEvent(
-            id=f"{raw.source}_{raw.external_id}",
-            source=raw.source,
-            external_id=raw.external_id,
-            name=raw.name,
-            description=raw.description,
-            venue_name=raw.venue_name,
-            venue_address=raw.venue_address,
-            neighborhood=neighborhood,
-            city=raw.city,
-            date_start=raw.date_start,
-            date_end=raw.date_end,
-            price_min=raw.price_min,
-            price_max=raw.price_max,
-            currency=raw.currency,
-            capacity=raw.capacity,
-            attendees_confirmed=raw.attendees_confirmed or 0,
+        try:
+            return EnrichedEvent(
+                id=f"{raw.source}_{raw.external_id}",
+                source=raw.source,
+                external_id=raw.external_id,
+                name=raw.name,
+                description=raw.description,
+                venue_name=raw.venue_name,
+                venue_address=raw.venue_address,
+                neighborhood=neighborhood,
+                city=raw.city,
+                date_start=raw.date_start,
+                date_end=raw.date_end,
+                price_min=raw.price_min,
+                price_max=raw.price_max,
+                currency=raw.currency,
+                capacity=raw.capacity,
+                attendees_confirmed=raw.attendees_confirmed or 0,
 
-            reroot_category=category,
-            category_label=label,
-            category_emoji=emoji,
-            has_food=data.get("has_food", False),
-            is_low_pressure=data.get("is_low_pressure", True),
-            good_for_reroot=data.get("good_for_reroot", False),
-            reroot_reason=data.get("reroot_reason", ""),
-            price_tier=data.get("price_tier", "free"),
-            vibe_summary=data.get("vibe_summary", raw.name),
-            expected_size=data.get("expected_size", "medium"),
-            header_gradient=gradient,
+                kind=category,
+                category_label=label,
+                category_emoji=emoji,
+                has_food=bool(data.get("has_food") or False),
+                is_low_pressure=bool(data.get("is_low_pressure") if data.get("is_low_pressure") is not None else True),
+                is_curated=bool(data.get("is_curated") or False),
+                pitch=data.get("pitch") or "",
+                price_tier=data.get("price_tier") or "free",
+                vibe_summary=data.get("vibe_summary") or raw.name,
+                expected_size=data.get("expected_size") or "medium",
+                header_gradient=gradient,
 
-            url=raw.url,
-            image_url=raw.image_url,
-            fetched_at=raw.date_start.replace(day=raw.date_start.day),  # placeholder
-            enriched_at=datetime.now(timezone.utc),
-        )
+                url=raw.url,
+                image_url=raw.image_url,
+                fetched_at=raw.date_start.replace(day=raw.date_start.day),  # placeholder
+                enriched_at=datetime.now(timezone.utc),
+            )
+        except Exception as e:
+            # Defensive: a single malformed Claude response (or our partial
+            # data) shouldn't crash the entire enrichment batch. Log and skip.
+            log.warning(f"EnrichedEvent construction failed for '{raw.name[:60]}': {e}")
+            return None
 
     def enrich_batch(self, raws: list[RawEvent], max_events: int = 40) -> list[EnrichedEvent]:
         """
         Enriquece um lote. Limita a `max_events` para controlar custo de API.
         Claude Haiku custa ~$0.001 por evento — 40 eventos = ~$0.04.
+        Each enrichment is wrapped in a try/except so one bad event can't
+        kill the whole refresh pipeline.
         """
         results = []
         skipped = 0
 
         for raw in raws[:max_events]:
-            enriched = self.enrich(raw)
+            try:
+                enriched = self.enrich(raw)
+            except Exception as e:
+                log.warning(f"Enriquecimento explodiu para '{raw.name[:60]}': {e}")
+                enriched = None
             if enriched:
                 results.append(enriched)
             else:

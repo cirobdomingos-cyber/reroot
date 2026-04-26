@@ -26,7 +26,9 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,*/*",
 }
 
-# Multiple category pages to maximize coverage
+# Multiple category pages to maximize coverage. Eventbrite Curitiba is sparse
+# but every additional category pulls in events the others miss — same code
+# path, more results.
 CATEGORY_PAGES = [
     "",                          # all events
     "--artes/",                  # arts
@@ -35,6 +37,12 @@ CATEGORY_PAGES = [
     "--saude/",                  # health & wellness
     "--esportes-e-atividades/",  # sports & fitness
     "--comunidade/",             # community
+    "--filmes-e-midia/",         # film & media
+    "--familia-e-educacao/",     # family & education
+    "--moda/",                   # fashion
+    "--hobbies/",                # hobbies / crafts
+    "--negocios/",               # business
+    "--temporada/",              # seasonal
 ]
 
 
@@ -119,6 +127,12 @@ def _parse_discovery_item(item: dict) -> RawEvent | None:
         if date_start < datetime.now(timezone.utc):
             return None
 
+        # Skip virtual / international events that bleed into the Curitiba
+        # discovery page. Eventbrite returns these because they're "available
+        # globally", but they're worthless for a re-entry app.
+        if _looks_virtual(item):
+            return None
+
         # Extract event ID from URL
         ext_id_match = re.search(r'tickets-(\d+)', url)
         external_id = ext_id_match.group(1) if ext_id_match else _slug(url)
@@ -127,15 +141,31 @@ def _parse_discovery_item(item: dict) -> RawEvent | None:
         location = item.get("location", {})
         venue_name = ""
         venue_address = ""
-        city = "Curitiba"
+        city = ""
+        country = ""
         if isinstance(location, dict):
             venue_name = location.get("name", "")
             addr = location.get("address", {})
             if isinstance(addr, dict):
                 venue_address = addr.get("streetAddress", "")
-                city = addr.get("addressLocality", "Curitiba")
+                city = addr.get("addressLocality", "")
+                country = addr.get("addressCountry", "")
             elif isinstance(addr, str):
                 venue_address = addr
+
+        # Drop events outside Brazil or outside Curitiba region whenever the
+        # JSON-LD gives us enough signal to be confident.
+        if country and country.upper() not in {"BR", "BRAZIL", "BRASIL"}:
+            return None
+        if city and not _looks_curitiba_region(city):
+            return None
+        # Last resort: empty venue + empty city = almost always a virtual
+        # listing the discovery page surfaced by mistake.
+        if not venue_name and not venue_address and not city:
+            return None
+        # Default to Curitiba only when we passed the checks above.
+        if not city:
+            city = "Curitiba"
 
         # Price from offers
         price_min = 0.0
@@ -170,6 +200,41 @@ def _parse_discovery_item(item: dict) -> RawEvent | None:
     except Exception as e:
         log.warning(f"Eventbrite parse error: {e}")
         return None
+
+
+def _looks_virtual(item: dict) -> bool:
+    """True when the JSON-LD strongly suggests an online-only event."""
+    location = item.get("location", {})
+    if isinstance(location, dict):
+        loc_type = location.get("@type", "")
+        if isinstance(loc_type, str) and "Virtual" in loc_type:
+            return True
+    name = (item.get("name") or "").lower()
+    desc = (item.get("description") or "").lower()
+    blob = f"{name} {desc}"
+    for marker in ("virtual event", "evento virtual", "online webinar", "live webinar", "livestream"):
+        if marker in blob:
+            return True
+    return False
+
+
+_CURITIBA_REGION = {
+    # Curitiba itself
+    "curitiba",
+    # RMC (region)
+    "pinhais", "são josé dos pinhais", "sao jose dos pinhais", "araucária",
+    "araucaria", "colombo", "almirante tamandaré", "almirante tamandare",
+    "campo largo", "piraquara", "fazenda rio grande", "lapa",
+    "quatro barras", "campina grande do sul", "rio branco do sul",
+    "mandirituba", "tijucas do sul", "contenda", "itaperuçu", "itaperucu",
+}
+
+
+def _looks_curitiba_region(city: str) -> bool:
+    """Loose match: True if the locality looks like Curitiba or RMC."""
+    if not city:
+        return True  # benefit of the doubt — let downstream filters decide
+    return city.strip().lower() in _CURITIBA_REGION
 
 
 def _parse_iso(s: str) -> datetime | None:

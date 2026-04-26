@@ -1,15 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#FAF9F6"/>
-  <!-- Stem -->
-  <path d="M256 380 L256 240" stroke="#7A9E7E" stroke-width="16" stroke-linecap="round"/>
-  <!-- Left leaf -->
-  <path d="M256 260 C220 220 180 200 160 160 C200 170 240 200 256 260Z" fill="#7A9E7E" opacity="0.85"/>
-  <!-- Right leaf -->
-  <path d="M256 220 C290 180 330 160 350 130 C310 145 275 175 256 220Z" fill="#7A9E7E"/>
-  <!-- Small sprout leaf at top -->
-  <path d="M256 240 C245 210 230 195 225 175 C240 185 252 205 256 240Z" fill="#5C8A60"/>
-  <!-- Root lines -->
-  <path d="M256 380 C240 410 220 430 200 440" stroke="#7A9E7E" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.5"/>
-  <path d="M256 380 C270 405 285 420 300 425" stroke="#7A9E7E" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.5"/>
-  <path d="M256 380 C250 400 248 420 250 440" stroke="#7A9E7E" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.4"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  auê — favicon (32×32 / browser tab).
+  Just the circumflex on coral — readable at 16px.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#E8623F"/>
+  <path
+    d="M 18 40 L 32 22 L 46 40"
+    fill="none"
+    stroke="#FCF5EB"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
 </svg>

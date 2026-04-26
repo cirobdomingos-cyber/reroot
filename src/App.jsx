@@ -17,9 +17,12 @@ import Community      from './screens/Community'
 import Groups         from './screens/Groups'
 import GroupDetail    from './screens/GroupDetail'
 import JoinGroup      from './screens/JoinGroup'
-import Journey        from './screens/Journey'
 import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
+import AdminIgAccounts from './screens/AdminIgAccounts'
+import AddFriend       from './screens/AddFriend'
+import MyRsvps         from './screens/MyRsvps'
+import FriendDetail    from './screens/FriendDetail'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -52,11 +55,18 @@ export default function App() {
   // First-visit coach-mark: show a hint bubble for 6s the first time the FAB renders,
   // then fall back to the compact extended-FAB. Persisted in localStorage.
   const [showHint, setShowHint] = useState(() => {
-    try { return localStorage.getItem('reroot_companion_hint_seen') !== '1' } catch { return false }
+    try { return localStorage.getItem('aue_companion_hint_seen') !== '1' } catch { return false }
   })
 
-  const isOnboarding = ['/', '/onboarding', '/identity-mirror', '/partner-intro', '/diagnostic'].includes(location.pathname)
-  const showNav = state.hasJoined && state.questionnaireCompleted && !isOnboarding
+  // Onboarding was previously a 4-step flow (welcome → identity mirror →
+  // partner intro → diagnostic). The brand pivot to "Curitiba's complete
+  // event app" makes those questions vestigial — we'll re-introduce a much
+  // shorter mood/profile picker later. For now: just the welcome screen.
+  const isOnboarding = ['/', '/onboarding'].includes(location.pathname)
+  // Tabs show on every screen except Onboarding. We no longer require
+  // hasJoined because visitors can use the app without signing in — they
+  // hit Onboarding only on first launch and immediately get past it.
+  const showNav = !isOnboarding
 
   // Sync accessibility mode to root element so CSS [data-accessibility="on"] selectors work
   useEffect(() => {
@@ -68,16 +78,25 @@ export default function App() {
     if (!showNav || !showHint) return
     const id = setTimeout(() => {
       setShowHint(false)
-      try { localStorage.setItem('reroot_companion_hint_seen', '1') } catch {}
+      try { localStorage.setItem('aue_companion_hint_seen', '1') } catch {}
     }, 6000)
     return () => clearTimeout(id)
   }, [showNav, showHint])
+
+  // Cross-screen bridge: any screen can open the Companion by dispatching
+  // a window CustomEvent('open-companion', { detail: { intent } }). Used
+  // by the Events tab "ask for ideas" CTA (intent: 'suggest').
+  useEffect(() => {
+    function onOpen() { setCompanionOpen(true) }
+    window.addEventListener('open-companion', onOpen)
+    return () => window.removeEventListener('open-companion', onOpen)
+  }, [])
 
   function openCompanion() {
     setCompanionOpen(true)
     if (showHint) {
       setShowHint(false)
-      try { localStorage.setItem('reroot_companion_hint_seen', '1') } catch {}
+      try { localStorage.setItem('aue_companion_hint_seen', '1') } catch {}
     }
   }
 
@@ -94,47 +113,17 @@ export default function App() {
               element={
                 !state.hasJoined
                   ? <AnimatedPage><Onboarding /></AnimatedPage>
-                  : !state.identityMirrorCompleted
-                  ? <Navigate to="/identity-mirror" replace />
-                  : !state.questionnaireCompleted
-                  ? <Navigate to="/partner-intro" replace />
-                  : !state.diagnosticSeen
-                  ? <Navigate to="/diagnostic" replace />
                   : <Navigate to="/home" replace />
               }
             />
-            <Route
-              path="/identity-mirror"
-              element={
-                !state.hasJoined
-                  ? <Navigate to="/" replace />
-                  : state.identityMirrorCompleted
-                  ? <Navigate to="/partner-intro" replace />
-                  : <AnimatedPage><IdentityMirror /></AnimatedPage>
-              }
-            />
-            <Route
-              path="/partner-intro"
-              element={
-                !state.hasJoined
-                  ? <Navigate to="/" replace />
-                  : !state.identityMirrorCompleted
-                  ? <Navigate to="/identity-mirror" replace />
-                  : state.questionnaireCompleted
-                  ? <Navigate to="/home" replace />
-                  : <AnimatedPage><PartnerIntro /></AnimatedPage>
-              }
-            />
-            <Route
-              path="/diagnostic"
-              element={
-                !state.questionnaireCompleted
-                  ? <Navigate to="/" replace />
-                  : state.diagnosticSeen
-                  ? <Navigate to="/home" replace />
-                  : <AnimatedPage><Diagnostic /></AnimatedPage>
-              }
-            />
+            {/* Question screens are kept but bypassed — restore the routes
+                here when we re-introduce a (shorter) profile/mood picker.
+                /journey (the 12-week framework) is also vestigial from the
+                Reroot brand and not reachable from any current UI. */}
+            <Route path="/identity-mirror" element={<Navigate to="/home" replace />} />
+            <Route path="/partner-intro"   element={<Navigate to="/home" replace />} />
+            <Route path="/diagnostic"      element={<Navigate to="/home" replace />} />
+            <Route path="/journey"         element={<Navigate to="/home" replace />} />
             <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
@@ -142,8 +131,11 @@ export default function App() {
             <Route path="/friends" element={<Navigate to="/community" replace />} />
             <Route path="/groups/:groupId" element={<AnimatedPage><GroupDetail /></AnimatedPage>} />
             <Route path="/join/:inviteCode" element={<AnimatedPage><JoinGroup /></AnimatedPage>} />
-            <Route path="/journey" element={<AnimatedPage><Journey /></AnimatedPage>} />
+            <Route path="/friend/:code" element={<AnimatedPage><AddFriend /></AnimatedPage>} />
+            <Route path="/friends/:googleId" element={<AnimatedPage><FriendDetail /></AnimatedPage>} />
+            <Route path="/my-rsvps" element={<AnimatedPage><MyRsvps /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
+            <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AnimatePresence>
@@ -169,7 +161,7 @@ export default function App() {
                   padding: '10px 14px', fontSize: 13, fontWeight: 600,
                   whiteSpace: 'nowrap',
                   boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                  border: '1px solid rgba(122,158,126,0.3)',
+                  border: '1px solid rgba(232, 98, 63, 0.3)',
                 }}
               >
                 {t.companion_fab_hint ?? 'Converse com seu companheiro'}
@@ -177,8 +169,8 @@ export default function App() {
                   position: 'absolute', bottom: -6, right: 20,
                   width: 12, height: 12, background: 'white',
                   transform: 'rotate(45deg)',
-                  borderRight: '1px solid rgba(122,158,126,0.3)',
-                  borderBottom: '1px solid rgba(122,158,126,0.3)',
+                  borderRight: '1px solid rgba(232, 98, 63, 0.3)',
+                  borderBottom: '1px solid rgba(232, 98, 63, 0.3)',
                 }}/>
               </motion.div>
             )}
@@ -192,7 +184,7 @@ export default function App() {
             style={{
               position: 'absolute', inset: 0,
               borderRadius: 999,
-              background: 'rgba(122,158,126,0.45)',
+              background: 'rgba(232, 98, 63, 0.45)',
               pointerEvents: 'none',
             }}
           />
@@ -209,9 +201,9 @@ export default function App() {
               display: 'flex', alignItems: 'center', gap: 8,
               height: 56, padding: '0 18px 0 14px',
               borderRadius: 999, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #7A9E7E 0%, #9EC9A2 100%)',
+              background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
               color: 'white',
-              boxShadow: '0 6px 20px rgba(122, 158, 126, 0.55), 0 0 0 3px rgba(255,255,255,0.08)',
+              boxShadow: '0 6px 20px rgba(232, 98, 63, 0.55), 0 0 0 3px rgba(255,255,255,0.08)',
               fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
             }}
           >
@@ -220,7 +212,7 @@ export default function App() {
               background: 'rgba(255,255,255,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 18,
-            }}>🌿</span>
+            }}>🎉</span>
             {t.companion_fab_label ?? 'Companheiro'}
           </motion.button>
         </div>

@@ -3,6 +3,7 @@ SQLite simples com TTL. Sem ORM — sqlite3 puro é suficiente aqui.
 Grain: um evento enriquecido por (source, external_id).
 """
 import hashlib
+import os
 import secrets
 import sqlite3
 import json
@@ -11,7 +12,13 @@ from pathlib import Path
 from typing import Optional
 from models import EnrichedEvent
 
-DB_PATH = Path(__file__).parent / "reroot_events.db"
+# Path is overridable via DB_PATH env var so production can mount the DB on
+# a persistent volume (e.g. Railway volume at /data/reroot_events.db). Local
+# dev falls back to the in-repo file. Parent dir is created on demand so a
+# fresh volume mount works on the first boot.
+_db_env = os.environ.get("DB_PATH", "").strip()
+DB_PATH = Path(_db_env) if _db_env else (Path(__file__).parent / "reroot_events.db")
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def get_conn() -> sqlite3.Connection:
@@ -30,10 +37,17 @@ def init_db():
                 payload         TEXT NOT NULL,  -- JSON do EnrichedEvent
                 fetched_at      TEXT NOT NULL,
                 enriched_at     TEXT,
-                good_for_reroot INTEGER NOT NULL DEFAULT 0,
+                is_curated      INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(source, external_id)
             )
         """)
+        # Migration: rename legacy good_for_reroot column to is_curated
+        # (rebrand cleanup, Apr 2026). Safe to call repeatedly — fails
+        # silently if the column is already renamed or missing.
+        try:
+            conn.execute("ALTER TABLE events RENAME COLUMN good_for_reroot TO is_curated")
+        except sqlite3.OperationalError:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS refresh_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,6 +146,63 @@ def init_db():
                 role        TEXT NOT NULL DEFAULT 'member',
                 joined_at   TEXT NOT NULL,
                 PRIMARY KEY (group_id, google_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
+                handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'
+                label               TEXT NOT NULL DEFAULT '', -- human-readable name (e.g., "Café Lucca")
+                category            TEXT NOT NULL DEFAULT '', -- free-text tag (e.g., "café", "museu", "curador")
+                enabled             INTEGER NOT NULL DEFAULT 1,
+                added_at            TEXT NOT NULL,
+                last_scraped_at     TEXT,
+                last_event_count    INTEGER NOT NULL DEFAULT 0,
+                notes               TEXT NOT NULL DEFAULT '',
+                added_by_email      TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        # Migrate existing tables: add added_by_email if it's missing (SQLite
+        # has no IF NOT EXISTS for ALTER, so we try-and-swallow).
+        try:
+            conn.execute(
+                "ALTER TABLE tracked_ig_accounts ADD COLUMN added_by_email TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS curators (
+                email           TEXT PRIMARY KEY,            -- lowercased email
+                added_by_email  TEXT NOT NULL DEFAULT '',
+                added_at        TEXT NOT NULL,
+                notes           TEXT NOT NULL DEFAULT '',
+                is_founder      INTEGER NOT NULL DEFAULT 0,  -- can manage roles + curators
+                is_curator      INTEGER NOT NULL DEFAULT 1,  -- can edit Instagram catalog
+                is_feedbacker   INTEGER NOT NULL DEFAULT 0   -- can submit product feedback
+            )
+        """)
+        # Migrate older curators rows that predate the role split — they were
+        # all curators by definition (presence in table = curator), so default
+        # is_curator=1 covers them. is_feedbacker stays 0 until granted.
+        for col, default in [("is_curator", 1), ("is_feedbacker", 0)]:
+            try:
+                conn.execute(
+                    f"ALTER TABLE curators ADD COLUMN {col} INTEGER NOT NULL DEFAULT {default}"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already present
+        # Founder always has every role — patch it so checks elsewhere can
+        # rely on the flags directly without special-casing is_founder.
+        conn.execute(
+            "UPDATE curators SET is_curator = 1, is_feedbacker = 1 WHERE is_founder = 1"
+        )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                email       TEXT NOT NULL,        -- submitter's email (lowercased)
+                google_id   TEXT NOT NULL DEFAULT '',
+                text        TEXT NOT NULL,
+                context     TEXT NOT NULL DEFAULT '',  -- screen / route hint
+                created_at  TEXT NOT NULL
             )
         """)
         conn.execute("""
@@ -254,6 +325,236 @@ def upsert_user_state(google_id: str, state: dict) -> None:
         conn.commit()
 
 
+# ── Curators (collaborative IG account curation) ──────────
+
+def is_curator(email: str) -> bool:
+    if not email:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM curators WHERE email = ? AND is_curator = 1",
+            (email.strip().lower(),),
+        ).fetchone()
+    return row is not None
+
+
+def is_founder(email: str) -> bool:
+    if not email:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM curators WHERE email = ? AND is_founder = 1",
+            (email.strip().lower(),),
+        ).fetchone()
+    return row is not None
+
+
+def is_feedbacker(email: str) -> bool:
+    if not email:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM curators WHERE email = ? AND is_feedbacker = 1",
+            (email.strip().lower(),),
+        ).fetchone()
+    return row is not None
+
+
+def list_curators() -> list[dict]:
+    """All permissioned users (any role). Sorted founder-first, then by add date."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM curators ORDER BY is_founder DESC, added_at ASC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_curator(email: str, added_by_email: str = "", notes: str = "",
+                is_founder_flag: bool = False,
+                is_curator_flag: bool = True,
+                is_feedbacker_flag: bool = False) -> dict:
+    """
+    Upsert a permissioned user with explicit role flags. On conflict, the
+    notes are overwritten and roles are merged with MAX (a role can be
+    granted via re-add but not revoked here — use update_curator_roles).
+    Founder rows always end up with every flag = 1.
+    """
+    email = email.strip().lower()
+    if not email or "@" not in email:
+        raise ValueError("invalid email")
+    now = datetime.now(timezone.utc).isoformat()
+    if is_founder_flag:
+        is_curator_flag = True
+        is_feedbacker_flag = True
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO curators (email, added_by_email, added_at, notes,
+                                  is_founder, is_curator, is_feedbacker)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET
+                notes = excluded.notes,
+                is_founder    = MAX(curators.is_founder,    excluded.is_founder),
+                is_curator    = MAX(curators.is_curator,    excluded.is_curator),
+                is_feedbacker = MAX(curators.is_feedbacker, excluded.is_feedbacker)
+        """, (
+            email, added_by_email.strip().lower(), now, notes,
+            1 if is_founder_flag else 0,
+            1 if is_curator_flag else 0,
+            1 if is_feedbacker_flag else 0,
+        ))
+        conn.commit()
+        row = conn.execute("SELECT * FROM curators WHERE email = ?", (email,)).fetchone()
+    return dict(row)
+
+
+def update_curator_roles(email: str, is_curator_flag: bool,
+                         is_feedbacker_flag: bool) -> Optional[dict]:
+    """
+    Toggle is_curator and is_feedbacker for an existing row. Founders are
+    untouched — they always keep every flag. Returns the updated row, or
+    None if the email isn't in the table.
+    """
+    email = email.strip().lower()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT is_founder FROM curators WHERE email = ?", (email,)
+        ).fetchone()
+        if not row:
+            return None
+        if row["is_founder"]:
+            # Founder: ignore role updates (they always have every role).
+            return dict(conn.execute(
+                "SELECT * FROM curators WHERE email = ?", (email,)
+            ).fetchone())
+        conn.execute(
+            "UPDATE curators SET is_curator = ?, is_feedbacker = ? WHERE email = ?",
+            (1 if is_curator_flag else 0, 1 if is_feedbacker_flag else 0, email),
+        )
+        conn.commit()
+        # If both flags become 0, drop the row entirely — they're no longer
+        # permissioned. Cleanup keeps the curators table meaningful.
+        if not is_curator_flag and not is_feedbacker_flag:
+            conn.execute("DELETE FROM curators WHERE email = ? AND is_founder = 0", (email,))
+            conn.commit()
+            return None
+        return dict(conn.execute(
+            "SELECT * FROM curators WHERE email = ?", (email,)
+        ).fetchone())
+
+
+def remove_curator(email: str) -> bool:
+    """Remove a curator. Founders cannot be removed via this function."""
+    email = email.strip().lower()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM curators WHERE email = ? AND is_founder = 0", (email,)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+# ── Feedback ──────────────────────────────────────────────
+
+
+def insert_feedback(email: str, text: str, google_id: str = "",
+                    context: str = "") -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO feedback (email, google_id, text, context, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (email.strip().lower(), google_id, text.strip(), context.strip(), now),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM feedback WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
+
+def list_feedback(limit: int = 200) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM feedback ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Tracked Instagram accounts ─────────────────────────────
+
+def list_ig_accounts() -> list[dict]:
+    """Return all tracked IG accounts, ordered by enabled-first then added time."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tracked_ig_accounts ORDER BY enabled DESC, added_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_enabled_ig_accounts() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT handle, label, category FROM tracked_ig_accounts WHERE enabled = 1"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_ig_account(handle: str, label: str = "", category: str = "",
+                      enabled: bool = True, notes: str = "",
+                      added_by_email: str = "") -> dict:
+    """Insert or update a tracked account. Handle is normalized to lowercase, no '@'."""
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        raise ValueError("handle is required")
+    now = datetime.now(timezone.utc).isoformat()
+    added_by = added_by_email.strip().lower()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO tracked_ig_accounts
+              (handle, label, category, enabled, added_at, notes, added_by_email)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(handle) DO UPDATE SET
+                label    = excluded.label,
+                category = excluded.category,
+                enabled  = excluded.enabled,
+                notes    = excluded.notes
+                -- preserve original added_by_email; don't overwrite on edits
+        """, (handle, label, category, 1 if enabled else 0, now, notes, added_by))
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM tracked_ig_accounts WHERE handle = ?", (handle,)
+        ).fetchone()
+    return dict(row)
+
+
+def delete_ig_account(handle: str) -> bool:
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM tracked_ig_accounts WHERE handle = ?", (handle,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def mark_ig_account_scraped(handle: str) -> None:
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tracked_ig_accounts SET last_scraped_at = ? WHERE handle = ?",
+            (datetime.now(timezone.utc).isoformat(), handle),
+        )
+        conn.commit()
+
+
+def set_ig_account_last_event_count(handle: str, count: int) -> None:
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tracked_ig_accounts SET last_event_count = ? WHERE handle = ?",
+            (count, handle),
+        )
+        conn.commit()
+
+
 def insert_analytics_event(event_name: str, properties_json: str, session_id: str):
     with get_conn() as conn:
         conn.execute(
@@ -275,13 +576,13 @@ def get_funnel_counts() -> list[dict]:
 def upsert_event(ev: EnrichedEvent):
     with get_conn() as conn:
         conn.execute("""
-            INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, good_for_reroot)
+            INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source, external_id) DO UPDATE SET
                 payload         = excluded.payload,
                 fetched_at      = excluded.fetched_at,
                 enriched_at     = excluded.enriched_at,
-                good_for_reroot = excluded.good_for_reroot
+                is_curated      = excluded.is_curated
         """, (
             ev.id,
             ev.source,
@@ -289,7 +590,7 @@ def upsert_event(ev: EnrichedEvent):
             ev.model_dump_json(),
             ev.fetched_at.isoformat(),
             ev.enriched_at.isoformat() if ev.enriched_at else None,
-            1 if ev.good_for_reroot else 0,
+            1 if ev.is_curated else 0,
         ))
         conn.commit()
 
@@ -306,15 +607,27 @@ def get_events(
     params: list = []
 
     if good_only:
-        query += " AND good_for_reroot = 1"
+        query += " AND is_curated = 1"
 
-    # date filter — só futuros
-    now = datetime.now(timezone.utc).isoformat()
-    query += " AND json_extract(payload, '$.date_start') >= ?"
-    params.append(now[:10])  # YYYY-MM-DD
+    # date filter — keep events that haven't ended yet. Single-day events (no
+    # date_end) must start today or later. Multi-day events (e.g. MON
+    # exhibitions running for months) stay visible while their end date is in
+    # the future, even if they started long ago.
+    today = datetime.now(timezone.utc).date().isoformat()
+    query += """
+        AND (
+            (json_extract(payload, '$.date_end') IS NULL
+                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+            OR
+            (json_extract(payload, '$.date_end') IS NOT NULL
+                AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+        )
+    """
+    params.append(today)
+    params.append(today)
 
     if category and category != "all":
-        query += " AND json_extract(payload, '$.reroot_category') = ?"
+        query += " AND json_extract(payload, '$.kind') = ?"
         params.append(category)
 
     if price_tier == "free":
@@ -344,7 +657,7 @@ def get_event_by_id(event_id: str) -> Optional[EnrichedEvent]:
 
 def count_events() -> int:
     with get_conn() as conn:
-        return conn.execute("SELECT COUNT(*) FROM events WHERE good_for_reroot = 1").fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM events WHERE is_curated = 1").fetchone()[0]
 
 
 def log_refresh_start(source: str) -> int:

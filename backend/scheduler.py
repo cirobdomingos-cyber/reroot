@@ -21,7 +21,9 @@ async def run_refresh(settings):
     from scrapers.sympla import fetch_events as sympla_fetch
     from scrapers.eventbrite import fetch_events as eventbrite_fetch
     from scrapers.meetup import fetch_events as meetup_fetch
-    from scrapers.instagram import fetch_events as instagram_fetch
+    # Instagram scraping now goes through Apify, not the instaloader-based
+    # scraper. The old module is kept for reference but no longer wired up.
+    from scrapers.instagram_apify import fetch_events as instagram_fetch
     from scrapers.sesc import fetch_events as sesc_fetch
     from scrapers.prefeitura import fetch_events as prefeitura_fetch
     from enrichment import EnrichmentPipeline
@@ -66,21 +68,19 @@ async def run_refresh(settings):
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Meetup falhou: {e}")
 
-    # ── Instagram (Claude extracts events from hashtag posts) ──
+    # ── Instagram via Apify (Claude extracts events from public profile posts) ──
     log_id = db.log_refresh_start("instagram")
     try:
         ig_events = await instagram_fetch(
             anthropic_api_key=settings.anthropic_api_key,
-            city=city,
-            ig_username=settings.instagram_user,
-            ig_password=settings.instagram_pass,
+            apify_token=settings.apify_api_token,
         )
         all_raws.extend(ig_events)
         db.log_refresh_finish(log_id, events_new=len(ig_events), events_updated=0)
-        log.info(f"  Instagram: {len(ig_events)} eventos extraídos")
+        log.info(f"  Instagram (Apify): {len(ig_events)} eventos extraídos")
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Instagram falhou: {e}")
+        log.error(f"  Instagram (Apify) falhou: {e}")
 
     # ── SESC Paraná (free/low-cost cultural events — no credentials needed) ──
     log_id = db.log_refresh_start("sesc")
@@ -127,6 +127,30 @@ async def run_refresh(settings):
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Ingresso.com falhou: {e}")
+
+    # ── MON (Museu Oscar Niemeyer — long-running exhibitions, perfect Reroot fit) ──
+    from scrapers.mon import fetch_events as mon_fetch
+    log_id = db.log_refresh_start("mon")
+    try:
+        mon_events = await mon_fetch(city=city)
+        all_raws.extend(mon_events)
+        db.log_refresh_finish(log_id, events_new=len(mon_events), events_updated=0)
+        log.info(f"  MON: {len(mon_events)} exposições")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  MON falhou: {e}")
+
+    # ── Turismo Curitiba (city tourism portal — broad mix of events) ──
+    from scrapers.turismo_curitiba import fetch_events as turismo_fetch
+    log_id = db.log_refresh_start("turismo_curitiba")
+    try:
+        tur_events = await turismo_fetch(city=city)
+        all_raws.extend(tur_events)
+        db.log_refresh_finish(log_id, events_new=len(tur_events), events_updated=0)
+        log.info(f"  Turismo Curitiba: {len(tur_events)} eventos")
+    except Exception as e:
+        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
+        log.error(f"  Turismo Curitiba falhou: {e}")
 
     if not all_raws:
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")

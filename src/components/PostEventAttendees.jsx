@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { fetchEventAttendees, addFriend } from '../services/api'
+import Avatar from './Avatar'
 
 export default function PostEventAttendees({ eventId, eventDate }) {
   const { state } = useApp()
@@ -118,26 +119,7 @@ export default function PostEventAttendees({ eventId, eventDate }) {
             }}
           >
             {/* Avatar */}
-            {attendee.picture ? (
-              <img
-                src={attendee.picture}
-                alt={attendee.name}
-                style={{
-                  width: 40, height: 40, borderRadius: '50%',
-                  objectFit: 'cover', flexShrink: 0,
-                }}
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: 'var(--terra-pale)', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 16, fontWeight: 700, color: 'var(--terra)',
-              }}>
-                {(attendee.name || '?')[0].toUpperCase()}
-              </div>
-            )}
+            <Avatar name={attendee.name} src={attendee.picture} size={40} />
 
             {/* Name */}
             <div style={{ flex: 1, minWidth: 0 }}>

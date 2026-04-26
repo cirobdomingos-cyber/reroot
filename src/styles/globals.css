@@ -1,22 +1,40 @@
-/* ── Design tokens ── */
+/* ── Design tokens ──
+   Auê palette (rebranded from Reroot — Apr 2026):
+   - Coral quente as primary (where sage was)
+   - Azul tinta as secondary (where terra was)
+   - Mel as accent
+   - Cream slightly warmer
+   The legacy variable names (--sage, --terra) are kept on purpose so the
+   rebrand doesn't require touching every call site. The names lie a bit
+   semantically; cosmetic refactor for later. */
 :root {
-  --terra: #C4724A;
-  --terra-light: #E8956D;
-  --terra-pale: #F5DDD1;
-  --sage: #7A9E7E;
-  --sage-light: #A8C5AB;
-  --sage-pale: #E4EFE5;
-  --cream: #FAF8F5;
-  --charcoal: #2C2C2C;
+  /* "terra" used to be terracotta; now it's deep ink blue (the new anchor). */
+  --terra:        #1E3A5F;
+  --terra-light:  #2E548A;
+  --terra-pale:   #DEE6F0;
+
+  /* "sage" used to be sage green; now it's coral (the new brand primary). */
+  --sage:         #E8623F;
+  --sage-light:   #F08869;
+  --sage-pale:    #FCE3DA;
+
+  /* New honey accent — used sparingly for highlights / "novo" badges. */
+  --honey:        #F4A623;
+  --honey-pale:   #FDEFD2;
+
+  /* Slightly warmer cream and border to harmonize with coral. */
+  --cream:        #FCF5EB;
+  --charcoal:     #2C2C2C;
   --charcoal-mid: #5A5A5A;
   --charcoal-light: #9A9A9A;
-  --white: #FFFFFF;
-  --border: #EAE7E3;
+  --white:        #FFFFFF;
+  --border:       #EBE0CD;
+
   --shadow-sm: 0 1px 6px rgba(44,44,44,0.06);
-  --shadow: 0 2px 12px rgba(44,44,44,0.08);
+  --shadow:    0 2px 12px rgba(44,44,44,0.08);
   --shadow-md: 0 4px 20px rgba(44,44,44,0.12);
   --radius-sm: 10px;
-  --radius: 16px;
+  --radius:    16px;
   --radius-lg: 20px;
   --radius-xl: 24px;
 }

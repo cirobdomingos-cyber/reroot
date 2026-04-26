@@ -27,8 +27,8 @@ export default function AddToCalendar({ event, style }) {
   }
 
   function handleWhatsApp() {
-    const link = event.url || 'reroot.app'
-    const msg = `Vou ao ${event.name} no ${event.venue}! 🌿 Você topa também? ${link}`
+    const link = event.url || 'aue.app'
+    const msg = `Vou ao ${event.name} no ${event.venue}! 🎉 Bora junto? ${link}`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener')
     setOpen(false)
   }

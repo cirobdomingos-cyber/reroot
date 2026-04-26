@@ -1,23 +1,30 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp, getProfile } from '../context/AppContext'
+import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
-import { CATEGORIES, DATE_FILTERS } from '../data/events'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp } from '../services/api'
+import { MOODS } from '../data/events'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
+import EventsWeekStrip from '../components/EventsWeekStrip'
+import Avatar from '../components/Avatar'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
 // Source provenance config — drives the badge label/style for every event origin.
 // Add new entries here when new scrapers go live (sympla, lu.ma, etc.).
 const SOURCE_CONFIG = {
-  reroot:     { label: 'Reroot AI',   icon: '✦', bg: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', border: '#CE93D8', color: '#6A1B9A' },
-  sympla:     { label: 'Sympla',      icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
-  eventbrite: { label: 'Eventbrite',  icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
-  meetup:     { label: 'Meetup',      icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
+  aue_original:     { label: 'Original auê',     icon: '⭐', bg: 'linear-gradient(135deg, #FFF8E1, #FFECB3)', border: '#FFD54F', color: '#8D6E10' },
+  mon:              { label: 'MON',              icon: '🖼️', bg: '#F3E5F5',                                    border: '#CE93D8', color: '#4A148C' },
+  turismo_curitiba: { label: 'Turismo CWB',      icon: '🏙', bg: '#E0F7FA',                                    border: '#80DEEA', color: '#006064' },
+  sesc:             { label: 'SESC',              icon: '🎭', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
+  teatro_guaira:    { label: 'Teatro Guaíra',    icon: '🎭', bg: '#FFEBEE',                                    border: '#EF9A9A', color: '#B71C1C' },
+  aue_ai:           { label: 'auê IA',           icon: '✦', bg: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', border: '#CE93D8', color: '#6A1B9A' },
+  sympla:           { label: 'Sympla',            icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
+  eventbrite:       { label: 'Eventbrite',        icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
+  meetup:           { label: 'Meetup',            icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
 }
 
 const VENUE_SUBTYPES = [
@@ -93,53 +100,17 @@ function VenueSkeletonRow() {
   )
 }
 
-// ── Profile-based event sorting ─────────────────────────────────────────────
-// Returns events sorted so those in priorityCategories appear first.
-// activityFirst profiles bump 'active' and 'bars_cafes' to the front of the
-// priority order — these users benefit from a concrete thing-to-do, not
-// open-ended socialising.
-function sortByProfile(events, profile) {
-  if (!profile) return events
-  let priorities = [...profile.priorityCategories]
-  if (profile.activityFirst) {
-    const activityCats = priorities.filter(c => c === 'active' || c === 'bars_cafes')
-    const rest = priorities.filter(c => c !== 'active' && c !== 'bars_cafes')
-    priorities = [...activityCats, ...rest]
-  }
-  return [...events].sort((a, b) => {
-    const aRank = priorities.indexOf(a.category)
-    const bRank = priorities.indexOf(b.category)
-    const aNorm = aRank === -1 ? priorities.length : aRank
-    const bNorm = bRank === -1 ? priorities.length : bRank
-    return aNorm - bNorm
-  })
-}
-
-// Returns the default category tab for a given profile.
-// activityFirst profiles start on an activity-style category rather than
-// quiet_social — the structure of an activity is their lower-pressure entry point.
-function getDefaultFilter(profile) {
-  if (!profile) return 'all'
-  if (profile.activityFirst) {
-    const activityCat = profile.priorityCategories.find(
-      c => c === 'active' || c === 'bars_cafes'
-    )
-    return activityCat ?? profile.priorityCategories[0]
-  }
-  return profile.priorityCategories[0]
-}
-
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function Events() {
   const { state, dispatch } = useApp()
   const location = useLocation()
+  const navigate = useNavigate()
   const t = useT()
-  const profile = getProfile(state.userSituation)
-  const defaultFilter = getDefaultFilter(profile)
 
-  const [activeFilter, setActiveFilter]     = useState(defaultFilter)
-  const [dateFilter, setDateFilter]         = useState('all')
+  const [activeFilter, setActiveFilter]     = useState('all')
+  // Specific-day filter from the week strip (events mode). null = all days.
+  const [selectedDay, setSelectedDay]       = useState(null)
   const [venueSubFilter, setVenueSubFilter] = useState('all')
   const [events, setEvents]                 = useState([])
   const [loading, setLoading]               = useState(true)
@@ -152,7 +123,19 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
-  const [hideCurated, setHideCurated]       = useState(false)
+  // Friends' RSVPs — feeds the friend-dot in the week strip. Only fetched
+  // when the user is signed in.
+  const [friendsFeed, setFriendsFeed]       = useState([])
+
+  useEffect(() => {
+    const googleId = state.googleUser?.id
+    if (!googleId) { setFriendsFeed([]); return }
+    let cancelled = false
+    fetchFriendsFeed(googleId).then(events => {
+      if (!cancelled) setFriendsFeed(events || [])
+    })
+    return () => { cancelled = true }
+  }, [state.googleUser?.id])
 
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
@@ -217,9 +200,6 @@ export default function Events() {
       ev.venue?.toLowerCase().includes(q)
     )
   }
-  if (!isVenueMode && dateFilter !== 'all') {
-    filteredEvents = filteredEvents.filter(ev => ev.dateTag === dateFilter)
-  }
   if (isVenueMode && venueSubFilter !== 'all') {
     filteredEvents = filteredEvents.filter(ev => getSubtype(ev) === venueSubFilter)
   }
@@ -237,24 +217,44 @@ export default function Events() {
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
   }
-  // Hide AI-curated suggestions
-  if (hideCurated) {
-    filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
-  }
-  // Profile-based sort — only applied on the 'all' tab so per-category tabs
-  // are unaffected; also skipped when user is searching to preserve relevance order.
-  if (activeFilter === 'all' && !searchQuery.trim() && profile) {
-    filteredEvents = sortByProfile(filteredEvents, profile)
+  // AI-curated/made-up events never surface in the Events tab — they're
+  // reserved for a separate discovery surface (chatbot or dedicated tab,
+  // TBD). The Events tab is the catalog of real, scraped Curitiba events.
+  filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
+  // Snapshot for the week strip's count badges — reflects every active
+  // filter *except* the per-day pick, so picking a day doesn't zero out
+  // the other days' counts.
+  const eventsForStrip = filteredEvents
+  if (!isVenueMode && selectedDay) {
+    filteredEvents = filteredEvents.filter(ev => (ev.dateStart || '').slice(0, 10) === selectedDay)
   }
 
-  function getMemberCount(ev) {
-    const base = ev.cohortGoing?.length ?? 0
-    return base + (state.rsvps[ev.id] ? 1 : 0)
+  // Day-keyed sets for the strip's social signals. RSVP set comes from
+  // local state.rsvps (which stores dateStart per RSVP). Friend set comes
+  // from the live friends_feed (event_date is ISO).
+  const rsvpDays = new Set(
+    Object.values(state.rsvps)
+      .map(info => info?.dateStart?.slice(0, 10))
+      .filter(Boolean)
+  )
+  const friendDays = new Set(
+    friendsFeed
+      .map(ev => ev.event_date?.slice(0, 10))
+      .filter(Boolean)
+  )
+  // Per-event friend lookup, used by the cards/detail drawer to show
+  // "Maria + 2 amigos vão" with avatars on each event row.
+  const friendsByEventId = {}
+  for (const ev of friendsFeed) {
+    if (ev.event_id) friendsByEventId[ev.event_id] = ev.friends_going || []
   }
 
   async function handleRsvpToggle(ev) {
     const wasRsvped = !!state.rsvps[ev.id]
-    dispatch({ type: 'TOGGLE_RSVP', payload: { eventId: ev.id } })
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: { eventId: ev.id, dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
+    })
 
     // Sync to backend social layer — only when user is logged in and sharing is enabled
     if (state.googleUser?.id && (state.privacy?.shareRsvps ?? state.shareRsvps)) {
@@ -359,78 +359,89 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Category chips */}
+        {/* Mood chips — top-level filter for the catalog */}
         <div style={{ display: 'flex', gap: 7, padding: '0 16px 10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-          {CATEGORIES.map(cat => (
+          {MOODS.map(mood => (
             <button
-              key={cat.id}
-              onClick={() => handleCategoryChange(cat.id)}
+              key={mood.id}
+              onClick={() => handleCategoryChange(mood.id)}
               style={{
                 padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
                 fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
                 transition: 'all 0.15s',
-                border: activeFilter === cat.id ? 'none' : '1.5px solid var(--border)',
-                background: activeFilter === cat.id ? 'var(--charcoal)' : 'white',
-                color: activeFilter === cat.id ? 'white' : 'var(--charcoal-mid)',
+                border: activeFilter === mood.id ? 'none' : '1.5px solid var(--border)',
+                background: activeFilter === mood.id ? 'var(--charcoal)' : 'white',
+                color: activeFilter === mood.id ? 'white' : 'var(--charcoal-mid)',
               }}
             >
-              {cat.label}
+              {mood.label}
             </button>
           ))}
         </div>
+
       </div>
 
-      {/* ── Date / venue sub-filter (scrolls with content) ── */}
-      <div style={{ display: 'flex', gap: 6, padding: '10px 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {isVenueMode ? (
-          <>
-            {VENUE_SUBTYPES.map(sub => (
-              <button
-                key={sub.id}
-                onClick={() => setVenueSubFilter(sub.id)}
-                style={{
-                  padding: '5px 14px', borderRadius: 16, whiteSpace: 'nowrap',
-                  fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
-                  background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
-                  color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
-                }}
-              >
-                {sub.label}
-              </button>
-            ))}
-            {dataSource === 'places' && (
-              <span style={{
-                marginLeft: 'auto', flexShrink: 0, alignSelf: 'center',
-                fontSize: 10, color: 'var(--charcoal-light)', paddingRight: 4,
-              }}>
-                {filteredEvents.length} locais
-              </span>
-            )}
-          </>
-        ) : (
-          DATE_FILTERS.map(df => (
+      {/* ── Week strip with per-day event counts (events mode only) ── */}
+      {!isVenueMode && (
+        <EventsWeekStrip
+          events={eventsForStrip}
+          selectedDay={selectedDay}
+          onSelectDay={setSelectedDay}
+          rsvpDays={rsvpDays}
+          friendDays={friendDays}
+        />
+      )}
+
+      {/* ── Venue sub-filter (venue mode only — events use the week strip) ── */}
+      {isVenueMode && (
+        <div style={{ display: 'flex', gap: 6, padding: '10px 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {VENUE_SUBTYPES.map(sub => (
             <button
-              key={df.id}
-              onClick={() => setDateFilter(df.id)}
+              key={sub.id}
+              onClick={() => setVenueSubFilter(sub.id)}
               style={{
-                padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                padding: '5px 14px', borderRadius: 16, whiteSpace: 'nowrap',
                 fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
                 transition: 'all 0.15s',
-                border: dateFilter === df.id ? 'none' : '1px solid var(--border)',
-                background: dateFilter === df.id ? 'var(--terra)' : 'transparent',
-                color: dateFilter === df.id ? 'white' : 'var(--charcoal-light)',
+                border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
+                background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
+                color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
               }}
             >
-              {df.label}
+              {sub.label}
             </button>
-          ))
-        )}
-      </div>
+          ))}
+          {dataSource === 'places' && (
+            <span style={{
+              marginLeft: 'auto', flexShrink: 0, alignSelf: 'center',
+              fontSize: 10, color: 'var(--charcoal-light)', paddingRight: 4,
+            }}>
+              {filteredEvents.length} locais
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Price + Kids Welcome filter chips ── */}
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {/* All-dates pill — leads the row so users always have a clear path
+            back to the full catalog. Active when no specific day is picked
+            from the week strip; clears the strip pick when tapped. */}
+        {!isVenueMode && (
+          <button
+            onClick={() => setSelectedDay(null)}
+            style={{
+              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+              transition: 'all 0.15s',
+              border: !selectedDay ? 'none' : '1px solid var(--border)',
+              background: !selectedDay ? 'var(--terra)' : 'transparent',
+              color: !selectedDay ? 'white' : 'var(--charcoal-light)',
+            }}
+          >
+            {selectedDay ? '✕ ' : ''}Todas as datas
+          </button>
+        )}
         {[
           { id: 'all',  label: t.filter_all_prices },
           { id: 'free', label: `🆓 ${t.filter_free}` },
@@ -458,45 +469,53 @@ export default function Events() {
             fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
             transition: 'all 0.15s',
             border: kidsFilter ? 'none' : '1px solid var(--border)',
-            background: kidsFilter ? '#E8956D' : 'transparent',
+            background: kidsFilter ? 'var(--honey)' : 'transparent',
             color: kidsFilter ? 'white' : 'var(--charcoal-light)',
           }}
         >
           👶 {t.filter_kids_welcome}
         </button>
+      </div>
+
+      {/* ── AI suggestion CTA — sits above the list so it's reachable
+          without scrolling. AI/curated events are hidden from the catalog
+          (real events only), so this is the bridge: tap to ask the
+          Companion for ideas. */}
+      {!loading && !isVenueMode && (
         <button
-          onClick={() => setHideCurated(h => !h)}
+          onClick={() => window.dispatchEvent(new CustomEvent('open-companion', { detail: { intent: 'suggest' } }))}
           style={{
-            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-            transition: 'all 0.15s',
-            border: hideCurated ? 'none' : '1px solid var(--border)',
-            background: hideCurated ? '#6A1B9A' : 'transparent',
-            color: hideCurated ? 'white' : 'var(--charcoal-light)',
+            display: 'flex', alignItems: 'center', gap: 12,
+            margin: '4px 16px 12px', padding: '14px 16px',
+            background: 'linear-gradient(135deg, #FFF8E1, #FFECB3)',
+            border: '1px solid #FFD54F',
+            borderRadius: 14, cursor: 'pointer',
+            width: 'calc(100% - 32px)',
+            textAlign: 'left',
           }}
         >
-          {hideCurated ? `✦ ${t.filter_hide_curated_on}` : `✦ ${t.filter_hide_curated}`}
+          <div style={{
+            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+            background: 'rgba(232, 98, 63, 0.18)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18,
+          }}>✦</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#8D6E10' }}>
+              Sem ideias para hoje?
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2, lineHeight: 1.35 }}>
+              auê IA pode sugerir algo baseado no seu humor →
+            </div>
+          </div>
         </button>
-      </div>
+      )}
 
       {/* ── Loading skeletons ── */}
       {loading && (
         isVenueMode
           ? <>{[0,1,2,3,4].map(i => <VenueSkeletonRow key={i} />)}</>
           : <>{[0,1,2,3,4].map(i => <EventCardSkeleton key={i} />)}</>
-      )}
-
-      {/* ── Profile section header (only on 'all' tab) ── */}
-      {!loading && activeFilter === 'all' && profile && filteredEvents.length > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '4px 16px 6px',
-        }}>
-          <span style={{ fontSize: 11, color: 'var(--terra)', fontWeight: 700 }}>
-            ✦ {state.language === 'en' ? 'Picked for your profile' : 'Escolhido para o seu perfil'}
-          </span>
-          <span style={{ fontSize: 20 }}>{profile.emoji}</span>
-        </div>
       )}
 
       {/* ── List ── */}
@@ -558,8 +577,6 @@ export default function Events() {
                 )
               }
 
-              const count = getMemberCount(ev)
-
               return (
                 <motion.div
                   key={ev.id}
@@ -572,9 +589,10 @@ export default function Events() {
                   <EventCard
                     ev={ev}
                     rsvped={rsvped}
-                    count={count}
+                    friendsGoing={friendsByEventId[ev.id] || []}
                     onOpen={() => openDetail(ev.id)}
                     onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
+                    onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     t={t}
                   />
                 </motion.div>
@@ -583,6 +601,7 @@ export default function Events() {
           )}
         </AnimatePresence>
       )}
+
 
       {/* ── Notification toast ── */}
       <AnimatePresence>
@@ -635,6 +654,8 @@ export default function Events() {
               <DetailPanel
                 event={detailEvent}
                 rsvped={!!state.rsvps[detailEvent.id]}
+                friendsGoing={friendsByEventId[detailEvent.id] || []}
+                onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 onAttended={() => {
@@ -654,7 +675,7 @@ export default function Events() {
 
 // ── EventCard (compact horizontal layout) ────────────────────────────────────
 
-function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, t }) {
   // Split "Venue Name · Neighborhood" into two parts
   const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -691,13 +712,13 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
           }}>
             {ev.name}
           </div>
-          {count > 0 && (
+          {rsvped && (
             <span style={{
               fontSize: 10, fontWeight: 700, flexShrink: 0,
-              background: 'rgba(44,44,44,0.07)', color: 'var(--charcoal-mid)',
+              background: 'var(--sage-pale)', color: 'var(--sage)',
               padding: '3px 7px', borderRadius: 6,
             }}>
-              {count} {t.events_going}
+              ✓ Vou
             </span>
           )}
         </div>
@@ -713,6 +734,39 @@ function EventCard({ ev, rsvped, count, onOpen, onRsvp, t }) {
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)', marginTop: 2 }}>
           🗓 {ev.date} · {ev.time}
         </div>
+
+        {/* Friends going (live from friends_feed) */}
+        {friendsGoing.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+            <div style={{ display: 'flex' }}>
+              {friendsGoing.slice(0, 3).map((f, i) => (
+                <button
+                  key={f.google_id ?? i}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (f.google_id && onFriend) onFriend(f.google_id)
+                  }}
+                  disabled={!f.google_id}
+                  title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
+                  style={{
+                    background: 'none', border: 'none', padding: 0,
+                    marginLeft: i === 0 ? 0 : -6,
+                    cursor: f.google_id ? 'pointer' : 'default',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 0 2px white',
+                  }}
+                >
+                  <Avatar name={f.name} src={f.picture} size={20} />
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#5B8DD9' }}>
+              {friendsGoing.length === 1
+                ? `${friendsGoing[0].name} vai`
+                : `${friendsGoing.length} amigos vão`}
+            </span>
+          </div>
+        )}
 
         {/* Vibe summary */}
         {ev.vibeSummary && ev.vibeSummary !== ev.name && (
@@ -893,14 +947,13 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeighborhood, t }) {
-  const count = (ev.cohortGoing?.length ?? 0) + (rsvped ? 1 : 0)
+function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [copied, setCopied] = useState(false)
 
   function handleWhatsApp() {
-    const link = ev.url || 'reroot.app'
-    const msg = `Vou ao ${ev.name} no ${ev.venue}! 🌿 Você topa também? ${link}`
+    const link = ev.url || 'aue.app'
+    const msg = `Vou ao ${ev.name} no ${ev.venue}! 🎉 Bora junto? ${link}`
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer')
   }
 
@@ -1020,6 +1073,44 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
           )}
         </div>
 
+        {/* Friends going (live from friends_feed) */}
+        {friendsGoing.length > 0 && (
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '12px 14px',
+            border: '1px solid var(--border)', marginBottom: 16,
+          }}>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: '#5B8DD9',
+              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+            }}>
+              Amigos vão
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {friendsGoing.map((f, i) => (
+                <button
+                  key={f.google_id ?? i}
+                  onClick={() => f.google_id && onFriend?.(f.google_id)}
+                  disabled={!f.google_id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    background: 'none', border: 'none', padding: 0,
+                    cursor: f.google_id ? 'pointer' : 'default',
+                    textAlign: 'left',
+                  }}
+                >
+                  <Avatar name={f.name} src={f.picture} size={32} />
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
+                    {f.name}
+                  </div>
+                  {f.google_id && (
+                    <div style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(() => {
           const desc = cleanDescription(ev.description)
           return desc ? (
@@ -1031,8 +1122,14 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
 
         {/* Source link — prominent so users can verify on the original site */}
         {ev.url && !isVenue && (() => {
+          // When the URL is a Google Maps fallback (no canonical event URL),
+          // label it as a map link instead of pretending it's a Sympla page.
+          const isMapsUrl = ev.url.includes('google.com/maps')
           const src = ev.source && SOURCE_CONFIG[ev.source]
-          const label = src ? `Ver no ${src.label} →` : t.events_view_original
+          const icon = isMapsUrl ? '📍' : '🔗'
+          const label = isMapsUrl
+            ? 'Ver no mapa →'
+            : src ? `Ver no ${src.label} →` : t.events_view_original
           return (
             <a
               href={ev.url}
@@ -1046,12 +1143,12 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
                 border: '1px solid var(--sage)',
               }}
             >
-              🔗 {label}
+              {icon} {label}
             </a>
           )
         })()}
 
-        {ev.rerootReason && (
+        {ev.pitch && (
           <div style={{
             background: 'var(--sage-pale)', borderRadius: 12,
             padding: '12px 14px', marginBottom: 18,
@@ -1060,7 +1157,7 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 4 }}>
               {t.events_why_good}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.rerootReason}</div>
+            <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.pitch}</div>
           </div>
         )}
 
@@ -1071,45 +1168,6 @@ function DetailPanel({ event: ev, rsvped, onClose, onRsvp, onAttended, userNeigh
             eventDate={ev.dateStart || ev.date}
           />
         )}
-
-        {/* Cohort members */}
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
-          {isVenue
-            ? (ev.cohortGoing?.length > 0 ? `${ev.cohortGoing.length} ${t.events_venue_frequent}` : t.events_venue_no_members)
-            : (count === 0 ? t.events_be_first : `${count} ${t.events_going}`)
-          }
-        </div>
-
-        <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)', marginBottom: 20 }}>
-          {(ev.cohortGoing?.length === 0 && !rsvped) ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
-              {isVenue ? t.events_venue_save_first : t.events_no_members}
-            </div>
-          ) : (
-            <>
-              {ev.cohortGoing?.map(p => (
-                <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                  <div className="avatar" style={{ background: p.color }}>{p.initial}</div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>{p.note}</div>
-                  </div>
-                </div>
-              ))}
-              {rsvped && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px' }}>
-                  <div className="avatar" style={{ background: 'var(--terra)' }}>V</div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--charcoal)' }}>
-                      {t.events_you} <span style={{ fontSize: 11, color: 'var(--sage)', fontWeight: 700 }}>· {isVenue ? t.events_saved_check : t.events_going_check}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>{t.events_week} 3 · {userNeighborhood}</div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
 
         <button className="btn btn--primary" onClick={onRsvp}>
           {rsvped

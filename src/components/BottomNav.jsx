@@ -1,6 +1,10 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
+
+const API_BASE = import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 export default function BottomNav() {
   const navigate = useNavigate()
@@ -8,6 +12,21 @@ export default function BottomNav() {
   const { state } = useApp()
   const t = useT()
   const a11y = state.accessibilityMode
+
+  // Curator status — fetched when the logged-in user changes. Cached in
+  // component state. The admin tab only renders for curators / founders.
+  const [isCurator, setIsCurator] = useState(false)
+  const email = state.googleUser?.email
+
+  useEffect(() => {
+    if (!email) { setIsCurator(false); return }
+    let cancelled = false
+    fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled) setIsCurator(!!data?.is_curator) })
+      .catch(() => { if (!cancelled) setIsCurator(false) })
+    return () => { cancelled = true }
+  }, [email])
 
   const NAV_ITEMS = [
     {
@@ -37,6 +56,18 @@ export default function BottomNav() {
       ),
     },
     {
+      path: '/my-rsvps',
+      label: 'RSVPs',
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+      ),
+    },
+    {
       path: '/community',
       label: t.nav_community,
       icon: (active) => (
@@ -50,24 +81,25 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    {
-      path: '/profile',
-      label: t.nav_profile,
+    // Curator-only tab. Profile lives behind the Home avatar tap, so this
+    // is the rightmost slot when present.
+    isCurator && {
+      path: '/admin/ig',
+      label: 'Curar',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-          <circle cx="12" cy="7" r="4"/>
+          <path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77l-4.94 2.6L8 11.9 4 8l5.61-1.16L12 2z"/>
         </svg>
       ),
     },
-  ]
+  ].filter(Boolean)
 
   return (
     <nav className="bottom-nav">
       {NAV_ITEMS.map(({ path, label, icon }) => {
-        const active = pathname === path
+        const active = pathname === path || (path === '/admin/ig' && pathname.startsWith('/admin'))
         return (
           <div
             key={path}

@@ -30,10 +30,19 @@ HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
-# WordPress API — posts tagged or categorized as Curitiba events
+# WordPress API — posts tagged or categorized as Curitiba events. We hit
+# multiple search-keyword combinations to surface posts that don't tag
+# themselves "Curitiba" but talk about events here. Each query is cheap
+# (single HTTP call); Claude does the per-post extraction either way.
 WP_API_URLS = [
-    f"{BASE_URL}/curitiba/wp-json/wp/v2/posts?per_page=20&_fields=id,title,content,date,link",
+    f"{BASE_URL}/curitiba/wp-json/wp/v2/posts?per_page=30&_fields=id,title,content,date,link",
     f"{BASE_URL}/wp-json/wp/v2/posts?per_page=30&search=curitiba&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+oficina&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+sarau&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+feira&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+exposi%C3%A7%C3%A3o&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+yoga&_fields=id,title,content,date,link",
+    f"{BASE_URL}/wp-json/wp/v2/posts?per_page=20&search=curitiba+festival&_fields=id,title,content,date,link",
 ]
 
 EXTRACTION_PROMPT = """\
@@ -70,17 +79,27 @@ async def fetch_events(
 ) -> list[RawEvent]:
     """Fetch events from Catraca Livre via WordPress API + LLM extraction."""
     posts: list[dict] = []
+    seen_ids: set = set()
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         for wp_url in WP_API_URLS:
             try:
                 resp = await client.get(wp_url, headers=HEADERS)
-                if resp.status_code == 200:
-                    batch = resp.json()
-                    if isinstance(batch, list) and batch:
-                        posts.extend(batch)
-                        log.info(f"Catraca Livre WP API ({wp_url[-40:]}): {len(batch)} posts")
-                        break  # first successful source is enough
+                if resp.status_code != 200:
+                    continue
+                batch = resp.json()
+                if not isinstance(batch, list):
+                    continue
+                added = 0
+                for post in batch:
+                    pid = post.get("id")
+                    if pid is None or pid in seen_ids:
+                        continue
+                    seen_ids.add(pid)
+                    posts.append(post)
+                    added += 1
+                if added:
+                    log.info(f"Catraca Livre WP API ({wp_url[-50:]}): +{added} new posts")
             except Exception as e:
                 log.warning(f"Catraca Livre WP API failed: {e}")
 
@@ -103,7 +122,7 @@ async def fetch_events(
     client_ai = Anthropic(api_key=anthropic_api_key)
     events: list[RawEvent] = []
 
-    for post in candidate_posts[:20]:  # cap Claude calls
+    for post in candidate_posts[:30]:  # cap Claude calls (~3¢ per refresh at Haiku rates)
         raw = _extract_event(client_ai, post)
         if raw:
             events.append(raw)
