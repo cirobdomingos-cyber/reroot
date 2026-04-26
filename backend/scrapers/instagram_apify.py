@@ -19,6 +19,7 @@ Cost ballpark (Apify free tier = $5/mo credit):
   ~30 handles × 10 posts each = 300 posts/day → roughly $0.10–0.20/day.
   Comfortably inside the free tier for development.
 """
+import asyncio
 import json
 import logging
 import os
@@ -27,10 +28,16 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from models import RawEvent
 
 import database as db
+
+# Cap concurrent Claude calls so a 150-post run doesn't fan out 150 in flight.
+# The Anthropic API tolerates this fine, but a semaphore keeps memory + open
+# sockets predictable. 8 is empirically safe — total run for ~150 posts drops
+# from ~3min serial to ~25s, well under Apify's per-run timeout.
+_CLAUDE_CONCURRENCY = 8
 
 log = logging.getLogger(__name__)
 
@@ -124,14 +131,19 @@ async def fetch_events(
     for handle in handles_with_data:
         db.mark_ig_account_scraped(handle)
 
-    client = Anthropic(api_key=anthropic_api_key)
+    client = AsyncAnthropic(api_key=anthropic_api_key)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    events: list[RawEvent] = []
+    sem = asyncio.Semaphore(_CLAUDE_CONCURRENCY)
 
-    for post in posts:
-        raw = _extract_event(client, post, today_str)
-        if raw:
-            events.append(raw)
+    async def _bounded_extract(post):
+        async with sem:
+            return await _extract_event(client, post, today_str)
+
+    results = await asyncio.gather(
+        *[_bounded_extract(p) for p in posts],
+        return_exceptions=False,
+    )
+    events: list[RawEvent] = [ev for ev in results if ev is not None]
 
     log.info(f"Instagram (Apify): {len(events)} eventos extraídos de {len(posts)} posts")
 
@@ -183,10 +195,11 @@ async def _run_apify_scrape(
         return []
 
 
-def _extract_event(client: Anthropic, post: dict, today_str: str) -> Optional[RawEvent]:
+async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> Optional[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
-    Returns None if Claude judges it not an event, or on any error.
+    Returns None if Claude judges it not an event, or on any error. Async so
+    the calling fan-out (asyncio.gather) can run many in parallel.
     """
     caption = (post.get("caption") or "").strip()
     if len(caption) < 30:
@@ -207,7 +220,7 @@ def _extract_event(client: Anthropic, post: dict, today_str: str) -> Optional[Ra
     )
 
     try:
-        response = client.messages.create(
+        response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],

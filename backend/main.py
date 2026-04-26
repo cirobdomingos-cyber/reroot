@@ -59,6 +59,25 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Anthropic key validation cache. The /health endpoint reports this so a
+# misconfigured key surfaces fast (the previous "configured: bool(env_var)"
+# check returned True for empty-but-set keys and for rotated/invalid keys).
+# Validated once at startup with a cheap models-list call; refreshable.
+_anthropic_key_status: dict = {"valid": None, "checked_at": None, "error": None}
+
+
+def _check_anthropic_key(api_key: str) -> dict:
+    """Return {valid, error}. Uses a cheap GET that doesn't burn tokens."""
+    if not api_key:
+        return {"valid": False, "error": "ANTHROPIC_API_KEY ausente"}
+    try:
+        client = Anthropic(api_key=api_key)
+        client.models.list(limit=1)  # auth-validating call, no completion cost
+        return {"valid": True, "error": None}
+    except Exception as e:
+        msg = str(e)[:200]
+        return {"valid": False, "error": msg}
+
 
 # ── App lifecycle ──
 @asynccontextmanager
@@ -82,8 +101,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"Failed to seed founder curator: {e}")
 
-    if settings.anthropic_api_key:
+    # Validate the Anthropic key once at startup so /health can report the
+    # real status (ENV var present is not the same as "key works").
+    key_status = _check_anthropic_key(settings.anthropic_api_key)
+    _anthropic_key_status.update(key_status)
+    _anthropic_key_status["checked_at"] = datetime.now(timezone.utc).isoformat()
+    if key_status["valid"]:
+        log.info("Anthropic key validated ✓")
         start_scheduler(settings, run_immediately=True)
+    elif settings.anthropic_api_key:
+        log.error(f"ANTHROPIC_API_KEY rejeitada: {key_status['error']}")
+        log.error("Scheduler desativado até a chave ser corrigida no env.")
     else:
         log.warning(
             "ANTHROPIC_API_KEY não configurada — scheduler desativado. "
@@ -118,7 +146,13 @@ def health():
     return {
         "status": "ok",
         "events_in_db": total,
-        "anthropic_configured": bool(settings.anthropic_api_key),
+        # "configured" used to mean "env var present" — that hid a 401 in
+        # prod for hours. Now it's True only when the key validates against
+        # the Anthropic API at startup. `anthropic_error` carries the error
+        # text when invalid so the health check is self-explanatory.
+        "anthropic_configured": bool(_anthropic_key_status.get("valid")),
+        "anthropic_error": _anthropic_key_status.get("error"),
+        "anthropic_checked_at": _anthropic_key_status.get("checked_at"),
         "sympla_configured": bool(settings.sympla_token),
         "eventbrite_configured": bool(settings.eventbrite_token),
         "instagram_configured": bool(settings.apify_api_token),
@@ -127,7 +161,7 @@ def health():
         "teatro_guaira_configured": True,
         "catraca_livre_configured": True,
         "ingresso_configured": True,
-        "ai_gap_fill_configured": bool(settings.anthropic_api_key),
+        "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
         "google_places_configured": bool(settings.google_places_api_key),
     }
 

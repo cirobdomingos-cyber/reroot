@@ -656,8 +656,9 @@ def get_event_by_id(event_id: str) -> Optional[EnrichedEvent]:
 
 
 def count_events() -> int:
+    """Total events in the catalog. Used by /health as a liveness signal."""
     with get_conn() as conn:
-        return conn.execute("SELECT COUNT(*) FROM events WHERE is_curated = 1").fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 
 
 def log_refresh_start(source: str) -> int:
