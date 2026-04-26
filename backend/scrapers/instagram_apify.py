@@ -125,6 +125,14 @@ async def fetch_events(
     direct_urls = [f"https://www.instagram.com/{a['handle']}/" for a in accounts]
     log.info(f"Instagram (Apify): scraping {len(direct_urls)} accounts...")
 
+    # Profile-level metadata (avatar, full name, bio) is independent of
+    # post-extraction — fire it first so a slow/failed posts call doesn't
+    # block enrichment. Best-effort.
+    try:
+        await _enrich_profiles(apify_token, direct_urls)
+    except Exception as e:
+        log.warning(f"Apify profile enrichment failed: {e}")
+
     posts = await _run_apify_scrape(apify_token, direct_urls, posts_per_account)
     if not posts:
         log.warning("Instagram (Apify): scraper retornou 0 posts")
@@ -154,14 +162,6 @@ async def fetch_events(
             "sample": captured,
         })
 
-    # Profile-level metadata (avatar, full name, bio) — fetched via a
-    # separate, light Apify call with resultsType: "details". Returns one
-    # item per handle with profile fields. Cheap and fast since it's
-    # metadata-only (no posts), so it doesn't bust our sync timeout.
-    try:
-        await _enrich_profiles(apify_token, direct_urls)
-    except Exception as e:
-        log.warning(f"Apify profile enrichment failed: {e}")
 
     # Update last_scraped_at + cached profile metadata for each handle that
     # returned at least one post. Apify's instagram-scraper actor varies
