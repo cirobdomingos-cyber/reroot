@@ -701,19 +701,27 @@ def list_sources():
     Catalog of every monitored source with a future-event count. The
     frontend uses this for the Sources screen — transparency surface that
     shows users where the catalog comes from.
+
+    Counts reflect the same dedup the catalog/source-detail apply, so a
+    handle with 4 raw rows that collapse to 2 events shows "2" here.
     """
-    by_source = db.count_future_events_by_source()
-    by_handle = db.count_future_events_by_ig_handle()
+    def _deduped_count(events_list) -> int:
+        cleaned = [
+            ev for ev in events_list
+            if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
+        ]
+        return len(_dedupe_events(cleaned))
 
     institutional = []
     for src_id, meta in _INSTITUTIONAL_SOURCES.items():
+        evs = db.get_future_events_by_source(src_id, limit=500)
         institutional.append({
             "id": src_id,
             "label": meta["label"],
             "url": meta["url"],
             "icon": meta["icon"],
             "blurb": meta["blurb"],
-            "future_events": by_source.get(src_id, 0),
+            "future_events": _deduped_count(evs),
         })
     institutional.sort(key=lambda s: (-s["future_events"], s["label"]))
 
@@ -721,13 +729,14 @@ def list_sources():
     for acc in db.list_ig_accounts():
         if not acc.get("enabled"):
             continue
+        evs = db.get_future_events_by_source("instagram", ig_handle=acc["handle"], limit=200)
         instagram.append({
             "handle": acc["handle"],
             "label": acc.get("display_name") or acc.get("label") or f"@{acc['handle']}",
             "category": acc.get("category", ""),
             "url": f"https://www.instagram.com/{acc['handle']}/",
             "last_scraped_at": acc.get("last_scraped_at"),
-            "future_events": by_handle.get(acc["handle"], 0),
+            "future_events": _deduped_count(evs),
             "profile_pic_url": acc.get("profile_pic_url") or "",
         })
     instagram.sort(key=lambda s: (-s["future_events"], s["label"]))
@@ -1925,12 +1934,20 @@ def admin_list_ig_accounts(requesting_email: str = ""):
     """
     List tracked Instagram accounts. Open to any authenticated user — even
     non-curators can see the catalog (transparency makes the system trusted).
-    Each row is enriched with `future_events` so the admin UI can show
-    real-time yield per handle and link to that handle's source page.
+    Each row is enriched with `future_events` (post-dedup, matching what
+    the catalog actually shows) so the admin UI shows real yield per
+    handle and the chip count agrees with the catalog.
     """
     accounts = db.list_ig_accounts()
-    counts = db.count_future_events_by_ig_handle()
-    enriched = [{**a, "future_events": counts.get(a["handle"], 0)} for a in accounts]
+    enriched = []
+    for a in accounts:
+        evs = db.get_future_events_by_source("instagram", ig_handle=a["handle"], limit=200)
+        cleaned = [
+            ev for ev in evs
+            if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
+        ]
+        deduped_count = len(_dedupe_events(cleaned))
+        enriched.append({**a, "future_events": deduped_count})
     return {
         "accounts": enriched,
         "is_curator": db.is_curator(requesting_email),
