@@ -69,11 +69,22 @@ export default function SourceDetail() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
-            width: 56, height: 56, borderRadius: 14, flexShrink: 0,
+            width: 56, height: 56,
+            borderRadius: source.profile_pic_url ? '50%' : 14,
+            flexShrink: 0,
             background: 'var(--cream)', fontSize: 28,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
           }}>
-            {source.icon || '📡'}
+            {source.profile_pic_url ? (
+              <img
+                src={source.profile_pic_url}
+                alt={source.label}
+                referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (source.icon || '📡')}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{
@@ -88,14 +99,32 @@ export default function SourceDetail() {
           </div>
         </div>
 
-        {source.blurb && (
+        {source.bio ? (
+          <div style={{
+            background: 'white', border: '1px solid var(--border)',
+            borderRadius: 12, padding: '10px 12px', marginTop: 12,
+          }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, color: 'var(--charcoal-light)',
+              letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 4,
+            }}>
+              Bio do Instagram
+            </div>
+            <div style={{
+              fontSize: 13, color: 'var(--charcoal)',
+              lineHeight: 1.4, whiteSpace: 'pre-line',
+            }}>
+              {source.bio}
+            </div>
+          </div>
+        ) : source.blurb ? (
           <div style={{
             fontSize: 13, color: 'var(--charcoal-mid)',
             lineHeight: 1.5, marginTop: 12,
           }}>
             {source.blurb}
           </div>
-        )}
+        ) : null}
 
         {source.url && (
           <a

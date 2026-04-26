@@ -34,6 +34,7 @@ export default function AdminIgAccounts() {
   const [accounts, setAccounts] = useState([])
   const [curators, setCurators] = useState([])
   const [feedback, setFeedback] = useState([])
+  const [usage, setUsage] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
   const [isFounder, setIsFounder] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -44,6 +45,11 @@ export default function AdminIgAccounts() {
   const [newHandle, setNewHandle] = useState('')
   const [newLabel, setNewLabel] = useState('')
   const [newCategory, setNewCategory] = useState('cultural')
+
+  // Search filter for the IG handles list — matches handle, label,
+  // display_name, or category. Live filter, no debounce needed for ~25
+  // rows. Empty string = show everything.
+  const [handleQuery, setHandleQuery] = useState('')
 
   // Add-curator form state
   const [newCuratorEmail, setNewCuratorEmail] = useState('')
@@ -74,6 +80,10 @@ export default function AdminIgAccounts() {
           const fbData = await fbRes.json()
           setFeedback(fbData.feedback || [])
         } catch { /* feedback fetch is best-effort */ }
+        try {
+          const usageRes = await fetch(withEmail(`${API_BASE}/admin/usage-stats`, email))
+          if (usageRes.ok) setUsage(await usageRes.json())
+        } catch { /* usage fetch is best-effort */ }
       }
       setError(null)
     } catch (e) {
@@ -334,16 +344,44 @@ export default function AdminIgAccounts() {
             </button>
           </div>
 
-          {/* Account list */}
+          {/* Search */}
+          <input
+            value={handleQuery}
+            onChange={e => setHandleQuery(e.target.value)}
+            placeholder="🔍 Buscar conta (handle, nome, categoria…)"
+            style={{
+              ...inputStyle, width: '100%', boxSizing: 'border-box',
+              flex: 'unset', marginBottom: 12,
+            }}
+          />
+
+          {/* Account list — filtered by handleQuery */}
           {loading ? (
             <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>Carregando…</div>
           ) : accounts.length === 0 ? (
             <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
               Nenhuma conta cadastrada.
             </div>
-          ) : (
+          ) : (() => {
+            const q = handleQuery.trim().toLowerCase()
+            const filtered = q
+              ? accounts.filter(a =>
+                  (a.handle || '').toLowerCase().includes(q) ||
+                  (a.label || '').toLowerCase().includes(q) ||
+                  (a.display_name || '').toLowerCase().includes(q) ||
+                  (a.category || '').toLowerCase().includes(q)
+                )
+              : accounts
+            if (filtered.length === 0) {
+              return (
+                <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
+                  Nenhuma conta encontrada para "{handleQuery}".
+                </div>
+              )
+            }
+            return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {accounts.map(acc => (
+              {filtered.map(acc => (
                 <AccountRow
                   key={acc.handle}
                   acc={acc}
@@ -355,7 +393,8 @@ export default function AdminIgAccounts() {
                 />
               ))}
             </div>
-          )}
+            )
+          })()}
         </>
       )}
 
@@ -387,6 +426,8 @@ export default function AdminIgAccounts() {
           setBusy={setBusy}
         />
       )}
+
+      {isFounder && usage && <UsageSection usage={usage} />}
     </div>
   )
 }
@@ -515,6 +556,180 @@ function statusBtn(color) {
     fontWeight: 700, fontSize: 11, cursor: 'pointer',
   }
 }
+
+// ── UsageSection — founder dashboard ──────────────────────
+// DAU/WAU/MAU + funnel + 30-day daily series + recent logins.
+// Charts are simple inline SVG bars to avoid a chart-library dep.
+function UsageSection({ usage }) {
+  const maxDaily = Math.max(1, ...usage.daily.map(d => d.active))
+  const maxFunnel = Math.max(1, ...usage.funnel.map(f => f.count))
+  return (
+    <div style={{
+      marginTop: 32, paddingTop: 24,
+      borderTop: '2px dashed var(--border)',
+    }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
+        📊 Uso do app
+      </h2>
+      <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
+        Métricas agregadas. Atividade = abriu o app / sincronizou estado nas últimas 24h/7d/30d.
+      </p>
+
+      {/* Top metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 18 }}>
+        <Metric label="Total" value={usage.total_users} />
+        <Metric label="Hoje (DAU)" value={usage.dau} />
+        <Metric label="Semana (WAU)" value={usage.wau} />
+        <Metric label="Mês (MAU)" value={usage.mau} />
+      </div>
+
+      {/* Daily series — 30d bar chart */}
+      <div style={{
+        background: 'white', borderRadius: 12, padding: 14,
+        border: '1px solid var(--border)', marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+          USUÁRIOS ATIVOS POR DIA
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80 }}>
+          {usage.daily.map(d => {
+            const h = Math.max(2, (d.active / maxDaily) * 70)
+            return (
+              <div
+                key={d.date}
+                title={`${d.date}: ${d.active} ativo(s)`}
+                style={{
+                  flex: 1, background: 'var(--sage)',
+                  height: `${h}px`, borderRadius: '3px 3px 0 0',
+                  transition: 'all 0.15s',
+                }}
+              />
+            )
+          })}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--charcoal-light)', marginTop: 6 }}>
+          <span>{usage.daily[0]?.date.slice(5) || '—'}</span>
+          <span>hoje · pico {maxDaily}</span>
+        </div>
+      </div>
+
+      {/* Funnel */}
+      <div style={{
+        background: 'white', borderRadius: 12, padding: 14,
+        border: '1px solid var(--border)', marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 12 }}>
+          FUNIL
+        </div>
+        {usage.funnel.map((f, i) => {
+          const pct = maxFunnel ? (f.count / maxFunnel) * 100 : 0
+          const color = `hsl(${160 - i * 18}, 35%, 55%)`
+          return (
+            <div key={f.step} style={{ marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                <span style={{ color: 'var(--charcoal-mid)' }}>{f.step}</span>
+                <span style={{ fontWeight: 700, color: 'var(--charcoal)' }}>{f.count}</span>
+              </div>
+              <div style={{
+                height: 8, borderRadius: 4, background: 'var(--cream)',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${pct}%`, height: '100%', background: color,
+                  transition: 'width 0.3s',
+                }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Counts strip */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <Metric label="RSVPs" value={usage.counts.rsvps} small />
+        <Metric label="Amizades" value={usage.counts.friendships} small />
+        <Metric label="Grupos" value={usage.counts.groups} small />
+        <Metric label="Feedback" value={usage.counts.feedback} small />
+      </div>
+
+      {/* Recent logins */}
+      <div style={{
+        background: 'white', borderRadius: 12, padding: 14,
+        border: '1px solid var(--border)',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 10 }}>
+          ÚLTIMOS LOGINS
+        </div>
+        {usage.recent.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
+            Nenhum usuário ainda.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {usage.recent.map(u => (
+              <div key={u.google_id || u.email} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '6px 0',
+              }}>
+                {u.picture ? (
+                  <img src={u.picture} alt={u.name} referrerPolicy="no-referrer"
+                    style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                ) : (
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%', background: 'var(--cream)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10,
+                  }}>{(u.name || '?')[0]?.toUpperCase()}</div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12, fontWeight: 600, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {u.name || u.email || u.google_id?.slice(0, 12)}
+                  </div>
+                  {u.email && u.email !== u.name && (
+                    <div style={{
+                      fontSize: 10, color: 'var(--charcoal-light)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {u.email}
+                    </div>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', flexShrink: 0 }}>
+                  {new Date(u.last_seen).toLocaleString('pt-BR')}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function Metric({ label, value, small }) {
+  return (
+    <div style={{
+      background: 'white', borderRadius: 10, padding: small ? '8px 10px' : '10px 12px',
+      border: '1px solid var(--border)', textAlign: 'center', flex: small ? '1 1 80px' : 'unset',
+    }}>
+      <div style={{
+        fontSize: small ? 18 : 22, fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.1,
+      }}>
+        {value}
+      </div>
+      <div style={{
+        fontSize: 9, color: 'var(--charcoal-light)', marginTop: 3,
+        textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600,
+      }}>
+        {label}
+      </div>
+    </div>
+  )
+}
+
 
 // ── Subcomponents ─────────────────────────────────────────
 

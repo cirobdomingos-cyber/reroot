@@ -131,7 +131,7 @@ export default function GroupDetail() {
           {upcomingEvents.map(ev => (
             <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]}
               onRsvp={() => handleRsvp(ev)} onDelete={isAdmin || ev.created_by === googleId ? () => handleDeleteEvent(ev.id) : null}
-              t={t} />
+              members={group.members} t={t} />
           ))}
         </div>
       )}
@@ -142,7 +142,7 @@ export default function GroupDetail() {
           <h2 style={{ ...sectionTitleStyle, color: 'var(--charcoal-light)' }}>Past ({pastEvents.length})</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, opacity: 0.6 }}>
             {pastEvents.map(ev => (
-              <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]} past t={t} />
+              <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]} past members={group.members} t={t} />
             ))}
           </div>
         </>
@@ -170,12 +170,34 @@ export default function GroupDetail() {
 }
 
 
-function EventCard({ event, isRsvped, onRsvp, onDelete, past, t }) {
+function EventCard({ event, isRsvped, onRsvp, onDelete, past, t, members }) {
+  // Find who added the event using the group's member list — the same
+  // payload `created_by` that the backend stamps. Fallback: hide if we
+  // can't resolve (member left the group, etc.).
+  const creator = (members || []).find(m => m.google_id === event.created_by)
+
+  // Catalog imports have "Ver original: <url>" appended to description.
+  // Pull it out as a clickable link, and clean it from the rendered text.
+  const urlMatch = (event.description || '').match(/Ver original:\s*(\S+)/)
+  const sourceUrl = urlMatch ? urlMatch[1] : null
+  const cleanDesc = sourceUrl
+    ? event.description.replace(/\n*Ver original:.*$/, '').trim()
+    : (event.description || '').trim()
+
+  function openSource(e) {
+    e.stopPropagation()
+    if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener')
+  }
+
   return (
-    <div style={{
-      background: 'white', borderRadius: 14, padding: '12px 14px',
-      border: '1px solid var(--border)',
-    }}>
+    <div
+      onClick={sourceUrl ? openSource : undefined}
+      style={{
+        background: 'white', borderRadius: 14, padding: '12px 14px',
+        border: '1px solid var(--border)',
+        cursor: sourceUrl ? 'pointer' : 'default',
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)' }}>{event.name}</div>
@@ -183,19 +205,39 @@ function EventCard({ event, isRsvped, onRsvp, onDelete, past, t }) {
           <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
             📅 {event.date_start?.slice(0, 10)} {event.date_start?.slice(11, 16)}
           </div>
-          {event.description && <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 4 }}>{event.description}</div>}
+          {cleanDesc && <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 4 }}>{cleanDesc}</div>}
+          {sourceUrl && (
+            <div style={{ fontSize: 11, color: 'var(--sage)', marginTop: 4, fontWeight: 600 }}>
+              🔗 Toque pra abrir o original
+            </div>
+          )}
+          {creator && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
+              fontSize: 11, color: 'var(--charcoal-light)',
+            }}>
+              <Avatar name={creator.name} src={creator.picture} size={18} />
+              <span>Adicionado por <strong style={{ color: 'var(--charcoal-mid)' }}>{creator.name}</strong></span>
+            </div>
+          )}
         </div>
         {!past && onRsvp && (
-          <button onClick={onRsvp} style={{
-            padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: isRsvped ? 'var(--sage)' : 'var(--cream)', color: isRsvped ? 'white' : 'var(--charcoal)',
-          }}>
+          <button
+            onClick={e => { e.stopPropagation(); onRsvp() }}
+            style={{
+              padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              background: isRsvped ? 'var(--sage)' : 'var(--cream)', color: isRsvped ? 'white' : 'var(--charcoal)',
+            }}
+          >
             {isRsvped ? t.events_rsvped : t.events_rsvp}
           </button>
         )}
       </div>
       {onDelete && (
-        <button onClick={onDelete} style={{ fontSize: 11, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', marginTop: 6 }}>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete() }}
+          style={{ fontSize: 11, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', marginTop: 6 }}
+        >
           Delete
         </button>
       )}

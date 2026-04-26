@@ -685,10 +685,17 @@ def source_detail(source_id: str):
         events = db.get_future_events_by_source("instagram", ig_handle=handle, limit=200)
         meta = {
             "id": source_id,
-            "label": acc.get("label") or f"@{handle}",
+            "label": acc.get("display_name") or acc.get("label") or f"@{handle}",
             "url": f"https://www.instagram.com/{handle}/",
             "icon": "📷",
-            "blurb": acc.get("category", "") or f"Perfil monitorado @{handle}.",
+            # Prefer the real IG bio when we've enriched it; fall back to
+            # the curator-set label or a generic note.
+            "blurb": (
+                acc.get("bio_snippet") or acc.get("category", "")
+                or f"Perfil monitorado @{handle}."
+            ),
+            "bio": acc.get("bio_snippet", ""),  # full bio for display
+            "profile_pic_url": acc.get("profile_pic_url", ""),
             "category": acc.get("category", ""),
             "last_scraped_at": acc.get("last_scraped_at"),
         }
@@ -2052,6 +2059,17 @@ def admin_list_feedback(requesting_email: str = "", limit: int = 200):
     """Founder-only: read submitted feedback, newest first."""
     _require_founder(requesting_email)
     return {"feedback": db.list_feedback(limit=limit)}
+
+
+@app.get("/admin/usage-stats")
+def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
+    """
+    Founder-only: aggregated usage metrics — DAU/WAU/MAU, funnel,
+    daily series, recent logins. Used by the dashboard section in
+    the Curar tab.
+    """
+    _require_founder(requesting_email)
+    return db.get_usage_stats(window_days=window_days)
 
 
 class FeedbackStatusUpdate(BaseModel):

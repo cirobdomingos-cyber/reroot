@@ -335,17 +335,30 @@ export default function Events() {
             <div className="screen-header__title">{t.events_title}</div>
             <div className="screen-header__sub">{t.events_sub}</div>
           </div>
-          <button
-            onClick={() => setSearchOpen(o => !o)}
-            style={{
-              width: 36, height: 36, borderRadius: 12,
-              background: searchOpen ? 'var(--charcoal)' : 'white',
-              border: searchOpen ? 'none' : '1.5px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
-              color: searchOpen ? 'white' : 'var(--charcoal-mid)',
-            }}
-          >🔍</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => navigate('/sources')}
+              title="Fontes monitoradas"
+              style={{
+                width: 36, height: 36, borderRadius: 12,
+                background: 'white', border: '1.5px solid var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, cursor: 'pointer',
+                color: 'var(--charcoal-mid)',
+              }}
+            >📡</button>
+            <button
+              onClick={() => setSearchOpen(o => !o)}
+              style={{
+                width: 36, height: 36, borderRadius: 12,
+                background: searchOpen ? 'var(--charcoal)' : 'white',
+                border: searchOpen ? 'none' : '1.5px solid var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
+                color: searchOpen ? 'white' : 'var(--charcoal-mid)',
+              }}
+            >🔍</button>
+          </div>
         </div>
 
         {/* Collapsible search */}
@@ -639,26 +652,6 @@ export default function Events() {
         </AnimatePresence>
       )}
 
-      {/* ── Sources transparency footer — links to the catalog of monitored
-          sources so users see where the events come from. */}
-      {!loading && !isVenueMode && filteredEvents.length > 0 && (
-        <button
-          onClick={() => navigate('/sources')}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            margin: '12px 16px 24px', padding: '12px 14px',
-            background: 'transparent',
-            border: '1px dashed var(--border)',
-            borderRadius: 12, cursor: 'pointer',
-            width: 'calc(100% - 32px)',
-            color: 'var(--charcoal-mid)',
-            fontSize: 12, fontWeight: 600,
-          }}
-        >
-          <span>📡 De onde vem isso? Ver fontes monitoradas</span>
-          <span style={{ color: 'var(--charcoal-light)' }}>→</span>
-        </button>
-      )}
 
       {/* ── Notification toast ── */}
       <AnimatePresence>
@@ -1381,7 +1374,7 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
           {shareStatus === 'shared' ? '✓ Compartilhado'
             : shareStatus === 'copied' ? '✓ Link copiado'
             : shareStatus === 'failed' ? '✕ Falhou'
-            : '📤 Compartilhar'}
+            : '🔗 Compartilhar'}
         </button>
 
         {rsvped && (

@@ -428,12 +428,14 @@ async def _enrich_profiles(apify_token: str, direct_urls: list[str]) -> None:
             "profilePicUrl", "profile_pic_url", "profilePicUrlHD", "profile_pic_url_hd",
             "ownerProfilePicUrl",
         )
-        if display_name or profile_pic_url:
+        bio_snippet = _pick(item, "biography", "bio")[:500]
+        if display_name or profile_pic_url or bio_snippet:
             try:
                 db.update_ig_account_profile(
                     handle=handle,
                     display_name=display_name,
                     profile_pic_url=profile_pic_url,
+                    bio_snippet=bio_snippet,
                 )
             except Exception as e:
                 log.warning(f"DB profile update failed for @{handle}: {e}")
