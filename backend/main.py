@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""  # falls back to smtp_user if empty
+    # Android Trusted Web Activity — exposes /.well-known/assetlinks.json so
+    # the Play Store app can verify domain ownership. Both vars come from
+    # PWABuilder's signing-key-info.txt after generating the AAB bundle.
+    twa_package_name: str = "app.aue"
+    twa_sha256_fingerprint: str = ""  # e.g. "AB:CD:EF:..." — empty disables endpoint
 
 
 settings = Settings()
@@ -148,6 +153,130 @@ app.add_middleware(
 
 
 # ── Endpoints ──
+
+# ── TWA Digital Asset Links ──────────────────────────────
+# Required for the Android TWA (PWABuilder bundle) to verify it's allowed
+# to handle this domain's URLs without the URL bar showing. The file is
+# served at exactly /.well-known/assetlinks.json (Play Store + Chrome
+# fetch this path on first launch and on updates).
+@app.get("/.well-known/assetlinks.json")
+def asset_links():
+    fp = (settings.twa_sha256_fingerprint or "").strip()
+    if not fp:
+        # Until the fingerprint is set in env, return empty list — the TWA
+        # will show a URL bar (degraded UX) but nothing breaks.
+        return []
+    return [{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": settings.twa_package_name,
+            "sha256_cert_fingerprints": [fp],
+        },
+    }]
+
+
+# ── Privacy policy ───────────────────────────────────────
+# Plain HTML, served at /privacy. Required URL for Play Console submission
+# (data safety form references it). Easier to keep here than as a React
+# route because Play crawlers prefer plain HTML over SPA-rendered pages.
+_PRIVACY_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>auê — Política de Privacidade</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+         max-width: 720px; margin: 40px auto; padding: 0 20px;
+         color: #2C2C2C; line-height: 1.6; }
+  h1 { color: #E8623F; }
+  h2 { margin-top: 28px; color: #2C2C2C; }
+  a  { color: #7A9E7E; }
+  small { color: #888; }
+  code { background: #F4EFE6; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>auê — Política de Privacidade</h1>
+<small>Última atualização: 26 de abril de 2026</small>
+
+<p>O <strong>auê</strong> é um catálogo social de eventos em Curitiba.
+Esta política descreve, de forma objetiva, quais dados a gente coleta,
+por quê, e o que você pode pedir pra remover.</p>
+
+<h2>O que a gente coleta</h2>
+<ul>
+  <li><strong>Login Google</strong>: nome, email, foto de perfil e ID Google. Necessário pra
+  RSVPs, lista de amigos e sincronização entre dispositivos.</li>
+  <li><strong>Atividade no app</strong>: eventos que você confirmou (RSVPs), amizades aceitas,
+  grupos que entrou, lugares favoritados. Tudo armazenado vinculado ao seu ID Google.</li>
+  <li><strong>Feedback</strong>: mensagens enviadas via "Mandar feedback" no Perfil são
+  guardadas com seu email pra que possamos responder.</li>
+  <li><strong>Métricas anônimas</strong>: contagem de uso (DAU, WAU) sem identificação
+  pessoal, agregada pelo backend.</li>
+</ul>
+
+<h2>O que a gente NÃO coleta</h2>
+<ul>
+  <li>Localização precisa (GPS).</li>
+  <li>Lista de contatos do celular.</li>
+  <li>Conteúdo de outras redes sociais além do que você publicou publicamente.</li>
+  <li>Dados de pagamento — o app não cobra nada nem processa pagamentos.</li>
+</ul>
+
+<h2>De onde vêm os eventos do catálogo</h2>
+<p>Os eventos exibidos vêm de fontes públicas: Sympla, Eventbrite, sites de instituições
+culturais (MON, SESC, Teatro Guaíra, Catraca Livre, Turismo Curitiba) e perfis públicos
+do Instagram que você pode ver na tela <em>Fontes monitoradas</em>. Pra extrair informações
+estruturadas das legendas do Instagram, a gente usa a API da <a href="https://www.anthropic.com/legal/privacy">Anthropic (Claude)</a>;
+nada de dados pessoais seus é enviado, só o conteúdo público dos posts.</p>
+
+<h2>Quem mais vê seus dados</h2>
+<ul>
+  <li>Seus amigos veem os eventos que você confirmou (a menos que você desative em
+  <em>Privacidade</em>).</li>
+  <li>Membros dos seus grupos veem os eventos que você adicionou ao grupo.</li>
+  <li>O fundador (administrador) tem acesso ao painel de uso e ao feedback enviado.</li>
+  <li>A gente <strong>não vende</strong> dados, <strong>não compartilha</strong> com anunciantes,
+  <strong>não há integração com adtech</strong>.</li>
+</ul>
+
+<h2>Por quanto tempo a gente guarda</h2>
+<p>Enquanto sua conta estiver ativa. Se você quiser deletar tudo, mande email pra
+<code>ciro.b.domingos@gmail.com</code> com assunto <em>"Deletar minha conta auê"</em> —
+removo seus dados em até 7 dias e te confirmo.</p>
+
+<h2>Seus direitos</h2>
+<p>Pela <strong>LGPD</strong> (Lei Geral de Proteção de Dados), você tem direito a:</p>
+<ul>
+  <li>Saber quais dados a gente tem sobre você.</li>
+  <li>Pedir correção ou deleção.</li>
+  <li>Pedir portabilidade (exportação dos seus dados).</li>
+  <li>Revogar consentimento a qualquer momento.</li>
+</ul>
+<p>Pra exercer qualquer um, mande email pro contato abaixo.</p>
+
+<h2>Crianças</h2>
+<p>O app não é destinado a menores de 13 anos. Quem tem entre 13 e 18 precisa
+do consentimento dos responsáveis pra usar.</p>
+
+<h2>Mudanças nesta política</h2>
+<p>Se a política mudar, atualizo a data no topo e aviso usuários ativos via email
+ou notificação no app.</p>
+
+<h2>Contato</h2>
+<p>Ciro Beduschi Domingos · <code>ciro.b.domingos@gmail.com</code> · Curitiba, PR, Brasil</p>
+
+</body>
+</html>
+"""
+
+
+@app.get("/privacy", response_class=PlainTextResponse)
+def privacy():
+    return PlainTextResponse(_PRIVACY_HTML, media_type="text/html; charset=utf-8")
+
 
 @app.get("/health")
 def health():
