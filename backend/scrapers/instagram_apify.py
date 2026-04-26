@@ -156,10 +156,14 @@ async def fetch_events(
         if h not in profile_seen:
             profile_seen[h] = {
                 "display_name": _pick(p,
+                    # parentData.* fields are added when addParentData=True
+                    "parentData.fullName", "parentData.full_name",
                     "ownerFullName", "ownerFullname",
                     "owner.full_name", "owner.fullName",
                 ),
                 "profile_pic_url": _pick(p,
+                    "parentData.profilePicUrl", "parentData.profile_pic_url",
+                    "parentData.profilePicUrlHD",
                     "ownerProfilePicUrl", "ownerProfilePicURL", "ownerProfilePicture",
                     "owner.profile_pic_url", "owner.profilePicUrl", "owner.profilePicture",
                 ),
@@ -217,7 +221,11 @@ async def _run_apify_scrape(
         "resultsType": "posts",
         # `resultsLimit` is *per profile* in this actor.
         "resultsLimit": posts_per_account,
-        "addParentData": False,
+        # Enable so each post item gets parent profile metadata merged in
+        # (full name, profile pic url, bio, follower count). Without this,
+        # the post payload has only ownerUsername — not enough to render
+        # avatars on the Sources/Curar screens.
+        "addParentData": True,
     }
     try:
         async with httpx.AsyncClient(timeout=APIFY_TIMEOUT_S) as client:
