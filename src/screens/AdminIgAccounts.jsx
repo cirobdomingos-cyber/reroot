@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import Aue from '../components/Aue'
 
 // Admin: collaborative curation of Instagram accounts.
 // - Anyone logged in can VIEW the catalog.
@@ -32,6 +33,7 @@ export default function AdminIgAccounts() {
 
   const [accounts, setAccounts] = useState([])
   const [curators, setCurators] = useState([])
+  const [feedback, setFeedback] = useState([])
   const [isCurator, setIsCurator] = useState(false)
   const [isFounder, setIsFounder] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -63,6 +65,16 @@ export default function AdminIgAccounts() {
       setCurators(curData.curators || [])
       setIsCurator(!!accData.is_curator)
       setIsFounder(!!accData.is_founder)
+      // Founders also see submitted feedback. The feedback endpoint is
+      // founder-gated server-side; we only fetch it when the previous
+      // calls already confirmed founder status.
+      if (accData.is_founder) {
+        try {
+          const fbRes = await fetch(withEmail(`${API_BASE}/admin/feedback`, email))
+          const fbData = await fbRes.json()
+          setFeedback(fbData.feedback || [])
+        } catch { /* feedback fetch is best-effort */ }
+      }
       setError(null)
     } catch (e) {
       setError(`Falha ao carregar: ${e.message}`)
@@ -344,6 +356,74 @@ export default function AdminIgAccounts() {
           busy={busy}
         />
       )}
+
+      {isFounder && <FeedbackSection feedback={feedback} />}
+    </div>
+  )
+}
+
+
+function FeedbackSection({ feedback }) {
+  return (
+    <div style={{
+      marginTop: 32, paddingTop: 24,
+      borderTop: '2px dashed var(--border)',
+    }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
+        💬 Feedback dos usuários
+      </h2>
+      <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
+        Mensagens enviadas por feedbackers. Os {feedback.length} mais recentes,
+        novos primeiro.
+      </p>
+      {feedback.length === 0 ? (
+        <div style={{
+          background: 'white', borderRadius: 12, padding: '14px 16px',
+          border: '1px dashed var(--border)',
+          fontSize: 12, color: 'var(--charcoal-light)',
+        }}>
+          Nenhum feedback ainda.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {feedback.map(fb => (
+            <div
+              key={fb.id}
+              style={{
+                background: 'white', border: '1px solid var(--border)',
+                borderRadius: 12, padding: '12px 14px',
+              }}
+            >
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                marginBottom: 6, gap: 8,
+              }}>
+                <div style={{
+                  fontSize: 12, fontWeight: 700, color: 'var(--charcoal)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  flex: 1, minWidth: 0,
+                }}>
+                  {fb.email}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', flexShrink: 0 }}>
+                  {new Date(fb.created_at).toLocaleString('pt-BR')}
+                </div>
+              </div>
+              <div style={{
+                fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5,
+                whiteSpace: 'pre-line',
+              }}>
+                {fb.text}
+              </div>
+              {fb.context && (
+                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 6 }}>
+                  📍 {fb.context}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -428,7 +508,7 @@ function NotACuratorMessage({ email }) {
         Você ainda não é curador
       </div>
       <p style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, margin: '0 0 12px' }}>
-        A curadoria do auê é colaborativa, mas só pessoas liberadas podem
+        A curadoria do <Aue /> é colaborativa, mas só pessoas liberadas podem
         adicionar contas. Mande seu email pro fundador e peça liberação. Depois
         é só atualizar essa página.
       </p>

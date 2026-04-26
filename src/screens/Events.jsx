@@ -10,6 +10,7 @@ import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
 import Avatar from '../components/Avatar'
+import Aue from '../components/Aue'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
@@ -25,6 +26,7 @@ const SOURCE_CONFIG = {
   sympla:           { label: 'Sympla',            icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
   eventbrite:       { label: 'Eventbrite',        icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
   meetup:           { label: 'Meetup',            icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
+  instagram:        { label: 'Instagram',          icon: '📷', bg: 'linear-gradient(135deg, #FCE4EC, #F8BBD0)', border: '#F48FB1', color: '#AD1457' },
 }
 
 const VENUE_SUBTYPES = [
@@ -505,7 +507,7 @@ export default function Events() {
               Sem ideias para hoje?
             </div>
             <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2, lineHeight: 1.35 }}>
-              auê IA pode sugerir algo baseado no seu humor →
+              <Aue /> IA pode sugerir algo baseado no seu humor →
             </div>
           </div>
         </button>
@@ -593,6 +595,7 @@ export default function Events() {
                     onOpen={() => openDetail(ev.id)}
                     onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+                    onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
                     t={t}
                   />
                 </motion.div>
@@ -646,7 +649,12 @@ export default function Events() {
         )}
       </AnimatePresence>
 
-      {/* ── Detail drawer ── */}
+      {/* ── Detail drawer ──
+          Fixed-positioned so it pins to the phone-shell (which has
+          `transform: translateZ(0)` to act as a containing block). If we
+          used `absolute`, the drawer would scale to the parent scroll
+          content height — making it thousands of pixels tall on a long
+          catalog and leaving big blank areas after the content. */}
       <AnimatePresence>
         {selectedEventId && (
           <motion.div
@@ -656,8 +664,8 @@ export default function Events() {
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             style={{
-              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'var(--cream)', zIndex: 30,
+              position: 'fixed', inset: 0,
+              background: 'var(--cream)', zIndex: 200,
               overflowY: 'auto', scrollbarWidth: 'none',
             }}
           >
@@ -676,6 +684,7 @@ export default function Events() {
                 rsvped={!!state.rsvps[detailEvent.id]}
                 friendsGoing={friendsByEventId[detailEvent.id] || []}
                 onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+                onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 onAttended={() => {
@@ -695,7 +704,39 @@ export default function Events() {
 
 // ── EventCard (compact horizontal layout) ────────────────────────────────────
 
-function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, t }) {
+// SourceBadge — shared between EventCard and DetailPanel. For Instagram
+// sources, shows "📷 @<handle>" and links to the IG profile's source page.
+// For institutional sources, shows the standard source label and links to
+// the source's page on /sources. e.stopPropagation() so card click won't
+// also fire when the badge is tapped.
+function SourceBadge({ ev, onSourceTap }) {
+  if (ev.isCustom) {
+    return null  // custom events don't have a "source" surface
+  }
+  const isIg = ev.source === 'instagram' && ev.igHandle
+  const src = SOURCE_CONFIG[ev.source]
+  if (!src) return null
+  const label = isIg ? `@${ev.igHandle}` : src.label
+  const targetId = isIg ? `ig:${ev.igHandle}` : ev.source
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onSourceTap?.(targetId) }}
+      title={isIg ? `Ver eventos de @${ev.igHandle}` : `Ver eventos de ${src.label}`}
+      style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+        background: src.bg, color: src.color,
+        padding: '2px 8px', borderRadius: 5,
+        display: 'inline-flex', alignItems: 'center', gap: 3,
+        border: `1px solid ${src.border}`, cursor: 'pointer',
+      }}
+    >
+      {src.icon} {label}
+    </button>
+  )
+}
+
+
+function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, onSourceTap, t }) {
   // Split "Venue Name · Neighborhood" into two parts
   const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -798,19 +839,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, t 
         {/* Bottom row: badges + RSVP button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-            {ev.source && SOURCE_CONFIG[ev.source] && (() => {
-              const src = SOURCE_CONFIG[ev.source]
-              return (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-                  background: src.bg, color: src.color,
-                  padding: '2px 8px', borderRadius: 5,
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                }}>
-                  {src.icon} {src.label}
-                </span>
-              )
-            })()}
+            <SourceBadge ev={ev} onSourceTap={onSourceTap} />
             {ev.isCustom && (
               <span style={{
                 fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
@@ -967,7 +996,7 @@ function VenueRow({ ev, saved, onSave, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, userNeighborhood, t }) {
+function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [copied, setCopied] = useState(false)
 
@@ -988,18 +1017,18 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
   return (
     <>
       {/* Hero */}
-      <div style={{ height: 180, background: ev.headerBg, position: 'relative' }}>
+      <div style={{ height: 120, background: ev.headerBg, position: 'relative' }}>
         <button onClick={onClose} style={{
-          position: 'absolute', top: 16, left: 16,
-          width: 36, height: 36, borderRadius: '50%',
+          position: 'absolute', top: 12, left: 12,
+          width: 32, height: 32, borderRadius: '50%',
           background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+          fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         }}>←</button>
-        <div style={{ position: 'absolute', bottom: 16, left: 16, fontSize: 36 }}>{ev.icon}</div>
+        <div style={{ position: 'absolute', bottom: 12, left: 14, fontSize: 30 }}>{ev.icon}</div>
         {ev.isLowPressure && (
           <div style={{
-            position: 'absolute', bottom: 16, right: 16,
+            position: 'absolute', bottom: 12, right: 12,
             fontSize: 10, background: 'rgba(122,158,126,0.9)', color: 'white',
             padding: '4px 10px', borderRadius: 8, fontWeight: 700,
           }}>
@@ -1009,25 +1038,36 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
       </div>
 
       {/* Content */}
-      <div style={{ padding: '20px 20px 100px' }}>
+      <div style={{ padding: '14px 20px 28px' }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
           {ev.name}
         </div>
 
-        {/* Source badge — always visible so user knows where this event came from */}
+        {/* Source badge — clickable, opens the source's page on /sources.
+            For Instagram events, surfaces the actual handle (@<handle>) so
+            the user knows which monitored profile this came from. */}
         {(ev.source && SOURCE_CONFIG[ev.source]) ? (() => {
+          const isIg = ev.source === 'instagram' && ev.igHandle
           const src = SOURCE_CONFIG[ev.source]
+          const label = isIg ? `@${ev.igHandle}` : src.label
+          const targetId = isIg ? `ig:${ev.igHandle}` : ev.source
           return (
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 12px', borderRadius: 8, marginBottom: 10,
-              background: src.bg, border: `1px solid ${src.border}`,
-            }}>
+            <button
+              onClick={() => onSourceTap?.(targetId)}
+              title={isIg ? `Ver eventos de @${ev.igHandle}` : `Ver eventos de ${src.label}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 8, marginBottom: 10,
+                background: src.bg, border: `1px solid ${src.border}`,
+                cursor: 'pointer',
+              }}
+            >
               <span style={{ fontSize: 12 }}>{src.icon}</span>
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: src.color, textTransform: 'uppercase' }}>
-                {src.label}
+                {label}
               </span>
-            </div>
+              <span style={{ fontSize: 10, color: src.color, opacity: 0.6 }}>→</span>
+            </button>
           )
         })() : ev.isCustom ? (
           <div style={{
@@ -1065,47 +1105,51 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
           </div>
         )}
 
-        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.8, marginBottom: 14 }}>
-          📍 {ev.venue}{ev.city && !ev.venue?.includes(ev.city) ? ` · ${ev.city}` : ''}<br/>
+        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 12 }}>
+          <div>📍 {ev.venue}{ev.city && !ev.venue?.includes(ev.city) ? ` · ${ev.city}` : ''}</div>
           {ev.venueAddress && (
-            <span style={{ marginLeft: 18, fontSize: 12, color: 'var(--charcoal-light)' }}>
-              {ev.venueAddress}<br/>
-            </span>
+            <div style={{ marginLeft: 18, fontSize: 12, color: 'var(--charcoal-light)' }}>
+              {ev.venueAddress}
+            </div>
           )}
-          {isVenue
-            ? `🕐 ${t.events_venue_open}`
-            : `🗓 ${ev.date} · ${ev.duration || ev.time}`
-          }<br/>
-          {ev.categoryEmoji} {ev.categoryLabel}
-          {ev.price && <><br/>💰 {ev.price}</>}
-          {ev.hasFood && <><br/>{t.events_food_drink}</>}
+          <div>
+            {isVenue
+              ? `🕐 ${t.events_venue_open}`
+              : `🗓 ${ev.date} · ${ev.duration || ev.time}`
+            }
+          </div>
+          <div>{ev.categoryEmoji} {ev.categoryLabel}</div>
+          {ev.price && <div>💰 {ev.price}</div>}
+          {ev.hasFood && <div>{t.events_food_drink}</div>}
         </div>
 
         {/* Price badge + Kids Welcome tag in detail view */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-          {ev.priceTier === 'free' && (
-            <span className="tag tag--sage">{t.tag_free}</span>
-          )}
-          {ev.kidsWelcome && (
-            <span className="tag" style={{ background: '#FFF3E0', color: '#E65100' }}>
-              {t.tag_kids}
-            </span>
-          )}
-        </div>
+        {(ev.priceTier === 'free' || ev.kidsWelcome) && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            {ev.priceTier === 'free' && (
+              <span className="tag tag--sage">{t.tag_free}</span>
+            )}
+            {ev.kidsWelcome && (
+              <span className="tag" style={{ background: '#FFF3E0', color: '#E65100' }}>
+                {t.tag_kids}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Friends going (live from friends_feed) */}
         {friendsGoing.length > 0 && (
           <div style={{
-            background: 'white', borderRadius: 14, padding: '12px 14px',
-            border: '1px solid var(--border)', marginBottom: 16,
+            background: 'white', borderRadius: 12, padding: '10px 12px',
+            border: '1px solid var(--border)', marginBottom: 12,
           }}>
             <div style={{
               fontSize: 11, fontWeight: 700, color: '#5B8DD9',
-              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
             }}>
               Amigos vão
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {friendsGoing.map((f, i) => (
                 <button
                   key={f.google_id ?? i}
@@ -1118,7 +1162,7 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
                     textAlign: 'left',
                   }}
                 >
-                  <Avatar name={f.name} src={f.picture} size={32} />
+                  <Avatar name={f.name} src={f.picture} size={28} />
                   <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
                     {f.name}
                   </div>
@@ -1134,7 +1178,7 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
         {(() => {
           const desc = cleanDescription(ev.description)
           return desc ? (
-            <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.6, marginBottom: 16, whiteSpace: 'pre-line' }}>
+            <div style={{ fontSize: 14, color: 'var(--charcoal)', lineHeight: 1.5, marginBottom: 12, whiteSpace: 'pre-line' }}>
               {desc}
             </div>
           ) : null
@@ -1157,7 +1201,7 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
               rel="noopener noreferrer"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '8px 14px', borderRadius: 10, marginBottom: 16,
+                padding: '7px 12px', borderRadius: 10, marginBottom: 12,
                 background: 'var(--sage-pale)', color: 'var(--sage)',
                 fontSize: 12, fontWeight: 700, textDecoration: 'none',
                 border: '1px solid var(--sage)',
@@ -1171,7 +1215,7 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
         {ev.pitch && (
           <div style={{
             background: 'var(--sage-pale)', borderRadius: 12,
-            padding: '12px 14px', marginBottom: 18,
+            padding: '10px 12px', marginBottom: 12,
             borderLeft: '3px solid var(--sage)',
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 4 }}>

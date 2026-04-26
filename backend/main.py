@@ -859,6 +859,15 @@ def friends_list(google_id: str):
     return {"friends": friends}
 
 
+@app.delete("/friends/{friend_google_id}")
+def remove_friend(friend_google_id: str, google_id: str):
+    """Remove a friendship. Either side can call this."""
+    if not google_id or not friend_google_id:
+        raise HTTPException(status_code=400, detail="google_id required")
+    ok = db.remove_friendship(google_id, friend_google_id)
+    return {"ok": ok}
+
+
 @app.get("/friends/feed")
 def friends_feed(google_id: str):
     """
@@ -1135,6 +1144,15 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         # cohortGoing simulado — em produção viria de uma tabela de RSVPs
         "cohortGoing": [],
         "source": ev.source,
+        # Surface the IG handle so the frontend can show "@<handle>" instead
+        # of a generic "Instagram" badge. external_id is "ig_<handle>_<shortcode>".
+        "igHandle": (
+            ev.external_id.split("_", 2)[1]
+            if ev.source == "instagram"
+            and ev.external_id.startswith("ig_")
+            and len(ev.external_id.split("_", 2)) >= 2
+            else None
+        ),
         "dateStart": ev.date_start.isoformat(),
     }
 

@@ -69,6 +69,12 @@ input  { font-family: inherit; }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  /* `transform` makes this element the containing block for any
+     position:fixed descendants. Lets the event detail drawer (and any
+     other fullscreen modal) pin to the phone shell on desktop preview
+     instead of escaping to the browser viewport, while still working
+     correctly on mobile where the shell already fills the viewport. */
+  transform: translateZ(0);
 }
 /* Dynamic island */
 .phone-shell::before {

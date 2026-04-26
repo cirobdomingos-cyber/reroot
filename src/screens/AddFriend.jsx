@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { addFriend, lookupFriendInvite } from '../services/api'
 import Avatar from '../components/Avatar'
+import Aue from '../components/Aue'
 
 // Landing screen for friend invite links: /#/friend/<code>
 //
@@ -172,7 +173,7 @@ function Confirm({ inviter, onConfirm, onCancel }) {
         {inviter?.name || 'Pessoa'}
       </div>
       <div style={{ fontSize: 14, color: 'var(--charcoal-mid)', marginBottom: 24 }}>
-        Adicionar como amigo no auê?
+        Adicionar como amigo no <Aue />?
       </div>
       <PrimaryBtn label="Adicionar" onClick={onConfirm} />
       <div style={{ height: 10 }} />

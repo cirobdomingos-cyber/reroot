@@ -129,6 +129,7 @@ function normalizeBackendEvent(ev) {
     pitch: ev.pitch,
     url: ev.url,
     source: ev.source || 'live',
+    igHandle: ev.igHandle || null,
     isReal: true,
     dateStart: ev.dateStart,
     dateTag: computeDateTag(ev.dateStart),
@@ -442,6 +443,20 @@ export async function addFriend(googleId, code) {
   }
   return null
 }
+
+export async function removeFriend(googleId, friendGoogleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/${encodeURIComponent(friendGoogleId)}?google_id=${encodeURIComponent(googleId)}`,
+      { method: 'DELETE' },
+    )
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable — caller can show a generic error
+  }
+  return null
+}
+
 
 export async function getFriends(googleId) {
   try {

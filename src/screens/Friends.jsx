@@ -20,6 +20,7 @@ import { useT } from '../i18n'
 import {
   getMyFriendCode,
   addFriend,
+  removeFriend,
   getFriends,
   fetchFriendsFeed,
   trackEvent,
@@ -62,6 +63,13 @@ export default function Friends({ embedded = false }) {
   const [friends, setFriends] = useState([])
   const [feed, setFeed] = useState([])
   const [loading, setLoading] = useState(true)
+
+  async function handleRemove(friend) {
+    if (!confirm(`Remover ${friend.name} da sua lista de amigos?`)) return
+    const r = await removeFriend(googleId, friend.google_id)
+    if (r?.ok) reload()
+    else alert('Falha ao remover. Tenta de novo.')
+  }
 
   const reload = useCallback(async () => {
     if (!googleId) { setLoading(false); return }
@@ -321,6 +329,19 @@ export default function Friends({ embedded = false }) {
                     </div>
                   )}
                 </div>
+                {f.google_id && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRemove(f) }}
+                    title={`Remover ${f.name}`}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: 14, color: 'var(--charcoal-light)',
+                      padding: 6, flexShrink: 0,
+                    }}
+                  >
+                    🗑
+                  </button>
+                )}
                 {f.google_id && (
                   <div style={{ fontSize: 16, color: 'var(--charcoal-light)', flexShrink: 0 }}>
                     →

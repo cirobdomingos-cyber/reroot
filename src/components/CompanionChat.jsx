@@ -541,7 +541,7 @@ export default function CompanionChat({ open, onClose }) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--charcoal)' }}>
-                {lang === 'pt' ? 'Companheiro do auê' : 'auê Companion'}
+                {lang === 'pt' ? 'Sugerir rolê · auê IA' : 'auê AI · Suggest a plan'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--charcoal-mid)' }}>
                 {lang === 'pt'

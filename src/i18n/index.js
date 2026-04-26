@@ -221,8 +221,8 @@ export const T = {
     partner_skip:           'Pular',
 
     // ── Companion FAB ─────────────────────────────────────
-    companion_fab_label:    'Companheiro',
-    companion_fab_hint:     'Converse com seu companheiro',
+    companion_fab_label:    'Sugerir rolê',
+    companion_fab_hint:     'Pede uma sugestão de evento pro auê IA',
     partner_week1_items: [
       { emoji: '📖', text: 'O Framework de Chegada — uma reflexão de 10 min' },
       { emoji: '☕', text: 'Um evento do cohort sem pressão' },

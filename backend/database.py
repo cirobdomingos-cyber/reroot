@@ -961,6 +961,22 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
     return {"status": "ok"}
 
 
+def remove_friendship(google_id: str, friend_google_id: str) -> bool:
+    """
+    Remove a friendship between two users. Returns True if a row was
+    deleted, False if no friendship existed. The user_a/user_b pair is
+    canonical (sorted) so order of args doesn't matter.
+    """
+    user_a, user_b = sorted([google_id, friend_google_id])
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM friendships WHERE user_a = ? AND user_b = ?",
+            (user_a, user_b),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def accept_friendship(google_id: str, friend_google_id: str) -> bool:
     """
     Flip a pending friendship to accepted.

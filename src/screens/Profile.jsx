@@ -4,6 +4,7 @@ import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import Avatar from '../components/Avatar'
+import Aue from '../components/Aue'
 
 export default function Profile() {
   const { state, dispatch } = useApp()
@@ -223,7 +224,7 @@ export default function Profile() {
               📡 Fontes monitoradas
             </div>
             <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-              Veja de onde vem o catálogo do auê.
+              Veja de onde vem o catálogo do <Aue />.
             </div>
           </div>
           <span style={{ fontSize: 16, color: 'var(--charcoal-light)' }}>→</span>
