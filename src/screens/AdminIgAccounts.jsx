@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import Aue from '../components/Aue'
+import Avatar from '../components/Avatar'
 
 // Admin: collaborative curation of Instagram accounts.
 // - Anyone logged in can VIEW the catalog.
@@ -833,24 +834,13 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource }) {
       opacity: acc.enabled ? 1 : 0.55,
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
-      {/* Profile pic — captured from Apify's first post; falls back to
-          Instagram glyph when not yet enriched. */}
-      <div style={{
-        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--cream)', overflow: 'hidden',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18,
-      }}>
-        {pic ? (
-          <img
-            src={pic}
-            alt={acc.handle}
-            referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : '📷'}
-      </div>
+      {/* Profile pic — captured from Apify; falls back to a cream-bg
+          initial badge (via Avatar) when not yet enriched. */}
+      <Avatar
+        src={pic}
+        name={acc.display_name || acc.label || acc.handle}
+        size={36}
+      />
       <button
         onClick={() => onToggle(acc)}
         disabled={busy}

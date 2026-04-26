@@ -711,16 +711,19 @@ def source_detail(source_id: str):
             "icon": meta_src["icon"],
             "blurb": meta_src["blurb"],
         }
-    # Apply the same content filters as /events so the detail view doesn't
-    # surface events the catalog already hides.
+    # Apply the same filters as /events so the detail view doesn't surface
+    # events the catalog already hides — content/region filter PLUS dedup.
+    # Without dedup, near-duplicates that the catalog collapses (e.g. five
+    # variants of one MON concert) re-appear here.
     cleaned = [
         ev for ev in events
         if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
     ]
+    deduped = _dedupe_events(cleaned)
     return {
         "source": meta,
-        "events": [_to_frontend(ev) for ev in cleaned],
-        "total": len(cleaned),
+        "events": [_to_frontend(ev) for ev in deduped],
+        "total": len(deduped),
     }
 
 

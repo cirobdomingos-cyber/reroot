@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchSources } from '../services/api'
+import Avatar from '../components/Avatar'
 
 // Transparency surface: lists every source the catalog pulls from with a
 // future-event count. Two groups — institutional scrapers (museums, theatres,
@@ -84,7 +85,7 @@ export default function Sources() {
               data.instagram.map(s => (
                 <SourceRow
                   key={s.handle}
-                  icon="📷"
+                  isIg
                   picUrl={s.profile_pic_url}
                   label={s.label}
                   blurb={s.category ? `@${s.handle} · ${s.category}` : `@${s.handle}`}
@@ -121,7 +122,7 @@ function Section({ title, sub, children }) {
 }
 
 
-function SourceRow({ icon, picUrl, label, blurb, count, officialUrl, onOpen }) {
+function SourceRow({ icon, isIg, picUrl, label, blurb, count, officialUrl, onOpen }) {
   return (
     <div
       onClick={onOpen}
@@ -132,22 +133,17 @@ function SourceRow({ icon, picUrl, label, blurb, count, officialUrl, onOpen }) {
         display: 'flex', alignItems: 'center', gap: 12,
       }}
     >
-      <div style={{
-        width: 40, height: 40, borderRadius: picUrl ? '50%' : 11, flexShrink: 0,
-        background: 'var(--cream)', fontSize: 20,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        {picUrl ? (
-          <img
-            src={picUrl}
-            alt={label}
-            referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : icon}
-      </div>
+      {isIg ? (
+        <Avatar src={picUrl} name={label} size={40} />
+      ) : (
+        <div style={{
+          width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+          background: 'var(--cream)', fontSize: 20,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {icon}
+        </div>
+      )}
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{

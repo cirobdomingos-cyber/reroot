@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { fetchSourceDetail } from '../services/api'
+import Avatar from '../components/Avatar'
 
 // Per-source detail: header (label, blurb, link to official), then a list
 // of upcoming events from that source. Tap an event → opens it in /events.
@@ -68,24 +69,26 @@ export default function SourceDetail() {
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 56, height: 56,
-            borderRadius: source.profile_pic_url ? '50%' : 14,
-            flexShrink: 0,
-            background: 'var(--cream)', fontSize: 28,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            overflow: 'hidden',
-          }}>
-            {source.profile_pic_url ? (
-              <img
-                src={source.profile_pic_url}
-                alt={source.label}
-                referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = 'none' }}
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            ) : (source.icon || '📡')}
-          </div>
+          {/* IG handles use Avatar (round + initial fallback). Institutional
+              sources keep the iconic colored square because they have a
+              distinct icon (🖼 for MON, 🎭 for SESC, etc.) — meaningful, not
+              a placeholder. */}
+          {source.id?.startsWith('ig:') ? (
+            <Avatar
+              src={source.profile_pic_url}
+              name={source.label}
+              size={56}
+            />
+          ) : (
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, flexShrink: 0,
+              background: 'var(--cream)', fontSize: 28,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
+            }}>
+              {source.icon || '📡'}
+            </div>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{
               fontSize: 20, fontWeight: 700, margin: 0,
