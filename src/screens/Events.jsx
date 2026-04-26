@@ -768,7 +768,10 @@ function SourceBadge({ ev, onSourceTap }) {
         border: `1px solid ${src.border}`, cursor: 'pointer',
       }}
     >
-      {src.icon} {label}
+      {/* Icon prefix is dropped for Instagram — the "@" already signals
+          the source, and 📷 felt like a placeholder. Institutional
+          sources keep their icon for quick visual differentiation. */}
+      {!isIg && src.icon} {label}
     </button>
   )
 }
@@ -1135,8 +1138,10 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
                 cursor: 'pointer',
               }}
             >
-              <span style={{ fontSize: 12 }}>{src.icon}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: src.color, textTransform: 'uppercase' }}>
+              {!isIg && (
+                <span style={{ fontSize: 12 }}>{src.icon}</span>
+              )}
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: src.color, textTransform: isIg ? 'none' : 'uppercase' }}>
                 {label}
               </span>
               <span style={{ fontSize: 10, color: src.color, opacity: 0.6 }}>→</span>
