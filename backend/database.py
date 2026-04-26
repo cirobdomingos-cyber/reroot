@@ -739,6 +739,32 @@ def get_events(
     return [EnrichedEvent(**json.loads(row["payload"])) for row in rows]
 
 
+def delete_events_by_handle_except(handle: str, keep_ids: set[str]) -> int:
+    """
+    Delete every Instagram event row for `handle` whose id isn't in
+    `keep_ids`. Used by the manual single-handle scrape to clean up stale
+    entries that the re-evaluation no longer recognizes as valid future
+    events. Returns rows deleted.
+    """
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        return 0
+    pattern = f"ig_{handle}_%"
+    keep_list = list(keep_ids)
+    placeholders = ",".join("?" * len(keep_list)) if keep_list else "''"
+    query = f"""
+        DELETE FROM events
+        WHERE source = 'instagram'
+        AND external_id LIKE ?
+        AND id NOT IN ({placeholders})
+    """
+    params = [pattern, *keep_list]
+    with get_conn() as conn:
+        cur = conn.execute(query, params)
+        conn.commit()
+        return cur.rowcount
+
+
 def get_event_by_id(event_id: str) -> Optional[EnrichedEvent]:
     with get_conn() as conn:
         row = conn.execute("SELECT payload FROM events WHERE id = ?", (event_id,)).fetchone()

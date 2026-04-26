@@ -1904,6 +1904,7 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
         handles=[handle],
         posts_per_account=5,
     )
+    new_event_ids: set[str] = set()
     if raw_events:
         pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
         for raw in raw_events:
@@ -1911,13 +1912,24 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
                 enriched = pipeline.enrich(raw)
                 if enriched:
                     db.upsert_event(enriched)
+                    new_event_ids.add(enriched.id)
             except Exception as e:
                 log.warning(f"Enrichment failed for @{handle}/{raw.external_id}: {e}")
+
+    # Manual scrape is a "rebuild this handle" — wipe stale rows that the
+    # re-evaluation didn't reaffirm. This is what cleans up old wrongly-
+    # dated events when the prompt fix or vision improvements reclassify
+    # them as past/not-an-event.
+    deleted = db.delete_events_by_handle_except(handle, new_event_ids)
+    if deleted:
+        log.info(f"Manual scrape @{handle}: deleted {deleted} stale event row(s)")
+
     # Re-read the row so the updated profile metadata is in the response
     updated = db.get_ig_account(handle) or {}
     return {
         "handle": handle,
         "events_extracted": len(raw_events),
+        "stale_deleted": deleted,
         "display_name": updated.get("display_name", ""),
         "profile_pic_url": updated.get("profile_pic_url", ""),
     }
