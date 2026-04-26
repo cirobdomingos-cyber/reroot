@@ -455,6 +455,31 @@ export async function getFriends(googleId) {
   return []
 }
 
+// ── Sources catalog (transparency surface) ───────────────
+
+export async function fetchSources() {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/sources`)
+    if (res.ok) return res.json()
+  } catch {
+    // Backend unavailable — silently return empty buckets
+  }
+  return { institutional: [], instagram: [] }
+}
+
+export async function fetchSourceDetail(sourceId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/sources/${encodeURIComponent(sourceId)}`
+    )
+    if (res.ok) return res.json()
+  } catch {
+    // Backend unavailable
+  }
+  return null
+}
+
+
 /**
  * AI Companion — send a message and get back a response with optional event suggestions.
  * Sends the full event catalog so the LLM always has events to recommend

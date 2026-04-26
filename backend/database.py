@@ -661,6 +661,87 @@ def count_events() -> int:
         return conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
 
 
+def count_future_events_by_source() -> dict:
+    """
+    Returns {source: count} for events whose start (or end, for multi-day)
+    is today or later. Used by the Sources page to show "X eventos próximos"
+    per scraper. Single query; cheap.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    query = """
+        SELECT source, COUNT(*) as n
+        FROM events
+        WHERE (
+            (json_extract(payload, '$.date_end') IS NULL
+                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+            OR
+            (json_extract(payload, '$.date_end') IS NOT NULL
+                AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+        )
+        GROUP BY source
+    """
+    with get_conn() as conn:
+        rows = conn.execute(query, (today, today)).fetchall()
+    return {row["source"]: row["n"] for row in rows}
+
+
+def count_future_events_by_ig_handle() -> dict:
+    """
+    Per-handle counts for Instagram events. external_id is "ig_<handle>_<shortcode>",
+    so we strip the prefix and group by handle. Single query; cheap.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    query = """
+        SELECT external_id
+        FROM events
+        WHERE source = 'instagram' AND (
+            (json_extract(payload, '$.date_end') IS NULL
+                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+            OR
+            (json_extract(payload, '$.date_end') IS NOT NULL
+                AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+        )
+    """
+    counts: dict = {}
+    with get_conn() as conn:
+        for row in conn.execute(query, (today, today)).fetchall():
+            ext = row["external_id"] or ""
+            # ig_<handle>_<shortcode>  →  handle is the second token
+            parts = ext.split("_", 2)
+            if len(parts) >= 2 and parts[0] == "ig":
+                counts[parts[1]] = counts.get(parts[1], 0) + 1
+    return counts
+
+
+def get_future_events_by_source(source: str, ig_handle: Optional[str] = None,
+                                limit: int = 100) -> list[EnrichedEvent]:
+    """
+    Future events from a specific source. When source='instagram' and
+    ig_handle is given, narrows further by external_id prefix.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    query = """
+        SELECT payload, external_id FROM events
+        WHERE source = ?
+        AND (
+            (json_extract(payload, '$.date_end') IS NULL
+                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+            OR
+            (json_extract(payload, '$.date_end') IS NOT NULL
+                AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+        )
+    """
+    params: list = [source, today, today]
+    if source == "instagram" and ig_handle:
+        query += " AND external_id LIKE ?"
+        params.append(f"ig_{ig_handle}_%")
+    query += " ORDER BY json_extract(payload, '$.date_start') ASC LIMIT ?"
+    params.append(limit)
+    with get_conn() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [EnrichedEvent(**json.loads(row["payload"])) for row in rows]
+
+
 def log_refresh_start(source: str) -> int:
     with get_conn() as conn:
         cur = conn.execute(

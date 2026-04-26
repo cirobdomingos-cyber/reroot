@@ -602,6 +602,26 @@ export default function Events() {
         </AnimatePresence>
       )}
 
+      {/* ── Sources transparency footer — links to the catalog of monitored
+          sources so users see where the events come from. */}
+      {!loading && !isVenueMode && filteredEvents.length > 0 && (
+        <button
+          onClick={() => navigate('/sources')}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            margin: '12px 16px 24px', padding: '12px 14px',
+            background: 'transparent',
+            border: '1px dashed var(--border)',
+            borderRadius: 12, cursor: 'pointer',
+            width: 'calc(100% - 32px)',
+            color: 'var(--charcoal-mid)',
+            fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <span>📡 De onde vem isso? Ver fontes monitoradas</span>
+          <span style={{ color: 'var(--charcoal-light)' }}>→</span>
+        </button>
+      )}
 
       {/* ── Notification toast ── */}
       <AnimatePresence>

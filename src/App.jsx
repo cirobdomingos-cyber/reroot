@@ -23,6 +23,8 @@ import AdminIgAccounts from './screens/AdminIgAccounts'
 import AddFriend       from './screens/AddFriend'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
+import Sources         from './screens/Sources'
+import SourceDetail    from './screens/SourceDetail'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -134,6 +136,8 @@ export default function App() {
             <Route path="/friend/:code" element={<AnimatedPage><AddFriend /></AnimatedPage>} />
             <Route path="/friends/:googleId" element={<AnimatedPage><FriendDetail /></AnimatedPage>} />
             <Route path="/my-rsvps" element={<AnimatedPage><MyRsvps /></AnimatedPage>} />
+            <Route path="/sources" element={<AnimatedPage><Sources /></AnimatedPage>} />
+            <Route path="/sources/:sourceId" element={<AnimatedPage><SourceDetail /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

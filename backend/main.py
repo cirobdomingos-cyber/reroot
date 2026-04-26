@@ -524,6 +524,161 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
         log.error(f"Submission {submission_id}: save error: {e}")
 
 
+# ── Sources catalog ─────────────────────────────────────────────────────
+# Transparency surface: lists every source the catalog pulls from with a
+# future-event count. Powers the `/sources` screen on the frontend.
+_INSTITUTIONAL_SOURCES = {
+    "mon": {
+        "label": "MON — Museu Oscar Niemeyer",
+        "url": "https://www.museuoscarniemeyer.org.br/programacao/",
+        "icon": "🖼",
+        "blurb": "Maior museu do Sul do Brasil. Exposições, oficinas e o programa MON sem Paredes.",
+    },
+    "sesc": {
+        "label": "SESC Paraná",
+        "url": "https://www.sescpr.com.br/",
+        "icon": "🎭",
+        "blurb": "Programação cultural acessível em diversas unidades de Curitiba.",
+    },
+    "teatro_guaira": {
+        "label": "Teatro Guaíra",
+        "url": "https://www.teatroguaira.pr.gov.br/",
+        "icon": "🎭",
+        "blurb": "Teatro estatal do Paraná: concertos, balé, ópera, peças.",
+    },
+    "ingresso": {
+        "label": "Ingresso.com",
+        "url": "https://www.ingresso.com/",
+        "icon": "🎫",
+        "blurb": "Eventos com ingressos comerciais em Curitiba.",
+    },
+    "catraca_livre": {
+        "label": "Catraca Livre",
+        "url": "https://catracalivre.com.br/",
+        "icon": "🎟",
+        "blurb": "Eventos gratuitos e de baixo custo em Curitiba.",
+    },
+    "sympla": {
+        "label": "Sympla",
+        "url": "https://www.sympla.com.br/eventos/curitiba-pr",
+        "icon": "🎟",
+        "blurb": "Plataforma brasileira de venda de ingressos.",
+    },
+    "eventbrite": {
+        "label": "Eventbrite",
+        "url": "https://www.eventbrite.com.br/d/brazil--curitiba/events/",
+        "icon": "🎫",
+        "blurb": "Plataforma global de eventos e ingressos.",
+    },
+    "turismo_curitiba": {
+        "label": "Turismo Curitiba",
+        "url": "https://turismo.curitiba.pr.gov.br/",
+        "icon": "🏙",
+        "blurb": "Site oficial de turismo da Prefeitura de Curitiba.",
+    },
+    "aue_original": {
+        "label": "Original auê",
+        "url": "",
+        "icon": "⭐",
+        "blurb": "Eventos curados pela equipe do auê.",
+    },
+    "meetup": {
+        "label": "Meetup",
+        "url": "https://www.meetup.com/find/?location=br--82--Curitiba",
+        "icon": "👥",
+        "blurb": "Encontros de comunidades e grupos de interesse.",
+    },
+}
+
+
+@app.get("/sources")
+def list_sources():
+    """
+    Catalog of every monitored source with a future-event count. The
+    frontend uses this for the Sources screen — transparency surface that
+    shows users where the catalog comes from.
+    """
+    by_source = db.count_future_events_by_source()
+    by_handle = db.count_future_events_by_ig_handle()
+
+    institutional = []
+    for src_id, meta in _INSTITUTIONAL_SOURCES.items():
+        institutional.append({
+            "id": src_id,
+            "label": meta["label"],
+            "url": meta["url"],
+            "icon": meta["icon"],
+            "blurb": meta["blurb"],
+            "future_events": by_source.get(src_id, 0),
+        })
+    institutional.sort(key=lambda s: (-s["future_events"], s["label"]))
+
+    instagram = []
+    for acc in db.list_ig_accounts():
+        if not acc.get("enabled"):
+            continue
+        instagram.append({
+            "handle": acc["handle"],
+            "label": acc.get("label") or f"@{acc['handle']}",
+            "category": acc.get("category", ""),
+            "url": f"https://www.instagram.com/{acc['handle']}/",
+            "last_scraped_at": acc.get("last_scraped_at"),
+            "future_events": by_handle.get(acc["handle"], 0),
+        })
+    instagram.sort(key=lambda s: (-s["future_events"], s["label"]))
+
+    return {"institutional": institutional, "instagram": instagram}
+
+
+@app.get("/sources/{source_id}")
+def source_detail(source_id: str):
+    """
+    Detail for a single source: metadata + upcoming events.
+    `source_id` can be an institutional key ("mon", "sympla", ...) or
+    "ig:<handle>" for an Instagram handle.
+    """
+    today = date.today().isoformat()
+    if source_id.startswith("ig:"):
+        handle = source_id[3:]
+        accounts = {a["handle"]: a for a in db.list_ig_accounts()}
+        acc = accounts.get(handle)
+        if not acc:
+            raise HTTPException(status_code=404, detail="Conta IG não encontrada")
+        events = db.get_future_events_by_source("instagram", ig_handle=handle, limit=200)
+        meta = {
+            "id": source_id,
+            "label": acc.get("label") or f"@{handle}",
+            "url": f"https://www.instagram.com/{handle}/",
+            "icon": "📷",
+            "blurb": acc.get("category", "") or f"Perfil monitorado @{handle}.",
+            "category": acc.get("category", ""),
+            "last_scraped_at": acc.get("last_scraped_at"),
+        }
+    else:
+        meta_src = _INSTITUTIONAL_SOURCES.get(source_id)
+        if not meta_src:
+            raise HTTPException(status_code=404, detail="Fonte não encontrada")
+        events = db.get_future_events_by_source(source_id, limit=200)
+        meta = {
+            "id": source_id,
+            "label": meta_src["label"],
+            "url": meta_src["url"],
+            "icon": meta_src["icon"],
+            "blurb": meta_src["blurb"],
+        }
+    # Apply the same content filters as /events so the detail view doesn't
+    # surface events the catalog already hides.
+    cleaned = [
+        ev for ev in events
+        if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
+    ]
+    return {
+        "source": meta,
+        "events": [_to_frontend(ev) for ev in cleaned],
+        "total": len(cleaned),
+    }
+
+
 @app.post("/events/submit", status_code=202)
 async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
     """

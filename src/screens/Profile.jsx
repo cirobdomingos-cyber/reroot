@@ -208,6 +208,28 @@ export default function Profile() {
         })}
       </div>
 
+      {/* Transparency: link to the sources catalog */}
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <button
+          onClick={() => navigate('/sources')}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            width: '100%', textAlign: 'left', padding: 0,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+              📡 Fontes monitoradas
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+              Veja de onde vem o catálogo do auê.
+            </div>
+          </div>
+          <span style={{ fontSize: 16, color: 'var(--charcoal-light)' }}>→</span>
+        </button>
+      </div>
+
       {/* Redo onboarding + Reset (dev affordances) */}
       <div style={{ padding: '4px 16px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <button
