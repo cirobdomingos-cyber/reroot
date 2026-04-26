@@ -127,8 +127,25 @@ async def fetch_events(
     log.info(f"Instagram (Apify): {len(posts)} posts coletados, extraindo eventos...")
 
     # Update last_scraped_at + cached profile metadata for each handle that
-    # returned at least one post. Apify returns owner fields per post; we
-    # use the first one we see per handle as a best-effort profile snapshot.
+    # returned at least one post. Apify's instagram-scraper actor varies
+    # field naming across versions — handle both flat (ownerProfilePicUrl)
+    # and nested ({owner: {profile_pic_url}}) shapes so the enrichment
+    # works regardless. First-occurrence-per-handle wins.
+    def _pick(post: dict, *paths) -> str:
+        for p in paths:
+            if not p:
+                continue
+            keys = p.split(".")
+            cur = post
+            for k in keys:
+                if not isinstance(cur, dict):
+                    cur = None
+                    break
+                cur = cur.get(k)
+            if isinstance(cur, str) and cur.strip():
+                return cur.strip()
+        return ""
+
     handles_with_data: set[str] = set()
     profile_seen: dict[str, dict] = {}
     for p in posts:
@@ -138,8 +155,14 @@ async def fetch_events(
         handles_with_data.add(h)
         if h not in profile_seen:
             profile_seen[h] = {
-                "display_name": (p.get("ownerFullName") or "").strip(),
-                "profile_pic_url": (p.get("ownerProfilePicUrl") or "").strip(),
+                "display_name": _pick(p,
+                    "ownerFullName", "ownerFullname",
+                    "owner.full_name", "owner.fullName",
+                ),
+                "profile_pic_url": _pick(p,
+                    "ownerProfilePicUrl", "ownerProfilePicURL", "ownerProfilePicture",
+                    "owner.profile_pic_url", "owner.profilePicUrl", "owner.profilePicture",
+                ),
             }
     for handle in handles_with_data:
         db.mark_ig_account_scraped(handle)
@@ -150,6 +173,10 @@ async def fetch_events(
                 display_name=meta.get("display_name", ""),
                 profile_pic_url=meta.get("profile_pic_url", ""),
             )
+        else:
+            # Log once per handle when we got posts but no profile fields
+            # so the founder can debug schema drift on Apify's side.
+            log.info(f"IG enrich: no profile fields found in {handle} posts")
 
     client = AsyncAnthropic(api_key=anthropic_api_key)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
