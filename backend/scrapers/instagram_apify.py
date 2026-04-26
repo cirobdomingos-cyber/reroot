@@ -154,6 +154,15 @@ async def fetch_events(
             "sample": captured,
         })
 
+    # Profile-level metadata (avatar, full name, bio) — fetched via a
+    # separate, light Apify call with resultsType: "details". Returns one
+    # item per handle with profile fields. Cheap and fast since it's
+    # metadata-only (no posts), so it doesn't bust our sync timeout.
+    try:
+        await _enrich_profiles(apify_token, direct_urls)
+    except Exception as e:
+        log.warning(f"Apify profile enrichment failed: {e}")
+
     # Update last_scraped_at + cached profile metadata for each handle that
     # returned at least one post. Apify's instagram-scraper actor varies
     # field naming across versions — handle both flat (ownerProfilePicUrl)
@@ -238,6 +247,87 @@ async def fetch_events(
     return events
 
 
+async def _enrich_profiles(apify_token: str, direct_urls: list[str]) -> None:
+    """
+    Fetch profile-level data (full name, avatar, bio) via the same
+    instagram-scraper actor in `details` mode. Persists to the
+    tracked_ig_accounts table. Best-effort — silent on failure.
+    """
+    payload = {
+        "directUrls": direct_urls,
+        "resultsType": "details",  # one item per profile, no posts
+        "addParentData": False,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=APIFY_TIMEOUT_S) as client:
+            r = await client.post(
+                f"{APIFY_RUN_URL}?token={apify_token}",
+                json=payload,
+            )
+        if r.status_code not in (200, 201):
+            log.warning(f"Apify profile-details HTTP {r.status_code}: {r.text[:200]}")
+            return
+        items = r.json()
+        if not isinstance(items, list):
+            return
+    except Exception as e:
+        log.warning(f"Apify profile-details failed: {e}")
+        return
+
+    log.info(f"Apify profile-details: got {len(items)} profile records")
+
+    # Update debug capture with the profile sample so we can verify shape
+    if items:
+        sample = items[0]
+        captured = {}
+        for k, v in list(sample.items())[:40]:
+            if isinstance(v, str):
+                captured[k] = v[:100]
+            elif isinstance(v, dict):
+                captured[k] = {"<dict-keys>": list(v.keys())[:20]}
+            elif isinstance(v, list):
+                captured[k] = f"<list len={len(v)}>"
+            else:
+                captured[k] = v
+        LAST_POST_DEBUG["profile_sample"] = captured
+        LAST_POST_DEBUG["profile_top_level_keys"] = list(sample.keys())
+
+    def _pick(obj: dict, *paths) -> str:
+        for p in paths:
+            cur = obj
+            for k in p.split("."):
+                if not isinstance(cur, dict):
+                    cur = None
+                    break
+                cur = cur.get(k)
+            if isinstance(cur, str) and cur.strip():
+                return cur.strip()
+        return ""
+
+    for item in items:
+        handle = (
+            (item.get("username") or item.get("ownerUsername") or "")
+            .strip().lstrip("@").lower()
+        )
+        if not handle:
+            continue
+        display_name = _pick(item, "fullName", "full_name", "ownerFullName")
+        profile_pic_url = _pick(
+            item,
+            "profilePicUrl", "profile_pic_url", "profilePicUrlHD", "profile_pic_url_hd",
+            "ownerProfilePicUrl",
+        )
+        if display_name or profile_pic_url:
+            try:
+                db.update_ig_account_profile(
+                    handle=handle,
+                    display_name=display_name,
+                    profile_pic_url=profile_pic_url,
+                )
+            except Exception as e:
+                log.warning(f"DB profile update failed for @{handle}: {e}")
+
+
 async def _run_apify_scrape(
     apify_token: str,
     direct_urls: list[str],
@@ -249,11 +339,10 @@ async def _run_apify_scrape(
         "resultsType": "posts",
         # `resultsLimit` is *per profile* in this actor.
         "resultsLimit": posts_per_account,
-        # Enable so each post item gets parent profile metadata merged in
-        # (full name, profile pic url, bio, follower count). Without this,
-        # the post payload has only ownerUsername — not enough to render
-        # avatars on the Sources/Curar screens.
-        "addParentData": True,
+        # Kept false because addParentData=true blows up the payload
+        # enough to bust our 240s sync timeout on 25+ handles. We pull
+        # profile metadata via a separate `details` call below.
+        "addParentData": False,
     }
     try:
         async with httpx.AsyncClient(timeout=APIFY_TIMEOUT_S) as client:
