@@ -319,7 +319,12 @@ def _dedupe_events(events):
     Tier 2.5 (multiple sessions of the same event collapse to the early one).
     """
     NAME_JACCARD = 0.6
-    NAME_JACCARD_WITH_VENUE = 0.4   # lower bar when venue already matches
+    # When venue already matches, accept lower Jaccard but require at
+    # least 2 shared distinctive tokens. Pure Jaccard at 0.3 would
+    # false-positive on "Show de Música" vs "Workshop de Música" (1
+    # shared token); requiring ≥ 2 shared tokens fixes that.
+    NAME_VENUE_SHARED_MIN = 2
+    NAME_VENUE_JACCARD = 0.3
     VENUE_JACCARD = 0.4
     out = []
     for ev in events:
@@ -356,7 +361,8 @@ def _dedupe_events(events):
                 if kept_name_tokens:
                     inter = len(ev_name_tokens & kept_name_tokens)
                     union = len(ev_name_tokens | kept_name_tokens)
-                    if union and inter / union >= NAME_JACCARD_WITH_VENUE:
+                    if union and inter >= NAME_VENUE_SHARED_MIN \
+                       and inter / union >= NAME_VENUE_JACCARD:
                         is_dup = True
                         break
 
@@ -385,7 +391,8 @@ def _dedupe_feed_entries(entries: list[dict]) -> list[dict]:
     lists merge (dedup by google_id) so the count stays accurate.
     """
     NAME_JACCARD = 0.6
-    NAME_JACCARD_WITH_VENUE = 0.4
+    NAME_VENUE_SHARED_MIN = 2
+    NAME_VENUE_JACCARD = 0.3
     VENUE_JACCARD = 0.4
 
     def _parse_iso_date(s: str):
@@ -436,7 +443,8 @@ def _dedupe_feed_entries(entries: list[dict]) -> list[dict]:
                 if kept_name_tokens:
                     inter = len(ev_name_tokens & kept_name_tokens)
                     union = len(ev_name_tokens | kept_name_tokens)
-                    if union and inter / union >= NAME_JACCARD_WITH_VENUE:
+                    if union and inter >= NAME_VENUE_SHARED_MIN \
+                       and inter / union >= NAME_VENUE_JACCARD:
                         is_dup = True
             # Tier 3: name fuzzy on the same day
             if not is_dup and ev_name_tokens:
