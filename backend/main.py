@@ -368,6 +368,73 @@ def _dedupe_events(events):
     return out
 
 
+def _dedupe_feed_entries(entries: list[dict]) -> list[dict]:
+    """
+    Same dedup rules as `_dedupe_events`, but on the dict shape used by
+    /friends/feed: {event_id, event_name, event_venue, event_date,
+    friends_going[]}. When two entries collapse, their friends_going
+    lists merge (dedup by google_id) so the count stays accurate.
+    """
+    NAME_JACCARD = 0.6
+    VENUE_JACCARD = 0.4
+
+    def _parse_iso_date(s: str):
+        if not s:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return None
+
+    def _venue_first_part(venue: str) -> str:
+        # "Pedreira Paulo Leminski · Centro" → "Pedreira Paulo Leminski"
+        return (venue or "").split("·")[0].strip()
+
+    out: list[dict] = []
+    for ev in entries:
+        ev_dt = _parse_iso_date(ev.get("event_date") or "")
+        ev_day = ev_dt.date().isoformat() if ev_dt else ""
+        ev_hour = ev_dt.strftime("%H:%M") if ev_dt else ""
+        ev_name_tokens = _name_tokens(ev.get("event_name") or "")
+        ev_venue_tokens = _name_tokens(_venue_first_part(ev.get("event_venue") or ""))
+        merged = False
+        for kept in out:
+            kept_dt = _parse_iso_date(kept.get("event_date") or "")
+            kept_day = kept_dt.date().isoformat() if kept_dt else ""
+            if ev_day != kept_day:
+                continue
+            kept_hour = kept_dt.strftime("%H:%M") if kept_dt else ""
+            is_dup = False
+            if ev_hour and ev_hour == kept_hour and ev_venue_tokens and ev_name_tokens:
+                kept_venue_tokens = _name_tokens(_venue_first_part(kept.get("event_venue") or ""))
+                if kept_venue_tokens:
+                    vinter = len(ev_venue_tokens & kept_venue_tokens)
+                    vunion = len(ev_venue_tokens | kept_venue_tokens)
+                    if (vunion and vinter / vunion >= VENUE_JACCARD) or \
+                       ev_venue_tokens.issubset(kept_venue_tokens) or \
+                       kept_venue_tokens.issubset(ev_venue_tokens):
+                        is_dup = True
+            if not is_dup and ev_name_tokens:
+                kept_name_tokens = _name_tokens(kept.get("event_name") or "")
+                if kept_name_tokens:
+                    inter = len(ev_name_tokens & kept_name_tokens)
+                    union = len(ev_name_tokens | kept_name_tokens)
+                    if union and inter / union >= NAME_JACCARD:
+                        is_dup = True
+            if is_dup:
+                # Merge friends_going dedup'd by google_id
+                seen_gids = {f.get("google_id") for f in kept["friends_going"] if f.get("google_id")}
+                for f in ev["friends_going"]:
+                    if f.get("google_id") and f["google_id"] not in seen_gids:
+                        kept["friends_going"].append(f)
+                        seen_gids.add(f["google_id"])
+                merged = True
+                break
+        if not merged:
+            out.append(ev)
+    return out
+
+
 # Cities that have shown up in scraped data despite NOT being Curitiba.
 # Used as a deny-list at API time so retroactively bad events vanish without
 # requiring a DB migration. New scrapers should also filter at ingest time.
@@ -968,6 +1035,12 @@ def friends_feed(google_id: str):
             "name": friend_info.get("name", rsvp["google_id"]),
             "picture": friend_info.get("picture", ""),
         })
+
+    # Apply the same dedup rules as the catalog so users don't see "X amigo
+    # vai" twice for the same event with different scraped variants. Merges
+    # friends_going lists across collapsed entries.
+    grouped_list = _dedupe_feed_entries(list(grouped.values()))
+    grouped = {e["event_id"]: e for e in grouped_list}
 
     # Sort by event_date ascending, nulls last
     events = sorted(
