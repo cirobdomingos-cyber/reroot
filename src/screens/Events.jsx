@@ -911,14 +911,9 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
                 ★ {t.tag_private}
               </span>
             )}
-            {ev.isLowPressure && (
-              <span style={{
-                fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
-                padding: '2px 7px', borderRadius: 5, fontWeight: 600,
-              }}>
-                🌿 {t.events_low_pressure}
-              </span>
-            )}
+            {/* Baixa pressão tag removed for now — was noisy and not
+                actionable. The signal still flows on EnrichedEvent.is_low_pressure
+                so we can resurrect when there's a clearer use case. */}
             {ev.priceTier === 'free' ? (
               <span className="tag tag--sage" style={{ fontSize: 10, padding: '2px 7px' }}>
                 {t.tag_free}
@@ -1054,14 +1049,6 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
           {ev.price && (
             <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{ev.price}</span>
           )}
-          {ev.isLowPressure && (
-            <span style={{
-              fontSize: 10, background: 'var(--sage-pale)', color: 'var(--sage)',
-              padding: '1px 7px', borderRadius: 6, fontWeight: 600,
-            }}>
-              {t.events_low_pressure}
-            </span>
-          )}
           {ev.kidsWelcome && (
             <span style={{
               fontSize: 10, background: '#FFF3E0', color: '#E65100',
@@ -1123,15 +1110,6 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
           fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         }}>←</button>
         <div style={{ position: 'absolute', bottom: 12, left: 14, fontSize: 30 }}>{ev.icon}</div>
-        {ev.isLowPressure && (
-          <div style={{
-            position: 'absolute', bottom: 12, right: 12,
-            fontSize: 10, background: 'rgba(122,158,126,0.9)', color: 'white',
-            padding: '4px 10px', borderRadius: 8, fontWeight: 700,
-          }}>
-            🌿 {t.events_low_pressure}
-          </div>
-        )}
       </div>
 
       {/* Content */}

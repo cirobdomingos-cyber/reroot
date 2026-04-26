@@ -46,9 +46,9 @@ export default function AddToCalendar({ event, style }) {
           WebkitTapHighlightColor: 'transparent',
           ...style,
         }}
-        title="Compartilhar"
+        title="Adicionar ao calendário · compartilhar"
       >
-        🔗
+        📅
       </button>
 
       {/* Bottom sheet overlay */}
