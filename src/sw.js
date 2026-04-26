@@ -15,10 +15,27 @@
  * auto-generated service worker?" — answer: switch to injectManifest mode.
  */
 
-import { precacheAndRoute } from 'workbox-precaching'
+import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 
 // __WB_MANIFEST is replaced at build time by VitePWA with the actual asset list
 precacheAndRoute(self.__WB_MANIFEST)
+
+// Navigation fallback: any in-scope navigation that's not a precached file
+// gets the cached index.html so the SPA boots offline. We DENY a few server
+// routes that must reach the backend (or we'd serve the React shell instead
+// of e.g. the iOS install walkthrough or the privacy policy HTML).
+const navigationHandler = createHandlerBoundToURL('/index.html')
+registerRoute(new NavigationRoute(navigationHandler, {
+  denylist: [
+    /^\/ios(\/|$|\?)/,         // /ios install walkthrough (server HTML)
+    /^\/privacy(\/|$|\?)/,     // /privacy LGPD policy (server HTML)
+    /^\/\.well-known\//,       // assetlinks.json + future verification files
+    /^\/manifest\.webmanifest/,// PWA manifest itself
+    /^\/sw\.js/,               // service worker file
+    /^\/registerSW\.js/,       // SW registration script
+  ],
+}))
 
 // ── Push notification handler ─────────────────────────────────────────────────
 //
