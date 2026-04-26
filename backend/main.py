@@ -301,38 +301,66 @@ def _dedupe_events(events):
     """
     Drop events that are likely the same thing scraped from multiple sources.
 
-    Two-pass dedup:
-      1. Exact match on (normalized name, dateStart day) — fast hash lookup.
-      2. Fuzzy match: token-set Jaccard ≥ 0.6 between names AND either same
-         day or both undated. Catches near-misses like "Caça à Arte no MON
-         sem Paredes" vs "Caça à Arte - MON sem Paredes" vs "MON sem Paredes
-         — Arte ao Ar Livre" — same program, different scrapers.
+    Three-tier dedup, in order of confidence:
+      1. Exact match on (normalized name, day) — fast.
+      2. Same day + same hour + venue overlap (Jaccard ≥ 0.4 on venue
+         tokens, or one venue contained in the other). Strongest signal:
+         a museum/theatre is unlikely to host two distinct events at the
+         same hour. Catches the MON-Orquestra-Cordas case where 5 scraper
+         flavors of the same concert had wildly different name strings
+         ("Concerto Especial", "Concerto com Cláudio Cruz", etc.).
+      3. Name fuzzy: token-set Jaccard ≥ 0.6 between names AND same day
+         (or both undated). Catches near-misses like "Caça à Arte no MON
+         sem Paredes" vs "MON sem Paredes — Arte ao Ar Livre".
 
     First occurrence wins; downstream sources are dropped silently. Sources
     are typically ordered upstream so that canonical sources (museum site)
     arrive before secondary mentions (Instagram), keeping the better record.
     """
-    JACCARD_THRESHOLD = 0.6
+    NAME_JACCARD = 0.6
+    VENUE_JACCARD = 0.4  # lower bar: venue strings often differ in suffixes
     out = []
     for ev in events:
         ev_day = ev.date_start.date().isoformat() if ev.date_start else ""
-        ev_tokens = _name_tokens(ev.name)
+        ev_hour = ev.date_start.strftime("%H:%M") if ev.date_start else ""
+        ev_name_tokens = _name_tokens(ev.name)
+        ev_venue_tokens = _name_tokens(ev.venue_name or "")
         is_dup = False
         for kept in out:
             kept_day = kept.date_start.date().isoformat() if kept.date_start else ""
-            # Date gate: same day, or both undated (likely an ongoing program)
+            # Date gate — must share a day (or both be undated programs)
             if ev_day != kept_day:
                 continue
-            kept_tokens = _name_tokens(kept.name)
-            if not ev_tokens or not kept_tokens:
-                # Fall back to exact-name compare when one side has no tokens
+
+            # Tier 2: same hour + venue overlap → very confident dup
+            if ev_day and ev_hour:
+                kept_hour = kept.date_start.strftime("%H:%M") if kept.date_start else ""
+                if ev_hour == kept_hour:
+                    kept_venue_tokens = _name_tokens(kept.venue_name or "")
+                    venue_match = False
+                    if ev_venue_tokens and kept_venue_tokens:
+                        vinter = len(ev_venue_tokens & kept_venue_tokens)
+                        vunion = len(ev_venue_tokens | kept_venue_tokens)
+                        if vunion and vinter / vunion >= VENUE_JACCARD:
+                            venue_match = True
+                        # Also accept "one is a subset of the other" — handles
+                        # "MON" vs "Auditório Poty Lazzarotto Museu Oscar Niemeyer"
+                        elif ev_venue_tokens.issubset(kept_venue_tokens) or kept_venue_tokens.issubset(ev_venue_tokens):
+                            venue_match = True
+                    if venue_match:
+                        is_dup = True
+                        break
+
+            # Tier 3: name fuzzy on the same day
+            kept_name_tokens = _name_tokens(kept.name)
+            if not ev_name_tokens or not kept_name_tokens:
                 if ev.name.strip().lower() == kept.name.strip().lower():
                     is_dup = True
                     break
                 continue
-            inter = len(ev_tokens & kept_tokens)
-            union = len(ev_tokens | kept_tokens)
-            if union and inter / union >= JACCARD_THRESHOLD:
+            inter = len(ev_name_tokens & kept_name_tokens)
+            union = len(ev_name_tokens | kept_name_tokens)
+            if union and inter / union >= NAME_JACCARD:
                 is_dup = True
                 break
         if not is_dup:
