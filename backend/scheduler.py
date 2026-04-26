@@ -28,6 +28,11 @@ async def run_refresh(settings):
     from scrapers.prefeitura import fetch_events as prefeitura_fetch
     from enrichment import EnrichmentPipeline
     import database as db
+    from notifications import send_scrape_summary
+
+    # Capture the start time so the post-run email summary can scope its
+    # refresh_log query to rows produced by THIS run.
+    run_started_iso = datetime.now().isoformat()
 
     city = settings.city
     log.info(f"🔄 Iniciando refresh de eventos para {city}...")
@@ -188,6 +193,12 @@ async def run_refresh(settings):
 
     total = db.count_events()
     log.info(f"✅ Refresh concluído: {saved} eventos salvos ({total} total no banco)")
+
+    # Best-effort summary email (silent if RESEND_API_KEY isn't set).
+    try:
+        await send_scrape_summary(settings, run_started_iso)
+    except Exception as e:
+        log.warning(f"Scrape summary email failed: {e}")
 
 
 def start_scheduler(settings, run_immediately: bool = True):

@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
     founder_email: str = "ciro.b.domingos@gmail.com"
+    # Email — used to send scrape summaries to the founder. Resend free
+    # tier supports the sandbox sender `onboarding@resend.dev` without
+    # DNS setup; recipient must match the account owner of the Resend
+    # workspace until a custom domain is verified.
+    resend_api_key: str = ""
+    resend_from_email: str = "auê <onboarding@resend.dev>"
 
 
 settings = Settings()

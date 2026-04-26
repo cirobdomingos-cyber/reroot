@@ -1,0 +1,146 @@
+"""
+Email notifications via Resend (https://resend.com).
+
+Used to notify the founder after each scrape completes with a summary of
+new events found per source. Best-effort — silent on failure so the
+scrape pipeline never fails because the email transport blipped.
+
+Free tier: 100 emails/day. The sandbox sender `onboarding@resend.dev`
+works without DNS setup but only delivers to the workspace owner's
+verified email. Plenty for a single-founder summary.
+"""
+import logging
+from typing import Optional
+
+import httpx
+
+import database as db
+
+log = logging.getLogger(__name__)
+
+RESEND_ENDPOINT = "https://api.resend.com/emails"
+
+
+async def send_email(api_key: str, from_addr: str, to: str,
+                     subject: str, html: str, text: Optional[str] = None) -> bool:
+    """Returns True on 200/202; False otherwise. Never raises."""
+    if not api_key:
+        log.info("Resend API key not set — skipping email send")
+        return False
+    payload = {
+        "from": from_addr,
+        "to": [to],
+        "subject": subject,
+        "html": html,
+    }
+    if text:
+        payload["text"] = text
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                RESEND_ENDPOINT,
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if r.status_code in (200, 202):
+            return True
+        log.warning(f"Resend HTTP {r.status_code}: {r.text[:200]}")
+        return False
+    except Exception as e:
+        log.warning(f"Resend send failed: {e}")
+        return False
+
+
+async def send_scrape_summary(settings, run_started_iso: str) -> None:
+    """
+    Build and send a per-source summary of the scrape that started at
+    `run_started_iso`. Looks up `refresh_log` rows for that window.
+    """
+    if not settings.resend_api_key:
+        return
+    rows = db.get_refresh_logs_since(run_started_iso)
+    if not rows:
+        return
+
+    total_new = sum((r.get("events_new") or 0) for r in rows)
+    total_updated = sum((r.get("events_updated") or 0) for r in rows)
+    errors = [r for r in rows if (r.get("error") or "").strip()]
+
+    # Sort sources: those with new events first, then by source name
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: (-(r.get("events_new") or 0), r.get("source") or ""),
+    )
+
+    rows_html = ""
+    rows_text = ""
+    for r in rows_sorted:
+        src = r.get("source") or "?"
+        n = r.get("events_new") or 0
+        u = r.get("events_updated") or 0
+        err = (r.get("error") or "").strip()
+        bgcolor = "#FFEBEE" if err else ("#E8F5E9" if n > 0 else "#FAFAFA")
+        rows_html += (
+            f'<tr><td style="padding:6px 10px;border-bottom:1px solid #EEE;'
+            f'background:{bgcolor};font-family:monospace">{src}</td>'
+            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
+            f'background:{bgcolor};text-align:right">{n}</td>'
+            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
+            f'background:{bgcolor};text-align:right;color:#888">{u}</td>'
+            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
+            f'background:{bgcolor};color:#B71C1C;font-size:11px">{err[:80]}</td></tr>'
+        )
+        rows_text += f"  {src:18s}  new={n:3d}  updated={u:3d}  {err[:60]}\n"
+
+    total_in_db = db.count_events()
+    err_summary = f"{len(errors)} fonte(s) com erro" if errors else "nenhum erro"
+
+    subject = f"[auê] scrape {total_new} novos · {total_in_db} no DB"
+    html = f"""\
+<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;color:#2C2C2C">
+  <h2 style="font-size:18px;margin:0 0 4px">auê · resumo do scrape</h2>
+  <p style="font-size:13px;color:#888;margin:0 0 16px">
+    {run_started_iso} · {len(rows)} fonte(s) consultada(s) · {err_summary}
+  </p>
+  <table style="border-collapse:collapse;width:100%;font-size:12px">
+    <thead>
+      <tr style="background:#2C2C2C;color:white">
+        <th style="padding:8px 10px;text-align:left">Fonte</th>
+        <th style="padding:8px 10px;text-align:right">Novos</th>
+        <th style="padding:8px 10px;text-align:right">Atualizados</th>
+        <th style="padding:8px 10px;text-align:left">Erro</th>
+      </tr>
+    </thead>
+    <tbody>{rows_html}</tbody>
+    <tfoot>
+      <tr style="background:#FAFAFA;font-weight:700">
+        <td style="padding:8px 10px">Total</td>
+        <td style="padding:8px 10px;text-align:right">{total_new}</td>
+        <td style="padding:8px 10px;text-align:right;color:#888">{total_updated}</td>
+        <td style="padding:8px 10px;color:#888">{total_in_db} no DB</td>
+      </tr>
+    </tfoot>
+  </table>
+  <p style="font-size:11px;color:#999;margin-top:18px">
+    auê · enviado automaticamente após cada refresh
+  </p>
+</div>
+"""
+    text = (
+        f"auê — resumo do scrape\n"
+        f"{run_started_iso}  ·  {len(rows)} fontes  ·  {err_summary}\n\n"
+        f"{rows_text}\n"
+        f"Total novos: {total_new}\n"
+        f"Total atualizados: {total_updated}\n"
+        f"Catálogo agora: {total_in_db} eventos\n"
+    )
+    ok = await send_email(
+        api_key=settings.resend_api_key,
+        from_addr=settings.resend_from_email,
+        to=settings.founder_email,
+        subject=subject,
+        html=html,
+        text=text,
+    )
+    if ok:
+        log.info(f"Scrape summary email sent ({total_new} new) → {settings.founder_email}")

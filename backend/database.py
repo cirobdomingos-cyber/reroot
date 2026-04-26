@@ -854,6 +854,16 @@ def log_refresh_finish(log_id: int, events_new: int, events_updated: int, error:
         conn.commit()
 
 
+def get_refresh_logs_since(started_at_iso: str) -> list[dict]:
+    """All refresh_log rows started at or after the given ISO timestamp."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM refresh_log WHERE started_at >= ? ORDER BY started_at ASC",
+            (started_at_iso,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── RSVPs ──────────────────────────────────────────────────
 
 def upsert_rsvp(
