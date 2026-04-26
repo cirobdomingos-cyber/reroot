@@ -1,0 +1,33 @@
+name: Sync staging from main
+
+# Whenever something lands on main (production), fast-forward dev (staging)
+# so Railway's staging environment redeploys with the prod baseline. Any
+# commits that exist only on dev (intentional staging-only experiments)
+# survive — git merge keeps them; only conflicts cause failure.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # allow manual run from the Actions tab
+
+jobs:
+  merge-main-to-dev:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0  # need full history for the merge
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Merge main into dev
+        run: |
+          git fetch origin main
+          # --no-edit keeps the default merge commit message
+          # If conflicts: this fails, the workflow shows red, and we resolve by hand
+          git merge origin/main --no-edit
+          git push origin dev

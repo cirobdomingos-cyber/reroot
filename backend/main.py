@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # PWABuilder's signing-key-info.txt after generating the AAB bundle.
     twa_package_name: str = "app.aue"
     twa_sha256_fingerprint: str = ""  # e.g. "AB:CD:EF:..." — empty disables endpoint
+    # Deployment environment label. Defaults to "production" so a missing
+    # var fails-safe (staging-only behaviors stay off if someone forgets to
+    # set it). Set ENV_NAME=staging on the Railway staging service and use
+    # `if settings.env_name == "staging": ...` to gate behavior.
+    env_name: str = "production"
 
 
 settings = Settings()
