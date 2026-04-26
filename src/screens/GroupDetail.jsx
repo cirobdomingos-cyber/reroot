@@ -7,7 +7,7 @@ import Avatar from '../components/Avatar'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
-  leaveGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents,
+  leaveGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -24,6 +24,10 @@ export default function GroupDetail() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showCatalog, setShowCatalog]   = useState(false)
+  // Inline rename — admin-only. nameEdit = null when not editing,
+  // otherwise the draft string.
+  const [nameEdit, setNameEdit] = useState(null)
+  const [renaming, setRenaming] = useState(false)
 
   useEffect(() => {
     if (!googleId || !groupId) return
@@ -41,6 +45,23 @@ export default function GroupDetail() {
   async function handleDeleteEvent(eventId) {
     await deleteGroupEvent(groupId, eventId, googleId)
     setGroup(prev => ({ ...prev, events: prev.events.filter(e => e.id !== eventId) }))
+  }
+
+  async function handleRename() {
+    const trimmed = (nameEdit || '').trim()
+    if (!trimmed || trimmed === group.name) {
+      setNameEdit(null)
+      return
+    }
+    setRenaming(true)
+    try {
+      await updateGroup(groupId, googleId, { name: trimmed })
+      setGroup(prev => ({ ...prev, name: trimmed }))
+      setNameEdit(null)
+    } catch {
+      alert('Falha ao renomear o grupo. Tenta de novo.')
+    }
+    setRenaming(false)
   }
 
   async function handleLeave() {
@@ -82,12 +103,76 @@ export default function GroupDetail() {
         ← {t.groups_back}
       </button>
 
-      {/* Header */}
+      {/* Header — admin can rename inline by tapping the name */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <span style={{ fontSize: 28 }}>👥</span>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>{group.name}</h1>
-          {group.visibility === 'private' && <span>🔒</span>}
+          {nameEdit !== null ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+              <input
+                value={nameEdit}
+                onChange={e => setNameEdit(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleRename()
+                  if (e.key === 'Escape') setNameEdit(null)
+                }}
+                autoFocus maxLength={80}
+                disabled={renaming}
+                style={{
+                  flex: 1, fontSize: 20, fontWeight: 700, color: 'var(--charcoal)',
+                  padding: '4px 10px', borderRadius: 8,
+                  border: '1.5px solid var(--sage)', background: 'white', outline: 'none',
+                }}
+              />
+              <button
+                onClick={handleRename}
+                disabled={renaming}
+                style={{
+                  background: 'var(--sage)', color: 'white', border: 'none',
+                  padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+                  fontSize: 13, fontWeight: 700,
+                }}
+              >
+                ✓
+              </button>
+              <button
+                onClick={() => setNameEdit(null)}
+                disabled={renaming}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <>
+              <h1
+                onClick={() => isAdmin && setNameEdit(group.name)}
+                title={isAdmin ? 'Tocar pra renomear' : undefined}
+                style={{
+                  fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0,
+                  cursor: isAdmin ? 'pointer' : 'default',
+                }}
+              >
+                {group.name}
+              </h1>
+              {isAdmin && (
+                <button
+                  onClick={() => setNameEdit(group.name)}
+                  title="Renomear grupo"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 12, color: 'var(--charcoal-light)', padding: 2,
+                  }}
+                >
+                  ✎
+                </button>
+              )}
+              {group.visibility === 'private' && <span>🔒</span>}
+            </>
+          )}
         </div>
         {group.description && (
           <p style={{ fontSize: 13, color: 'var(--charcoal-mid)', marginTop: 4, marginLeft: 38 }}>{group.description}</p>

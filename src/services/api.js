@@ -535,6 +535,20 @@ export async function fetchGroupDetail(groupId, googleId) {
   return res.json()
 }
 
+export async function updateGroup(groupId, googleId, fields) {
+  // fields: { name?, description?, visibility? } — admin-only on backend
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, ...fields }),
+    },
+  )
+  if (!res.ok) throw new Error(`Update group failed: ${res.status}`)
+  return res.json()
+}
+
 export async function joinGroup(googleId, inviteCode) {
   const res = await fetchWithTimeout(`${BASE_URL}/groups/join`, {
     method: 'POST',
