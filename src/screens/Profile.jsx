@@ -254,30 +254,16 @@ export default function Profile() {
 }
 
 
-// ── Feedback — gated by is_feedbacker role ────────────────
-// Pulls the role from /admin/curators (open to any authenticated user;
-// returns is_feedbacker for the requester). Renders nothing when the
-// flag is false, so non-feedbackers don't see this section.
+// ── Feedback — open to any signed-in user ────────────────
 function FeedbackSection({ state }) {
   const email = state.googleUser?.email
   const googleId = state.googleUser?.id
-  const [allowed, setAllowed] = useState(false)
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState(null) // 'sent' | 'error' | null
   const API_BASE = import.meta.env.VITE_API_URL ??
     (import.meta.env.DEV ? 'http://localhost:8000' : '')
-
-  useEffect(() => {
-    if (!email) { setAllowed(false); return }
-    let cancelled = false
-    fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled) setAllowed(!!data?.is_feedbacker) })
-      .catch(() => { if (!cancelled) setAllowed(false) })
-    return () => { cancelled = true }
-  }, [email, API_BASE])
 
   async function submit() {
     if (text.trim().length < 5 || submitting) return
@@ -304,7 +290,7 @@ function FeedbackSection({ state }) {
     setSubmitting(false)
   }
 
-  if (!allowed) return null
+  if (!email) return null
 
   return (
     <div style={{ margin: '16px 16px 0' }} className="card">
@@ -314,7 +300,7 @@ function FeedbackSection({ state }) {
             💬 Mandar feedback
           </div>
           <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-            Você foi liberado pra opinar sobre o app. Sugestões, bugs, ideias.
+            Sugestões, bugs, ideias — manda direto pra equipe.
           </div>
         </div>
         <button

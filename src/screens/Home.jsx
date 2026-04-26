@@ -383,9 +383,10 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    {ev.event_venue && (
-                      <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.event_venue}</div>
-                    )}
+                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+                      {formatFriendsFeedDate(ev.event_date)}
+                      {ev.event_venue ? ` · ${ev.event_venue}` : ''}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                     {ev.friends_going.slice(0, 3).map((friend, i) => (
@@ -507,4 +508,22 @@ export default function Home() {
       </AnimatePresence>
     </div>
   )
+}
+
+
+// ── Formatters ─────────────────────────────────────────────
+
+const _PT_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const _PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+function formatFriendsFeedDate(isoStr) {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  if (Number.isNaN(d.getTime())) return ''
+  const wd = _PT_WEEKDAYS[d.getDay()]
+  const mo = _PT_MONTHS[d.getMonth()]
+  const time = d.getHours() || d.getMinutes()
+    ? ` · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    : ''
+  return `${wd}, ${d.getDate()} ${mo}${time}`
 }

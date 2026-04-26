@@ -2169,7 +2169,13 @@ def admin_remove_curator(email: str, requesting_email: str = ""):
 
 @app.post("/feedback")
 def submit_feedback(req: FeedbackSubmit):
-    email = _require_feedbacker(req.requesting_email)
+    # Feedback is open to anyone signed in — we just need an email to
+    # attribute the message. Earlier versions gated this on a feedbacker
+    # role; that role is now vestigial (kept in DB for backward compat
+    # but no longer required).
+    email = (req.requesting_email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado pra mandar feedback.")
     text = (req.text or "").strip()
     if len(text) < 5:
         raise HTTPException(status_code=400, detail="Feedback muito curto.")

@@ -55,8 +55,6 @@ export default function AdminIgAccounts() {
   // Add-curator form state
   const [newCuratorEmail, setNewCuratorEmail] = useState('')
   const [newCuratorNotes, setNewCuratorNotes] = useState('')
-  const [newRoleCurator, setNewRoleCurator]   = useState(true)
-  const [newRoleFeedbacker, setNewRoleFeedbacker] = useState(false)
 
   const load = useCallback(async () => {
     if (!email) { setLoading(false); return }
@@ -188,10 +186,6 @@ export default function AdminIgAccounts() {
     e?.preventDefault()
     const target = newCuratorEmail.trim().toLowerCase()
     if (!target) return
-    if (!newRoleCurator && !newRoleFeedbacker) {
-      setError('Marque pelo menos um papel.')
-      return
-    }
     setBusy(true)
     try {
       const r = await fetch(`${API_BASE}/admin/curators`, {
@@ -200,8 +194,8 @@ export default function AdminIgAccounts() {
         body: JSON.stringify({
           email: target, notes: newCuratorNotes.trim(),
           requesting_email: email,
-          is_curator: newRoleCurator,
-          is_feedbacker: newRoleFeedbacker,
+          is_curator: true,        // role gates feedbacker-only rows; we only grant curator now
+          is_feedbacker: false,
         }),
       })
       if (!r.ok) {
@@ -209,32 +203,9 @@ export default function AdminIgAccounts() {
         throw new Error(body.detail || `HTTP ${r.status}`)
       }
       setNewCuratorEmail(''); setNewCuratorNotes('')
-      setNewRoleCurator(true); setNewRoleFeedbacker(false)
       await load()
     } catch (e) {
       setError(`Falha ao adicionar: ${e.message}`)
-    }
-    setBusy(false)
-  }
-
-  async function updateRoles(target, isCurator, isFeedbacker) {
-    setBusy(true)
-    try {
-      const r = await fetch(`${API_BASE}/admin/curators/${encodeURIComponent(target)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_curator: isCurator, is_feedbacker: isFeedbacker,
-          requesting_email: email,
-        }),
-      })
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.detail || `HTTP ${r.status}`)
-      }
-      await load()
-    } catch (e) {
-      setError(`Falha ao atualizar papéis: ${e.message}`)
     }
     setBusy(false)
   }
@@ -407,13 +378,8 @@ export default function AdminIgAccounts() {
           setNewCuratorEmail={setNewCuratorEmail}
           newCuratorNotes={newCuratorNotes}
           setNewCuratorNotes={setNewCuratorNotes}
-          newRoleCurator={newRoleCurator}
-          setNewRoleCurator={setNewRoleCurator}
-          newRoleFeedbacker={newRoleFeedbacker}
-          setNewRoleFeedbacker={setNewRoleFeedbacker}
           onAdd={addCurator}
           onRemove={removeCurator}
-          onUpdateRoles={updateRoles}
           busy={busy}
         />
       )}
@@ -943,73 +909,62 @@ function CuratorsSection({
   curators, email,
   newCuratorEmail, setNewCuratorEmail,
   newCuratorNotes, setNewCuratorNotes,
-  newRoleCurator, setNewRoleCurator,
-  newRoleFeedbacker, setNewRoleFeedbacker,
-  onAdd, onRemove, onUpdateRoles, busy,
+  onAdd, onRemove, busy,
 }) {
+  // Only show non-feedbacker-only rows. With feedback open to everyone,
+  // the curators table should reflect just curator status.
+  const visibleCurators = curators.filter(c => c.is_founder || c.is_curator)
   return (
     <div style={{
       marginTop: 32, paddingTop: 24,
       borderTop: '2px dashed var(--border)',
     }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
-        Pessoas com acesso
+        Curadores
       </h2>
       <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
-        Apenas o fundador pode liberar ou alterar papéis. Curadores podem editar
-        contas do Instagram. Feedbackers podem mandar feedback do app.
+        Apenas o fundador pode liberar ou remover curadores. Feedback agora
+        é aberto pra qualquer pessoa logada.
       </p>
 
       <form onSubmit={onAdd} style={{
         background: 'white', borderRadius: 14, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
-        display: 'flex', flexDirection: 'column', gap: 10,
+        display: 'flex', gap: 8, flexWrap: 'wrap',
       }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input
-            type="email"
-            value={newCuratorEmail}
-            onChange={e => setNewCuratorEmail(e.target.value)}
-            placeholder="email@exemplo.com"
-            style={{ ...inputStyle, flex: '2 1 220px' }}
-          />
-          <input
-            value={newCuratorNotes}
-            onChange={e => setNewCuratorNotes(e.target.value)}
-            placeholder="Nota (opcional)"
-            style={inputStyle}
-          />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <label style={checkLabelStyle}>
-            <input type="checkbox" checked={newRoleCurator}
-              onChange={e => setNewRoleCurator(e.target.checked)} /> Curador
-          </label>
-          <label style={checkLabelStyle}>
-            <input type="checkbox" checked={newRoleFeedbacker}
-              onChange={e => setNewRoleFeedbacker(e.target.checked)} /> Feedbacker
-          </label>
-          <button
-            type="submit"
-            disabled={busy || !newCuratorEmail.trim() || (!newRoleCurator && !newRoleFeedbacker)}
-            style={{ ...primaryBtn(busy || !newCuratorEmail.trim() || (!newRoleCurator && !newRoleFeedbacker)), marginLeft: 'auto' }}
-          >
-            Liberar
-          </button>
-        </div>
+        <input
+          type="email"
+          value={newCuratorEmail}
+          onChange={e => setNewCuratorEmail(e.target.value)}
+          placeholder="email@exemplo.com"
+          style={{ ...inputStyle, flex: '2 1 220px' }}
+        />
+        <input
+          value={newCuratorNotes}
+          onChange={e => setNewCuratorNotes(e.target.value)}
+          placeholder="Nota (opcional)"
+          style={inputStyle}
+        />
+        <button
+          type="submit"
+          disabled={busy || !newCuratorEmail.trim()}
+          style={primaryBtn(busy || !newCuratorEmail.trim())}
+        >
+          Liberar
+        </button>
       </form>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {curators.map(c => (
+        {visibleCurators.map(c => (
           <div
             key={c.email}
             style={{
               background: 'white', border: '1px solid var(--border)',
               borderRadius: 10, padding: '10px 12px',
-              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              display: 'flex', alignItems: 'center', gap: 10,
             }}
           >
-            <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -1028,27 +983,11 @@ function CuratorsSection({
                 </div>
               )}
             </div>
-            <label style={checkLabelStyle}>
-              <input
-                type="checkbox"
-                checked={!!c.is_curator}
-                disabled={busy || c.is_founder}
-                onChange={e => onUpdateRoles(c.email, e.target.checked, !!c.is_feedbacker)}
-              /> Curador
-            </label>
-            <label style={checkLabelStyle}>
-              <input
-                type="checkbox"
-                checked={!!c.is_feedbacker}
-                disabled={busy || c.is_founder}
-                onChange={e => onUpdateRoles(c.email, !!c.is_curator, e.target.checked)}
-              /> Feedbacker
-            </label>
             {!c.is_founder && c.email !== email && (
               <button
                 onClick={() => onRemove(c.email)}
                 disabled={busy}
-                title="Remover de todos os papéis"
+                title="Remover curador"
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
                   fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
