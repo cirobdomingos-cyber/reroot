@@ -48,7 +48,7 @@ export default function AddToCalendar({ event, style }) {
         }}
         title="Compartilhar"
       >
-        📤
+        🔗
       </button>
 
       {/* Bottom sheet overlay */}
