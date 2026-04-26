@@ -64,6 +64,32 @@ function cleanDescription(raw) {
   return text
 }
 
+// ── Personalization chips ────────────────────────────────────────────────────
+// Returns at most one personal-context chip for an event, computed purely
+// from the user's existing RSVPs (already in memory — zero extra LLM/API cost).
+// Conflict beats same-venue: a date clash is more actionable than a venue echo.
+function getPersonalChip(ev, rsvps) {
+  if (!ev.dateStart) return null
+  const myDay = ev.dateStart.slice(0, 10)
+  const myVenue = (ev.venue?.split(' · ')[0] || '').trim().toLowerCase()
+  let conflictName = null
+  let sameVenueName = null
+  for (const [otherId, info] of Object.entries(rsvps)) {
+    if (!info || otherId === ev.id) continue
+    if (!conflictName && info.dateStart?.slice(0, 10) === myDay) {
+      conflictName = info.name
+    }
+    if (!sameVenueName && myVenue) {
+      const otherVenue = (info.venue?.split(' · ')[0] || '').trim().toLowerCase()
+      if (otherVenue && otherVenue === myVenue) sameVenueName = info.name
+    }
+    if (conflictName && sameVenueName) break
+  }
+  if (conflictName) return { kind: 'conflict', other: conflictName }
+  if (sameVenueName) return { kind: 'same_venue', other: sameVenueName }
+  return null
+}
+
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
 function EventCardSkeleton() {
@@ -638,6 +664,7 @@ export default function Events() {
                     ev={ev}
                     rsvped={rsvped}
                     friendsGoing={friendsByEventId[ev.id] || []}
+                    personalChip={getPersonalChip(ev, state.rsvps)}
                     onOpen={() => openDetail(ev.id)}
                     onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
@@ -798,7 +825,7 @@ function SourceBadge({ ev, onSourceTap }) {
 }
 
 
-function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, onSourceTap, onAddToGroup, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onRsvp, onFriend, onSourceTap, onAddToGroup, t }) {
   // Split "Venue Name · Neighborhood" into two parts
   const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -901,6 +928,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
         {/* Bottom row: badges + RSVP button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+            {personalChip && <PersonalChip chip={personalChip} />}
             <SourceBadge ev={ev} onSourceTap={onSourceTap} />
             {ev.isCustom && (
               <span style={{
@@ -958,6 +986,30 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Personalization chip ──
+// Pure presentational. Truncates the conflicting/echoed event name so the
+// chip doesn't blow out the row on small screens. Full name lives in the
+// title attribute (long-press on mobile, hover on desktop).
+function PersonalChip({ chip }) {
+  const [icon, label, bg, color] = chip.kind === 'conflict'
+    ? ['⚠', 'Mesma noite', '#FFF4E5', '#B8761F']
+    : ['📍', 'Mesmo lugar', '#EAF2EC', '#5A7E5E']
+  const tip = `${label} que ${chip.other}`
+  return (
+    <span
+      title={tip}
+      style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+        background: bg, color,
+        padding: '2px 8px', borderRadius: 5,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {icon} {label}
+    </span>
   )
 }
 
