@@ -911,9 +911,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], onOpen, onRsvp, onFriend, on
                 ★ {t.tag_private}
               </span>
             )}
-            {/* Baixa pressão tag removed for now — was noisy and not
-                actionable. The signal still flows on EnrichedEvent.is_low_pressure
-                so we can resurrect when there's a clearer use case. */}
             {ev.priceTier === 'free' ? (
               <span className="tag tag--sage" style={{ fontSize: 10, padding: '2px 7px' }}>
                 {t.tag_free}
