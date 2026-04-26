@@ -559,10 +559,59 @@ def _is_in_curitiba(ev) -> bool:
 
 @app.get("/events/{event_id}")
 def get_event(event_id: str):
+    # Catalog events first.
     ev = db.get_event_by_id(event_id)
-    if not ev:
-        raise HTTPException(status_code=404, detail="Evento não encontrado")
-    return _to_frontend(ev, detail=True)
+    if ev:
+        return _to_frontend(ev, detail=True)
+
+    # Fallback: group events (ids start with "grp_ev_") so a friend's
+    # public-group RSVP can be opened from the catalog detail panel.
+    # Shaped like an EnrichedEvent enough for the frontend's normalizer.
+    if event_id.startswith("grp_ev_"):
+        ge = db.get_group_event(event_id)
+        if ge:
+            from datetime import datetime as _dt
+            ds = ge.get("date_start") or ""
+            try:
+                dt = _dt.fromisoformat(ds.replace("Z", "+00:00")) if ds else None
+            except (ValueError, AttributeError):
+                dt = None
+            time_str = dt.strftime("%H:%M") if dt else ""
+            date_label = dt.strftime("%a, %d %b") if dt else ""
+            venue = ge.get("venue") or "Evento de grupo"
+            return {
+                "id": ge["id"],
+                "name": ge.get("name") or "Evento de grupo",
+                "category": "community",
+                "categoryLabel": "Grupo",
+                "categoryEmoji": "👥",
+                "venue": venue,
+                "date": date_label,
+                "time": time_str,
+                "duration": "",
+                "headerBg": "linear-gradient(135deg, #FFE0B2, #FFCC80)",
+                "icon": "👥",
+                "description": ge.get("description") or "",
+                "price": "",
+                "priceTier": "free",
+                "kidsWelcome": False,
+                "hasFood": False,
+                "isLowPressure": False,
+                "attendeesConfirmed": 0,
+                "expectedSize": "intimate",
+                "vibeSummary": "",
+                "pitch": "",
+                "url": "",
+                "source": "group",
+                "igHandle": None,
+                "dateStart": ds,
+                "venueAddress": "",
+                "city": "Curitiba",
+                "imageUrl": None,
+                "isCustom": False,
+            }
+
+    raise HTTPException(status_code=404, detail="Evento não encontrado")
 
 
 @app.post("/events/refresh")

@@ -701,9 +701,30 @@ export default function Events() {
               <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(44,44,44,0.18)' }}/>
             </div>
 
-            {detailLoading || !detailEvent ? (
+            {detailLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%' }}>
                 <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>{t.events_loading}</div>
+              </div>
+            ) : !detailEvent ? (
+              // Backend returned 404 — show a friendly fallback rather than
+              // looping on the spinner. Common when an old RSVP points at
+              // an event that's no longer in the catalog (deleted, etc.).
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '70%', padding: 32 }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🤔</div>
+                <div style={{ fontSize: 14, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 18, lineHeight: 1.5 }}>
+                  Esse evento não está mais no catálogo.<br/>
+                  Pode ter sido removido ou substituído.
+                </div>
+                <button
+                  onClick={closeDetail}
+                  style={{
+                    padding: '10px 22px', borderRadius: 12, border: 'none',
+                    background: 'var(--sage)', color: 'white',
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Voltar
+                </button>
               </div>
             ) : (
               <DetailPanel
