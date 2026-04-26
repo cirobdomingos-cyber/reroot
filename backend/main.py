@@ -1898,12 +1898,17 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
     # scheduler. Returns the count of new RawEvents extracted.
     from scrapers.instagram_apify import fetch_events as ig_fetch
     from enrichment import EnrichmentPipeline
-    raw_events = await ig_fetch(
-        anthropic_api_key=settings.anthropic_api_key,
-        apify_token=settings.apify_api_token,
-        handles=[handle],
-        posts_per_account=5,
-    )
+    try:
+        raw_events = await ig_fetch(
+            anthropic_api_key=settings.anthropic_api_key,
+            apify_token=settings.apify_api_token,
+            handles=[handle],
+            posts_per_account=5,
+        )
+    except Exception as e:
+        log.exception(f"Manual scrape ig_fetch failed for @{handle}")
+        raise HTTPException(status_code=500, detail=f"Apify fetch failed: {e}")
+
     new_event_ids: set[str] = set()
     if raw_events:
         pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
@@ -1920,7 +1925,11 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
     # re-evaluation didn't reaffirm. This is what cleans up old wrongly-
     # dated events when the prompt fix or vision improvements reclassify
     # them as past/not-an-event.
-    deleted = db.delete_events_by_handle_except(handle, new_event_ids)
+    try:
+        deleted = db.delete_events_by_handle_except(handle, new_event_ids)
+    except Exception as e:
+        log.exception(f"Manual scrape cleanup failed for @{handle}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {e}")
     if deleted:
         log.info(f"Manual scrape @{handle}: deleted {deleted} stale event row(s)")
 
