@@ -278,6 +278,164 @@ def privacy():
     return PlainTextResponse(_PRIVACY_HTML, media_type="text/html; charset=utf-8")
 
 
+# ── iOS install instructions ─────────────────────────────
+# Standalone HTML so you can share the link in WhatsApp/email and friends
+# get a polished install walkthrough — works as a stopgap until we ship a
+# proper TestFlight build. JS detects iOS-but-not-Safari (WhatsApp/Chrome
+# in-app browsers) and shows a "Open in Safari first" warning, since
+# "Add to Home Screen" only works in Safari proper.
+_IOS_INSTALL_HTML = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#E8623F">
+<title>auê — Instalar no iPhone</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #FCF5EB; color: #2C2C2C;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 36px 20px 48px; }
+  .logo { font-size: 56px; font-weight: 900; color: #E8623F; text-align: center;
+          margin: 0 0 4px; letter-spacing: -2px; line-height: 1; }
+  .tag  { text-align: center; color: #2C2C2C; opacity: 0.65;
+          font-size: 13px; font-weight: 500; margin-bottom: 32px;
+          text-transform: uppercase; letter-spacing: 1.5px; }
+  h1 { font-size: 26px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
+  .sub { color: #2C2C2C; opacity: 0.7; font-size: 15px;
+         margin: 0 0 28px; line-height: 1.55; }
+  .warning {
+    background: #FFF4E5; border-left: 4px solid #E8A93F;
+    padding: 14px 16px; border-radius: 10px; margin-bottom: 24px;
+    font-size: 14px; line-height: 1.5;
+  }
+  .warning strong { color: #B8761F; display: block; margin-bottom: 6px; }
+  .warning button {
+    display: block; width: 100%; margin-top: 10px;
+    background: #E8623F; color: white; border: none;
+    padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .warning button:active { background: #C84F30; }
+  .step {
+    background: white; border-radius: 16px; padding: 18px 18px;
+    margin-bottom: 12px; display: flex; gap: 14px; align-items: flex-start;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
+  }
+  .num {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #E8623F; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; flex-shrink: 0;
+  }
+  .sc { flex: 1; min-width: 0; }
+  .st { font-weight: 700; font-size: 15px; margin-bottom: 4px; line-height: 1.3; }
+  .sd { font-size: 14px; color: #2C2C2C; opacity: 0.75; line-height: 1.5; }
+  .ic {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; vertical-align: -7px;
+    background: #F4EFE6; border-radius: 6px; padding: 3px; margin: 0 3px;
+  }
+  .done {
+    text-align: center; margin-top: 24px;
+    background: #7A9E7E12; border: 1px solid #7A9E7E40;
+    padding: 18px; border-radius: 14px;
+    font-size: 14px; color: #2C2C2C; line-height: 1.55;
+  }
+  .done strong { color: #5A7E5E; display: block; margin-bottom: 4px; font-size: 15px; }
+  .footer {
+    text-align: center; margin-top: 32px; font-size: 13px;
+    color: #2C2C2C; opacity: 0.55; line-height: 1.7;
+  }
+  .footer a { color: #7A9E7E; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">auê</div>
+  <div class="tag">Curitiba que acontece</div>
+
+  <h1>Instalar no iPhone</h1>
+  <p class="sub">Em 30 segundos você tem o auê na tela inicial, com ícone próprio e sem barra do navegador. Funciona como um app de verdade.</p>
+
+  <div id="warn-not-safari" class="warning" style="display:none">
+    <strong>⚠️ Você precisa abrir no Safari</strong>
+    O "Adicionar à Tela de Início" só aparece no Safari — não funciona aqui no WhatsApp/Chrome.
+    <button onclick="copyLink()">Copiar link e abrir no Safari</button>
+  </div>
+
+  <div class="step">
+    <div class="num">1</div>
+    <div class="sc">
+      <div class="st">Toque o botão Compartilhar</div>
+      <div class="sd">É o ícone <span class="ic"><svg width="16" height="20" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div class="sc">
+      <div class="st">Role e toque "Adicionar à Tela de Início"</div>
+      <div class="sd">A opção fica na lista de ações, perto do final. Tem um ícone de <span class="ic"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#2C2C2C" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div class="sc">
+      <div class="st">Toque "Adicionar" no canto superior direito</div>
+      <div class="sd">Pronto. O ícone laranja do auê aparece na sua tela inicial junto dos outros apps.</div>
+    </div>
+  </div>
+
+  <div class="done">
+    <strong>🎉 É isso</strong>
+    Da próxima vez, é só tocar no ícone do auê — abre tela cheia, sem Safari por cima.
+  </div>
+
+  <div class="footer">
+    Algum problema? <a href="mailto:ciro.b.domingos@gmail.com">manda mensagem pro Ciro</a><br>
+    <a href="/">← Voltar pro auê</a>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var ua = navigator.userAgent;
+    var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+    // Catch in-app browsers (WhatsApp, Instagram, FB, Line) and Chrome/Firefox/Edge for iOS.
+    var notSafari = /CriOS|FxiOS|EdgiOS|GSA|FBAN|FBAV|FB_IAB|FBIOS|Instagram|Line|WhatsApp|Twitter/.test(ua);
+    if (isIOS && notSafari) {
+      document.getElementById('warn-not-safari').style.display = 'block';
+    }
+  })();
+  function copyLink() {
+    var url = window.location.href;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        alert('Link copiado! Agora abre o Safari e cola na barra de endereço.');
+      });
+    } else {
+      prompt('Copie o link abaixo e cole no Safari:', url);
+    }
+  }
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/ios", response_class=PlainTextResponse)
+def ios_install():
+    return PlainTextResponse(_IOS_INSTALL_HTML, media_type="text/html; charset=utf-8")
+
+
 @app.get("/health")
 def health():
     total = db.count_events()
