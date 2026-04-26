@@ -128,6 +128,25 @@ export default function AdminIgAccounts() {
     setBusy(false)
   }
 
+  async function scrapeOne(handle) {
+    setBusy(true)
+    try {
+      const r = await fetch(`${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/scrape?requesting_email=${encodeURIComponent(email)}`, {
+        method: 'POST',
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      const result = await r.json()
+      alert(`@${handle}: ${result.events_extracted} evento(s) extraído(s).`)
+      await load()
+    } catch (e) {
+      setError(`Falha ao scrapear: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
   async function deleteAccount(handle) {
     if (!confirm(`Remover @${handle}?`)) return
     setBusy(true)
@@ -331,6 +350,7 @@ export default function AdminIgAccounts() {
                   busy={busy}
                   onToggle={toggleEnabled}
                   onDelete={deleteAccount}
+                  onScrape={scrapeOne}
                   onOpenSource={(h) => navigate(`/sources/${encodeURIComponent('ig:' + h)}`)}
                 />
               ))}
@@ -588,7 +608,7 @@ function NotACuratorMessage({ email }) {
 }
 
 
-function AccountRow({ acc, busy, onToggle, onDelete, onOpenSource }) {
+function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource }) {
   const futureCount = acc.future_events ?? 0
   const pic = acc.profile_pic_url
   return (
@@ -685,6 +705,19 @@ function AccountRow({ acc, busy, onToggle, onDelete, onOpenSource }) {
         {futureCount} →
       </button>
 
+      {onScrape && (
+        <button
+          onClick={() => onScrape(acc.handle)}
+          disabled={busy}
+          title="Scrapear esta conta agora"
+          style={{
+            background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer',
+            fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+          }}
+        >
+          🔄
+        </button>
+      )}
       <button
         onClick={() => onDelete(acc.handle)}
         disabled={busy}

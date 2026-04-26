@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     google_places_api_key: str = ""
     city: str = "Curitiba"
-    refresh_interval_hours: int = 6
+    refresh_interval_hours: int = 24
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
     founder_email: str = "ciro.b.domingos@gmail.com"
@@ -1838,6 +1838,52 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     return {"ok": True}
+
+
+@app.post("/admin/ig-accounts/{handle}/scrape")
+async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
+    """
+    Scrape a single IG handle on demand — useful right after adding/editing
+    a handle so the curator gets immediate feedback (avatar, sample event)
+    without waiting for the next 24h scheduler tick. Forces a full fetch
+    even if the probe says nothing's new.
+    """
+    _require_curator(requesting_email)
+    handle = handle.strip().lstrip("@").lower()
+    acc = db.get_ig_account(handle)
+    if not acc:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    if not acc.get("enabled"):
+        raise HTTPException(status_code=400, detail="Conta desativada — ative antes de scrape manual")
+
+    # Run the existing scrape pipeline scoped to this one handle, then push
+    # the events through the same enrichment + persistence flow as the
+    # scheduler. Returns the count of new RawEvents extracted.
+    from scrapers.instagram_apify import fetch_events as ig_fetch
+    from enrichment import EnrichmentPipeline
+    raw_events = await ig_fetch(
+        anthropic_api_key=settings.anthropic_api_key,
+        apify_token=settings.apify_api_token,
+        handles=[handle],
+        posts_per_account=5,
+    )
+    if raw_events:
+        pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
+        for raw in raw_events:
+            try:
+                enriched = pipeline.enrich(raw)
+                if enriched:
+                    db.upsert_event(enriched)
+            except Exception as e:
+                log.warning(f"Enrichment failed for @{handle}/{raw.external_id}: {e}")
+    # Re-read the row so the updated profile metadata is in the response
+    updated = db.get_ig_account(handle) or {}
+    return {
+        "handle": handle,
+        "events_extracted": len(raw_events),
+        "display_name": updated.get("display_name", ""),
+        "profile_pic_url": updated.get("profile_pic_url", ""),
+    }
 
 
 @app.get("/admin/apify-debug")

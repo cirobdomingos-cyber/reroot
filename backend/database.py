@@ -169,6 +169,12 @@ def init_db():
             "ADD COLUMN display_name TEXT NOT NULL DEFAULT ''",
             "ADD COLUMN profile_pic_url TEXT NOT NULL DEFAULT ''",
             "ADD COLUMN bio_snippet TEXT NOT NULL DEFAULT ''",
+            # Cheap-probe + throttle support: last seen post shortcode (so we
+            # can skip the full scrape when there's nothing new) and last
+            # details-call timestamp (so profile-metadata calls run at most
+            # once per 24h per handle).
+            "ADD COLUMN last_post_shortcode TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN last_details_at TEXT",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -567,6 +573,38 @@ def delete_ig_account(handle: str) -> bool:
         cur = conn.execute("DELETE FROM tracked_ig_accounts WHERE handle = ?", (handle,))
         conn.commit()
         return cur.rowcount > 0
+
+
+def get_ig_account(handle: str) -> Optional[dict]:
+    """Single-row lookup by handle. Returns None if not found."""
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM tracked_ig_accounts WHERE handle = ?", (handle,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def set_ig_account_last_post_shortcode(handle: str, shortcode: str) -> None:
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tracked_ig_accounts SET last_post_shortcode = ? WHERE handle = ?",
+            (shortcode[:200], handle),
+        )
+        conn.commit()
+
+
+def mark_ig_account_details_fresh(handle: str) -> None:
+    """Stamp last_details_at = now so we throttle profile-metadata calls."""
+    handle = handle.strip().lstrip("@").lower()
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tracked_ig_accounts SET last_details_at = ? WHERE handle = ?",
+            (now, handle),
+        )
+        conn.commit()
 
 
 def update_ig_account_profile(handle: str, display_name: str = "",

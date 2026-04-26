@@ -101,14 +101,24 @@ LAST_POST_DEBUG: dict = {}
 async def fetch_events(
     anthropic_api_key: str,
     apify_token: str,
-    posts_per_account: int = 10,
+    posts_per_account: int = 5,
+    handles: Optional[list[str]] = None,
 ) -> list[RawEvent]:
     """
-    Run the Apify Instagram scraper for every enabled tracked account, then
-    use Claude to extract events from captions.
+    Run the Apify Instagram scraper for every enabled tracked account
+    (or just `handles` if given — used by the manual single-handle endpoint),
+    then use Claude to extract events from captions.
 
-    Never raises — failures degrade gracefully to an empty list, so a broken
-    Instagram run can't take down the whole refresh pipeline.
+    Cost-aware pipeline:
+      1. Profile-details call — only for handles whose `last_details_at`
+         is older than 24h. Skipped entirely when nothing's stale.
+      2. Cheap 1-post probe — fetches just the latest post per handle to
+         check if there's anything new (compares shortcode to
+         last_post_shortcode). Costs ~N results regardless of fanout.
+      3. Full posts scrape — only for handles whose latest shortcode
+         differs from what we have stored. New handles get a full scrape.
+
+    Never raises — failures degrade gracefully to an empty list.
     """
     if not apify_token:
         log.warning("Instagram (Apify): APIFY_API_TOKEN não configurado — pulando")
@@ -117,25 +127,79 @@ async def fetch_events(
         log.warning("Instagram (Apify): ANTHROPIC_API_KEY não configurado — pulando")
         return []
 
-    accounts = db.get_enabled_ig_accounts()
+    if handles:
+        # Manual mode — caller specified a subset
+        wanted = {h.strip().lstrip("@").lower() for h in handles if h.strip()}
+        accounts = [a for a in db.get_enabled_ig_accounts() if a["handle"] in wanted]
+    else:
+        accounts = db.get_enabled_ig_accounts()
     if not accounts:
-        log.info("Instagram (Apify): nenhuma conta cadastrada — pulando")
+        log.info("Instagram (Apify): nenhuma conta a scrapear")
         return []
 
-    direct_urls = [f"https://www.instagram.com/{a['handle']}/" for a in accounts]
-    log.info(f"Instagram (Apify): scraping {len(direct_urls)} accounts...")
+    log.info(f"Instagram (Apify): {len(accounts)} accounts no batch...")
 
-    # Profile-level metadata (avatar, full name, bio) is independent of
-    # post-extraction — fire it first so a slow/failed posts call doesn't
-    # block enrichment. Best-effort.
-    try:
-        await _enrich_profiles(apify_token, direct_urls)
-    except Exception as e:
-        log.warning(f"Apify profile enrichment failed: {e}")
+    # ── (1) profile-details — only for handles stale > 24h ──
+    stale_details = [
+        a for a in accounts
+        if _details_is_stale(a.get("last_details_at"))
+    ]
+    if stale_details:
+        stale_urls = [f"https://www.instagram.com/{a['handle']}/" for a in stale_details]
+        try:
+            await _enrich_profiles(apify_token, stale_urls)
+            for a in stale_details:
+                db.mark_ig_account_details_fresh(a["handle"])
+        except Exception as e:
+            log.warning(f"Apify profile enrichment failed: {e}")
+    else:
+        log.info("Instagram (Apify): todos os perfis enriquecidos nas últimas 24h, skip details")
 
-    posts = await _run_apify_scrape(apify_token, direct_urls, posts_per_account)
+    # ── (2) cheap probe — 1 post per handle to detect new content ──
+    probe_urls = [f"https://www.instagram.com/{a['handle']}/" for a in accounts]
+    probe_posts = await _run_apify_scrape(apify_token, probe_urls, posts_per_account=1)
+    latest_by_handle: dict[str, str] = {}  # handle → shortcode of latest post
+    for p in probe_posts:
+        h = (p.get("ownerUsername") or "").lower()
+        if not h or h in latest_by_handle:
+            continue
+        sc = _extract_shortcode(p.get("url") or "") or (p.get("id") or "")
+        if sc:
+            latest_by_handle[h] = sc
+
+    # Decide which handles need a full scrape: shortcode changed vs stored,
+    # or we never stored one. Forced scrape (manual mode) refetches all.
+    handles_to_fetch: list[str] = []
+    for a in accounts:
+        h = a["handle"]
+        latest = latest_by_handle.get(h)
+        prev = (a.get("last_post_shortcode") or "").strip()
+        if handles:  # manual mode — always full fetch
+            handles_to_fetch.append(h)
+            continue
+        if not latest:
+            # Probe didn't return anything for this handle (private? rate limit?)
+            # Skip the full fetch but still mark as scraped so the count stays fresh.
+            db.mark_ig_account_scraped(h)
+            continue
+        if latest != prev:
+            handles_to_fetch.append(h)
+        else:
+            db.mark_ig_account_scraped(h)  # nothing new but we did look
+
+    if not handles_to_fetch:
+        log.info("Instagram (Apify): probe encontrou 0 handles com novo conteúdo")
+        return []
+
+    log.info(
+        f"Instagram (Apify): probe → {len(handles_to_fetch)}/{len(accounts)} "
+        f"com posts novos. Buscando {posts_per_account} posts cada..."
+    )
+
+    full_urls = [f"https://www.instagram.com/{h}/" for h in handles_to_fetch]
+    posts = await _run_apify_scrape(apify_token, full_urls, posts_per_account)
     if not posts:
-        log.warning("Instagram (Apify): scraper retornou 0 posts")
+        log.warning("Instagram (Apify): full scrape retornou 0 posts")
         return []
 
     log.info(f"Instagram (Apify): {len(posts)} posts coletados, extraindo eventos...")
@@ -207,6 +271,10 @@ async def fetch_events(
             }
     for handle in handles_with_data:
         db.mark_ig_account_scraped(handle)
+        # Persist the latest shortcode we saw so the next probe can detect
+        # whether anything new shows up — drives the cheap-skip path above.
+        if handle in latest_by_handle:
+            db.set_ig_account_last_post_shortcode(handle, latest_by_handle[handle])
         meta = profile_seen.get(handle, {})
         if meta.get("display_name") or meta.get("profile_pic_url"):
             db.update_ig_account_profile(
@@ -454,6 +522,20 @@ def _extract_shortcode(url: str) -> str:
     """Pull the shortcode out of an instagram.com/p/<code>/ URL."""
     m = re.search(r"/p/([A-Za-z0-9_-]+)", url)
     return m.group(1) if m else ""
+
+
+def _details_is_stale(iso_str: Optional[str]) -> bool:
+    """Profile-details counts as stale when it was never run or > 24h ago."""
+    if not iso_str:
+        return True
+    try:
+        last = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return True
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - last) > timedelta(hours=24)
 
 
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
