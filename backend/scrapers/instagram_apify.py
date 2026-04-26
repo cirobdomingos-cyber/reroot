@@ -20,6 +20,7 @@ Cost ballpark (Apify free tier = $5/mo credit):
   Comfortably inside the free tier for development.
 """
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -32,6 +33,41 @@ from anthropic import AsyncAnthropic
 from models import RawEvent
 
 import database as db
+
+
+# Browser-like UA so IG's CDN doesn't 403 us. Anthropic's URL-source vision
+# can't reach signed scontent.cdninstagram.com URLs (they reject the
+# Anthropic crawler), so we proxy: fetch ourselves, send base64 to Claude.
+_IMAGE_FETCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+    ),
+    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+}
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024  # Anthropic limit-friendly cap
+
+
+async def _fetch_image_b64(image_url: str) -> Optional[tuple[str, str]]:
+    """
+    Download an IG image so we can pass it to Claude as base64. Returns
+    (base64_data, media_type) on success, None on any failure.
+    """
+    if not image_url or not image_url.startswith("http"):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            r = await client.get(image_url, headers=_IMAGE_FETCH_HEADERS)
+        if r.status_code != 200:
+            return None
+        if len(r.content) > _MAX_IMAGE_BYTES:
+            return None
+        media_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        if not media_type.startswith("image/"):
+            media_type = "image/jpeg"
+        return base64.b64encode(r.content).decode("ascii"), media_type
+    except Exception:
+        return None
 
 # Cap concurrent Claude calls so a 150-post run doesn't fan out 150 in flight.
 # The Anthropic API tolerates this fine, but a semaphore keeps memory + open
@@ -469,13 +505,22 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
     # Build a multimodal user message — the post image is essential when
     # the date is printed on the poster (extremely common on IG event
     # flyers) and the caption alone is ambiguous ("hoje carai!", etc.).
-    # Falls back to text-only when no image URL is available.
+    # IG's CDN 403s Anthropic's URL fetcher, so we proxy: fetch ourselves
+    # with a browser UA and send as base64. Falls back to text-only when
+    # the image fetch fails.
     content_blocks: list = [{"type": "text", "text": prompt}]
-    if image_url and image_url.startswith("http"):
-        content_blocks.insert(0, {
-            "type": "image",
-            "source": {"type": "url", "url": image_url},
-        })
+    if image_url:
+        img = await _fetch_image_b64(image_url)
+        if img:
+            b64, media_type = img
+            content_blocks.insert(0, {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": b64,
+                },
+            })
 
     try:
         response = await client.messages.create(
