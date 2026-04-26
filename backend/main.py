@@ -579,6 +579,14 @@ def get_event(event_id: str):
             time_str = dt.strftime("%H:%M") if dt else ""
             date_label = dt.strftime("%a, %d %b") if dt else ""
             venue = ge.get("venue") or "Evento de grupo"
+            # Catalog imports stash "Ver original: <url>" at the end of the
+            # description. Pull it out so the frontend's existing
+            # "Ver no <source>" button works, and remove from description
+            # so it doesn't duplicate above the button.
+            raw_desc = ge.get("description") or ""
+            url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
+            event_url = url_match.group(1).rstrip(".,;") if url_match else ""
+            cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
             return {
                 "id": ge["id"],
                 "name": ge.get("name") or "Evento de grupo",
@@ -591,7 +599,7 @@ def get_event(event_id: str):
                 "duration": "",
                 "headerBg": "linear-gradient(135deg, #FFE0B2, #FFCC80)",
                 "icon": "👥",
-                "description": ge.get("description") or "",
+                "description": cleaned_desc,
                 "price": "",
                 "priceTier": "free",
                 "kidsWelcome": False,
@@ -601,7 +609,7 @@ def get_event(event_id: str):
                 "expectedSize": "intimate",
                 "vibeSummary": "",
                 "pitch": "",
-                "url": "",
+                "url": event_url,
                 "source": "group",
                 "igHandle": None,
                 "dateStart": ds,
