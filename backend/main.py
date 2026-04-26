@@ -301,24 +301,26 @@ def _dedupe_events(events):
     """
     Drop events that are likely the same thing scraped from multiple sources.
 
-    Three-tier dedup, in order of confidence:
+    Tiers, in order of confidence:
       1. Exact match on (normalized name, day) — fast.
       2. Same day + same hour + venue overlap (Jaccard ≥ 0.4 on venue
          tokens, or one venue contained in the other). Strongest signal:
-         a museum/theatre is unlikely to host two distinct events at the
-         same hour. Catches the MON-Orquestra-Cordas case where 5 scraper
-         flavors of the same concert had wildly different name strings
-         ("Concerto Especial", "Concerto com Cláudio Cruz", etc.).
-      3. Name fuzzy: token-set Jaccard ≥ 0.6 between names AND same day
-         (or both undated). Catches near-misses like "Caça à Arte no MON
-         sem Paredes" vs "MON sem Paredes — Arte ao Ar Livre".
+         a venue rarely hosts two distinct events at the same hour.
+      2.5. Same day + venue overlap + name share (≥ 0.4) — different
+         hours but clearly the same event with multiple sessions or
+         scrape variants ("Brasilidades 13 Anos - Festa de Dia" 15h vs
+         "Brasilidades 13 anos" 19h, same venue → keep earliest).
+      3. Same day + name fuzzy ≥ 0.6 (no venue/hour gate) — catches
+         near-misses like "Caça à Arte no MON sem Paredes" vs "MON sem
+         Paredes — Arte ao Ar Livre".
 
-    First occurrence wins; downstream sources are dropped silently. Sources
-    are typically ordered upstream so that canonical sources (museum site)
-    arrive before secondary mentions (Instagram), keeping the better record.
+    Input is sorted by date_start ASC upstream, so "first occurrence wins"
+    means the earliest-time variant survives — which is what we want for
+    Tier 2.5 (multiple sessions of the same event collapse to the early one).
     """
     NAME_JACCARD = 0.6
-    VENUE_JACCARD = 0.4  # lower bar: venue strings often differ in suffixes
+    NAME_JACCARD_WITH_VENUE = 0.4   # lower bar when venue already matches
+    VENUE_JACCARD = 0.4
     out = []
     for ev in events:
         ev_day = ev.date_start.date().isoformat() if ev.date_start else ""
@@ -328,30 +330,37 @@ def _dedupe_events(events):
         is_dup = False
         for kept in out:
             kept_day = kept.date_start.date().isoformat() if kept.date_start else ""
-            # Date gate — must share a day (or both be undated programs)
             if ev_day != kept_day:
                 continue
 
-            # Tier 2: same hour + venue overlap → very confident dup
-            if ev_day and ev_hour:
+            kept_venue_tokens = _name_tokens(kept.venue_name or "")
+            venue_match = False
+            if ev_venue_tokens and kept_venue_tokens:
+                vinter = len(ev_venue_tokens & kept_venue_tokens)
+                vunion = len(ev_venue_tokens | kept_venue_tokens)
+                if (vunion and vinter / vunion >= VENUE_JACCARD) \
+                   or ev_venue_tokens.issubset(kept_venue_tokens) \
+                   or kept_venue_tokens.issubset(ev_venue_tokens):
+                    venue_match = True
+
+            # Tier 2: same hour + venue overlap
+            if ev_day and ev_hour and venue_match:
                 kept_hour = kept.date_start.strftime("%H:%M") if kept.date_start else ""
                 if ev_hour == kept_hour:
-                    kept_venue_tokens = _name_tokens(kept.venue_name or "")
-                    venue_match = False
-                    if ev_venue_tokens and kept_venue_tokens:
-                        vinter = len(ev_venue_tokens & kept_venue_tokens)
-                        vunion = len(ev_venue_tokens | kept_venue_tokens)
-                        if vunion and vinter / vunion >= VENUE_JACCARD:
-                            venue_match = True
-                        # Also accept "one is a subset of the other" — handles
-                        # "MON" vs "Auditório Poty Lazzarotto Museu Oscar Niemeyer"
-                        elif ev_venue_tokens.issubset(kept_venue_tokens) or kept_venue_tokens.issubset(ev_venue_tokens):
-                            venue_match = True
-                    if venue_match:
+                    is_dup = True
+                    break
+
+            # Tier 2.5: venue overlap + name share — different hours OK
+            if venue_match and ev_name_tokens:
+                kept_name_tokens = _name_tokens(kept.name)
+                if kept_name_tokens:
+                    inter = len(ev_name_tokens & kept_name_tokens)
+                    union = len(ev_name_tokens | kept_name_tokens)
+                    if union and inter / union >= NAME_JACCARD_WITH_VENUE:
                         is_dup = True
                         break
 
-            # Tier 3: name fuzzy on the same day
+            # Tier 3: name fuzzy on the same day, no venue requirement
             kept_name_tokens = _name_tokens(kept.name)
             if not ev_name_tokens or not kept_name_tokens:
                 if ev.name.strip().lower() == kept.name.strip().lower():
@@ -376,6 +385,7 @@ def _dedupe_feed_entries(entries: list[dict]) -> list[dict]:
     lists merge (dedup by google_id) so the count stays accurate.
     """
     NAME_JACCARD = 0.6
+    NAME_JACCARD_WITH_VENUE = 0.4
     VENUE_JACCARD = 0.4
 
     def _parse_iso_date(s: str):
@@ -404,16 +414,31 @@ def _dedupe_feed_entries(entries: list[dict]) -> list[dict]:
             if ev_day != kept_day:
                 continue
             kept_hour = kept_dt.strftime("%H:%M") if kept_dt else ""
+
+            kept_venue_tokens = _name_tokens(_venue_first_part(kept.get("event_venue") or ""))
+            venue_match = False
+            if ev_venue_tokens and kept_venue_tokens:
+                vinter = len(ev_venue_tokens & kept_venue_tokens)
+                vunion = len(ev_venue_tokens | kept_venue_tokens)
+                if (vunion and vinter / vunion >= VENUE_JACCARD) \
+                   or ev_venue_tokens.issubset(kept_venue_tokens) \
+                   or kept_venue_tokens.issubset(ev_venue_tokens):
+                    venue_match = True
+
             is_dup = False
-            if ev_hour and ev_hour == kept_hour and ev_venue_tokens and ev_name_tokens:
-                kept_venue_tokens = _name_tokens(_venue_first_part(kept.get("event_venue") or ""))
-                if kept_venue_tokens:
-                    vinter = len(ev_venue_tokens & kept_venue_tokens)
-                    vunion = len(ev_venue_tokens | kept_venue_tokens)
-                    if (vunion and vinter / vunion >= VENUE_JACCARD) or \
-                       ev_venue_tokens.issubset(kept_venue_tokens) or \
-                       kept_venue_tokens.issubset(ev_venue_tokens):
+            # Tier 2: same hour + venue overlap
+            if ev_hour and ev_hour == kept_hour and venue_match:
+                is_dup = True
+            # Tier 2.5: venue overlap + relaxed name match (collapses different
+            # session times of the same event)
+            if not is_dup and venue_match and ev_name_tokens:
+                kept_name_tokens = _name_tokens(kept.get("event_name") or "")
+                if kept_name_tokens:
+                    inter = len(ev_name_tokens & kept_name_tokens)
+                    union = len(ev_name_tokens | kept_name_tokens)
+                    if union and inter / union >= NAME_JACCARD_WITH_VENUE:
                         is_dup = True
+            # Tier 3: name fuzzy on the same day
             if not is_dup and ev_name_tokens:
                 kept_name_tokens = _name_tokens(kept.get("event_name") or "")
                 if kept_name_tokens:
