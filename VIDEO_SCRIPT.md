@@ -1,5 +1,13 @@
 # Reroot — Demo Video Script
 
+> **⚠ DEPRECATED — pre-pivot artifact (April 2026)**
+>
+> Esse script descreve o **Reroot** — produto anterior, posicionado como "guia de re-entrada social" com cohort, IdentityMirror, Diagnostic, prescrição de eventos por situação emocional. Em abril/2026 o produto pivotou pra **auê** ("Curitiba que acontece") — catálogo amplo de eventos, voz festiva, sem framing terapêutico. As cenas abaixo (Cohort, Identity Mirror, Diagnostic, "prescrição") **não refletem o produto atual** e algumas das telas podem nem existir mais no app.
+>
+> Mantido como referência histórica e ponto de partida pra um futuro script do auê. Não gravar como está.
+
+---
+
 **Target length:** 90 seconds
 **Tone:** calm, product-focused, no hype
 **Narration:** voiceover (your voice) over screen recording

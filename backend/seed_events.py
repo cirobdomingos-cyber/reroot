@@ -1,11 +1,15 @@
 """
-Seed the database with curated Reroot Original suggestions.
+Seed the database with curated auê Originals.
 
 These are NOT scheduled events. They are evergreen activity ideas at real
 Curitiba venues — go when you want, alone or with someone. We surface them
 alongside scraped events so the catalog is never empty, but they're tagged
 `source="aue_original"` and rendered with a "Sempre disponível" badge so
 no user mistakes them for a meetup with a fixed time.
+
+NOTE: copy of the 12 entries below still carries Reroot-era voice ("primeira
+saída", "voltando a socializar") — pending rewrite in auê voice. See
+CLAUDE.md "Pending cleanups".
 
 Run: py -3.12 seed_events.py
 """

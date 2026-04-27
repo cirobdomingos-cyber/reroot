@@ -1,9 +1,12 @@
 """
-Reroot Backend — FastAPI
+auê Backend — FastAPI
 Serve eventos reais de Curitiba enriquecidos com Claude.
 
 Local:  uvicorn main:app --reload --port 8000
 Deploy: Railway runs this via Dockerfile (PORT injected by Railway)
+
+(O nome do diretório/repo ainda é "reroot" — produto anterior; a voz e o
+branding já migraram pra auê.)
 """
 import json
 import logging
