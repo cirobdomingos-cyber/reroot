@@ -455,10 +455,15 @@ function VibeSection({ state, dispatch }) {
 // Renders the full badge catalog with earned ones in color and
 // not-yet-earned ones grayed out. The catalog is static so we can show
 // "what's possible" — induces exploration without spoiling rare ones.
+//
+// Multi-instance badges (loyalty per venue) appear once in the grid as a
+// template; count of earned instances shown below the label, and a venue
+// list under the grid spells them out.
 function BadgesSection({ googleId }) {
   const [catalog, setCatalog] = useState([])
   const [earned, setEarned] = useState([])
   const [loading, setLoading] = useState(true)
+  const [expandedBadge, setExpandedBadge] = useState(null) // base_id of tapped tile
 
   // Listen for new unlocks fired during this session — refresh in-place
   // so the section reflects what the toast just announced.
@@ -485,8 +490,18 @@ function BadgesSection({ googleId }) {
 
   if (loading || catalog.length === 0) return null
 
-  const earnedIds = new Set(earned.map(b => b.id))
-  const earnedCount = earnedIds.size
+  // Group earned by base_id so "local_da_casa:cafe_lucca" rolls up under
+  // the catalog tile for "local_da_casa".
+  const earnedByBase = {} // base_id -> array of {instance, earned_at, context}
+  for (const b of earned) {
+    const base = b.base_id || b.id
+    if (!earnedByBase[base]) earnedByBase[base] = []
+    earnedByBase[base].push(b)
+  }
+
+  // Count distinct catalog templates the user has earned (multi-instance
+  // counts as 1 even with multiple venues).
+  const earnedTemplateCount = Object.keys(earnedByBase).filter(b => catalog.find(c => c.id === b)).length
 
   return (
     <div style={{ margin: '16px 16px 0' }} className="card">
@@ -495,7 +510,7 @@ function BadgesSection({ googleId }) {
           🏆 Conquistas
         </div>
         <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', fontWeight: 600 }}>
-          {earnedCount} / {catalog.length}
+          {earnedTemplateCount} / {catalog.length}
         </div>
       </div>
       {!googleId && (
@@ -510,18 +525,25 @@ function BadgesSection({ googleId }) {
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
       }}>
         {catalog.map(badge => {
-          const isEarned = earnedIds.has(badge.id)
+          const instances = earnedByBase[badge.id] || []
+          const isEarned = instances.length > 0
+          const showCount = badge.multi_instance && instances.length > 0
+          const isExpanded = expandedBadge === badge.id
           return (
-            <div
+            <button
               key={badge.id}
+              onClick={() => setExpandedBadge(isExpanded ? null : badge.id)}
               title={badge.desc}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 gap: 4, padding: '10px 6px', borderRadius: 12,
-                background: isEarned ? 'var(--cream)' : '#F7F5F0',
+                background: isExpanded
+                  ? 'var(--terra-pale)'
+                  : isEarned ? 'var(--cream)' : '#F7F5F0',
                 border: `1px solid ${isEarned ? 'var(--terra-pale)' : 'var(--border)'}`,
                 opacity: isEarned ? 1 : 0.45,
-                transition: 'opacity 0.2s, background 0.2s',
+                cursor: 'pointer', transition: 'opacity 0.2s, background 0.2s',
+                fontFamily: 'inherit',
               }}
             >
               <div style={{
@@ -533,14 +555,61 @@ function BadgesSection({ googleId }) {
                 color: isEarned ? 'var(--charcoal)' : 'var(--charcoal-light)',
                 lineHeight: 1.2,
               }}>{badge.label}</div>
-            </div>
+              {showCount && (
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: 'var(--terra)',
+                  marginTop: -2,
+                }}>×{instances.length}</div>
+              )}
+            </button>
           )
         })}
       </div>
+
+      {/* Expanded detail panel — shows description + instance list */}
+      {expandedBadge && (() => {
+        const meta = catalog.find(c => c.id === expandedBadge)
+        const instances = earnedByBase[expandedBadge] || []
+        if (!meta) return null
+        return (
+          <div style={{
+            marginTop: 12, padding: 12, borderRadius: 10,
+            background: 'var(--terra-pale)',
+            fontSize: 12, lineHeight: 1.5, color: 'var(--charcoal)',
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>
+              {meta.emoji} {meta.label}
+            </div>
+            <div style={{ color: 'var(--charcoal-mid)', marginBottom: instances.length ? 8 : 0 }}>
+              {meta.desc}
+            </div>
+            {instances.length > 0 && meta.multi_instance && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {instances.map(inst => (
+                  <span key={inst.id} style={{
+                    fontSize: 11, fontWeight: 600,
+                    background: 'white', color: 'var(--terra)',
+                    padding: '3px 8px', borderRadius: 6,
+                    border: '1px solid var(--terra-pale)',
+                  }}>
+                    {inst.instance || inst.context?.venue || '—'}
+                    {inst.context?.count != null && (
+                      <span style={{ color: 'var(--charcoal-light)', marginLeft: 4 }}>
+                        ×{inst.context.count}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       <div style={{
         fontSize: 10, color: 'var(--charcoal-light)', marginTop: 10, textAlign: 'center',
       }}>
-        Toque numa conquista pra ver o que ela significa
+        Toque numa conquista pra ver o detalhe.
       </div>
     </div>
   )

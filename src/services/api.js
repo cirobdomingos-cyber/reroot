@@ -364,12 +364,14 @@ export async function fetchUserBadges(googleId) {
 
 // Fires a window event for each newly-earned badge so BadgeUnlockToast
 // (mounted at App.jsx) can surface it without needing every callsite to
-// own toast UI. Safe to call with empty/null arrays.
+// own toast UI. Backend returns rich objects {id, label, emoji, desc,
+// instance, ...} so the toast renders without a catalog roundtrip.
+// Safe to call with empty/null arrays.
 function dispatchBadgeUnlocks(newBadges) {
   if (!Array.isArray(newBadges) || newBadges.length === 0) return
-  for (const id of newBadges) {
+  for (const badge of newBadges) {
     try {
-      window.dispatchEvent(new CustomEvent('badge-unlocked', { detail: id }))
+      window.dispatchEvent(new CustomEvent('badge-unlocked', { detail: badge }))
     } catch {}
   }
 }

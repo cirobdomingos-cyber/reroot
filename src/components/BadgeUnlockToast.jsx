@@ -1,6 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { fetchBadgesCatalog } from '../services/api'
 
 /**
  * Listens for `badge-unlocked` window CustomEvents (fired by api.js after
@@ -9,17 +8,20 @@ import { fetchBadgesCatalog } from '../services/api'
  *
  * Mounted once at the App level — any screen action that hits a write
  * endpoint can earn a badge, so the listener has to live above the route.
+ *
+ * Event detail: full badge object {id, label, emoji, desc, instance?, ...}
+ * — backend already composes the display label (e.g. "Local da casa em
+ * Café Lucca"), no catalog lookup needed here.
  */
 export default function BadgeUnlockToast() {
-  const [queue, setQueue] = useState([])     // pending badge IDs
-  const [current, setCurrent] = useState(null) // {id, label, emoji, desc}
-  const catalogRef = useRef(null)            // cached catalog: [{id, label, emoji, desc, ...}]
+  const [queue, setQueue] = useState([])     // pending badge objects
+  const [current, setCurrent] = useState(null) // currently-shown badge object
 
   useEffect(() => {
     function onUnlock(ev) {
-      const ids = Array.isArray(ev?.detail) ? ev.detail : [ev?.detail].filter(Boolean)
-      if (ids.length === 0) return
-      setQueue(prev => [...prev, ...ids])
+      const badge = ev?.detail
+      if (!badge || typeof badge !== 'object' || !badge.label) return
+      setQueue(prev => [...prev, badge])
     }
     window.addEventListener('badge-unlocked', onUnlock)
     return () => window.removeEventListener('badge-unlocked', onUnlock)
@@ -28,24 +30,12 @@ export default function BadgeUnlockToast() {
   // Drain queue: when there's no current toast and queue has items, pop one.
   useEffect(() => {
     if (current || queue.length === 0) return
-    let canceled = false
-    ;(async () => {
-      if (!catalogRef.current) {
-        catalogRef.current = await fetchBadgesCatalog()
-      }
-      if (canceled) return
-      const [nextId, ...rest] = queue
-      const meta = catalogRef.current.find(b => b.id === nextId)
-      if (!meta) {
-        setQueue(rest)  // unknown ID — drop and continue
-        return
-      }
-      setCurrent({ ...meta })
-      setQueue(rest)
-      // Auto-dismiss after 4s
-      setTimeout(() => { if (!canceled) setCurrent(null) }, 4000)
-    })()
-    return () => { canceled = true }
+    const [next, ...rest] = queue
+    setCurrent(next)
+    setQueue(rest)
+    // Auto-dismiss after 4s
+    const tid = setTimeout(() => setCurrent(null), 4000)
+    return () => clearTimeout(tid)
   }, [queue, current])
 
   return (
