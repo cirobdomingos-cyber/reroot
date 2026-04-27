@@ -238,6 +238,18 @@ def init_db():
                 created_at   TEXT NOT NULL
             )
         """)
+        # Achievements/badges. One row per (user, badge) once earned —
+        # categorical, never revoked. Metadata column captures context like
+        # which venue triggered a future "Local da casa" badge.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_badges (
+                google_id   TEXT NOT NULL,
+                badge_id    TEXT NOT NULL,
+                earned_at   TEXT NOT NULL,
+                metadata    TEXT NOT NULL DEFAULT '{}',
+                PRIMARY KEY (google_id, badge_id)
+            )
+        """)
         conn.commit()
 
 
@@ -1521,3 +1533,50 @@ def delete_group_event(event_id: str) -> bool:
         cur = conn.execute("DELETE FROM group_events WHERE id = ?", (event_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ── User badges ───────────────────────────────────────────
+# Persisted achievement state. evaluate logic lives in backends/badges.py;
+# this module just owns row-level operations.
+
+def award_badge(google_id: str, badge_id: str, metadata: dict | None = None) -> bool:
+    """Insert badge row. Returns True if newly awarded, False if already had it."""
+    import json
+    now = datetime.now(timezone.utc).isoformat()
+    payload = json.dumps(metadata or {}, ensure_ascii=False)
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT OR IGNORE INTO user_badges (google_id, badge_id, earned_at, metadata)
+               VALUES (?, ?, ?, ?)""",
+            (google_id, badge_id, now, payload),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_badges(google_id: str) -> list[dict]:
+    """Return all badges earned by a user, newest first."""
+    import json
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT badge_id, earned_at, metadata FROM user_badges
+               WHERE google_id = ? ORDER BY earned_at DESC""",
+            (google_id,),
+        ).fetchall()
+    return [
+        {
+            "badge_id": r["badge_id"],
+            "earned_at": r["earned_at"],
+            "metadata": json.loads(r["metadata"]) if r["metadata"] else {},
+        }
+        for r in rows
+    ]
+
+
+def has_badge(google_id: str, badge_id: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM user_badges WHERE google_id = ? AND badge_id = ?",
+            (google_id, badge_id),
+        ).fetchone()
+    return row is not None

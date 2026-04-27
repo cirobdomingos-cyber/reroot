@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import database as db
+import badges
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -1275,7 +1276,9 @@ class RsvpUpsertRequest(BaseModel):
 
 @app.post("/rsvp")
 def rsvp_upsert(req: RsvpUpsertRequest):
-    """Record that a user is going to an event (normalized, queryable)."""
+    """Record that a user is going to an event (normalized, queryable).
+    Side-effect: evaluates the badge engine — RSVPs unlock first_rsvp,
+    explorer (3 bairros), versátil (4 kinds), noiteiro (3× ≥22h)."""
     db.upsert_rsvp(
         google_id=req.google_id,
         event_id=req.event_id,
@@ -1284,7 +1287,8 @@ def rsvp_upsert(req: RsvpUpsertRequest):
         event_date=req.event_date,
         event_url=req.event_url,
     )
-    return {"ok": True}
+    new_badges = badges.evaluate(req.google_id)
+    return {"ok": True, "new_badges": new_badges}
 
 
 @app.delete("/rsvp/{event_id}")
@@ -1292,6 +1296,21 @@ def rsvp_delete(event_id: str, google_id: str):
     """Remove an RSVP for the given user/event pair."""
     db.delete_rsvp(google_id=google_id, event_id=event_id)
     return {"ok": True}
+
+
+# ── Badges ─────────────────────────────────────────────────
+
+@app.get("/badges/catalog")
+def badges_catalog():
+    """Return the static catalog of all defined badges. Frontend uses this
+    to render the full Conquistas list, with earned ones highlighted."""
+    return {"badges": badges.catalog()}
+
+
+@app.get("/user/{google_id}/badges")
+def user_badges(google_id: str):
+    """Return the badges this user has earned, newest first."""
+    return {"badges": badges.for_user(google_id)}
 
 
 # ── Event attendees ────────────────────────────────────────
@@ -1358,6 +1377,11 @@ def friends_add(req: FriendAddRequest):
             state = db.get_user_state(friend_id)
             if state:
                 result["friend_name"] = state.get("userName") or friend_id
+        # Award the "Galera junto" badge for first accepted friend.
+        # Run for both sides so whoever crosses the threshold sees the toast.
+        result["new_badges"] = badges.evaluate(req.google_id)
+        if friend_id:
+            badges.evaluate(friend_id)  # silent on the other side; they'll see it next load
     return result
 
 
@@ -1987,7 +2011,8 @@ def create_group(req: GroupCreateRequest):
         description=req.description.strip(),
         visibility=req.visibility,
     )
-    return group
+    new_badges = badges.evaluate(req.google_id)
+    return {**group, "new_badges": new_badges}
 
 
 @app.get("/groups")
@@ -2080,7 +2105,8 @@ def join_group(req: GroupJoinRequest):
     already = not db.join_group(group["id"], req.google_id)
     if already:
         return {"status": "already_member", "group": group}
-    return {"status": "ok", "group": group}
+    new_badges = badges.evaluate(req.google_id)
+    return {"status": "ok", "group": group, "new_badges": new_badges}
 
 
 @app.delete("/groups/{group_id}/members/{member_google_id}")

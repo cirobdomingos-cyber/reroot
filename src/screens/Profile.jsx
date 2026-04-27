@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import { fetchBadgesCatalog, fetchUserBadges } from '../services/api'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 
@@ -101,6 +102,9 @@ export default function Profile() {
 
       {/* Minha vibe — profile picker */}
       <VibeSection state={state} dispatch={dispatch} />
+
+      {/* Conquistas — badges already earned + locked grid of what's possible */}
+      <BadgesSection googleId={state.googleUser?.id} />
 
       {/* Feedback — only visible to users granted the feedbacker role */}
       <FeedbackSection state={state} />
@@ -442,6 +446,102 @@ function VibeSection({ state, dispatch }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── Conquistas (badges) ───────────────────────────────────
+// Renders the full badge catalog with earned ones in color and
+// not-yet-earned ones grayed out. The catalog is static so we can show
+// "what's possible" — induces exploration without spoiling rare ones.
+function BadgesSection({ googleId }) {
+  const [catalog, setCatalog] = useState([])
+  const [earned, setEarned] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Listen for new unlocks fired during this session — refresh in-place
+  // so the section reflects what the toast just announced.
+  useEffect(() => {
+    let canceled = false
+    async function load() {
+      const [cat, mine] = await Promise.all([
+        fetchBadgesCatalog(),
+        googleId ? fetchUserBadges(googleId) : Promise.resolve([]),
+      ])
+      if (canceled) return
+      setCatalog(cat)
+      setEarned(mine)
+      setLoading(false)
+    }
+    load()
+    function onUnlock() { if (googleId) fetchUserBadges(googleId).then(setEarned) }
+    window.addEventListener('badge-unlocked', onUnlock)
+    return () => {
+      canceled = true
+      window.removeEventListener('badge-unlocked', onUnlock)
+    }
+  }, [googleId])
+
+  if (loading || catalog.length === 0) return null
+
+  const earnedIds = new Set(earned.map(b => b.id))
+  const earnedCount = earnedIds.size
+
+  return (
+    <div style={{ margin: '16px 16px 0' }} className="card">
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+          🏆 Conquistas
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', fontWeight: 600 }}>
+          {earnedCount} / {catalog.length}
+        </div>
+      </div>
+      {!googleId && (
+        <div style={{
+          fontSize: 11, color: 'var(--charcoal-light)', lineHeight: 1.5,
+          padding: '8px 0', textAlign: 'center',
+        }}>
+          Faça login pra desbloquear conquistas conforme você usa o auê.
+        </div>
+      )}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
+      }}>
+        {catalog.map(badge => {
+          const isEarned = earnedIds.has(badge.id)
+          return (
+            <div
+              key={badge.id}
+              title={badge.desc}
+              style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                gap: 4, padding: '10px 6px', borderRadius: 12,
+                background: isEarned ? 'var(--cream)' : '#F7F5F0',
+                border: `1px solid ${isEarned ? 'var(--terra-pale)' : 'var(--border)'}`,
+                opacity: isEarned ? 1 : 0.45,
+                transition: 'opacity 0.2s, background 0.2s',
+              }}
+            >
+              <div style={{
+                fontSize: 26, lineHeight: 1,
+                filter: isEarned ? 'none' : 'grayscale(0.8)',
+              }}>{badge.emoji}</div>
+              <div style={{
+                fontSize: 10, fontWeight: 700, textAlign: 'center',
+                color: isEarned ? 'var(--charcoal)' : 'var(--charcoal-light)',
+                lineHeight: 1.2,
+              }}>{badge.label}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{
+        fontSize: 10, color: 'var(--charcoal-light)', marginTop: 10, textAlign: 'center',
+      }}>
+        Toque numa conquista pra ver o que ela significa
+      </div>
     </div>
   )
 }

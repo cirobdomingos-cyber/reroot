@@ -324,11 +324,53 @@ export async function syncRsvp(googleId, event, isRsvped) {
       reportError('rsvp_sync_failed', `HTTP ${res.status}`, {
         eventId: event.id, action: isRsvped ? 'add' : 'remove',
       }, googleId)
+      return null
     }
+    // POSTs return the badge eval result; DELETE doesn't. Caller can
+    // ignore for DELETE (returns {ok: true} with no new_badges array).
+    if (!isRsvped) return null
+    const data = await res.json()
+    dispatchBadgeUnlocks(data?.new_badges)
+    return data
   } catch (err) {
     reportError('rsvp_sync_failed', err.message, {
       eventId: event.id, action: isRsvped ? 'add' : 'remove',
     }, googleId)
+    return null
+  }
+}
+
+// ── Badges ──
+// Catalog is static — fetch once and cache. for-user list refreshes after
+// every action that might earn one (RSVP, friend-add, group-create/join).
+export async function fetchBadgesCatalog() {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/badges/catalog`)
+    if (res.ok) return (await res.json()).badges || []
+  } catch {}
+  return []
+}
+
+export async function fetchUserBadges(googleId) {
+  if (!googleId) return []
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/user/${encodeURIComponent(googleId)}/badges`
+    )
+    if (res.ok) return (await res.json()).badges || []
+  } catch {}
+  return []
+}
+
+// Fires a window event for each newly-earned badge so BadgeUnlockToast
+// (mounted at App.jsx) can surface it without needing every callsite to
+// own toast UI. Safe to call with empty/null arrays.
+function dispatchBadgeUnlocks(newBadges) {
+  if (!Array.isArray(newBadges) || newBadges.length === 0) return
+  for (const id of newBadges) {
+    try {
+      window.dispatchEvent(new CustomEvent('badge-unlocked', { detail: id }))
+    } catch {}
   }
 }
 
@@ -440,7 +482,11 @@ export async function addFriend(googleId, code) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ google_id: googleId, code }),
     })
-    if (res.ok) return await res.json()
+    if (res.ok) {
+      const data = await res.json()
+      dispatchBadgeUnlocks(data?.new_badges)
+      return data
+    }
   } catch {
     // Backend unavailable
   }
@@ -512,7 +558,9 @@ export async function createGroup(googleId, { name, description = '', visibility
     body: JSON.stringify({ google_id: googleId, name, description, visibility }),
   })
   if (!res.ok) throw new Error(`Create group failed: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  dispatchBadgeUnlocks(data?.new_badges)
+  return data
 }
 
 export async function fetchGroups(googleId) {
@@ -556,7 +604,9 @@ export async function joinGroup(googleId, inviteCode) {
     body: JSON.stringify({ google_id: googleId, invite_code: inviteCode }),
   })
   if (!res.ok) throw new Error(`Join group failed: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  dispatchBadgeUnlocks(data?.new_badges)
+  return data
 }
 
 export async function leaveGroup(groupId, googleId) {
