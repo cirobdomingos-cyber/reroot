@@ -362,6 +362,18 @@ export async function fetchUserBadges(googleId) {
   return []
 }
 
+// Lifetime / personal-best counters (Recordes Pessoais).
+export async function fetchUserStats(googleId) {
+  if (!googleId) return null
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/user/${encodeURIComponent(googleId)}/stats`
+    )
+    if (res.ok) return await res.json()
+  } catch {}
+  return null
+}
+
 // Fires a window event for each newly-earned badge so BadgeUnlockToast
 // (mounted at App.jsx) can surface it without needing every callsite to
 // own toast UI. Backend returns rich objects {id, label, emoji, desc,

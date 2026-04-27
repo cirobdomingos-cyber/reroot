@@ -240,16 +240,25 @@ def init_db():
         """)
         # Achievements/badges. One row per (user, badge) once earned —
         # categorical, never revoked. Metadata column captures context like
-        # which venue triggered a future "Local da casa" badge.
+        # which venue triggered a "Local da casa" badge. Tier captures
+        # progression within the same template (bronze→silver→gold→diamond).
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_badges (
                 google_id   TEXT NOT NULL,
                 badge_id    TEXT NOT NULL,
                 earned_at   TEXT NOT NULL,
                 metadata    TEXT NOT NULL DEFAULT '{}',
+                tier        INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY (google_id, badge_id)
             )
         """)
+        # Migration: add tier column for installs that pre-date v3.
+        # Existing rows default to tier 1 — they were earned before tiers
+        # existed and represent the lowest threshold.
+        try:
+            conn.execute("ALTER TABLE user_badges ADD COLUMN tier INTEGER NOT NULL DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.commit()
 
 
@@ -1539,19 +1548,57 @@ def delete_group_event(event_id: str) -> bool:
 # Persisted achievement state. evaluate logic lives in backends/badges.py;
 # this module just owns row-level operations.
 
-def award_badge(google_id: str, badge_id: str, metadata: dict | None = None) -> bool:
-    """Insert badge row. Returns True if newly awarded, False if already had it."""
+def award_or_upgrade_badge(
+    google_id: str,
+    badge_id: str,
+    tier: int = 1,
+    metadata: dict | None = None,
+) -> tuple[bool, int]:
+    """Insert badge row OR raise tier on existing one.
+    Returns (is_new_or_upgrade, previous_tier_or_zero).
+    - First award:           returns (True, 0) — new row at given tier
+    - Tier upgrade:          returns (True, old_tier) — UPDATE moves tier up
+    - Already at this tier:  returns (False, tier) — no change
+    - Existing higher tier:  returns (False, current_tier) — no downgrade
+
+    Use this from badges.evaluate() — caller decides what to surface based
+    on the (is_new_or_upgrade, previous_tier) tuple.
+    """
     import json
     now = datetime.now(timezone.utc).isoformat()
     payload = json.dumps(metadata or {}, ensure_ascii=False)
     with get_conn() as conn:
-        cur = conn.execute(
-            """INSERT OR IGNORE INTO user_badges (google_id, badge_id, earned_at, metadata)
-               VALUES (?, ?, ?, ?)""",
-            (google_id, badge_id, now, payload),
-        )
-        conn.commit()
-        return cur.rowcount > 0
+        existing = conn.execute(
+            "SELECT tier FROM user_badges WHERE google_id = ? AND badge_id = ?",
+            (google_id, badge_id),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                """INSERT INTO user_badges (google_id, badge_id, earned_at, metadata, tier)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (google_id, badge_id, now, payload, tier),
+            )
+            conn.commit()
+            return True, 0
+        current_tier = int(existing["tier"])
+        if tier > current_tier:
+            # Upgrade: bump tier, refresh earned_at + metadata so context
+            # reflects the latest milestone.
+            conn.execute(
+                """UPDATE user_badges
+                   SET tier = ?, earned_at = ?, metadata = ?
+                   WHERE google_id = ? AND badge_id = ?""",
+                (tier, now, payload, google_id, badge_id),
+            )
+            conn.commit()
+            return True, current_tier
+        return False, current_tier
+
+
+# Backwards-compat thin wrapper for any caller that doesn't care about tiers.
+def award_badge(google_id: str, badge_id: str, metadata: dict | None = None) -> bool:
+    is_new, _ = award_or_upgrade_badge(google_id, badge_id, tier=1, metadata=metadata)
+    return is_new
 
 
 def get_badges(google_id: str) -> list[dict]:
@@ -1559,7 +1606,7 @@ def get_badges(google_id: str) -> list[dict]:
     import json
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT badge_id, earned_at, metadata FROM user_badges
+            """SELECT badge_id, earned_at, metadata, tier FROM user_badges
                WHERE google_id = ? ORDER BY earned_at DESC""",
             (google_id,),
         ).fetchall()
@@ -1568,6 +1615,7 @@ def get_badges(google_id: str) -> list[dict]:
             "badge_id": r["badge_id"],
             "earned_at": r["earned_at"],
             "metadata": json.loads(r["metadata"]) if r["metadata"] else {},
+            "tier": int(r["tier"]),
         }
         for r in rows
     ]
@@ -1580,3 +1628,14 @@ def has_badge(google_id: str, badge_id: str) -> bool:
             (google_id, badge_id),
         ).fetchone()
     return row is not None
+
+
+def get_badge_tier(google_id: str, badge_id: str) -> int:
+    """Return current tier (0 if not earned). Used by the engine to skip
+    rules that have already maxed out for this user."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT tier FROM user_badges WHERE google_id = ? AND badge_id = ?",
+            (google_id, badge_id),
+        ).fetchone()
+    return int(row["tier"]) if row else 0

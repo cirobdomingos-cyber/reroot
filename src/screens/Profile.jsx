@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
-import { fetchBadgesCatalog, fetchUserBadges } from '../services/api'
+import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats } from '../services/api'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 
@@ -105,6 +105,9 @@ export default function Profile() {
 
       {/* Conquistas — badges already earned + locked grid of what's possible */}
       <BadgesSection googleId={state.googleUser?.id} />
+
+      {/* Recordes — lifetime counters that only go up. No streak anxiety. */}
+      <RecordsSection googleId={state.googleUser?.id} />
 
       {/* Feedback — only visible to users granted the feedbacker role */}
       <FeedbackSection state={state} />
@@ -452,13 +455,23 @@ function VibeSection({ state, dispatch }) {
 
 
 // ── Conquistas (badges) ───────────────────────────────────
-// Renders the full badge catalog with earned ones in color and
-// not-yet-earned ones grayed out. The catalog is static so we can show
-// "what's possible" — induces exploration without spoiling rare ones.
+// Renders the full badge catalog with earned ones in color and locked
+// ones grayed out. Tap a tile (earned or locked) to expand a panel with
+// the full description, tier ladder, and (for multi-instance) the list
+// of venues with their tiers. v3 added tier ladders (I/II/III/IV) so the
+// same template keeps giving progress beyond the first threshold.
 //
-// Multi-instance badges (loyalty per venue) appear once in the grid as a
-// template; count of earned instances shown below the label, and a venue
-// list under the grid spells them out.
+// Tier visual: small "II" / "III" badge in the corner of the tile. Border
+// color escalates bronze → silver → gold → diamond. Tier 0 = locked.
+// Tier border color escalates: bronze → silver → gold → diamond
+const TIER_BORDER = {
+  1: '#CD7F32',   // bronze
+  2: '#A8A8A8',   // silver
+  3: '#E8B547',   // gold
+  4: '#7AA9D9',   // diamond
+}
+const TIER_NUMERAL = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V' }
+
 function BadgesSection({ googleId }) {
   const [catalog, setCatalog] = useState([])
   const [earned, setEarned] = useState([])
@@ -491,16 +504,15 @@ function BadgesSection({ googleId }) {
   if (loading || catalog.length === 0) return null
 
   // Group earned by base_id so "local_da_casa:cafe_lucca" rolls up under
-  // the catalog tile for "local_da_casa".
-  const earnedByBase = {} // base_id -> array of {instance, earned_at, context}
+  // the catalog tile for "local_da_casa". Track the highest tier reached
+  // so multi-instance badges show their best venue's tier on the tile.
+  const earnedByBase = {} // base_id -> array of earned rows
   for (const b of earned) {
     const base = b.base_id || b.id
     if (!earnedByBase[base]) earnedByBase[base] = []
     earnedByBase[base].push(b)
   }
 
-  // Count distinct catalog templates the user has earned (multi-instance
-  // counts as 1 even with multiple venues).
   const earnedTemplateCount = Object.keys(earnedByBase).filter(b => catalog.find(c => c.id === b)).length
 
   return (
@@ -522,30 +534,48 @@ function BadgesSection({ googleId }) {
         </div>
       )}
       <div style={{
+        fontSize: 10, color: 'var(--charcoal-light)', marginBottom: 8, textAlign: 'center',
+      }}>
+        Toque pra ver detalhe e progresso até o próximo tier.
+      </div>
+      <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
       }}>
         {catalog.map(badge => {
           const instances = earnedByBase[badge.id] || []
           const isEarned = instances.length > 0
-          const showCount = badge.multi_instance && instances.length > 0
+          const maxTier = isEarned ? Math.max(...instances.map(i => i.tier || 1)) : 0
+          const hasLadder = (badge.max_tier || 1) > 1
           const isExpanded = expandedBadge === badge.id
+          const tierColor = TIER_BORDER[maxTier] || 'var(--terra-pale)'
           return (
             <button
               key={badge.id}
               onClick={() => setExpandedBadge(isExpanded ? null : badge.id)}
               title={badge.desc}
               style={{
+                position: 'relative',
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 gap: 4, padding: '10px 6px', borderRadius: 12,
                 background: isExpanded
                   ? 'var(--terra-pale)'
                   : isEarned ? 'var(--cream)' : '#F7F5F0',
-                border: `1px solid ${isEarned ? 'var(--terra-pale)' : 'var(--border)'}`,
+                border: `${isEarned && hasLadder ? 2 : 1}px solid ${isEarned ? tierColor : 'var(--border)'}`,
                 opacity: isEarned ? 1 : 0.45,
-                cursor: 'pointer', transition: 'opacity 0.2s, background 0.2s',
+                cursor: 'pointer', transition: 'opacity 0.2s, background 0.2s, border-color 0.2s',
                 fontFamily: 'inherit',
               }}
             >
+              {/* Tier numeral pin in top-right corner — only for earned, ladder-bearing badges */}
+              {isEarned && hasLadder && (
+                <div style={{
+                  position: 'absolute', top: 4, right: 4,
+                  fontSize: 9, fontWeight: 800, lineHeight: 1,
+                  color: 'white', background: tierColor,
+                  padding: '2px 5px', borderRadius: 4,
+                  letterSpacing: 0.5,
+                }}>{TIER_NUMERAL[maxTier] || maxTier}</div>
+              )}
               <div style={{
                 fontSize: 26, lineHeight: 1,
                 filter: isEarned ? 'none' : 'grayscale(0.8)',
@@ -555,7 +585,7 @@ function BadgesSection({ googleId }) {
                 color: isEarned ? 'var(--charcoal)' : 'var(--charcoal-light)',
                 lineHeight: 1.2,
               }}>{badge.label}</div>
-              {showCount && (
+              {badge.multi_instance && isEarned && (
                 <div style={{
                   fontSize: 9, fontWeight: 700, color: 'var(--terra)',
                   marginTop: -2,
@@ -566,11 +596,16 @@ function BadgesSection({ googleId }) {
         })}
       </div>
 
-      {/* Expanded detail panel — shows description + instance list */}
+      {/* Expanded detail panel */}
       {expandedBadge && (() => {
         const meta = catalog.find(c => c.id === expandedBadge)
         const instances = earnedByBase[expandedBadge] || []
         if (!meta) return null
+        const hasLadder = (meta.max_tier || 1) > 1
+        // Best instance/categorical row for "next tier in N more" hint
+        const top = instances.length > 0
+          ? instances.reduce((a, b) => (b.tier > a.tier ? b : a))
+          : null
         return (
           <div style={{
             marginTop: 12, padding: 12, borderRadius: 10,
@@ -579,10 +614,57 @@ function BadgesSection({ googleId }) {
           }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>
               {meta.emoji} {meta.label}
+              {hasLadder && top && (
+                <span style={{
+                  marginLeft: 6, fontSize: 10,
+                  background: TIER_BORDER[top.tier] || 'var(--terra)',
+                  color: 'white', padding: '2px 6px', borderRadius: 4,
+                  letterSpacing: 0.5,
+                }}>{TIER_NUMERAL[top.tier] || top.tier}</span>
+              )}
             </div>
-            <div style={{ color: 'var(--charcoal-mid)', marginBottom: instances.length ? 8 : 0 }}>
+            <div style={{ color: 'var(--charcoal-mid)', marginBottom: 8 }}>
               {meta.desc}
             </div>
+
+            {/* Tier ladder visualization */}
+            {hasLadder && (
+              <div style={{ marginBottom: instances.length ? 8 : 0 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {(meta.tiers || []).map((threshold, i) => {
+                    const tierNum = i + 1
+                    const reached = top && top.tier >= tierNum
+                    return (
+                      <span key={tierNum} style={{
+                        fontSize: 10, fontWeight: 700,
+                        padding: '3px 7px', borderRadius: 5,
+                        background: reached ? (TIER_BORDER[tierNum] || 'var(--terra)') : 'white',
+                        color: reached ? 'white' : 'var(--charcoal-light)',
+                        border: `1px solid ${reached ? 'transparent' : 'var(--border)'}`,
+                      }}>
+                        {TIER_NUMERAL[tierNum] || tierNum} · {threshold}
+                      </span>
+                    )
+                  })}
+                </div>
+                {top && top.next_threshold != null && (
+                  <div style={{
+                    fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 6,
+                  }}>
+                    Faltam {top.next_threshold - (top.context?.count ?? top.context?.events ?? top.context?.max_friends_at_event ?? 0)} pra subir de tier.
+                  </div>
+                )}
+                {top && top.next_threshold == null && (
+                  <div style={{
+                    fontSize: 11, color: 'var(--terra)', marginTop: 6, fontWeight: 600,
+                  }}>
+                    🌟 Tier máximo!
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Multi-instance: list venues with their tiers */}
             {instances.length > 0 && meta.multi_instance && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {instances.map(inst => (
@@ -593,6 +675,13 @@ function BadgesSection({ googleId }) {
                     border: '1px solid var(--terra-pale)',
                   }}>
                     {inst.instance || inst.context?.venue || '—'}
+                    {hasLadder && inst.tier > 0 && (
+                      <span style={{
+                        marginLeft: 4, color: 'white',
+                        background: TIER_BORDER[inst.tier] || 'var(--terra)',
+                        padding: '1px 5px', borderRadius: 3, fontSize: 9,
+                      }}>{TIER_NUMERAL[inst.tier] || inst.tier}</span>
+                    )}
                     {inst.context?.count != null && (
                       <span style={{ color: 'var(--charcoal-light)', marginLeft: 4 }}>
                         ×{inst.context.count}
@@ -605,14 +694,100 @@ function BadgesSection({ googleId }) {
           </div>
         )
       })()}
+    </div>
+  )
+}
 
+
+// ── Recordes pessoais ────────────────────────────────────
+// Lifetime / personal-best counters that only ever go up. Anxiety-free —
+// no current-streak that can break, just the all-time best week run.
+function RecordsSection({ googleId }) {
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let canceled = false
+    async function load() {
+      const data = googleId ? await fetchUserStats(googleId) : null
+      if (canceled) return
+      setStats(data)
+      setLoading(false)
+    }
+    load()
+    // Recompute when a badge unlock fires — likely the underlying counters
+    // also moved.
+    function onUnlock() { if (googleId) fetchUserStats(googleId).then(setStats) }
+    window.addEventListener('badge-unlocked', onUnlock)
+    return () => {
+      canceled = true
+      window.removeEventListener('badge-unlocked', onUnlock)
+    }
+  }, [googleId])
+
+  if (loading || !stats || !googleId) return null
+  if (stats.total_rsvps === 0) return null  // no signal yet, hide section
+
+  const cards = [
+    { label: 'RSVPs no total',     value: stats.total_rsvps,                  icon: '🎟' },
+    { label: 'Lugares diferentes', value: stats.distinct_venues,              icon: '📍' },
+    { label: 'Bairros visitados',  value: stats.distinct_bairros,             icon: '🗺' },
+    { label: 'Recorde de semanas', value: stats.best_week_streak,             icon: '🔥', sub: 'seguidas com RSVP' },
+    stats.top_venue && {
+      label: 'Lugar predileto', value: stats.top_venue, icon: '⭐',
+      sub: `${stats.top_venue_count} RSVPs`,
+    },
+    stats.top_month && {
+      label: 'Mês mais ativo', value: _formatMonth(stats.top_month), icon: '📅',
+      sub: `${stats.top_month_count} eventos`,
+    },
+  ].filter(Boolean)
+
+  return (
+    <div style={{ margin: '16px 16px 0' }} className="card">
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
+        📈 Recordes
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+        Números que só sobem — sem streak pra quebrar.
+      </div>
       <div style={{
-        fontSize: 10, color: 'var(--charcoal-light)', marginTop: 10, textAlign: 'center',
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8,
       }}>
-        Toque numa conquista pra ver o detalhe.
+        {cards.map(c => (
+          <div key={c.label} style={{
+            background: 'var(--cream)',
+            border: '1px solid var(--terra-pale)',
+            borderRadius: 12, padding: '10px 12px',
+            display: 'flex', flexDirection: 'column', gap: 2,
+            minWidth: 0,
+          }}>
+            <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 600 }}>
+              {c.icon} {c.label}
+            </div>
+            <div style={{
+              fontSize: 18, fontWeight: 800, color: 'var(--charcoal)',
+              lineHeight: 1.1,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {c.value}
+            </div>
+            {c.sub && (
+              <div style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>{c.sub}</div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )
+}
+
+function _formatMonth(yyyymm) {
+  if (!yyyymm || !yyyymm.includes('-')) return yyyymm
+  const [y, m] = yyyymm.split('-')
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  const idx = parseInt(m, 10) - 1
+  return idx >= 0 && idx < 12 ? `${months[idx]}/${y.slice(2)}` : yyyymm
 }
 
 

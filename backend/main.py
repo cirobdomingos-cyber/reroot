@@ -1313,6 +1313,14 @@ def user_badges(google_id: str):
     return {"badges": badges.for_user(google_id)}
 
 
+@app.get("/user/{google_id}/stats")
+def user_stats(google_id: str):
+    """Lifetime / personal-best counters — feeds the 'Recordes' section on
+    Profile. Anxiety-free: streak counter only tracks all-time best, never
+    a fragile 'current streak' the user could break."""
+    return badges.stats(google_id)
+
+
 # ── Event attendees ────────────────────────────────────────
 
 @app.get("/events/{event_id}/attendees")
