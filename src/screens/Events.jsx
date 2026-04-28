@@ -614,37 +614,28 @@ export default function Events() {
         ))}
       </div>
 
-      {/* ── AI suggestion CTA — sits above the list so it's reachable
-          without scrolling. AI/curated events are hidden from the catalog
-          (real events only), so this is the bridge: tap to ask the
-          Companion for ideas. */}
+      {/* ── AI suggestion CTA — slim inline pill so it doesn't crowd the
+          event list. Was a tall two-line card with a 38px icon; user
+          flagged it as taking too much space. Compressed to a single
+          ~32px row that still reads as a clear call-to-action without
+          competing with event cards for attention. */}
       {!loading && !isVenueMode && (
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-companion', { detail: { intent: 'suggest' } }))}
           style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            margin: '4px 16px 12px', padding: '14px 16px',
-            background: 'linear-gradient(135deg, #FFF8E1, #FFECB3)',
+            display: 'flex', alignItems: 'center', gap: 8,
+            margin: '4px 16px 10px', padding: '7px 12px',
+            background: '#FFF8E1',
             border: '1px solid #FFD54F',
-            borderRadius: 14, cursor: 'pointer',
-            width: 'calc(100% - 32px)',
+            borderRadius: 999, cursor: 'pointer',
+            fontSize: 12, fontWeight: 600, color: '#8D6E10',
+            width: 'fit-content',
             textAlign: 'left',
           }}
         >
-          <div style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            background: 'rgba(232, 98, 63, 0.18)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18,
-          }}>✦</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#8D6E10' }}>
-              Sem ideias para hoje?
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2, lineHeight: 1.35 }}>
-              <Aue /> IA pode sugerir algo baseado no seu humor →
-            </div>
-          </div>
+          <span style={{ fontSize: 14 }}>✦</span>
+          <span>Sugerir rolê com <Aue /> IA</span>
+          <span style={{ opacity: 0.6 }}>→</span>
         </button>
       )}
 
@@ -965,22 +956,30 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           )}
         </div>
 
-        {/* Date + time */}
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)', marginTop: 2 }}>
-          🗓 {ev.date} · {ev.time}
+        {/* Date + time. Recurring events take the lilac/purple color so
+            the date itself reads as "regular thing" — same color family
+            as the left stripe and badge, anchoring the routine signal. */}
+        <div style={{
+          fontSize: 11, fontWeight: 600, marginTop: 2,
+          color: isRecurring ? '#7E57C2' : 'var(--terra)',
+        }}>
+          {isRecurring ? '🔁' : '🗓'} {ev.date} · {ev.time}
         </div>
 
-        {/* Routine badge — recurring events get a small "🔁 Toda quinta"
-            chip below the date so the user instantly sees "this is a
-            weekly thing" alongside the next-occurrence date already shown
-            in the date label. */}
+        {/* Routine badge — bolder than the date hint above so a skim catches
+            it. Renders the day pattern ("Toda quinta-feira") inside an
+            ROTINA-prefixed pill; with the lilac stripe + bg + colored date,
+            three independent signals say "this is a weekly thing". */}
         {isRecurring && (
           <div style={{
-            fontSize: 10, fontWeight: 700, color: '#5E35B1',
-            background: '#EDE7F6', padding: '2px 8px', borderRadius: 6,
-            marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 10, fontWeight: 800, color: 'white',
+            background: '#7E57C2', padding: '3px 9px', borderRadius: 6,
+            marginTop: 6, display: 'inline-flex', alignItems: 'center',
+            gap: 5, letterSpacing: 0.4, textTransform: 'uppercase',
           }}>
-            🔁 {ev.recurrenceLabel || 'Rotina'}
+            🔁 Rotina · <span style={{
+              textTransform: 'none', letterSpacing: 0, fontWeight: 600,
+            }}>{ev.recurrenceLabel || 'recorrente'}</span>
           </div>
         )}
 
