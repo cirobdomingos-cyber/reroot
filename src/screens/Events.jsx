@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
-import { MOODS } from '../data/events'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, deletePersonalPlan } from '../services/api'
+import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -153,6 +153,10 @@ export default function Events() {
   // events with distinct styling. 'all' (default) shows both, 'events' hides
   // routines, 'routines' hides one-offs. The chip toggles cycle through.
   const [routinesFilter, setRoutinesFilter] = useState('all')
+  // Map of IG handle → tracked category. Built from /sources on mount so
+  // the chip filter on top of the catalog can use the same taxonomy as
+  // the Sources page (bar, cafe, restaurante, musica, …).
+  const [handleCategoryMap, setHandleCategoryMap] = useState({})
   // Friends' RSVPs — feeds the friend-dot in the week strip. Only fetched
   // when the user is signed in.
   const [friendsFeed, setFriendsFeed]       = useState([])
@@ -175,20 +179,44 @@ export default function Events() {
     return () => { cancelled = true }
   }, [state.googleUser?.id])
 
+  // Build the IG handle → category map once so the filter chips below
+  // can use the same source taxonomy the Sources page uses.
+  useEffect(() => {
+    let cancelled = false
+    fetchSources().then(d => {
+      if (cancelled) return
+      const map = {}
+      for (const ig of (d?.instagram || [])) {
+        if (ig.handle && ig.category) map[ig.handle.toLowerCase()] = ig.category.toLowerCase()
+      }
+      setHandleCategoryMap(map)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Returns the source-taxonomy category for an event, or null. IG events
+  // pull from the handle map; non-IG (aue_original, ai_generated,
+  // submitted) check INST_CATEGORY (currently only aue_original=cultural).
+  function categoryFor(ev) {
+    if (ev.igHandle) return handleCategoryMap[ev.igHandle.toLowerCase()] || null
+    return INST_CATEGORY[ev.source] || null
+  }
+
   const isVenueMode = VENUE_CATEGORIES.has(activeFilter)
 
-  const loadEvents = useCallback(async (category) => {
+  const loadEvents = useCallback(async () => {
+    // Single fetch on mount — backend mood-filter has been replaced by
+    // client-side source-category filter (see filteredEvents below).
     setLoading(true)
-    const { events: evs, source } = await fetchEvents(category)
+    const { events: evs, source } = await fetchEvents('all')
     setEvents(evs)
     setDataSource(source)
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    loadEvents(activeFilter)
-    setVenueSubFilter('all')
-  }, [activeFilter, loadEvents])
+    loadEvents()
+  }, [loadEvents])
 
   useEffect(() => {
     // Two ways to deep-link into a specific event:
@@ -267,8 +295,10 @@ export default function Events() {
   // Items without a parseable date sink to the bottom (custom events
   // without a date, anytime venues without dateStart). Events the
   // backend already returns in this order, but customs need merging.
-  const customEventsForFilter = (state.customEvents || []).filter(ev =>
-    activeFilter === 'all' || ev.category === activeFilter
+  // Custom events don't carry an IG handle / category, so they only
+  // surface in the unfiltered 'Tudo' view.
+  const customEventsForFilter = (state.customEvents || []).filter(() =>
+    activeFilter === 'all'
   )
   // Group events only surface in the unfiltered "Tudo" view — category
   // filters are public taxonomies (Música, Comida) that don't fit private
@@ -294,8 +324,16 @@ export default function Events() {
     return ta - tb
   })
 
-  // Apply search + date/venue filter
+  // Apply search + source-category + date/venue filter
   let filteredEvents = allDisplayEvents
+  // Source-category filter — uses the same taxonomy as the Sources page
+  // (bar / cafe / restaurante / musica / …). 'all' bypasses; any other
+  // chip narrows by the IG handle's tracked category (or aue_original's
+  // INST_CATEGORY mapping). Events whose source we can't classify just
+  // fall out of every specific bucket — matches the Sources behavior.
+  if (activeFilter !== 'all') {
+    filteredEvents = filteredEvents.filter(ev => categoryFor(ev) === activeFilter)
+  }
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
     filteredEvents = filteredEvents.filter(ev =>
@@ -507,28 +545,50 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Mood chips — top-level filter for the catalog. flexWrap so all
-            chips are visible at a glance instead of needing horizontal
-            scroll; users were missing chips off-screen on narrower
-            phones, especially after we added Cultural + Família. */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
-          {MOODS.map(mood => (
-            <button
-              key={mood.id}
-              onClick={() => handleCategoryChange(mood.id)}
-              style={{
-                padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                transition: 'all 0.15s',
-                border: activeFilter === mood.id ? 'none' : '1.5px solid var(--border)',
-                background: activeFilter === mood.id ? 'var(--charcoal)' : 'white',
-                color: activeFilter === mood.id ? 'white' : 'var(--charcoal-mid)',
-              }}
-            >
-              {mood.label}
-            </button>
-          ))}
-        </div>
+        {/* Category chips — same taxonomy as the Sources page. Each chip
+            is a source category (bar / cafe / restaurante / etc.), only
+            those with ≥1 event in the current view appear so the strip
+            stays compact. flexWrap = no horizontal scroll. */}
+        {(() => {
+          // Categories present in the current event list (pre-filter).
+          const presentCats = new Set()
+          for (const ev of allDisplayEvents) {
+            const c = categoryFor(ev)
+            if (c) presentCats.add(c)
+          }
+          const orderedCats = [
+            ...CATEGORY_ORDER.filter(c => presentCats.has(c)),
+            ...[...presentCats].filter(c => !CATEGORY_ORDER.includes(c)),
+          ]
+          const chips = [
+            { id: 'all', emoji: '🌍', label: 'Tudo' },
+            ...orderedCats.map(c => ({
+              id: c,
+              emoji: CATEGORY_META[c]?.emoji || '🔗',
+              label: CATEGORY_META[c]?.label || c,
+            })),
+          ]
+          return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
+              {chips.map(chip => (
+                <button
+                  key={chip.id}
+                  onClick={() => handleCategoryChange(chip.id)}
+                  style={{
+                    padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    border: activeFilter === chip.id ? 'none' : '1.5px solid var(--border)',
+                    background: activeFilter === chip.id ? 'var(--charcoal)' : 'white',
+                    color: activeFilter === chip.id ? 'white' : 'var(--charcoal-mid)',
+                  }}
+                >
+                  {chip.emoji} {chip.label}
+                </button>
+              ))}
+            </div>
+          )
+        })()}
 
       </div>
 

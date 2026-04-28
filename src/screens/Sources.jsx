@@ -2,59 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchSources } from '../services/api'
 import { useApp } from '../context/AppContext'
+import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import Avatar from '../components/Avatar'
 
 const API_BASE = import.meta.env.VITE_API_URL ??
   (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
-// Same preset list the Curar tab uses, kept in sync. Founders editing
-// existing handles still go through Curar (full CRUD + scrape + delete);
-// this Sources-page form is the curator-friendly add-only path.
-const CATEGORY_PRESETS = [
-  'bar', 'cafe', 'restaurante', 'musica', 'teatro', 'comedia',
-  'museu', 'livraria', 'centro_cultural', 'cinema', 'coletivo',
-  'curador', 'parque', 'esporte', 'infantil', 'comercial',
-  'cultural', 'outro',
-]
+// Add-handle form preset list: same taxonomy as CATEGORY_META, ordered.
+// Kept in sync automatically since both come from the shared module.
+const CATEGORY_PRESETS = CATEGORY_ORDER
 
-// Unified browser for every catalog source — institutional scrapers AND
-// Instagram handles, in one page, grouped by category. Replaces the
-// old split-by-source-type view + the separate venue chips on Events
-// (Bares & Cafés / Parques / Cinemas / Livrarias) which were redundant
-// once tracked_ig_accounts became the canonical venue list.
-
-// Category metadata — emoji + label used by the chip strip and the
-// section headers. Order here is the order chips appear (for visible
-// categories only — empty buckets hide automatically).
-const CATEGORY_META = {
-  bar:             { label: 'Bares',            emoji: '🍺' },
-  cafe:            { label: 'Cafés',            emoji: '☕' },
-  restaurante:     { label: 'Restaurantes',     emoji: '🍽' },
-  musica:          { label: 'Música',           emoji: '🎵' },
-  teatro:          { label: 'Teatros',          emoji: '🎭' },
-  comedia:         { label: 'Comédia',          emoji: '🎤' },
-  museu:           { label: 'Museus',           emoji: '🖼' },
-  livraria:        { label: 'Livrarias',        emoji: '📚' },
-  centro_cultural: { label: 'Centros Culturais', emoji: '🏛' },
-  cinema:          { label: 'Cinema',           emoji: '🎬' },
-  coletivo:        { label: 'Coletivos',        emoji: '🎲' },
-  curador:         { label: 'Curadores',        emoji: '📰' },
-  parque:          { label: 'Parques',          emoji: '🌿' },
-  esporte:         { label: 'Esportes',         emoji: '🏃' },
-  infantil:        { label: 'Família',          emoji: '👨‍👩‍👧' },
-  comercial:       { label: 'Shoppings',        emoji: '🏬' },
-  cultural:        { label: 'Cultural',         emoji: '✨' },
-  outro:           { label: 'Outros',           emoji: '🔗' },
-}
-const CATEGORY_ORDER = Object.keys(CATEGORY_META)
-
-// Institutional sources don't have a `category` field — map by id.
-// We dropped the web/institutional scrapers (MON/SESC/Teatro Guaíra/
-// Eventbrite/Turismo CWB) in favor of equivalent IG handles, so this
-// table only has aue_original now. Keep the map shape for future slots.
-const INST_CATEGORY = {
-  aue_original: 'cultural',
-}
+// Unified browser for every catalog source — institutional + Instagram
+// handles, grouped by category. Same taxonomy as the Events tab filter
+// chips (both import CATEGORY_META from src/data/categories).
 
 function categoryFor(source, isIg) {
   if (isIg) return (source.category || 'outro').toLowerCase()
