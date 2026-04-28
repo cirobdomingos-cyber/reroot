@@ -10,7 +10,6 @@ import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
 import Avatar from '../components/Avatar'
-import Aue from '../components/Aue'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
@@ -163,7 +162,12 @@ export default function Events() {
   // Recurring routines (e.g. "every Thursday MPB") show alongside one-off
   // events with distinct styling. 'all' (default) shows both, 'events' hides
   // routines, 'routines' hides one-offs. The chip toggles cycle through.
-  const [routinesFilter, setRoutinesFilter] = useState('all')
+  // Date-range filter shared by Lista + Mapa. Replaces the per-day week
+  // strip in Mapa mode (where day-by-day pinning rarely matches user
+  // intent — "what's this weekend" beats "what's specifically Saturday").
+  // List mode shows BOTH (range pills above, week strip below) so the
+  // user can either zoom by range or pick a specific day.
+  const [dateRange, setDateRange] = useState('all')  // 'today' | 'weekend' | 'week' | 'all'
   // Map of IG handle → tracked category. Built from /sources on mount so
   // the chip filter on top of the catalog can use the same taxonomy as
   // the Sources page (bar, cafe, restaurante, musica, …).
@@ -402,11 +406,49 @@ export default function Events() {
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
   }
-  // Routines filter — show only one-offs, only routines, or both (default).
-  if (routinesFilter === 'events') {
-    filteredEvents = filteredEvents.filter(ev => !ev.isRecurring)
-  } else if (routinesFilter === 'routines') {
-    filteredEvents = filteredEvents.filter(ev => ev.isRecurring)
+  // Date-range filter: applies to both Lista and Mapa. "Hoje" is the
+  // user's local day; "Fim de semana" is the next Saturday + Sunday;
+  // "Próx 7 dias" is a rolling window. Recurring events bypass the
+  // range filter — they're evergreen by definition and the next
+  // occurrence is always rolled forward upstream.
+  if (dateRange !== 'all') {
+    const now = new Date()
+    const startOfToday = new Date(now)
+    startOfToday.setHours(0, 0, 0, 0)
+    let rangeEnd  // Date — events strictly before this survive
+    if (dateRange === 'today') {
+      rangeEnd = new Date(startOfToday)
+      rangeEnd.setDate(rangeEnd.getDate() + 1)
+    } else if (dateRange === 'weekend') {
+      // Sat 00:00 → Mon 00:00 of the upcoming weekend (or this one if
+      // today is already Sat/Sun).
+      const dow = startOfToday.getDay()  // 0=Sun … 6=Sat
+      const daysUntilSat = (6 - dow + 7) % 7
+      const sat = new Date(startOfToday)
+      sat.setDate(sat.getDate() + daysUntilSat)
+      const monAfter = new Date(sat)
+      monAfter.setDate(monAfter.getDate() + 2)
+      filteredEvents = filteredEvents.filter(ev => {
+        if (ev.isRecurring) return true
+        if (!ev.dateStart) return false
+        const t = Date.parse(ev.dateStart)
+        return !Number.isNaN(t) && t >= sat.getTime() && t < monAfter.getTime()
+      })
+      rangeEnd = null  // already filtered above
+    } else if (dateRange === 'week') {
+      rangeEnd = new Date(startOfToday)
+      rangeEnd.setDate(rangeEnd.getDate() + 7)
+    }
+    if (rangeEnd) {
+      const endTs = rangeEnd.getTime()
+      const startTs = startOfToday.getTime()
+      filteredEvents = filteredEvents.filter(ev => {
+        if (ev.isRecurring) return true
+        if (!ev.dateStart) return false
+        const t = Date.parse(ev.dateStart)
+        return !Number.isNaN(t) && t >= startTs && t < endTs
+      })
+    }
   }
 
   // A bairro filter was prototyped here but reverted — venue→bairro from
@@ -813,68 +855,63 @@ export default function Events() {
         >
           👶 {t.filter_kids_welcome}
         </button>
-        {[
-          { id: 'all',      label: 'Eventos & rotinas' },
-          { id: 'events',   label: '⚡ Só únicos' },
-          { id: 'routines', label: '🔁 Só rotinas' },
-        ].map(rf => (
-          <button
-            key={rf.id}
-            onClick={() => setRoutinesFilter(rf.id)}
-            style={{
-              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-              transition: 'all 0.15s',
-              border: routinesFilter === rf.id ? 'none' : '1px solid var(--border)',
-              background: routinesFilter === rf.id ? '#7E57C2' : 'transparent',
-              color: routinesFilter === rf.id ? 'white' : 'var(--charcoal-light)',
-            }}
-          >
-            {rf.label}
-          </button>
-        ))}
       </div>
 
-      {/* ── Inline CTAs — two slim pills side by side. Left: AI suggestion
-          ("ask the Companion for ideas"). Right: "Criar um evento com
-          amigos" (creates a personal-plan event with hand-picked invitees).
-          flexWrap so they stack on narrow screens. */}
-      {!loading && !isVenueMode && (
+      {/* ── Date-range pills — shared by Lista + Mapa. Mapa loses the
+          per-day week strip below (it's noisy on a city-wide pin map),
+          so this row is the primary date-narrowing surface there.
+          List mode shows BOTH: range pills here, week strip below for
+          per-day picking. */}
+      {!isVenueMode && (
+        <div style={{ display: 'flex', gap: 6, padding: '0 16px 10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {[
+            { id: 'all',     label: 'Tudo' },
+            { id: 'today',   label: '📅 Hoje' },
+            { id: 'weekend', label: '🎉 Fim de semana' },
+            { id: 'week',    label: '🗓 Próx 7 dias' },
+          ].map(r => {
+            const active = dateRange === r.id
+            return (
+              <button
+                key={r.id}
+                onClick={() => setDateRange(r.id)}
+                style={{
+                  padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                  fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  border: active ? 'none' : '1px solid var(--border)',
+                  background: active ? 'var(--terra)' : 'transparent',
+                  color: active ? 'white' : 'var(--charcoal-light)',
+                }}
+              >
+                {r.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Inline CTA — "Criar um evento com amigos" (creates a personal
+          plan with hand-picked invitees). Sole survivor of the previous
+          two-CTA row; the AI suggestion pill was dropped to declutter. */}
+      {!loading && !isVenueMode && state.googleUser?.id && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '4px 16px 10px' }}>
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('open-companion', { detail: { intent: 'suggest' } }))}
+            onClick={() => setShowPlanSheet(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '7px 12px',
-              background: '#FFF8E1',
-              border: '1px solid #FFD54F',
+              background: '#FFFAF3',
+              border: '1px solid #C8E6C9',
               borderRadius: 999, cursor: 'pointer',
-              fontSize: 12, fontWeight: 600, color: '#8D6E10',
+              fontSize: 12, fontWeight: 600, color: 'var(--sage)',
               textAlign: 'left',
             }}
           >
-            <span style={{ fontSize: 14 }}>✦</span>
-            <span>Sugerir rolê com <Aue /> IA</span>
+            <span style={{ fontSize: 14 }}>🎲</span>
+            <span>Criar um evento com amigos</span>
             <span style={{ opacity: 0.6 }}>→</span>
           </button>
-          {state.googleUser?.id && (
-            <button
-              onClick={() => setShowPlanSheet(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 12px',
-                background: '#FFFAF3',
-                border: '1px solid #C8E6C9',
-                borderRadius: 999, cursor: 'pointer',
-                fontSize: 12, fontWeight: 600, color: 'var(--sage)',
-                textAlign: 'left',
-              }}
-            >
-              <span style={{ fontSize: 14 }}>🎲</span>
-              <span>Criar um evento com amigos</span>
-              <span style={{ opacity: 0.6 }}>→</span>
-            </button>
-          )}
         </div>
       )}
 
