@@ -281,33 +281,63 @@ export default function Home() {
       </div>
 
       {/* Pending invites — surfaces personal plans and group events the
-          user was invited to but hasn't RSVP'd yet. Dots on the calendar
-          alone weren't enough discovery — users had to tap the right day
-          to see invites at all. This section pins them at the top with
-          inline Confirmar buttons. */}
-      {groupEventsPending.length > 0 && (
-        <>
-          <div className="section-label">
-            {t.home_pending_label ?? 'Convites pendentes'} · {groupEventsPending.length}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 16px', marginBottom: 14 }}>
-            {groupEventsPending.map(ev => (
-              <PendingInviteRow
-                key={ev.id}
-                event={ev}
-                onOpen={() => {
-                  if (ev.group_id || ev.groupId) {
-                    navigate(`/groups/${ev.group_id || ev.groupId}`)
-                  } else {
-                    navigate('/events', { state: { openEventId: ev.id } })
-                  }
-                }}
-                onAccept={() => handleAcceptInvite(ev)}
-              />
-            ))}
-          </div>
-        </>
-      )}
+          user was invited to but hasn't RSVP'd yet. Capped to the next 3
+          (closest-in-time first) so Home stays a glanceable preview;
+          full list lives in My RSVPs > Pendentes. */}
+      {groupEventsPending.length > 0 && (() => {
+        const sortedPending = [...groupEventsPending].sort((a, b) => {
+          const ta = Date.parse(a.dateStart || a.date_start || '') || Infinity
+          const tb = Date.parse(b.dateStart || b.date_start || '') || Infinity
+          return ta - tb
+        })
+        const visible = sortedPending.slice(0, 3)
+        const hidden = sortedPending.length - visible.length
+        return (
+          <>
+            <div
+              className="section-label"
+              onClick={() => navigate('/my-rsvps')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+            >
+              <span>
+                {t.home_pending_label ?? 'Convites pendentes'} · {groupEventsPending.length}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 600 }}>
+                {t.home_see_all ?? 'Ver tudo'} →
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 16px', marginBottom: 14 }}>
+              {visible.map(ev => (
+                <PendingInviteRow
+                  key={ev.id}
+                  event={ev}
+                  onOpen={() => {
+                    if (ev.group_id || ev.groupId) {
+                      navigate(`/groups/${ev.group_id || ev.groupId}`)
+                    } else {
+                      navigate('/events', { state: { openEventId: ev.id } })
+                    }
+                  }}
+                  onAccept={() => handleAcceptInvite(ev)}
+                />
+              ))}
+              {hidden > 0 && (
+                <button
+                  onClick={() => navigate('/my-rsvps')}
+                  style={{
+                    background: 'transparent', border: '1px dashed var(--border)',
+                    borderRadius: 12, padding: '9px 12px',
+                    fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  + {hidden} {hidden === 1 ? 'outro convite' : 'outros convites'} →
+                </button>
+              )}
+            </div>
+          </>
+        )
+      })()}
 
       {/* Week Calendar */}
       <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
