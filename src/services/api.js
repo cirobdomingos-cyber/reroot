@@ -143,6 +143,17 @@ function normalizeBackendEvent(ev) {
     isRecurring: ev.isRecurring ?? false,
     recurrenceLabel: ev.recurrenceLabel ?? null,
     recurrenceDays: ev.recurrenceDays ?? [],
+    // Personal plans — events created with a hand-picked invitee list
+    // outside any group. isGroupEvent stays true so the existing private
+    // styling (sage stripe, "yours" tinted card) applies; isPersonalPlan
+    // flips the label from "Grupo" to "Plano de <criador>".
+    isGroupEvent: ev.isGroupEvent ?? false,
+    isPersonalPlan: ev.isPersonalPlan ?? false,
+    groupId: ev.groupId ?? null,
+    groupName: ev.groupName ?? '',
+    createdBy: ev.createdBy ?? null,
+    inviteeCount: ev.inviteeCount ?? 0,
+    note: ev.note ?? '',
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
@@ -667,6 +678,40 @@ export async function deleteGroupEvent(groupId, eventId, googleId) {
     { method: 'DELETE' },
   )
   if (!res.ok) throw new Error(`Delete group event failed: ${res.status}`)
+  return res.json()
+}
+
+// Personal plan = event with hand-picked invitees, no group attached.
+// Backend stores it in group_events with group_id NULL + extra_invitee_ids.
+// Returns the created event row (not the frontend-shaped catalog event —
+// the next /events/group fetch will surface it shaped properly).
+export async function createPersonalPlan(googleId, { name, description = '', venue = '', date_start, date_end = null, note = '', invitee_google_ids = [] }) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/private`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        google_id: googleId,
+        name, description, venue, date_start, date_end, note,
+        invitee_google_ids,
+      }),
+    },
+  )
+  if (!res.ok) {
+    let detail = ''
+    try { detail = (await res.json()).detail || '' } catch {}
+    throw new Error(detail || `Create personal plan failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function deletePersonalPlan(eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/private/${encodeURIComponent(eventId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Delete personal plan failed: ${res.status}`)
   return res.json()
 }
 
