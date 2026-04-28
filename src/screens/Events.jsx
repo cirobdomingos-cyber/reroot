@@ -804,24 +804,10 @@ export default function Events() {
 
       {/* ── Price + Kids Welcome filter chips ── */}
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {/* All-dates pill — leads the row so users always have a clear path
-            back to the full catalog. Active when no specific day is picked
-            from the week strip; clears the strip pick when tapped. */}
-        {!isVenueMode && (
-          <button
-            onClick={() => setSelectedDay(null)}
-            style={{
-              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-              transition: 'all 0.15s',
-              border: !selectedDay ? 'none' : '1px solid var(--border)',
-              background: !selectedDay ? 'var(--terra)' : 'transparent',
-              color: !selectedDay ? 'white' : 'var(--charcoal-light)',
-            }}
-          >
-            {selectedDay ? '✕ ' : ''}Todas as datas
-          </button>
-        )}
+        {/* "Todas as datas" pill removed — duplicated "Tudo" on the
+            date-range row, and the week strip already toggles a picked
+            day off when tapped a second time, so the path back to the
+            full catalog stayed accessible. */}
         {[
           { id: 'all',  label: t.filter_all_prices },
           { id: 'free', label: `🆓 ${t.filter_free}` },
