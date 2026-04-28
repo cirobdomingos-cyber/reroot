@@ -1,0 +1,628 @@
+[
+  {
+    "persona_id": "P29",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "grupos",
+          "conexoes"
+        ],
+        "nps_score": 8,
+        "frustration_level": "low",
+        "text": "★★★★☆\n\nUsei por duas semanas e o auê resolveu um problema que eu não sabia nem como nomear: ficar garimpando Instagram de casa cultural às 23h pra ver o que rola no fim de semana — e ainda assim chegar tarde na informação. O filtro 'Família' me salvou na primeira semana; fui à feira do Passeio Público com minha filha de 4 anos e foi exatamente o que eu esperava, sem surpresa desagradável.\n\nO que me conquistou de vez foi criar um grupo privado pra combinar programa com dois casais amigos. Acabou com um ciclo horrível de áudio no WhatsApp do tipo 'gente, alguém sabe que horas abre?'. Quando o Rodrigo adicionou um evento lá e eu recebi a notificação, achei quase mágico.\n\nTiro uma estrela porque a instalação no iPhone deu um trabalhão pra explicar pro meu marido — ele abriu pelo Chrome achando que ia funcionar e não foi. O walkthrough do /install é claro, mas se a pessoa não seguir à risca, trava. Pra quem não é do mundo de tecnologia, 'abrir no Safari' não é óbvio.\n\nFora isso: muito bom. Curitiba precisava disso."
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "ui_ux",
+          "install"
+        ],
+        "nps_score": 7,
+        "frustration_level": "medium",
+        "text": "Oi, time! Duas semanas usando e tenho coisas boas e uma trava pra contar.\n\nPrimeiro o bom: o filtro 'Família' é o que eu mais uso. Mas sinto falta de ele dizer *por que* o evento é família — se é porque tem espaço aberto, porque é sem amplificação alta, porque aceita carrinho. Só o tag não me dá segurança suficiente pra reorganizar a tarde da minha filha em cima disso.\n\nSegundo: o onboarding com os cards girando é bonito, mas passou rápido demais e eu não vi onde ficava o filtro de mood de primeira. Levei uns dois dias pra achar por conta própria.\n\nAgora a trava real: meu marido tentou instalar pelo Chrome no iPhone e travou. Eu já sabia que era pelo Safari, mas ele não leu o /install e foi direto. Quando eu fui explicar pareceu que era coisa de TI, não de app de lazer. Talvez um aviso mais óbvio na tela inicial quando detecta que não é Safari? Tipo um banner 'ei, você vai precisar abrir no Safari pra instalar'.\n\nDe resto tô gostando bastante. Os badges aparecendo depois que o evento rolou de fato — isso me pareceu honesto, gostei."
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "conexoes",
+          "grupos",
+          "voz_marca"
+        ],
+        "nps_score": 9,
+        "frustration_level": "low",
+        "text": "Assunto: feedback real de alguém que quase desistiu no primeiro dia\n\nOi Ciro,\n\nMe chamo Renata, sou designer, moro no Água Verde e tenho uma filha de 4 anos — o que significa que minha vida social entrou numa espécie de modo de economia de energia depois que ela nasceu. Uma amiga me mandou o link do auê pelo WhatsApp e eu abri direto no app, não funcionou, quase ignorei. Voltei no Safari, segui o walkthrough do /install, e instalei.\n\nFico pensando quantas pessoas desistem nesse primeiro passo. Não sei se dá pra mudar algo técnico por causa da Apple, mas se der algum jeito de tornar esse momento menos hostil pra quem não é tech, acho que vale cada hora de desenvolvimento. Essa é minha única preocupação real.\n\nFora isso — Ciro, o app resolveu algo que eu não encontrei em lugar nenhum: um espaço pra combinar programa com pessoas específicas sem criar mais um grupo de WhatsApp que ninguém abre. Criei um grupo privado com dois casais amigos e em menos de uma semana a gente já confirmou um evento junto. Isso não acontecia faz tempo.\n\nO filtro 'Família' me deu coragem de ir à feira do Passeio Público com a minha filha sem checar cinco fontes antes. Foi um sábado bom.\n\nA voz do app também me agradou — tem energia sem ser invasivo, não me trata como alguém que precisa ser convencida a sair de casa, só me mostra o que tá rolando. Isso conta muito.\n\nObrigada pelo que vocês tão construindo.\n\nRenata Wolff"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "grupos",
+          "eventos"
+        ],
+        "nps_score": 8,
+        "frustration_level": "low",
+        "text": "Gostei sim! A parte de criar grupo pra combinar programa com a galera é o que me vendeu — tipo, finalmente não preciso mandar áudio perguntando quem vai. Só avisa o marido pra instalar pelo Safari senão ele vai xingar muito 😅"
+      }
+    ]
+  },
+  {
+    "persona_id": "P30",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "ui_ux",
+          "amigos"
+        ],
+        "nps_score": 8,
+        "frustration_level": "low",
+        "text": "★★★★☆\n\nCheguei no auê meio desconfiado — já perdi a conta de quantos apps promete\"descubra eventos incríveis\" e entrega patrocínio de faculdade particular. Não é o caso aqui.\n\nO filtro 'Cultural' e 'Tranquilo' me poupou um trabalho que eu não tinha mais paciência de fazer: garimpar entre balada e workshop de finanças pessoais. Encontrei um sarau de poesia e um cinema mudo com trilha ao vivo no Centro Histórico — dois eventos que eu jamais teria visto no Instagram sem seguir sei lá quantas contas.\n\nO que me convenceu de fato foi ver que um ex-colega tinha confirmado presença no sarau. Parece detalhe, mas pra quem vai sozinho ao evento, saber que tem alguém conhecido lá é a diferença entre ir e não ir.\n\nUm ponto que me travou no começo: o link que me mandaram abriu no WhatsApp e não funcionou. Tive que ler um aviso, abrir no Safari e fazer o negócio do 'Adicionar à Tela de Início'. Não é difícil, mas pra quem tem 58 anos e não é da área, aquele momento de 'o que deu errado?' assusta. Explica melhor antes, não depois.\n\nTirei uma estrela só por isso. No mais, recomendo."
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "badges",
+          "anti_game",
+          "recordes"
+        ],
+        "nps_score": 7,
+        "frustration_level": "medium",
+        "text": "Oi, deixa eu mandar um retorno sobre as conquistas.\n\nFui ao sarau no domingo, voltei pra casa satisfeito, abri o app — e nada. Entendo que a lógica é esperar o evento acontecer de verdade, vi o aviso 'conquistas atualizam após o evento rolar'. Tudo bem, faz sentido.\n\nMas o badge apareceu dois dias depois sem nenhum aviso. Abri o app por acaso e estava lá. Uma notificação simples — 'ei, você ganhou sua primeira conquista' — teria feito diferença. O momento passou.\n\nOs Recordes Pessoais eu gostei mais. Ver que visitei 2 bairros novos é o tipo de coisa que me anima a continuar. Só achei a seção um pouco escondida — fui procurar e demorei a achar onde estava.\n\nNada grave, mas vale o registro."
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "install"
+        ],
+        "nps_score": 9,
+        "frustration_level": "low",
+        "text": "Assunto: Feedback de usuário — duas semanas de uso\n\nCiro, boa tarde.\n\nRecebi o convite de um conhecido e resolvi testar. Quero deixar um retorno mais detalhado do que cabe num formulário.\n\nContexto rápido: sou aposentado, moro em Santa Felicidade, uso iPhone SE. Minha esposa faleceu há dois anos e era ela quem sabia de tudo que acontecia na cidade. Desde então perdi completamente o fio. O auê me devolveu um pouco disso.\n\nO que funcionou bem pra mim: os filtros de mood são exatamente o que eu precisava. Não quero festival de cerveja nem curso de empreendedorismo — quero saber o que rola de interessante e acessível num fim de semana. O app entendeu isso sem eu precisar configurar muita coisa.\n\nO 'amigos vão' é simples e eficaz. Vi que um ex-colega da Volvo confirmou o sarau e fui. Sem isso, provavelmente teria deixado pra outra vez — que no meu caso geralmente não vem.\n\nUm ponto que merece atenção: o processo de instalação no iPhone não é óbvio. Abri pelo WhatsApp, não funcionou, e se não tivesse a mensagem de aviso eu teria desistido ali. Talvez valha mandar uma instrução no próprio convite, antes do link, só pra preparar a pessoa.\n\nNo geral, está cumprindo o que promete. Já tenho dois eventos confirmados nas próximas semanas, o que não era comum pra mim.\n\nAbraço,\nDirceu Nakamura"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "amigos"
+        ],
+        "nps_score": 8,
+        "frustration_level": "low",
+        "text": "Gostei sim. Achei dois eventos que não teria descoberto de jeito nenhum — um sarau e um cinema mudo com músico ao vivo, imagina. O negócio de ver se tem algum conhecido confirmado antes de ir é o que me convenceu de vez. Tem uma chatice na instalação pelo iPhone, mas passa."
+      }
+    ]
+  },
+  {
+    "persona_id": "P31",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "ui_ux"
+        ],
+        "text": "★★★★☆\n\nTava procurando um app que juntasse os eventos legais de Curitiba num lugar só sem me fazer abrir Sympla + Instagram + Catraca Livre ao mesmo tempo — e o auê faz exatamente isso. O filtro Criativo entrega sarau, feira zine, exposição de verdade, não aquele pagode de bar que todo app genérico joga na sua cara. O que me fisgou mesmo foi ver que minha amiga já tinha confirmado presença numa feira que eu tava de olho — isso me fez ir sem nem precisar mandar mensagem no grupo da rep pedindo companhia. O app fez o trabalho. A instalação pelo Chrome no Android foi tranquila, o walkthrough explica direitinho. Tirei uma estrela porque o filtro Criativo ainda deixa passar evento que não tem muito a ver, tipo workshop corporativo caindo ali no meio — dá pra afinar mais. Mas pra duas semanas de uso? Já virou o app que abro antes do Instagram quando quero saber o que tá rolando no fim de semana.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "grupos",
+          "push"
+        ],
+        "text": "Oi, feedback real aqui: o filtro Criativo é o melhor do app, mas precisa de curadoria mais cirúrgica — entrou umas coisas ali que claramente não são pra esse mood. Outra coisa: criei o grupo 'Rep Criativa' e adicionei o workshop de serigrafia, mas as meninas receberam o push só horas depois — na hora que vi elas já tinham dormido e perderam o prazo de inscrição. Se o push de evento adicionado ao grupo fosse mais imediato isso não teria rolado. Fora isso tô amando, principalmente o 'Bora porque…' nos cards — é exatamente o argumento que eu precisava mandar pro WhatsApp da rep sem ter que escrever do zero.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "conexoes",
+          "voz_marca",
+          "badges"
+        ],
+        "text": "Assunto: feedback honesto de uma usuária da primeira semana\n\nOi Ciro,\n\nSou a Isabela, estudante de design na UFPR, fiquei sabendo do auê pela minha colega de rep e instalei direto pelo Chrome no Android — funcionou bem, o walkthrough salvou porque eu tinha aberto primeiro no WhatsApp e não ia rolar.\n\nQueria dizer que o app pegou num ponto que eu nem sabia que me incomodava: eu sempre tinha que vender o evento pro grupo da rep sozinha, tipo fazer o marketing do evento pra convencer as meninas a sair. O 'Bora porque…' e o 'sua amiga vai' fizeram esse trabalho por mim na semana passada — fui à feira zine com a Júlia sem mandar um único áudio explicando por que ia ser legal.\n\nO badge 'Primeiro auê' apareceu no dia seguinte ao evento e entendi na hora o porquê — só conta depois que acontece, tá escrito ali. Achei honesto isso, não fica parecendo que você tá me gamificando pra confirmar presença em tudo.\n\nUm pedido: o filtro Criativo ainda deixa entrar coisa que não combina com o mood. Sou de design, me importo com categorização — se tivesse um jeito de a comunidade sugerir correção de mood de um evento seria muito útil. Só uma ideia.\n\nContinuando usando. Boa sorte com o beta.\n\nIsabela",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "conexoes",
+          "amigos"
+        ],
+        "text": "miga amei, principal função é ver quem já confirmou — quando vi que a Júlia tava indo na feira zine eu fui sem nem pensar duas vezes kkkk o app convenceu por mim. instala pelo Chrome que vai direto, não abre pelo WhatsApp não",
+        "nps_score": 9,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P32",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "amigos",
+          "ui_ux"
+        ],
+        "text": "★★★☆☆ — Tem potencial mas ainda me deixou na mão em alguns momentos\n\nBaixei pelo convite de um amigo e fui com expectativa baixa. Pra minha surpresa, achei coisa boa pra fazer em Curitiba que eu nem sabia que existia — fui num show de jazz no Largo da Ordem que foi tranquilo, agradável, e o app me ajudou a confirmar que meu amigo ia junto, o que foi o empurrão que precisava. Isso funcionou bem.\n\nO problema é que quando tentei achar coisa pra levar meu filho de 9 anos num fim de semana, não consegui filtrar isso de jeito nenhum. Família tem um filtro, mas não diz se o evento é pra criança de verdade ou só pra família no sentido amplo. Fui ler descrição por descrição igual eu faço no Sympla, que é exatamente o que eu queria evitar.\n\nOutro ponto: o badge que apareceu depois do show eu quase não vi. Surgiu lá no perfil sem nenhum aviso mais chamativo. Não me incomodou, mas também não me animou.\n\nNo geral: útil pras semanas que estou sem compromisso e quero sair com alguém. Ainda não resolve minha vida de pai de fim de semana.",
+        "nps_score": 6,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "ui_ux",
+          "amigos"
+        ],
+        "text": "Fala, time. Uso o app há umas duas semanas, vim pelo convite do Rodrigo.\n\nO que funcionou pra mim: ver que ele tinha confirmado num evento antes de eu decidir ir. Isso foi o que me fez sair de casa na sexta. Sem esse detalhe eu provavelmente ia ficar em casa.\n\nO que me travou: tenho filho de 9 anos e nos fins de semana que ele fica comigo quero achar programa pra gente. O filtro 'Família' não me ajuda a distinguir se o evento é adequado pra criança mesmo ou se é uma coisa genérica. Eu precisaria de algo tipo 'indicado pra criança até X anos' ou pelo menos uma nota rápida no card. Tive que abrir cada evento um por um pra ler a descrição — aí perde a graça.\n\nSugestão pequena também: quando o badge aparece no perfil, seria bom um aviso mais visível, nem que seja uma notificinha dentro do app. Fui descobrir o meu por acaso.\n\nNo mais, tá no caminho certo. Só me ajudem a usar nos fins de semana com criança que eu uso muito mais.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "amigos",
+          "eventos",
+          "conexoes"
+        ],
+        "text": "Assunto: Feedback de duas semanas — veio pelo convite do Rodrigo\n\nOi Ciro,\n\nNão sei se você lê esses emails ou se cai numa caixa de suporte, mas vou mandar de qualquer forma.\n\nSou o Thiago, 41 anos, Juvevê. Meu amigo Rodrigo me mandou o link lá atrás e fui instalando sem muita expectativa — sou daquele tipo que baixa app, usa três dias e esquece. Não foi bem o que aconteceu dessa vez, o que já diz alguma coisa.\n\nO que mais me pegou foi simples: antes de decidir ir num show de jazz sexta passada, abri o app e vi que o Rodrigo tinha confirmado presença. Esse detalhe — saber que tem alguém conhecido indo — fez toda a diferença pra mim. Eu sou do tipo que prefere ir com alguém do que aparecer sozinho num lugar, e o app resolveu isso sem eu precisar mandar mensagem pra ninguém perguntando se ia. Isso pra mim tem valor real.\n\nSó quero registrar uma dificuldade que tive: nos fins de semana com meu filho de 9 anos, não consegui usar o auê de jeito nenhum. O filtro de Família existe mas não me diz se o evento é pra criança mesmo. Aí eu fico inseguro e não arrisca. Se tiver alguma forma de sinalizar isso nos cards — mesmo que seja só uma palavrinha, 'kids ok' ou algo assim — acho que ajudaria bastante pais na mesma situação.\n\nFora isso, valeu pelo app. Tá instalado e vou continuar usando nas semanas que estou mais livre.\n\nAbraço,\nThiago",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "amigos",
+          "eventos"
+        ],
+        "text": "Cara, gostei sim. Fui naquele jazz sexta porque vi que você tinha confirmado lá no app — sem isso eu não ia não kkk. Quando tenho o guri aqui no fim de semana não serve muito, mas nas semanas que estou sozinho é útil.",
+        "nps_score": 7,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P33",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "voz_marca",
+          "ui_ux"
+        ],
+        "nps_score": 9,
+        "frustration_level": "low",
+        "text": "★★★★★\n\nSó não dei 5 estrelas porque no começo eu abri pelo WhatsApp no iPhone e a tela travou, aí achei que era mais um app quebrado e fechei. Sorte que uma amiga insistiu.\n\nDepois que instalei pelo Safari mudou tudo. O que me segurou foi aquele carrossel de eventos no começo — show, sarau, festa, stand-up girando ali. Em 10 segundos eu já sabia que não era aquele catálogo genérico cheio de evento corporativo.\n\nO que mais uso: os filtros de clima (mood). Trabalho plantão noturno e meus dias livres são terça e quarta, quando ninguém ao redor tá livre. Antes eu ficava cavando no Instagram e descobria o evento dois dias depois que tinha acontecido. Aqui eu acho o que rola nesses dias sem depender de story.\n\nFui num show pequeno no Centro semana passada, fui sozinha, e foi ótimo. Tomei coragem de ir porque li aquele 'Bora porque…' e o texto era honesto — disse que era ambiente intimista, palco de chão, umas 80 pessoas. Não era release de assessoria. Era de verdade.\n\nÚnica coisa: queria filtrar por dia da semana direto, tipo 'me mostra só terça à tarde'. Hoje eu ainda preciso fuçar um pouco pra chegar nisso."
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "anti_game",
+          "recordes",
+          "badges"
+        ],
+        "nps_score": 7,
+        "frustration_level": "medium",
+        "text": "Oi! Feedback honesto aqui.\n\nAdorei os Recordes Pessoais — fiquei tipo 10 minutos olhando aquela tela, sem motivo concreto, só achei satisfatório ver os números. Não sei explicar, mas funciona.\n\nSó que travei nos badges. Fiz o 3º RSVP e fiquei esperando o badge aparecer e não veio. Depois fui ler a explicação ('Conquistas atualizam após o evento rolar') e entendi a lógica — faz sentido, não queriam que virasse jogo de clique. Mas talvez precisasse de um aviso mais visível ANTES da pessoa ficar confusa, não depois. Tipo um tooltip logo quando você faz o RSVP: 'Badge confirma depois do evento acontecer ✓'. Porque a minha primeira reação foi achar que tinha bug.\n\nFora isso, tô usando bastante. Obrigada!"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "install"
+        ],
+        "nps_score": 9,
+        "frustration_level": "low",
+        "text": "Assunto: feedback de uma usuária do Capão Raso\n\nOi Ciro,\n\nNão costumo mandar e-mail pra fundador de app, mas acho que você precisa saber isso.\n\nEu sou técnica de enfermagem, faço plantão noturno no Hospital do Trabalhador e tô num momento de vida em que saí de um relacionamento longo e tô tentando reconquistar o hábito de sair — sabe, só por sair, sem depender de ninguém querer ir junto.\n\nO auê ajudou nisso de um jeito que eu não esperava. Não foi a tecnologia em si, foi aquela descrição de clima nos eventos. Quando eu li que o show era 'ambiente intimista, 80 pessoas, palco de chão', eu senti que dava pra ir sozinha sem ser esquisito. Fui. Foi o melhor show que eu vi em anos e eu estava lá por conta própria, sem planejar nada com antecedência.\n\nEu moro no Capão Raso e sempre tive a sensação de que os eventos interessantes eram pra quem mora no Batel. Ainda acho que o app tem mais coisa pra quem tá no Centro, mas pelo menos agora eu vejo o que existe e consigo decidir se vale o deslocamento com informação de verdade.\n\nDois pedidos: filtro por dia da semana (meus dias livres são em terça e quarta, que não aparecem em nenhum app), e avisar melhor sobre os badges antes do evento acontecer — levei um susto achando que era bug.\n\nObrigada pelo app. Tô indicando pras minhas amigas.\n\nCamila"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "voz_marca",
+          "eventos"
+        ],
+        "nps_score": 9,
+        "frustration_level": "low",
+        "text": "Gostei muito, sério. Fui num show sozinha na sexta por causa dele — coisa que eu não fazia há anos. Instala pelo Safari se tiver no iPhone, pelo WhatsApp não abre direito. Mas vale."
+      }
+    ]
+  },
+  {
+    "persona_id": "P34",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "ui_ux"
+        ],
+        "text": "★★★★☆\n\nBaixei pelo navegador mesmo, sem ser pela Play Store, e achei que ia ser uma bagunça — mas deu certo. O app é diferente de tudo que eu já usei pra procurar evento em Curitiba. No Sympla eu sempre perco tempo filtrando coisa paga, aqui eu fui no filtro Comunidade e já achei um sarau no meu bairro que eu não ia descobrir de jeito nenhum. Fui com minha amiga Júlia e foi ótimo. O que me ajudou muito foi ver que ela já tinha confirmado presença antes de eu decidir ir — me deu coragem de ir num lugar que eu não conhecia. Tô tirando uma estrela porque sinto falta de filtrar por preço logo de cara. Tem evento no feed sem mostrar se é gratuito ou quanto custa, e eu fico na dúvida se vale clicar. Mas no geral? Recomendo muito, especialmente pra quem mora fora do Centro e acha que não tem nada acontecendo no bairro.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "grupos",
+          "push"
+        ],
+        "text": "Oi! Uso o app faz duas semanas e gostei bastante, mas queria deixar umas coisas aqui.\n\nPrimeiro: vocês poderiam colocar o preço (ou 'gratuito') visível direto no card do evento? Eu abro o card pra descobrir que é pago e aí já perdi meu tempo. Isso pra mim é o principal.\n\nSegundo: tentei criar um grupo pra chamar minha amiga e uma colega e travei um pouco — não entendi de cara se eu tinha que adicionar o evento antes ou depois de adicionar as pessoas no grupo. No final deu certo mas fiquei um tempinho perdida.\n\nTerceiro: recebi uma notificação que a Júlia confirmou um evento mas quando abri o app pra ver qual evento era eu precisei procurar um pouco. Seria legal se a notificação já abrisse direto na página do evento.\n\nFora isso tô adorando, principalmente o filtro de Comunidade. Continuem assim!",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "voz_marca"
+        ],
+        "text": "Assunto: feedback de uma usuária nova (Cajuru)\n\nOi Ciro, tudo bem?\n\nMinha amiga Júlia me mandou o link do auê pelo WhatsApp esses dias. Na primeira vez que tentei abrir não funcionou — acho que era o navegador do próprio WhatsApp. Aí ela falou pra abrir no Chrome e deu certo.\n\nQueria mandar um feedback mais direto porque acho que o app merece.\n\nEu moro no Cajuru e sempre sinto que a cidade toda ferve menos aqui. Nos outros apps é tudo focado no Centro ou no Batel, e quando tem algo mais periférico eu só fico sabendo depois que passou. No auê eu achei um evento comunitário no meu bairro pelo filtro e isso pra mim já valeu o download.\n\nFui num sarau no Centro com a Júlia — primeiro evento que fui por causa do app — e foi muito bom. O que me deu coragem de ir foi saber que ela já tinha confirmado. Parece bobagem mas faz diferença quando você é mais tímida.\n\nUma coisa que deixaria o app perfeito pra mim: mostrar o preço do evento antes de eu clicar pra abrir. Eu tenho orçamento limitado e fico com aquela ansiedade de me empolcar com um evento e descobrir que não cabe no bolso. Se tivesse um filtro 'gratuito / até R$20' logo no início eu usaria todo dia.\n\nObrigada pelo app. Curitiba precisava disso.\n\nLorena",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "amigos"
+        ],
+        "text": "Gostei sim! Achei evento aqui perto do meu bairro que eu nunca ia descobrir de outro jeito. O único perrengue é que não dá pra ver o preço logo de cara, mas pra achar coisa gratuita e ver se amiga vai junto é bom demais 😭👏",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P35",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "voz_marca",
+          "conexoes"
+        ],
+        "text": "Achei no WhatsApp, instalei no celular e fui testar. Pra ser honesto esperava mais um desses apps cheios de frescura que no final não tem nada em Curitiba. Mas não — tem coisa real, perto de casa, e dá pra ver o que combina com sair com os filhos sem precisar ler textão de descrição. O filtro de humor ajuda a não cair em evento errado. O que me segurou mesmo foi conseguir ver que ia ter gente conhecida — fui numa feira de quadrinhos com meus dois e funcionou, os dois curtiram. O app tem uma pegada mais jovem, mas não chata. Minha única queixa é que no começo fiquei perdido pra ver quem ia nos eventos porque não tinha ninguém na minha lista ainda. Mas depois que conectei um amigo melhorou. Vale instalar.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "amigos",
+          "push",
+          "grupos"
+        ],
+        "text": "Oi, feedback rápido aqui. Duas semanas usando e gostei bastante, principalmente dos eventos de fim de semana. Mas algumas coisas que travaram:\n\n1. Demorei demais pra entender que precisava de um código pra adicionar amigo. Achei que era só pelo Google. Podia ter uma dica mais clara na tela de contatos tipo 'peça o código pro seu amigo no Profile dele'.\n\n2. A notificação de quinta chegou, mas não tava escrito de onde veio — apareceu no celular e fiquei sem saber se era golpe ou não. Coloca o nome auê na notificação de forma mais clara.\n\n3. O grupo que tentei criar pra turma do trabalho ficou parado porque os colegas não tinham instalado ainda. Seria bom poder mandar o convite do grupo junto com o link de instalação numa mensagem só.\n\nFora isso, tá bom. Continuo usando.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "grupos",
+          "amigos"
+        ],
+        "text": "Assunto: Feedback do auê — usuário do Portão\n\nOi Ciro, tudo bem?\n\nSei que provavelmente você recebe um monte de mensagem mas resolvi mandar porque acho que vale.\n\nSou técnico industrial, pai solo de dois adolescentes, e recebi o link do auê por um colega. Fui testar sem muita expectativa porque já me decepcionei com Sympla e essas coisas — você abre, não tem nada relevante em Curitiba, ou tem mas é show de artista que meus filhos não conhecem e eu também não.\n\nO auê foi diferente. Em duas semanas fui com os meus dois numa feira de quadrinhos que achei pelo app. Simples assim — mas pra mim isso já é muito, porque convencer adolescente a sair com o pai no fim de semana não é fácil.\n\nO que me ajudou: o filtro de humor, o resumo rápido do evento e poder ver se alguém que conheço vai. Quando não tinha ninguém na lista ficava meio sem referência, mas depois que adicionei um amigo fez mais sentido.\n\nO que ainda trava um pouco: tentei montar um grupo pra turma do trabalho e ficou pela metade porque os colegas precisariam instalar e o processo de convidar é um pouco separado — o convite do grupo e o link de instalação são coisas distintas e isso confunde.\n\nMas no geral, parabéns. É um negócio simples que funciona, e pra mim que não tenho tempo de ficar garimpando Instagram isso faz diferença.\n\nAbraço,\nMarcos",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "amigos"
+        ],
+        "text": "Cara, gostei sim. Fui com os meninos numa feira de quadrinhos que achei lá — os dois curtiram e ninguém reclamou. Só é chato no começo porque você não conhece ninguém no app, mas depois que conecta um amigo começa a fazer sentido. Tô usando ainda.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P36",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "ui_ux",
+          "voz_marca"
+        ],
+        "text": "★★★★☆\n\nVim pelo link de uma amiga, sem saber nada, e fiquei. Isso já diz bastante.\n\nUso o Sympla há anos e nunca soube de fato pra onde estava indo — a descrição dos eventos é aquela coisa seca, sem personalidade. Aqui tem filtro de mood, que parece bobo mas faz diferença enorme. Botei 'Cultural' e apareceu um sarau de poesia no Batel que eu jamais ia encontrar sozinha no Instagram. Fui, adorei, levei o marido e uma amiga.\n\nO 'Bora porque…' personalizado às vezes acerta muito, às vezes parece genérico demais — mas quando acerta, é aquela sensação de 'como sabia?'. A voz do app é leve sem ser idiota. Não me sinto sendo vendida nada.\n\nO que ainda me trava: levei uns dias pra entender os badges — achei que tinham bugado porque não apareceram na hora. Depois entendi que só contam após o evento acontecer, o que faz sentido total, mas o app não deixa isso claro logo de cara. Descobri quase por acidente.\n\nTirei uma estrela porque a aba de Grupos ainda parece pela metade. Queria criar um grupo com amigas pra compartilhar eventos e travou um pouco no processo. Tem potencial enorme ali.\n\nPra quem mora em Curitiba e quer sair do circuito óbvio: vale instalar.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "badges",
+          "grupos",
+          "anti_game"
+        ],
+        "text": "Oi! Feedback honesto de quem usa há duas semanas:\n\nO filtro Cultural salvou minha vida — encontrei coisas que o Instagram nunca ia me mostrar porque o algoritmo acha que Curitiba não existe. Isso é o ponto mais forte do app pra mim.\n\nSó que tive dois momentos de confusão que quebraram um pouco a experiência:\n\n1. Fui ao sarau, voltei pra casa animada, abri o app esperando ver o badge 'Primeiro auê' — e nada. Achei que era bug. Só no dia seguinte apareceu. Eu entendo a lógica (evento tem que acontecer de verdade), mas precisei procurar explicação. Se tivesse um aviso tipo 'seu badge está confirmando que você foi — aparece em breve' logo após o RSVP, já ajudaria muito.\n\n2. Criar grupo com a Priya foi confuso. Não ficou claro pra mim se ela precisava aceitar algo, se o grupo já estava ativo, se eu devia mandar o link de outro jeito. Funcionou no fim, mas com mais tentativa e erro do que deveria.\n\nO resto — push, onboarding, cards — funcionou bem. Continuando por aqui!",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "grupos"
+        ],
+        "text": "Assunto: Feedback de duas semanas — usuária do Ahú\n\nOlá Ciro,\n\nMeu nome é Beatriz, sou professora de inglês, moro no Ahú há pouco tempo e vim pro auê pelo convite de uma colega. Resolvi escrever porque acho que vale mais um e-mail real do que aquela caixinha de avaliação de 1 a 10.\n\nPrimeiro: o que funcionou pra mim. Moro em Curitiba há seis anos e ainda tenho aquela sensação de que a cidade esconde o que tem de melhor. O filtro 'Cultural' foi a primeira vez que um app me mostrou eventos que eu realmente queria ver — não o que é patrocinado, não o que é popular, mas um sarau de poesia numa sexta à noite no Batel. Fui com o marido e com a Priya, que acabei de conectar no app, e foi uma das melhores saídas que tive nos últimos meses. Isso não é pouca coisa.\n\nO que me gerou atrito: o sistema de badges. Não é o sistema em si — eu acho certo que só conta depois que o evento acontece, inclusive é honesto. O problema é que eu não sabia disso quando voltei pra casa e abri o app esperando algum reconhecimento. Aquele momento de 'espera, não apareceu nada?' é pequeno, mas quebra o encantamento. Uma mensagem no RSVP do tipo 'curtiu? seu badge confirma depois do evento' já resolveria.\n\nA aba de Grupos também precisa de um pouco mais de mão. Tentei criar um grupo com a Priya e não ficou claro o fluxo — se ela precisava aceitar, se já estava dentro, o que acontecia depois. Funcionou, mas com mais confusão do que o resto do app sugere.\n\nNo geral: continuo usando, o que no meu caso é o teste real. Fico curiosa pra ver o que vem a seguir.\n\nObrigada por ter construído isso,\nBeatriz Okonkwo",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "amigos",
+          "voz_marca"
+        ],
+        "text": "Gostei sim! Achei um sarau de poesia lá que o Instagram nunca ia me mostrar — fui com o Emeka e a Priya, foi ótimo. Só que os badges demoram pra aparecer e eu quase achei que era bug kkk. Mas vale instalar, juro.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P37",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "amigos",
+          "push"
+        ],
+        "text": "Cara, achei o auê pelo WhatsApp de um amigo e já tô usando faz duas semanas. O app em si é muito bom — o feed com os filtros de mood é exatamente o que eu precisava, porque todo app de evento só aparece show e teatro, nunca rola esporte. O filtro 'Ativo' salvou minha vida pra achar corrida e atividade física. Recebi push quando meu colega confirmou na corrida do Tarumã, aí eu lembrei que ia e fui — sem isso teria esquecido 100%. Os badges demoram um pouco pra aparecer, mas depois que vi que só contam evento que já rolou fez sentido. O app não tá na Play Store ainda então não consigo indicar fácil, mas manda o link pra galera que vale muito. Tira 1 estrela porque ainda não consigo adicionar evento externo no grupo, tipo pelada que achei fora do app — isso faz muita falta pra mim. Mas no geral, muito melhor que ficar garimpando Instagram.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "grupos",
+          "eventos",
+          "conexoes"
+        ],
+        "text": "Oi time do auê! Tô gostando bastante mas tenho um pedido urgente: precisoooo conseguir adicionar evento que eu acho fora do app no grupo da república. Tipo, achei uma pelada aberta no Pilarzinho semana passada, queria ter colocado lá pro grupo ver, mas não deu. Tive que jogar o link no WhatsApp e perdeu o visual bonito do card. Outra coisa — filtro Ativo é ótimo mas Pilarzinho e região norte somem do catálogo, vejo muito Batel, Água Verde, Centro. Sei que talvez seja o que tá disponível nas fontes, mas se tiver como expandir isso ia ajudar demais quem mora longe do eixo principal. Fora isso tô curtindo muito, a vibe do app é diferente de tudo que já usei. Bora!",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "grupos",
+          "amigos"
+        ],
+        "text": "Oi Ciro, tudo bem?\n\nMe chamam de Gustavo, sou estudante de Ed Física na UFPR e moro no Pilarzinho. Recebi o link do auê pelo WhatsApp e comecei a usar faz uns 14 dias. Queria te mandar um feedback mais direto porque acho que o app tem muito potencial e merece crescer.\n\nO que eu mais gostei: o filtro Ativo é o único lugar que eu vi juntar evento esportivo e cultural num feed só. Fui na corrida do Tarumã por causa do app, e o push me lembrando que o Felipe tinha confirmado foi o que me fez não esquecer — eu sou do tipo que confirma animado e esquece no dia. Esse detalhe fez diferença real.\n\nO que trava minha experiência: não consigo adicionar um evento que achei fora do auê no grupo da república. Isso me quebra porque a galera do parque onde trabalho vive me mandando pelada, corrida, essas coisas que não aparecem no catálogo. Queria centralizar tudo no app mas acabo voltando pro WhatsApp nessas horas.\n\nOutra coisa: moro no Pilarzinho e a região norte de Curitiba é quase invisível no catálogo. Entendo que depende das fontes, mas se tiver alguma forma de expandir pra bairros mais afastados do centro, acho que vão pegar um público que nenhum outro app de evento alcança hoje.\n\nNo mais, parabéns pelo trabalho. App simples, direto, sem enrolação — exatamente o que precisava. Qualquer coisa me manda mensagem.\n\nAbraço,\nGustavo",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "grupos"
+        ],
+        "text": "Cara, gostei demais, o filtro Ativo é foda pra achar corrida e pelada sem garimpar Instagram. Só tô com raiva que não dá pra adicionar evento externo no grupo ainda, isso me quebra. Mas instala aí e me chama no grupo da república que a gente testa junto 🏃‍♂️🔥",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P38",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "ui_ux",
+          "voz_marca"
+        ],
+        "text": "★★★★☆\n\nNão sou muito de ficar instalando aplicativo novo, mas esse me pegou de surpresa. Uso há duas semanas e já fui a dois eventos que eu provavelmente nunca teria achado no Instagram — um sarau no SESC Cajuru e uma exposição de gravura no Portão. O filtro 'Cultural' funciona bem, aparece o tipo de coisa que me interessa sem eu precisar garimpar. Os cartões explicam o clima do evento antes de você decidir ir, isso faz diferença pra quem vai sozinho e quer saber se o ambiente é mais fechado ou mais aberto.\n\nO que tira uma estrela: demorei a entender que precisava abrir pelo Safari no iPhone — só consegui instalar depois que uma amiga me explicou por mensagem. Podia ter um aviso mais claro logo no começo, antes de a pessoa desistir achando que é bug. A parte de Grupos eu ainda não entendi direito pra que serve no meu caso, mas tudo bem, talvez não seja pra mim.\n\nPara quem gosta de sair para coisa cultural em Curitiba sem ficar cruzando três sites diferentes, vale a pena.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "badges",
+          "anti_game",
+          "recordes"
+        ],
+        "text": "Olá. Tenho uma dúvida que virou sugestão: quando fiz meu primeiro RSVP achei que ia aparecer alguma coisa — tipo uma confirmação visual mais clara, um selo, qualquer coisa. Não apareceu nada. Só descobri que o badge do 'Primeiro auê' existe porque fui fuçar na aba de Conquistas por curiosidade. Depois do sarau o badge apareceu, aí entendi a lógica — conta só depois que o evento acontece, vi o aviso pequenininho escrito 'atualizam após o evento rolar'. Faz sentido, mas eu não tinha lido.\n\nSugestão: quando a pessoa faz o RSVP pela primeira vez, talvez valha um recadinho tipo 'seu badge aparece depois que você for — é assim que funciona'. Não precisa ser nada elaborado. Evitaria aquela sensação estranha de 'será que gravou?' que eu fiquei dois dias.\n\nFora isso, os Recordes Pessoais eu gostei. Ver que visitei dois bairros diferentes em duas semanas parece pouco, mas pra mim que estava sem sair faz tempo, foi bom de ver.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "install"
+        ],
+        "text": "Assunto: retorno sobre o auê — Sônia Liberman\n\nCiro, boa tarde.\n\nUma amiga me mandou o link há duas semanas e, depois de uma tentativa frustrada de abrir pelo WhatsApp mesmo (não sabia que precisava do Safari, acho que a maioria das pessoas não vai saber), acabei instalando e usando com regularidade — o que, para mim, já é muito.\n\nFui ao sarau literário no SESC Cajuru na semana passada. Não teria achado esse evento de outra forma — o Instagram do SESC eu sigo mas a postagem tinha passado sem eu ver, e o site deles não é exatamente ágil de navegar. O card do auê me convenceu: estava escrito o clima, o tipo de público esperado, e havia uma frase de pitch que soou como alguém que realmente foi e não como texto de assessoria de imprensa. Fui sozinha, o ambiente era exatamente o que o app descrevia.\n\nTentei mandar um evento pro meu filho via link. Funcionou — ele conseguiu ver a página sem instalar nada, o que era minha preocupação. Ele mora em São Paulo mas vem a Curitiba no mês que vem e achei que seria uma forma de mostrar o que está rolando por aqui. É uma função pequena mas foi o que mais me fez pensar em continuar usando.\n\nUm ponto que eu deixaria como observação: a seção de Grupos ficou confusa pra mim. Entrei lá, vi que existem grupos, mas não ficou claro se eu deveria criar um, entrar em algum, ou se era só pra quem já tem uma galera organizada. Saí sem fazer nada. Talvez para perfis como o meu — que usam o app mais como descoberta do que como coordenação social — valha uma explicação mais curta sobre quando os grupos fazem sentido.\n\nDe qualquer forma, obrigada pelo trabalho. Curitiba tem muito mais acontecendo do que parece quando você está olhando pelo lugar errado.\n\nAtenciosamente,\nSônia Liberman",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "install",
+          "grupos"
+        ],
+        "text": "Gostei, sim! Fui até o sarau do SESC pelo app — jamais teria achado sozinha. Só no começo que deu trabalho, aquela história de ter que abrir pelo Safari no iPhone, me lembrei de você explicando. A parte de grupos eu pulei, não entendi bem, mas pros eventos culturais tá ótimo.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P39",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "amigos",
+          "eventos",
+          "ui_ux"
+        ],
+        "text": "★★★★☆\n\nFui indicado por um amigo e demorei dois dias pra conseguir instalar direito (tentei pelo WhatsApp, não funciona — precisei abrir no Safari). Mas depois que entrou, mudou bastante como eu descubro o que rola em Curitiba.\n\nO que me pegou: cheguei num card de show de rock, vi que meu amigo tinha confirmado presença, e em dois minutos já tinha marcado também. Isso não existe em nenhum outro app. Sympla, Eventbrite — você compra no escuro, sem saber se vai ter alguém conhecido lá.\n\nOs filtros de mood são interessantes mas eu levei uns dois dias pra entender o que cada um pegava. Faltou uma linha rápida explicando. E queria muito um filtro por bairro ou distância — moro no Boa Vista e nem sempre vale o deslocamento pro Centro numa sexta à noite.\n\nTirando isso, o app é direto. Entendo o evento em menos de dez segundos pelo card, confirmo presença sem criar conta em mais um lugar. Já indiquei pra mais dois amigos.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "ui_ux",
+          "eventos",
+          "badges"
+        ],
+        "text": "Oi, feedback rápido de quem tá usando há duas semanas:\n\n1. Os filtros de mood — 'Tranquilo', 'Ativo', 'Criativo' — não ficou óbvio de cara o que cai em cada categoria. Fui tentando um por um até entender. Um tooltipzinho ou dois exemplos resolveriam.\n\n2. Precisava muito de um filtro por região ou distância. Moro no Boa Vista. Antes de confirmar qualquer evento, minha primeira dúvida é: vale o deslocamento? Hoje eu tenho que abrir o Google Maps separado pra avaliar.\n\n3. O 'Bora porque…' no show de rock foi a parte que mais me convenceu a ir. Mas na primeira vez que abri, achei que era só propaganda do app. Talvez destacar mais que é personalizado pro evento específico?\n\n4. Badge de 'Primeiro auê' demorou aparecer e eu fiquei achando que tinha bugado. Vi depois o aviso de que atualiza após o evento rolar — faz sentido, mas talvez avisar isso antes, no momento que você confirma presença pela primeira vez.\n\nNo geral tô gostando. Só queria conseguir trazer mais amigos — o fluxo de invite code funcionou, mas pra quem é menos tech fica travado no passo do Safari.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "amigos",
+          "eventos",
+          "conexoes"
+        ],
+        "text": "Assunto: feedback depois de duas semanas usando o auê\n\nOi Ciro,\n\nMe chamaram de Rodrigo, analista de sistemas, Boa Vista. Um amigo me mandou o link pelo WhatsApp na semana passada — ou melhor, duas semanas atrás já.\n\nQueria mandar um retorno porque acho que vocês acertaram numa coisa específica que nenhum outro app de evento fez comigo: eu fui num show de rock sábado passado que eu provavelmente não iria se não fosse pelo auê. Não porque o app me mostrou o evento — eu ia acabar vendo no Instagram dois dias depois do ingresso esgotar, como sempre. Fui porque eu vi que meu amigo tinha confirmado presença antes de eu decidir. Esse detalhe mudou tudo. É o gatilho que faltava.\n\nDois anos morando sozinho depois de uma separação, fim de semana virou um negócio complicado de organizar. O auê resolve um problema real pra mim sem fazer drama disso — só mostra o que rola e quem vai. Sem aquela pressão de 'vamos nos ver' no vazio.\n\nAlgumas coisas que poderiam melhorar: filtro por distância ou bairro (saindo do Boa Vista numa sexta à noite, preciso saber se vale antes de confirmar), e o onboarding pra quem instala pelo WhatsApp poderia ser mais claro logo no primeiro acesso — demorei um dia pra entender que precisava do Safari.\n\nMas no geral, parabéns. Continua simples. Espero que não complique.\n\nRodrigo",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "amigos",
+          "eventos"
+        ],
+        "text": "Cara, gostei sim. A parte de ver que você tinha confirmado antes de eu decidir — isso foi o que me fez ir no show. Só não tenta abrir pelo WhatsApp que não funciona, vai direto no Safari. Já indiquei pra dois outros aqui.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  },
+  {
+    "persona_id": "P40",
+    "messages": [
+      {
+        "type": "review",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes",
+          "ui_ux"
+        ],
+        "text": "★★★★☆\n\nUso faz duas semanas e já fui num stand-up gratuito no Centro que eu jamais ia achar sozinho no Sympla. O app junta o que tá rolando em Curitiba num lugar só, sem aquela enxurrada de post patrocinado do Instagram. O que me pegou mesmo foi ver que meu amigo Rodrigo tinha confirmado presença antes de eu decidir ir — isso fez diferença, porque ir pra um lugar novo sozinho, sem saber como é, dá um certo frio na barriga. Os filtros por mood são diferentes do que eu tô acostumado, não é só 'música' ou 'esporte', dá pra filtrar por clima do momento. Tirei uma estrela porque a instalação no iPhone deu trabalho — precisei sair do WhatsApp, abrir no Safari, e o processo não foi óbvio pra mim que não sou muito chegado a tecnologia. Se tivesse uma instrução mais visual, mais passo a passo mesmo, teria ajudado. Fora isso, tô usando direto nos fins de semana que o meu filho não tá aqui.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      },
+      {
+        "type": "in_app",
+        "sentiment": "neutral",
+        "themes": [
+          "eventos",
+          "amigos",
+          "ui_ux"
+        ],
+        "text": "Oi, duas coisas que eu queria falar:\n\nPrimeiro, o app tá sendo útil de verdade. Fui no stand-up do sábado e meu filho curtiu a feira de quadrinhos — dois programas que eu não ia encontrar de outro jeito. Valeu.\n\nSó que eu tive dificuldade pra conectar o Rodrigo no começo. Fiquei procurando onde adicionar ele, não tava óbvio. Tive que pedir o código no WhatsApp e mesmo assim demorei pra entender onde colar. Talvez um botão mais visível tipo 'adicionar amigo' na tela principal de comunidade ajudasse.\n\nOutra coisa: dá pra filtrar por período do dia? Saio do turno às 15h às vezes e ainda tenho energia, mas não sei o que rola nesse horário. Se tivesse um filtro 'tarde' ou 'agora' seria muito útil pra mim.",
+        "nps_score": 7,
+        "frustration_level": "medium"
+      },
+      {
+        "type": "email",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "voz_marca",
+          "badges"
+        ],
+        "text": "Assunto: Feedback de um usuário do Hauer\n\nOlá Ciro,\n\nMe chamo Fábio, uso o auê faz uns 14 dias. Recebi o link pelo WhatsApp de um amigo e fui testando devagar, porque não sou muito de baixar coisa nova sem motivo.\n\nQuero te falar que o app resolveu um problema que eu nem sabia nomear direito: eu não sabia o que fazer comigo nos fins de semana que meu filho fica com a mãe dele. Três anos assim, e eu basicamente ficava em casa ou ia no mercado sem necessidade. Parece besta falar, mas ter uma referência rápida do que rola mudou isso um pouco.\n\nFui num stand-up gratuito no Centro — nunca tinha ido num stand-up na vida. Meu amigo Rodrigo foi junto. Semana seguinte levei meu filho de 16 anos numa feira de quadrinhos que apareceu no feed. Ele ficou na dele o tempo todo, mas no final disse que foi 'de boa', que pra adolescente de 16 anos já é bastante coisa.\n\nO negócio das conquistas eu achei legal, especialmente a parte que fala que só conta depois do evento acontecer de verdade. Isso parece honesto, sem enrolação.\n\nUma sugestão: seria possível ter alguma forma de ver eventos que ficam acessíveis saindo do Hauer de ônibus, sem carro? Às vezes a distância no mapa parece pouca mas o deslocamento não é. Não sei se é técnico demais de implementar.\n\nAbraço,\nFábio",
+        "nps_score": 9,
+        "frustration_level": "low"
+      },
+      {
+        "type": "whatsapp",
+        "sentiment": "positive",
+        "themes": [
+          "eventos",
+          "conexoes"
+        ],
+        "text": "Cara, gostei sim. Fui naquele stand-up, lembra? E semana passada ainda levei o Guilherme numa feira de quadrinhos que apareceu lá. O negócio bom é que dá pra ver se alguém que você conhece vai antes de decidir, porque ir em lugar novo sozinho não é pra qualquer um kkk. Só a instalação no começo que deu um trabalho, mas funcionou.",
+        "nps_score": 8,
+        "frustration_level": "low"
+      }
+    ]
+  }
+]

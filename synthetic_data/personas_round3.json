@@ -1,0 +1,446 @@
+[
+  {
+    "persona_id": "P29",
+    "name": "Renata Wolff",
+    "age": 34,
+    "neighborhood": "Água Verde",
+    "life_context": "Designer gráfica freelancer que trabalha de casa, mãe de uma criança de 4 anos; divide rotina entre projetos de clientes e cuidados com a filha enquanto o marido trabalha em regime híbrido.",
+    "lifestyle": "misto",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "seletiva",
+        "curiosa",
+        "planejadora",
+        "afetiva"
+      ],
+      "social_style": "Prefere sair em grupos pequenos de confiança ou com a família; raramente vai a eventos sozinha, mas organiza programações pra galera com antecedência."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Quer encontrar programações que aceitem crianças sem virar evento infantil — sarau, feira, parque animado",
+      "Sente que perdeu o fio de Curitiba depois da maternidade e quer reconectar com a cena cultural da cidade",
+      "Precisa de um lugar único pra propor programas ao marido e a dois casais amigos sem ficar garimpando Instagram por horas",
+      "Curte descobrir cafés e parques novos no bairro ou no Centro sem depender de resenha desatualizada no Google"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla lista evento mas não diz se é ambiente familiar ou adulto — já comprou ingresso e chegou no lugar errado com a filha",
+      "Instagram das casas culturais posta em cima da hora e ela só vê segunda-feira o que rolou no fim de semana",
+      "Catraca Livre mistura eventos de SP no feed e ela perde tempo filtrando o que é de Curitiba de fato",
+      "Nenhum app mostra se alguém do círculo dela já confirmou presença — fica mandando áudio no WhatsApp pra descobrir quem vai"
+    ],
+    "expectations_from_aue": [
+      "Ver rapidamente quais eventos os amigos confirmaram pra decidir se vale reorganizar a agenda da família",
+      "Filtro de mood 'Família' ou 'Tranquilo' que realmente filtre barulho e acessibilidade, não só faixa etária",
+      "Conseguir instalar no iPhone sem precisar explicar pro marido como funciona PWA — walkthrough claro no /install",
+      "Grupos privados pra combinar programação com os dois casais amigos sem criar mais um grupo no WhatsApp só pra isso"
+    ]
+  },
+  {
+    "persona_id": "P30",
+    "name": "Dirceu Nakamura",
+    "age": 58,
+    "neighborhood": "Santa Felicidade",
+    "life_context": "Aposentado precoce da Volvo, agora dá aulas de shiatsu num estúdio na própria garagem três vezes por semana. Viúvo há dois anos, os filhos moram em São Paulo e Florianópolis — fim de semana é dele.",
+    "lifestyle": "cultural",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "curioso",
+        "metódico",
+        "saudosista",
+        "discreto"
+      ],
+      "social_style": "Prefere grupos pequenos e assuntos com substância; vai sozinho a shows e saraus sem cerimônia, mas demora pra virar amigo de alguém novo."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Quer descobrir eventos culturais fora do circuito óbvio do Batel — cinema de repertório, música instrumental, exposições em espaços alternativos",
+      "Desde a viuvez sente que perdeu o 'radar social' da esposa, que era quem sabia de tudo que rolava na cidade",
+      "Gosta da ideia de ver se algum ex-colega da Volvo ou aluno seu confirmou presença antes de decidir ir",
+      "Santa Felicidade tem muita coisa italiana e gastronômica, mas ele quer explorar outros bairros que nunca frequentou"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla e Eventbrite mostram muito evento pago e corporativo; ele quer saber o que rola de graça ou barato no fim de semana",
+      "Instagram exige que ele siga dezenas de contas manualmente — não tem paciência nem sabe quais valem a pena",
+      "Frequentemente descobre eventos depois que já aconteceram, porque o algoritmo enterrou o post",
+      "Interfaces cheias de pop-up de cadastro e upsell antes de deixar ele ver qualquer coisa útil"
+    ],
+    "expectations_from_aue": [
+      "Feed filtrado por 'Tranquilo' e 'Cultural' que apareça direto, sem precisar garimpar entre festas com DJ que não fazem sentido pra ele",
+      "Conseguir instalar no iPhone sem drama — tem um SE de 2022 e já desistiu de apps que pedem malabarismo técnico",
+      "Saber se há algum conhecido confirmado no evento antes de decidir ir sozinho (o 'amigos vão' é exatamente o empurrão que precisa)",
+      "Receber sugestão de lugares próximos a Santa Felicidade ou no Centro Histórico que ele ainda não visitou, sem ter que configurar nada complicado"
+    ]
+  },
+  {
+    "persona_id": "P31",
+    "name": "Isabela Trevisan",
+    "age": 23,
+    "neighborhood": "Cristo Rei",
+    "life_context": "Estudante de design gráfico na UFPR, faz freelas de identidade visual nos fins de semana. Mora em república com outras três meninas, orçamento apertado mas sempre arruma uma saída cultural barata ou gratuita.",
+    "lifestyle": "criativo",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "curiosa",
+        "impulsiva",
+        "econômica",
+        "antenada"
+      ],
+      "social_style": "Sai quase sempre em dupla ou trio pequeno, raramente em grupo grande; usa o grupo do WhatsApp da rep pra recrutar alguém de última hora."
+    },
+    "tech_relationship": "tech-savvy",
+    "motivations": [
+      "Descobrir saraus, exposições e feiras DIY que não aparecem no feed comum do Instagram",
+      "Convencer as colegas de rep a sair sem precisar vender o evento sozinha — quer que o app faça esse trabalho",
+      "Filtrar eventos gratuitos ou de baixo custo sem ter que abrir cinco abas diferentes",
+      "Registrar os lugares que já foi pra montar um mapa pessoal de Curitiba criativa"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla mistura shows pagos caros com eventos gratuitos sem filtro de preço decente",
+      "Instagram mostra o evento depois que já aconteceu porque o algoritmo atrasou a entrega",
+      "Catraca Livre tem conteúdo bom mas a UX é lenta no celular e não tem jeito de salvar pra lembrar depois",
+      "Nenhum app avisa quando uma amiga confirmou presença num evento que ela também tava de olho"
+    ],
+    "expectations_from_aue": [
+      "Ver de cara quais amigas já confirmaram presença — isso é o principal gatilho pra ela decidir ir",
+      "Filtro 'Criativo' que realmente entregue sarau, exposição, workshop e não apenas show de bar genérico",
+      "Push útil e não spam: só notifica quando algo relevante mudar, tipo amiga confirmar ou evento lotar",
+      "Poder instalar fácil pelo celular (usa Android Chrome) e abrir rápido mesmo com internet ruim do campus"
+    ]
+  },
+  {
+    "persona_id": "P32",
+    "name": "Thiago Brandão",
+    "age": 41,
+    "neighborhood": "Juvevê",
+    "life_context": "Analista de logística numa distribuidora no Rebouças, divorciado há dois anos, filho de 9 anos que fica com ele nos fins de semana alternados. Nas semanas sem o filho, sobra tempo livre que ele ainda não sabe bem como preencher.",
+    "lifestyle": "misto",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "prático",
+        "meio enferrujado socialmente",
+        "leal",
+        "curioso tardio"
+      ],
+      "social_style": "Prefere sair com uma ou duas pessoas de confiança do que em grupos grandes; aceita convites mas raramente os toma iniciativa de fazer."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Aproveitar as semanas sem o filho sem ficar em casa assistindo série por obrigação",
+      "Descobrir programas que também funcionem pro fim de semana com criança de 9 anos",
+      "Encontrar amigos antigos que se dispersaram depois do divórcio sem ter que mandar áudio de 3 minutos no WhatsApp",
+      "Conhecer Curitiba além do trajeto casa-trabalho-mercado que virou sua rotina nos últimos dois anos"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla mostra evento, ele clica, está esgotado ou já aconteceu — feed desatualizado frustra e desanima",
+      "Instagram mistura evento real com post patrocinado de coisa em São Paulo ou de casa noturna que não tem nada a ver com ele",
+      "Não tem como saber se algum conhecido vai no mesmo evento sem mandar mensagem pra todo mundo separado",
+      "Catraca Livre lista coisas gratuitas mas sem filtro por faixa etária ou contexto — não sabe se é adequado pra levar o filho ou se é só pra galera jovem"
+    ],
+    "expectations_from_aue": [
+      "Ver de um jeito rápido o que rola perto do Juvevê ou no Centro num raio que ele consiga ir de carro em 15 minutos",
+      "Conseguir distinguir programas pra ir sozinho ou com amigo versus programas pra levar criança, sem precisar ler o evento inteiro",
+      "Saber se alguém da lista de amigos confirmou presença antes de decidir ir — esse empurrão social faz diferença pra ele",
+      "Receber sugestão no modo 'semana sem filho' que entenda que ele tem disponibilidade de quinta a domingo e quer algo que valha sair de casa"
+    ]
+  },
+  {
+    "persona_id": "P33",
+    "name": "Camila Esteves",
+    "age": 27,
+    "neighborhood": "Capão Raso",
+    "life_context": "Técnica de enfermagem no Hospital do Trabalhador, faz plantões noturnos 3x por semana e sobra tempo livre em dias de semana que ninguém ao redor aproveita. Mora sozinha num apartamento pequeno e está tentando construir uma rede social nova depois de sair de um relacionamento longo.",
+    "lifestyle": "misto",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "espontânea",
+        "prática",
+        "um pouco solitária",
+        "curiosa"
+      ],
+      "social_style": "Prefere sair com no máximo 2 ou 3 pessoas de confiança, mas aceita eventos maiores quando o tema a fisgou primeiro — vai sozinha se precisar, desde que o lugar pareça acolhedor."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Seus dias livres caem terça ou quarta quando as amigas trabalham — quer descobrir o que rola nesses horários incomuns sem depender de ninguém",
+      "Mora no Capão Raso e sente que todos os eventos 'interessantes' são no Batel ou no Centro — quer saber se tem algo perto ou que valha o deslocamento",
+      "Saiu de um relacionamento de 4 anos e quer reconquistar o hábito de sair só por sair, sem planejamento excessivo",
+      "Gosta de shows pequenos, feiras de vinil e saraus, mas nunca sabe com antecedência onde achar esse tipo de evento sem cair em páginas desatualizadas"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla só aparece quando o evento já é grande o suficiente pra vender ingresso — os eventos menores e gratuitos somem do radar",
+      "Segue várias contas no Instagram mas o algoritmo enterra os posts de agenda no feed e ela descobre os eventos só depois que passaram",
+      "Não tem amigos usando os mesmos apps, então nunca sabe se alguém que conhece vai aparecer num evento antes de decidir ir",
+      "As descrições de eventos são ou muito formais e cheias de release de assessoria, ou vagas demais — não consegue sentir o clima do lugar antes de sair de casa"
+    ],
+    "expectations_from_aue": [
+      "Filtro por dia da semana ou horário pra encontrar o que rola numa terça à tarde sem ter que fuçar manualmente",
+      "Saber se alguém — mesmo um conhecido distante — confirmou presença, pra ter coragem de ir sozinha num lugar novo",
+      "Uma descrição honesta do clima do evento ('é íntimo', 'tem muita gente', 'rolê raiz') em vez de texto de divulgação",
+      "Notificação discreta quando um evento do tipo que ela curte aparecer perto do Capão Raso ou no caminho do hospital"
+    ]
+  },
+  {
+    "persona_id": "P34",
+    "name": "Lorena Pacheco",
+    "age": 19,
+    "neighborhood": "Cajuru",
+    "life_context": "Cursa técnico em enfermagem no período da manhã e trabalha meio período em uma farmácia no bairro. Mora com os pais e uma irmã mais nova, tem renda limitada e depende de ônibus pra se locomover.",
+    "lifestyle": "comunitario",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "curiosa",
+        "econômica",
+        "solidária",
+        "tímida em grupos novos"
+      ],
+      "social_style": "Prefere sair com uma amiga de confiança antes de se soltar em grupos maiores; aquece devagar mas engaja fundo quando se sente segura no ambiente."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Quer descobrir eventos gratuitos ou baratos que valham a viagem de ônibus até o Centro ou Batel sem chegar lá e se arrepender",
+      "Busca programas culturais e comunitários próximos ao Cajuru que não aparecem nos apps grandes, só no boca a boca do bairro",
+      "Quer convencer a amiga a sair junto sem precisar mandar mil prints de Instagram — um link já resolve",
+      "Sente que a cidade tem coisa boa acontecendo que ela nunca fica sabendo a tempo"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla lista eventos pagos na frente e ela perde tempo filtrando até achar algo dentro do orçamento",
+      "Segue contas no Instagram mas o algoritmo enterra os posts de divulgação e ela só vê depois que o evento passou",
+      "Não tem cartão de crédito; quando o ingresso gratuito exige cadastro longo com CPF e dados bancários ela desiste no meio",
+      "Catraca Livre tem foco muito em São Paulo — os eventos de Curitiba aparecem misturados e sem filtro de bairro"
+    ],
+    "expectations_from_aue": [
+      "Filtro de custo (gratuito / até R$20) antes de qualquer outra coisa — não quer se empolgar com evento que não cabe no bolso",
+      "Ver se alguma amiga já confirmou presença antes de decidir ir, pra não ficar sozinha num lugar desconhecido",
+      "Receber notificação quando rolar algo no Cajuru ou bairros vizinhos, sem precisar ficar abrindo o app toda hora",
+      "Walkthrough de instalação simples — ela usa Android e não tem costume de instalar nada fora da Play Store, então precisa de passo a passo claro pra não travar no PWA"
+    ]
+  },
+  {
+    "persona_id": "P35",
+    "name": "Marcos Feitosa",
+    "age": 47,
+    "neighborhood": "Portão",
+    "life_context": "Técnico em manutenção industrial, pai solo de dois adolescentes (14 e 16 anos). Divide o tempo entre o trabalho em turno e tentar criar programas de fim de semana que os filhos ainda topem fazer com ele.",
+    "lifestyle": "parente",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "pragmático",
+        "afetivo",
+        "persistente",
+        "desconfiado-de-hype"
+      ],
+      "social_style": "Prefere grupos pequenos e conhecidos; sai pouco sem os filhos, mas quando sai quer que valha a pena pra todo mundo."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Encontrar eventos que funcionem pra idade mista — ele e dois teens — sem parecer programa de idoso nem balada inapropriada",
+      "Descobrir o que rola no Portão e arredores sem precisar fuçar mil perfis no Instagram",
+      "Ter uma desculpa concreta pra propor ao grupo do trabalho uma saída que não seja só churrasco em casa",
+      "Registrar os programas feitos com os filhos como memória afetiva, não só como dado de app"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla lista evento mas não deixa claro se é adequado pra adolescente junto — descobre só na hora",
+      "Instagram exige conta e ele ainda usa o perfil desatualizado; os algoritmos entregam show de artista que ele nunca ouviu falar",
+      "Catraca Livre agrega muita coisa de SP e quando filtra Curitiba o conteúdo fica escasso e sem foto boa",
+      "Não tem ninguém na rede dele que 'curte' eventos pra dar referência — segue poucas contas e todas são de futebol"
+    ],
+    "expectations_from_aue": [
+      "Filtro ou sinalização clara de 'vai bem com família / adolescente' sem precisar ler descrição inteira",
+      "Ver se algum conhecido vai — mesmo que seja colega de trabalho — pra convencer os filhos de que não é 'coisa de velho'",
+      "Instalação simples que ele consiga repassar pro filho mais velho pelo celular sem virar suporte técnico",
+      "Notificação antecipada de eventos no fim de semana chegando quinta ou sexta, quando ainda dá pra planejar"
+    ]
+  },
+  {
+    "persona_id": "P36",
+    "name": "Beatriz Okonkwo",
+    "age": 31,
+    "neighborhood": "Ahú",
+    "life_context": "Professora de inglês num instituto de idiomas no Centro, nigeriana naturalizada brasileira que mora em Curitiba há 6 anos após conhecer o marido curitibano. Casal sem filhos, ela ainda constrói seu círculo social local depois de uma mudança de bairro recente.",
+    "lifestyle": "cultural",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "curiosa",
+        "observadora",
+        "adaptável",
+        "seletiva"
+      ],
+      "social_style": "Prefere grupos pequenos e encontros com propósito — um sarau, uma exposição, um mercado — em vez de baladas abertas; usa eventos como porta de entrada pra fazer amizades orgânicas em vez de forçar socialização direta."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Descobrir eventos culturais que vão além do mainstream turístico de Curitiba, especialmente música ao vivo, arte e gastronomia com identidade local",
+      "Encontrar programas que ela e o marido possam fazer juntos num fim de semana sem precisar garimpar três apps diferentes",
+      "Ampliar seu círculo na cidade — quer conhecer pessoas através de interesses comuns, não de happy hours genéricos",
+      "Sentir que a cidade tem mais a oferecer do que ela enxerga no dia a dia, combatendo a sensação de que Curitiba é fria socialmente"
+    ],
+    "frustrations_with_event_apps": [
+      "O Instagram mostra eventos de outras cidades antes dos de Curitiba, e contas locais ficam soterradas pelo algoritmo",
+      "O Sympla lista o evento mas não diz nada sobre a vibe — ela já foi a um 'show intimista' que era na verdade um bar barulhento e lotado",
+      "Não tem como saber se alguém conhecido vai ao mesmo evento, então fica difícil decidir ir sozinha ou arrastar o marido",
+      "Eventos repetem muito nos feeds (teatro infantil, shows sertanejo) e ela não consegue filtrar pelo que realmente consome"
+    ],
+    "expectations_from_aue": [
+      "Filtrar por mood 'Cultural' ou 'Tranquilo' e confiar que o resultado vai bater com o que ela gosta, sem precisar abrir cada card pra checar",
+      "Ver se o marido ou algum conhecido já confirmou presença antes de se comprometer — o social proof importa mais do que a descrição do evento",
+      "Receber sugestões que ela não procuraria sozinha (o pitch 'Bora porque…' personalizado) mas que façam sentido pro seu gosto, não genéricas",
+      "Instalar fácil sem passar por loja de apps — ela usa Android e fica desconfiada de apps pouco conhecidos pedindo acesso à conta Google Play"
+    ]
+  },
+  {
+    "persona_id": "P37",
+    "name": "Gustavo Reiner",
+    "age": 22,
+    "neighborhood": "Pilarzinho",
+    "life_context": "Estudante de Educação Física na UFPR, mora em república com mais três colegas perto da Praça Alfredo Andersen; trabalha meio período como personal trainer num parque do bairro nos fins de semana.",
+    "lifestyle": "atletico",
+    "psychographic": {
+      "introvert_extrovert": "extrovert",
+      "traits": [
+        "expansivo",
+        "impulsivo",
+        "desorganizado",
+        "animado"
+      ],
+      "social_style": "Chama todo mundo pra tudo ao mesmo tempo via stories e fica surpreso quando ninguém confirma presença com antecedência."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Achar corridas, peladas, trilhas e eventos esportivos abertos em Curitiba sem precisar seguir mil perfis diferentes no Instagram",
+      "Convencer os colegas de república a sair junto — precisa de algo visual pra mostrar 'olha, vai rolar isso aqui' sem ter que explicar tudo",
+      "Descobrir eventos fora do eixo Batel-Centro porque Pilarzinho e arredores somem dos feeds curados",
+      "Não perder inscrição de evento gratuito por ter visto o post tarde demais"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla mostra eventos lotados ou encerrados sem avisar claramente na listagem — entra animado, já esgotou",
+      "Instagram mistura post de treino patrocinado com divulgação real de evento e ele não consegue filtrar",
+      "Nenhum app agrega bem eventos esportivos amadores e comunitários — só show e teatro aparecem bem indexados",
+      "Grupos de WhatsApp da turma vivem desatualizados ou com link expirado; ninguém sabe quem confirmou de verdade"
+    ],
+    "expectations_from_aue": [
+      "Filtro ou mood que inclua eventos físicos/esportivos abertos, não só culturais — se 'Ativo' cobrir isso, ótimo",
+      "Ver rapidamente quantos amigos vão antes de decidir se vale o deslocamento do Pilarzinho até o outro lado da cidade",
+      "Push no dia do evento lembrando que vai rolar — ele confirma animado uma semana antes e esquece completamente",
+      "Conseguir adicionar um evento de corrida ou pelada que achou fora do app ao grupo da república sem sair do auê"
+    ]
+  },
+  {
+    "persona_id": "P38",
+    "name": "Sônia Liberman",
+    "age": 54,
+    "neighborhood": "Mercês",
+    "life_context": "Advogada aposentada precoce por burnout, agora vive de aluguel de imóveis herdados e faz cursos livres de cerâmica e história da arte. Divorciada há 6 anos, filhos adultos fora de Curitiba — mora sozinha num apartamento grande que ela nunca reformou.",
+    "lifestyle": "cultural",
+    "psychographic": {
+      "introvert_extrovert": "introvert",
+      "traits": [
+        "curiosa",
+        "seletiva",
+        "autodidada",
+        "procrastinadora afetiva"
+      ],
+      "social_style": "Prefere sair com uma pessoa de confiança a ir em grupo; frequenta eventos sozinha mas não conversa por iniciativa própria — espera que o ambiente quebre o gelo por ela."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Quer reaprender a sair sem precisar de planejamento excessivo — sente que perdeu o hábito durante anos de trabalho intenso",
+      "Busca eventos de nicho (vernissage, sarau literário, cinema mudo com piano ao vivo) que somem no ruído geral das redes",
+      "Gostaria de saber o que rola perto do Museu Oscar Niemeyer e do SESC sem ter que checar três sites diferentes toda semana",
+      "Curiosidade genuína sobre se filhos conseguiriam ver sua agenda quando visitam Curitiba — forma indireta de conexão familiar"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla exige cadastro com senha que ela sempre esquece, e o app some do celular porque ela nunca fixa ícones",
+      "Instagram mostra eventos que já aconteceram misturados com futuros — perde tempo filtrando o que ainda vai rolar",
+      "Catraca Livre não tem filtro por Curitiba confiável; aparece muita coisa de SP no feed",
+      "Não tem forma de salvar um evento pra decidir depois sem receber spam de e-mail da plataforma"
+    ],
+    "expectations_from_aue": [
+      "Feed curado que priorize eventos culturais sem precisar configurar nada complexo — quer chegar e já ver o que combina com ela",
+      "Cards que expliquem brevemente o clima do evento (agitado, tranquilo, intimista) antes de ela decidir ir sozinha",
+      "Instalação simples que não exija baixar nada pela App Store — ela desconfia de apps novos e prefere testar sem compromisso",
+      "Conseguir mandar um evento específico pro filho mais novo via link direto, sem obrigar ele a instalar nada"
+    ]
+  },
+  {
+    "persona_id": "P39",
+    "name": "Rodrigo Szymanski",
+    "age": 38,
+    "neighborhood": "Boa Vista",
+    "life_context": "Analista de sistemas em empresa de logística no CIC, trabalha remoto três dias por semana; mora sozinho desde a separação há dois anos e está reconstruindo vida social fora do contexto do ex-casal.",
+    "lifestyle": "misto",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "cauteloso",
+        "metódico",
+        "nostálgico",
+        "curioso"
+      ],
+      "social_style": "Prefere grupos pequenos já conhecidos mas está forçando sair da zona de conforto — aceita convite de amigo, raramente toma iniciativa sozinho"
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Quer preencher fins de semana que antes eram ocupados pelo casal sem depender de um grupo fixo de amigos",
+      "Busca eventos que sirvam de pretexto social — prefere chegar num lugar com agenda do que marcar 'vamos nos ver' no vazio",
+      "Tem interesse genuíno em shows de rock nacional e stand-up, mas nunca sabe o que está acontecendo na cidade até ver o post três dias depois",
+      "Boa Vista é longe do Centro e quer saber se o evento vale o deslocamento antes de decidir"
+    ],
+    "frustrations_with_event_apps": [
+      "Sympla mostra eventos de SP misturados com Curitiba e ele perde tempo filtrando cidade",
+      "Instagram das casas de show só posta quando o ingresso já esgotou ou falta dois dias",
+      "Não tem como saber se alguém que ele conhece vai antes de comprar o ingresso — compra sozinho ou não compra",
+      "Eventbrite tem interface confusa no celular e ele desiste na metade do fluxo de compra"
+    ],
+    "expectations_from_aue": [
+      "Ver de cara se algum amigo confirmou presença antes de decidir ir — isso é o principal gatilho de decisão dele",
+      "Filtro por bairro ou distância real: saber se vale pegar o carro do Boa Vista numa sexta à noite",
+      "Notificação antecipada de eventos de rock e comédia sem precisar ficar vasculhando perfil por perfil",
+      "Interface direta — quer chegar no card, entender o evento em 10 segundos e confirmar presença sem criar conta em mais um lugar"
+    ]
+  },
+  {
+    "persona_id": "P40",
+    "name": "Fábio Custódio",
+    "age": 44,
+    "neighborhood": "Hauer",
+    "life_context": "Técnico de manutenção industrial numa metalúrgica no CIC, trabalha em turnos alternados (semana de manhã, semana de tarde). Divorciado há 3 anos, filho de 16 anos fica com ele nos fins de semana alternados — quando não tem o menino, a agenda fica completamente livre e ele não sabe muito bem o que fazer com isso.",
+    "lifestyle": "misto",
+    "psychographic": {
+      "introvert_extrovert": "ambivert",
+      "traits": [
+        "prático",
+        "curioso tardio",
+        "leal",
+        "meio enferrujado socialmente"
+      ],
+      "social_style": "Prefere sair com uma pessoa de confiança do que em grupo grande; fica desconfortável em ambientes muito cheios que não conhece, mas aquece rápido se alguém o apresenta direito."
+    },
+    "tech_relationship": "casual_user",
+    "motivations": [
+      "Preencher os fins de semana sem o filho com algo que valha o deslocamento do Hauer, sem precisar ir longe demais nem gastar muito",
+      "Descobrir programas que possa levar o filho adolescente quando estão juntos — coisas que não sejam só shopping ou cinema",
+      "Reconectar com amigos que perdeu contato depois do divórcio sem precisar organizar tudo por conta própria",
+      "Ter uma referência rápida do que rola em Curitiba no meio da semana quando sai do turno cedo e ainda tem energia sobrando"
+    ],
+    "frustrations_with_event_apps": [
+      "No Sympla só aparece show grande ou evento pago caro — não acha as coisas menores e gratuitas perto de casa",
+      "O Instagram afoga os eventos em meio a post patrocinado e story de loja; quando lembra de procurar, o evento já passou",
+      "Não tem referência de quem vai ou quem curtiu — não sabe se o evento é confiável ou se vai ficar sozinho num lugar esquisito",
+      "As buscas são por categoria genérica (música, esporte) mas ele não sabe exatamente o que quer — queria algo que sugerisse por humor ou momento do dia"
+    ],
+    "expectations_from_aue": [
+      "Ver de relance se algum conhecido ou ex-colega confirmou presença num evento antes de decidir ir — isso reduziria a barreira de aparecer sozinho",
+      "Filtros por período do dia (tarde livre após turno) e por distância viável saindo do Hauer sem carro na madrugada",
+      "Sugestões para levar o filho teen que não soem forçadas — algo cultural ou ao ar livre que os dois possam curtir sem constrangimento mútuo",
+      "Interface direta, sem cadastrar cartão nem preencher formulário longo só pra ver o que rola — quer checar rápido e decidir na hora"
+    ]
+  }
+]

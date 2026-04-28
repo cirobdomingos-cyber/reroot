@@ -1,0 +1,1214 @@
+[
+  {
+    "persona_id": "P29",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link pelo WhatsApp e tenta abrir direto no app",
+        "action_taken": "Clica no link da amiga Ju dentro do próprio WhatsApp — abre o in-app browser do WhatsApp no iPhone",
+        "friction_encountered": "A página /install detecta in-app browser e avisa que precisa abrir no Safari. Ela não entende de imediato por que não pode instalar ali mesmo. Lê a instrução ('Toque nos três pontinhos e selecione Abrir no Safari'), tenta achar os três pontinhos, que no WhatsApp iOS ficam no canto superior direito — demora uns 20 segundos pra localizar.",
+        "emotion": "curiosa com pitada de impaciência",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Abre no Safari e conclui a instalação como PWA",
+        "action_taken": "Segue o walkthrough do /install no Safari — toca no ícone de compartilhar, rola pra achar 'Adicionar à Tela de Início', confirma. Ícone aparece na home.",
+        "friction_encountered": "O botão 'Adicionar à Tela de Início' aparece no meio de uma lista longa de opções de compartilhamento e ela passa por ele duas vezes antes de achar. Walkthrough tem o screenshot correto mas ela estava olhando pro telefone, não pra tela — segundo de confusão.",
+        "emotion": "aliviada quando o ícone aparece",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Abre o app pela primeira vez e vê o onboarding com os 4 cards rotativos",
+        "action_taken": "Assiste os cards ciclar — show, sarau, festa, stand-up — sem interromper. Lê os títulos e datas de exemplo.",
+        "friction_encountered": "Fica esperando um card de 'evento com criança' ou algo no mood Família — não aparece nos 4 samples. Associação imediata: 'é mais pra balada'. Segurou o julgamento mas ficou com a pulga atrás da orelha.",
+        "emotion": "cautelosamente curiosa",
+        "outcome": "partial"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed e descobre o filtro de mood",
+        "action_taken": "Toca em 'Família' nos chips de mood. Feed muda. Encontra uma feira de artesanato no Passeio Público e um sarau num café do Batel descrito como 'ambiente tranquilo, crianças bem-vindas'.",
+        "friction_encountered": "O card do sarau tem vibe summary mas não menciona explicitamente acessibilidade (espaço pra carrinho, banheiro de frianças). Ela hesita — lembra da vez que foi ao evento errado com a filha depois de comprar ingresso na Sympla sem essa informação. Abre o link externo do Eventbrite pra confirmar — informação também ausente lá.",
+        "emotion": "esperançosa mas ainda cética",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Faz o primeiro RSVP na feira de artesanato e convida o marido",
+        "action_taken": "Confirma 'Bora' na feira do Passeio Público. Copia o link do evento pelo botão de compartilhar e manda pro marido no WhatsApp com a mensagem 'olha esse app que a Ju me mandou'.",
+        "friction_encountered": "O marido recebe o link, abre no Chrome do Android — funciona como PWA mas ele não instala, só navega. Ela fica sem ver ele listado como 'amigo vai' porque ele não criou conta. Ela não sabe disso — acha que ele vai aparecer automaticamente depois que ele 'abrir'.",
+        "emotion": "animada, levemente confusa",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Recebe notificação push — amiga Ju confirmou o mesmo evento",
+        "action_taken": "Vê a notificação '🎉 Ju vai · Feira de Artesanato Passeio Público'. Toca na notificação, app abre direto no card do evento.",
+        "friction_encountered": "Nenhuma fricção técnica. Mas ela nota que o marido ainda não aparece como 'vai' — manda áudio pra ele explicar que precisa criar conta e instalar. Ele diz 'depois eu faço'. Pequena frustração relacional, não técnica.",
+        "emotion": "genuinamente animada",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Cria um Grupo privado pra combinar programação com dois casais amigos",
+        "action_taken": "Vai em Comunidade > Grupos > cria grupo 'Fim de semana a 6'. Copia o invite code de 6 chars. Manda o código no grupo do WhatsApp que o pessoal já tem ('gente instala esse app e entra nesse grupo — sem criar mais grupo de zap I promise').",
+        "friction_encountered": "Dos 4 amigos que mandam pro grupo, 2 têm iPhone e precisam fazer o mesmo processo do Safari. Um deles (o Rodrigo) tenta pelo Chrome iOS e fica travado — ela passa 10 minutos no áudio explicando a mesma coisa que ela passou no dia 1. Percebe que o walkthrough ajuda quem lê, mas muita gente não lê e pede ajuda pra ela.",
+        "emotion": "organizadora satisfeita, um pouco suporte técnico não-voluntária",
+        "outcome": "partial"
+      },
+      {
+        "day": 6,
+        "moment": "Rodrigo adiciona um evento ao grupo — ela recebe push",
+        "action_taken": "Notificação '🎲 Fim de semana a 6 · Rodrigo adicionou: Noite de Jazz Ópera de Arame'. Abre o app, vê o evento no grupo, lê o vibe summary.",
+        "friction_encountered": "Evento é às 21h, não tem menção a crianças. Ela toca em 'Bora porque…' esperando que o pitch contextual diga algo sobre levar a filha — o pitch é genérico sobre atmosfera do lugar. Ela não confirma o evento ainda, fica de 'ver com o marido se conseguem deixar a filha com a avó'.",
+        "emotion": "interessada mas em modo logístico",
+        "outcome": "partial"
+      },
+      {
+        "day": 8,
+        "moment": "Vai à feira de artesanato no Passeio Público com a filha e a Ju",
+        "action_taken": "Comparece ao evento. No dia seguinte abre o app pra ver se ganhou alguma badge.",
+        "friction_encountered": "Nenhuma badge apareceu ainda. Vê o subtítulo 'Conquistas atualizam após o evento rolar' — o evento foi ontem, ainda não atualizou. Ela não sabe se é bug ou se demora mais. Fica um pouco confusa sobre o timing exato da atualização.",
+        "emotion": "neutra, levemente impaciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Badges atualizam — ganha 'Primeiro auê' e vê Recordes Pessoais pela primeira vez",
+        "action_taken": "Abre o app de manhã, notificação interna mostra badge. Vai ao perfil, encontra a seção de Recordes — RSVPs total: 1, bairros visitados: 1 (Centro), lugar predileto em formação.",
+        "friction_encountered": "Fica procurando onde fica o QR code do perfil — não é imediatamente óbvio. Acha depois de tocar na foto de perfil. Mostra pra Ju que está do lado: 'olha esse QR aqui'. As duas acham curioso mas nenhuma das duas entende o caso de uso na prática — 'pra que escanear se já somos amigas no app?'",
+        "emotion": "satisfeita com a badge, curiosa/confusa com o QR",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Procura evento pra ir com os dois casais — filtra Família e Tranquilo",
+        "action_taken": "Navega o feed com filtro Família. Encontra um 'Mercado de Pulgas Pet-Friendly' no Água Verde — pertinho de casa. Adiciona ao grupo 'Fim de semana a 6'. O grupo recebe push.",
+        "friction_encountered": "Ao adicionar ao grupo, ela queria escrever uma mensagem junto ('pessoal que tal esse?') mas não tem campo de texto na ação — só adiciona o evento. Instintivamente vai pro WhatsApp do grupo mandar a mensagem. Percebe que o grupo no auê e o grupo no WhatsApp vão conviver e isso não some — é um overhead duplo.",
+        "emotion": "eficiente mas conscientemente dividida entre duas ferramentas",
+        "outcome": "partial"
+      },
+      {
+        "day": 13,
+        "moment": "Confirma segundo RSVP, reflete sobre o app na conversa com o marido",
+        "action_taken": "Dá 'Bora' no Mercado de Pulgas. Conta pro marido (que nunca criou conta): 'é tipo um feed só de Curitiba, dá pra filtrar coisa com criança, e a Ju e os outros já tão lá'.",
+        "friction_encountered": "O marido pergunta se tem no Google Play. Ela explica que não, é só pelo site. Ele diz 'então não vou usar não' — ele não quer fazer o processo do Safari. Ela fica ligeiramente frustrada porque a feature de 'amigos vão' perde metade da graça sem ele lá.",
+        "emotion": "convicta do valor pra ela, resignada sobre adoção do marido",
+        "outcome": "partial"
+      }
+    ]
+  },
+  {
+    "persona_id": "P30",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Abre o link do auê direto no WhatsApp no iPhone SE",
+        "action_taken": "Clica no link https://reroot-production.up.railway.app enviado pelo ex-colega da Volvo, abre no browser embutido do WhatsApp. Vê a tela carregar, tenta navegar um pouco.",
+        "friction_encountered": "O in-app browser do WhatsApp no iOS não suporta instalação como PWA — o botão 'Adicionar à Tela de Início' simplesmente não aparece. Dirceu não sabe disso; fica olhando pra tela esperando algum prompt que não vem. Tenta apertar o botão de compartilhar do iOS mas o menu é diferente do Safari e confunde.",
+        "emotion": "confuso",
+        "outcome": "failed"
+      },
+      {
+        "day": 1,
+        "moment": "Segue o walkthrough do /install depois de ler a mensagem de aviso",
+        "action_taken": "O app detecta que está num in-app browser e exibe o aviso pedindo pra abrir no Safari. Dirceu copia o link, abre o Safari manualmente (demora um pouco pra achar o app no celular), cola o endereço, encontra o botão de compartilhar, localiza 'Adicionar à Tela de Início' com ajuda do gif animado do walkthrough.",
+        "friction_encountered": "O gif do walkthrough mostra o ícone de compartilhar do iOS mas no SE a barra fica embaixo, não em cima — ele procura o ícone no lugar errado por uns 30 segundos. Resolve sozinho. O nome 'Reroot' aparece na tela de confirmação (ainda não era auê), o que causa estranheza momentânea.",
+        "emotion": "determinado, levemente irritado",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Abre o app pela primeira vez pelo ícone na tela inicial e vê o onboarding",
+        "action_taken": "Toca no ícone instalado, aguarda carregar. Assiste os 4 cards rotativos: show, sarau, festa, stand-up. Para no card do sarau — lê o nome do evento, o bairro, o horário. Fica parado além dos 3s automáticos tentando ler mais detalhes que não existem no card.",
+        "friction_encountered": "Os cards giram rápido demais pra ele absorver — ele é metódico, quer ler com calma. Não percebe de imediato que pode tocar pra pausar ou avançar. Sente que o app 'apressou' ele. O card de festa com DJ passa e ele pensa 'isso não é pra mim', o que por um segundo passa a impressão de que o app é genérico.",
+        "emotion": "cauteloso, mas intrigado com o sarau",
+        "outcome": "partial"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed e descobre os filtros de mood",
+        "action_taken": "Após o onboarding, cai no feed principal. Vê eventos misturados. Encontra os chips de filtro no topo, toca em 'Cultural' e depois em 'Tranquilo'. O feed muda visivelmente — aparecem exposição no MON, sarau de poesia no Batel, sessão de cinema de repertório no Cinemateca.",
+        "friction_encountered": "Não entende de primeira que pode combinar filtros ou se é só um por vez. Testa os dois separados. Fica satisfeito com 'Cultural' mas queria algo como 'Cultural + gratuito' — não existe esse filtro de preço.",
+        "emotion": "agradavelmente surpreso",
+        "outcome": "won"
+      },
+      {
+        "day": 4,
+        "moment": "Encontra um evento de música instrumental no Passeio Público e checa 'amigos vão'",
+        "action_taken": "Vê card de apresentação de choro ao ar livre, gratuita, domingo à tarde no Passeio Público — bairro que raramente frequenta. Rola o card, vê o campo 'amigos vão'. Aparece vazio porque ainda não conectou nenhum amigo. Clica no botão de convidar amigos.",
+        "friction_encountered": "O sistema de convite exige Google Sign-In primeiro. Dirceu usa Gmail mas nunca fez login social em nada — fica desconfiado. Lê 'Google Sign-In' e pensa em privacidade por um momento. Faz o login depois de hesitar, mas o ex-colega que mandou o link ainda não está no app como amigo — precisa do código de 6 caracteres que o colega não mandou junto com o link.",
+        "emotion": "frustrado com a dependência de rede vazia",
+        "outcome": "partial"
+      },
+      {
+        "day": 5,
+        "moment": "Manda o código de convite pro ex-colega da Volvo pelo WhatsApp",
+        "action_taken": "Encontra seu próprio código de 6 caracteres no perfil, manda pro Renato (ex-colega) pelo WhatsApp com a mensagem 'entra aí, coloca esse código pra aparecer como amigo'. Espera. Renato responde horas depois que não conseguiu instalar ainda — está no Android, deixou pra depois.",
+        "friction_encountered": "A fricção não é técnica, é humana — o convite depende de outra pessoa fazer o mesmo esforço de instalação. Dirceu não pode ver o que Renato vai confirmar até Renato entrar. Compara mentalmente com o Instagram onde ele já sabe que Renato existe.",
+        "emotion": "paciente, mas com expectativa em suspenso",
+        "outcome": "partial"
+      },
+      {
+        "day": 6,
+        "moment": "Faz o primeiro RSVP — sarau de poesia no domingo",
+        "action_taken": "Volta ao feed, filtra 'Cultural', vê sarau de poesia num espaço cultural no Rebouças — bairro que conhece pouco. Lê o vibe summary ('ambiente aconchegante, plateia pequena, entrada gratuita'). Toca em 'Bora porque…' e lê o pitch gerado — menciona que o evento é menor e mais íntimo que os da Ópera de Arame. Esse detalhe o convence. Confirma presença.",
+        "friction_encountered": "Nenhuma fricção técnica. A única hesitação é ir sozinho a um bairro desconhecido sem conhecer ninguém lá — mas o app não resolve isso ainda (sem amigos conectados).",
+        "emotion": "decidido, com leve ansiedade positiva",
+        "outcome": "won"
+      },
+      {
+        "day": 7,
+        "moment": "Permite notificações push depois de receber prompt",
+        "action_taken": "Ao confirmar o RSVP, o app pergunta se quer receber lembretes e avisos de amigos. Dirceu aceita — raciocina que é útil pra não esquecer o sarau de domingo.",
+        "friction_encountered": "O prompt do iOS pede permissão de notificação de forma genérica, sem contexto de quais notificações virão. Ele aceita sem entender direito. No dia seguinte não recebe nada — e não esperava nada mesmo, já que Renato ainda não entrou no app.",
+        "emotion": "neutro, pragmático",
+        "outcome": "won"
+      },
+      {
+        "day": 9,
+        "moment": "Renato entra no app, confirma o mesmo sarau — Dirceu recebe push",
+        "action_taken": "Está dando aula de shiatsu na garagem quando o celular vibra. Pausa entre um cliente e outro, vê: '🎉 Renato vai · Sarau de Poesia – Espaço Rebouças'. Lê duas vezes. Sorri.",
+        "friction_encountered": "Nenhuma. É exatamente o empurrão que esperava — a funcionalidade funcionou como prometida. A única coisa que passa pela cabeça: 'devia ter chegado isso antes de eu já ter confirmado', mas percebe que não muda nada, só confirma a decisão.",
+        "emotion": "genuinamente aliviado e animado",
+        "outcome": "won"
+      },
+      {
+        "day": 10,
+        "moment": "Vai ao sarau, curte, volta pra casa e abre o app esperando badge",
+        "action_taken": "Evento rolou bem — reencontrou Renato, ficaram 2h, conheceram um músico que também frequenta o Passeio Público. Em casa, abre o app com curiosidade pra ver se ganhou alguma conquista.",
+        "friction_encountered": "A badge 'Primeiro auê' não aparece ainda. Vê o subtítulo 'Conquistas atualizam após o evento rolar' e fica confuso — o evento já rolou. Não entende que existe um delay de processamento ou que o sistema aguarda a data passar no backend. Compara mentalmente com qualquer jogo de celular onde a recompensa é imediata. Depois de alguns minutos a badge aparece. O susto inicial foi desnecessário mas o resultado satisfaz.",
+        "emotion": "impaciente, depois satisfeito",
+        "outcome": "partial"
+      },
+      {
+        "day": 12,
+        "moment": "Explora Recordes Pessoais e seção de Conquistas com mais calma",
+        "action_taken": "Numa tarde livre, vai fundo no próprio perfil. Vê Recordes: 1 RSVP, 1 bairro visitado, lugar predileto ainda indefinido. Pouco, mas real. Vê o badge 'Explorador' travado em bronze — exige 3 bairros. Entende a mecânica. Olha o QR code no perfil, não entende pra que serve, não tem ninguém por perto pra testar.",
+        "friction_encountered": "O QR code parece órfão sem contexto — ele não vai a eventos grandes onde encontraria estranhos pra escanear. Parece feature pra outro público. Os Recordes com 1 RSVP parecem magros, mas ele reconhece que são honestos. Sente que o app 'não infla' nada, o que aprecia.",
+        "emotion": "reflexivo, levemente entediado com os números baixos",
+        "outcome": "partial"
+      },
+      {
+        "day": 14,
+        "moment": "Encontra evento de cinema mudo com trilha ao vivo no Centro Histórico e faz segundo RSVP",
+        "action_taken": "Filtra 'Cultural', vê um evento que o app sinalizou com chip '📍 Mesmo lugar' — no mesmo espaço cultural do Rebouças onde foi no sarau. Lê a descrição: cinema mudo dos anos 1920 com trio de câmara ao vivo, entrada a preço social. Checa se Renato vai — ainda não confirmou. Manda print pro Renato no WhatsApp (o app não tem compartilhamento direto). Confirma presença mesmo assim.",
+        "friction_encountered": "Queria compartilhar o evento direto pelo app pro Renato, mas não existe essa função — cai no WhatsApp de qualquer jeito. O chip '📍 Mesmo lugar' é útil mas ele não entendeu de primeira o que significava, achou que era um aviso de conflito. Leu o tooltip depois.",
+        "emotion": "confortável, com senso crescente de que o app está 'aprendendo' o que ele gosta",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P31",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link da colega de rep pelo WhatsApp e abre no in-app browser",
+        "action_taken": "Clicou no link https://reroot-production.up.railway.app direto do WhatsApp, o app abriu no navegador embutido do WhatsApp no Android",
+        "friction_encountered": "O banner de instalação PWA não apareceu — WhatsApp in-app browser no Android não dispara o prompt 'Adicionar à tela de início'. Ela não entendeu por que não tinha botão de instalar. Ficou olhando a tela por uns 10 segundos achando que era só um site.",
+        "emotion": "confusa",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Segue o walkthrough de /install e instala via Chrome Android",
+        "action_taken": "A tela de /install detectou que ela estava num in-app browser e mostrou instrução pra copiar o link e abrir no Chrome. Ela copiou, colou no Chrome, o banner de instalação apareceu e ela adicionou à tela de início sem dificuldade.",
+        "friction_encountered": "O passo extra de 'copiar e abrir no Chrome' gerou um microfricção — ela quase desistiu achando que era problema do celular, mas a instrução na tela era clara o suficiente pra ela seguir. Levou uns 2 minutos a mais do que ela esperava.",
+        "emotion": "determinada",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Onboarding: vê os 4 cards rotativos de eventos sample",
+        "action_taken": "Abriu o app pela primeira vez pelo ícone na home. Os cards ciclaramautomaticamente — show, sarau, festa, stand-up — com a vibe summary em cada um. Ela ficou parada assistindo os 3 ciclos completos antes de avançar.",
+        "friction_encountered": "Nenhuma fricção técnica. Mas ela notou que o card de sarau era o que mais chamou atenção e quis clicar pra ver detalhes — e não deu, era só teaser. Pequena frustração de expectativa.",
+        "emotion": "curiosa",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed com filtro 'Criativo' pela primeira vez",
+        "action_taken": "Depois do onboarding foi direto pro filtro de mood 'Criativo'. Rolou o feed por uns 4 minutos. Encontrou dois eventos que não estavam no Insta dela: uma feira zine no Largo da Ordem e um workshop de serigrafia no Santa Felicidade.",
+        "friction_encountered": "Ela tentou instintivamente filtrar por 'gratuito' logo depois — e não encontrou esse filtro. Ficou checando os cards um por um pra ver preço. Comparou internamente com o Sympla e pensou 'é a mesma coisa, mistura tudo'. O preço aparecia no card mas não tinha jeito de filtrar por faixa de valor.",
+        "emotion": "animada mas levemente frustrada",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Primeiro RSVP — feira zine no Largo da Ordem",
+        "action_taken": "Abriu o card da feira zine, leu o 'Bora porque…' gerado pelo Claude — o pitch mencionava estandes de fanzines autorais e entrada gratuita — e confirmou presença. Em seguida foi pro grupo do WhatsApp da rep e mandou o link do evento pra tentar recrutar alguém.",
+        "friction_encountered": "Ela queria compartilhar direto pelo app mas não achou botão de compartilhamento nativo do evento. Acabou copiando a URL na mão. Também notou que nenhuma amiga aparecia como 'vai' — ela era a única no app ainda.",
+        "emotion": "animada",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Convida a colega de rep Júlia pro app via invite code",
+        "action_taken": "Encontrou o invite code de 6 chars no perfil, mandou pro WhatsApp da Júlia com a mensagem 'baixa esse app, vai ser mais fácil de a gente combinar saída'. Júlia instalou e conectou via Google Sign-In.",
+        "friction_encountered": "Depois que Júlia instalou, Isabela não recebeu nenhuma notificação ou confirmação dentro do app de que a amiga entrou. Ela só soube porque a Júlia mandou mensagem no WhatsApp dizendo 'entrei'. Ficou insegura se o invite tinha funcionado de verdade.",
+        "emotion": "satisfeita mas insegura",
+        "outcome": "partial"
+      },
+      {
+        "day": 6,
+        "moment": "Recebe push de amiga confirmando presença na feira zine",
+        "action_taken": "Júlia confirmou presença na feira zine e o push chegou: '🎉 Júlia vai · Feira Zine Largo da Ordem'. Isabela estava no campus com internet ruim e o push chegou com uns 3 minutos de delay, mas chegou.",
+        "friction_encountered": "Nenhuma fricção real. O delay ela nem notou porque não estava esperando. Esse foi exatamente o tipo de notificação que ela queria — específica, sobre algo que ela já tinha marcado, sobre uma amiga.",
+        "emotion": "animada",
+        "outcome": "won"
+      },
+      {
+        "day": 8,
+        "moment": "Vai à feira zine com Júlia — evento acontece — busca badge no app depois",
+        "action_taken": "Foram juntas, curtiu bastante. No domingo à noite abriu o app esperando ver algum badge ou registro do evento já acontecido. Ficou procurando em Conquistas.",
+        "friction_encountered": "O badge 'Primeiro auê' não tinha aparecido ainda — o sistema de anti-game espera o evento 'maturar'. Ela leu o subtítulo 'Conquistas atualizam após o evento rolar' mas achou vago: 'após' quando exatamente? No dia seguinte? Na semana? Ficou com a sensação de que tinha bugado.",
+        "emotion": "confusa",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Badge 'Primeiro auê' aparece — descobre a seção de Recordes Pessoais",
+        "action_taken": "Abriu o app de manhã e o badge estava lá. Ficou um tempo na tela de Conquistas. Navegando por ali descobriu a seção de Recordes Pessoais — bairros visitados, lugar predileto — e ficou genuinamente empolgada com a ideia de 'montar um mapa pessoal de Curitiba criativa', que era exatamente uma das coisas que ela queria.",
+        "friction_encountered": "Procurou uma visualização em mapa real dos bairros mas era só texto/números. A metáfora de 'mapa' era mental, não visual. Sentiu que podia ser mais.",
+        "emotion": "encantada",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Cria grupo 'Rep Criativa' e adiciona o workshop de serigrafia",
+        "action_taken": "Descobriu a feature de Grupos na aba Comunidade. Criou um grupo privado, adicionou Júlia e mais uma colega. Adicionou o workshop de serigrafia como sugestão pro grupo. As outras receberam push de '🎲 Rep Criativa · Isabela adicionou: Workshop Serigrafia'.",
+        "friction_encountered": "Ela esperava poder mandar uma mensagem junto com a sugestão do evento — tipo 'e aí, bora?' — mas não tinha campo de texto. Sem chat interno, o combo push+silêncio pareceu frio. As colegas viram a notificação mas a conversa continuou no WhatsApp mesmo.",
+        "emotion": "criativa mas levemente limitada",
+        "outcome": "partial"
+      },
+      {
+        "day": 13,
+        "moment": "Explora o QR code do perfil e tenta escanear o da Júlia pessoalmente",
+        "action_taken": "Estavam estudando juntas na UFPR. Isabela achou o QR no perfil por acidente, tapou pra fullscreen e mostrou pra Júlia escanear. Funcionou — elas se conectaram como amigas dentro do app sem precisar do invite code.",
+        "friction_encountered": "Nenhuma fricção técnica. A surpresa foi positiva — ela não sabia que existia esse fluxo e achou mais ágil que o invite code. Comentou 'tipo o Pix de contato mas pra evento'.",
+        "emotion": "surpresa positiva",
+        "outcome": "won"
+      },
+      {
+        "day": 14,
+        "moment": "Balanço mental após duas semanas — decide manter o app",
+        "action_taken": "Rolou o feed filtrando 'Criativo' de novo, comparou mentalmente com seus apps atuais. Tem 2 RSVPs, 1 badge, 2 amigas no app, 1 grupo criado.",
+        "friction_encountered": "Ainda sem filtro de preço — essa é a fricção que mais incomoda. O Companion Chat ela mal usou, achou desnecessário pra descoberta casual. Mas o gatilho social (ver Júlia confirmando, push específico) fez o app ganhar um slot mental que o Sympla e o Insta não têm.",
+        "emotion": "engajada com ressalvas",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P32",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link do amigo Rodrigo pelo WhatsApp e tenta abrir",
+        "action_taken": "Clicou no link https://reroot-production.up.railway.app direto no WhatsApp no iPhone. O browser in-app do WhatsApp abriu a página de instalação. Leu o aviso de que precisava abrir no Safari. Fechou o WhatsApp, abriu o Safari manualmente, colou o link que tinha copiado.",
+        "friction_encountered": "Não sabia copiar o link do WhatsApp sem abrir ele de novo — ficou um tempo tentando lembrar onde estava o link. Quando abriu o Safari e chegou no /install, o walkthrough detectou iOS Safari corretamente e mostrou os passos. Seguiu as instruções de 'Adicionar à Tela de Início' mas a primeira tentativa não funcionou porque tocou no ícone errado da barra inferior — tentou duas vezes até achar o botão de compartilhamento correto.",
+        "emotion": "impaciente mas determinado",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Onboarding com os 4 cards rotativos de eventos",
+        "action_taken": "Depois de instalar o PWA e abrir pelo ícone na tela inicial, viu os cards animados passando: show, sarau, festa, stand-up. Assistiu os 4 girarem uma vez completa antes de continuar.",
+        "friction_encountered": "O card de sarau passou rápido demais pra ele ler o nome do lugar — ficou com vontade de pausar mas não tentou. Não entendeu imediatamente o que era 'auê' como conceito, associou mentalmente a 'agenda de Curitiba' e seguiu em frente sem se perguntar mais sobre o nome.",
+        "emotion": "curioso",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Primeira exploração do feed de eventos numa tarde de quarta",
+        "action_taken": "Abriu o app no intervalo do almoço. Tentou os filtros de mood: bateu em 'Tranquilo', depois em 'Cultural'. Leu 3 cards de eventos com vibe summary. Comparou mentalmente com o Sympla — ficou surpreso que os eventos mostravam data e status sem precisar clicar pra descobrir que já acabou.",
+        "friction_encountered": "Não tinha filtro por distância ou bairro visível de cara — rolou o feed procurando algo perto do Juvevê mas não encontrou essa opção. Ficou em dúvida se os eventos eram todos em Curitiba mesmo ou se misturaria coisa de fora como o Instagram costuma fazer.",
+        "emotion": "cauteloso mas positivo",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Conecta com o amigo Rodrigo via invite code",
+        "action_taken": "Mandou mensagem pro Rodrigo no WhatsApp pedindo o código de 6 dígitos. Rodrigo demorou 4 horas pra responder. Quando chegou o código, Thiago abriu o app, foi na aba Comunidade, achou a seção de Amigos, digitou o código. Rodrigo apareceu na lista.",
+        "friction_encountered": "A troca do código via WhatsApp fora do app pareceu gambiarra — ele esperava algo tipo 'enviar convite direto pelo app'. Ficou na dúvida se existia outra forma mas não explorou mais a fundo.",
+        "emotion": "satisfeito mas levemente entediado com o processo",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Vê que Rodrigo confirmou presença num show de jazz no Largo da Ordem",
+        "action_taken": "Abriu o app por hábito numa sexta à noite, viu o card do show com a indicação de que Rodrigo ia. Leu o 'Bora porque…' gerado pelo Claude — o pitch mencionava clima de fim de semana e entrada acessível. Confirmou presença também.",
+        "friction_encountered": "Quis mandar mensagem pro Rodrigo dentro do app perguntando se iam juntos, mas não tinha essa opção. Voltou pro WhatsApp. Sentiu que o app fez a descoberta mas a coordenação real continuou fora dele.",
+        "emotion": "animado",
+        "outcome": "won"
+      },
+      {
+        "day": 6,
+        "moment": "Vai ao show de jazz — primeiro evento real pelo auê",
+        "action_taken": "Foi ao evento com Rodrigo. Durante o evento não abriu o app. No dia seguinte, abriu pra ver se tinha algum registro ou confirmação pós-evento.",
+        "friction_encountered": "Não encontrou nenhum check-in ou confirmação de que o evento tinha acontecido. Ficou olhando pro RSVP ainda marcado sem entender se o app 'sabia' que ele tinha ido. Não apareceu nenhuma badge ainda — leu a nota 'Conquistas atualizam após o evento rolar' e ficou se perguntando quanto tempo isso leva.",
+        "emotion": "confuso mas paciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 8,
+        "moment": "Badge 'Primeiro auê' aparece — e ele quase não nota",
+        "action_taken": "Abriu o app no domingo de manhã com o filho (semana com criança). Viu uma notificação interna ou badge novo no perfil. Entrou na seção de Conquistas e viu 'Primeiro auê — Bronze' desbloqueado.",
+        "friction_encountered": "Não recebeu push notification sobre a badge — não sabia que tinha acontecido até entrar por conta própria. A seção de Conquistas não estava no caminho natural de navegação dele, achou por curiosidade. Reagiu com 'ah, legal' mas sem grande impacto emocional — não tinha contexto do que os tiers significavam ou o que vinha depois.",
+        "emotion": "levemente satisfeito, indiferente aos tiers",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Tenta encontrar programas pra levar o filho de 9 anos",
+        "action_taken": "Com o filho em casa, abriu o app pra ver se tinha algo pra fazer juntos no domingo. Testou o filtro 'Família'. Encontrou 2 eventos. Clicou nos cards pra ler mais.",
+        "friction_encountered": "Um dos eventos era uma oficina infantil mas o vibe summary não deixava claro se era pra crianças de que faixa etária. O outro era um evento no parque sem horário fixo — um dos 12 auê Originals. Ficou inseguro se era uma sugestão genérica ou um evento real com data. Comparou com a Catraca Livre que pelo menos tinha descrição longa — aqui era mais curto e ele queria mais contexto antes de comprometer o dia do filho.",
+        "emotion": "frustrado",
+        "outcome": "failed"
+      },
+      {
+        "day": 11,
+        "moment": "Recebe push notification: Rodrigo adicionou evento a um grupo",
+        "action_taken": "Estava no trabalho quando chegou a notificação: '🎲 [Grupo] · Rodrigo adicionou: Feira do Largo da Ordem — domingo'. Clicou na notificação, o app abriu no grupo. Viu o evento, gostou da ideia, marcou RSVP.",
+        "friction_encountered": "Não sabia que existia um grupo — Rodrigo devia ter criado e adicionado ele sem avisar com clareza. Levou um segundo pra entender o contexto. Mas a notificação funcionou: foi o primeiro momento em que o app trouxe ele de volta por conta própria, sem ele precisar abrir ativamente.",
+        "emotion": "surpreso positivamente",
+        "outcome": "won"
+      },
+      {
+        "day": 13,
+        "moment": "Escaneia QR code do perfil do Rodrigo pessoalmente",
+        "action_taken": "Na Feira do Largo, Rodrigo mostrou o QR code do perfil dele em tela cheia. Thiago tentou escanear com a câmera nativa do iPhone primeiro — não funcionou. Abriu o app, procurou a câmera dentro dele, não achou de imediato. Rodrigo explicou que era só abrir o próprio perfil e escanear de lá.",
+        "friction_encountered": "O fluxo de escanear QR de outro usuário não era óbvio — Thiago não sabia que precisava estar no próprio perfil pra acessar o leitor. Levou uns 2 minutos de tentativa e erro com Rodrigo do lado explicando.",
+        "emotion": "levemente sem graça mas bem-humorado",
+        "outcome": "partial"
+      },
+      {
+        "day": 14,
+        "moment": "Reflexão de fim das duas semanas — app fica instalado, mas uso é passivo",
+        "action_taken": "No domingo à noite, sem filho, abriu o app por hábito. Rolou o feed por uns 3 minutos. Viu os Recordes Pessoais: 2 RSVPs, 1 bairro visitado, lugar predileto já aparecia como Largo da Ordem. Sentiu um traço de continuidade — o app estava guardando um histórico que o Sympla nunca fez.",
+        "friction_encountered": "Não tinha nenhum amigo novo além do Rodrigo no app — a rede era pequena demais pra o social fazer sentido pleno. Não tomou iniciativa de convidar mais ninguém porque isso exigia convencer a pessoa a instalar um PWA, o que parecia trabalhoso de explicar. O app estava cumprindo a função de descoberta mas ainda dependia do WhatsApp pra coordenação real.",
+        "emotion": "neutro com fundo de esperança discreta",
+        "outcome": "partial"
+      }
+    ]
+  },
+  {
+    "persona_id": "P33",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Abre o link pelo WhatsApp no iPhone e cai numa tela quebrada",
+        "action_taken": "Clica no link que a amiga Bruna mandou no WhatsApp enquanto está no intervalo do plantão noturno. A tela abre dentro do navegador embutido do WhatsApp — o in-app browser do iOS.",
+        "friction_encountered": "A página carrega mas o layout fica estranho e o botão de instalar não aparece direito. Ela tenta dar 'Adicionar à Tela de Início' mas o menu de compartilhamento do in-app browser não tem essa opção. O walkthrough do /install detecta o browser errado e mostra um aviso pedindo pra abrir no Safari, mas ela não lê o aviso com atenção porque está cansada, às 2h da manhã, entre um leito e outro.",
+        "emotion": "confusa",
+        "outcome": "failed"
+      },
+      {
+        "day": 2,
+        "moment": "Reabre o link no Safari durante o café da manhã pós-plantão e instala o PWA",
+        "action_taken": "Lembra do link de manhã, copia a URL do WhatsApp, abre o Safari manualmente e segue o walkthrough de instalação. O passo a passo por plataforma aparece certinho — ícone de compartilhar, 'Adicionar à Tela de Início', confirmar. Em 90 segundos o ícone do auê aparece na home.",
+        "friction_encountered": "Ela hesita no passo do ícone de compartilhamento porque o Safari no iOS 17 mudou a posição do botão pra baixo da tela — o walkthrough ainda mostra o ícone na barra superior. Demora uns 20 segundos procurando antes de achar.",
+        "emotion": "satisfeita com ressalva",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Vê o onboarding com os 4 cards girando e sente que o app é 'pra ela'",
+        "action_taken": "Abre o auê pela primeira vez via ícone na home. Os 4 cards animados passam: show pequeno, sarau, festa, stand-up. Ela fica assistindo os 3 ciclos completos antes de tocar em qualquer coisa — não estava esperando ver sarau numa tela de cadastro.",
+        "friction_encountered": "null",
+        "emotion": "curiosa e levemente animada",
+        "outcome": "won"
+      },
+      {
+        "day": 3,
+        "moment": "Explora o feed e experimenta os filtros de mood numa terça de folga",
+        "action_taken": "Filtra por 'Cultural' e 'Tranquilo' alternando. Lê os vibe summaries dos eventos — percebe que a linguagem é diferente das descrições de assessoria que odeia no Sympla. Um sarau no Cajuru tem descrição 'ambiente íntimo, no máximo 40 pessoas, BYOB'. Ela salva mentalmente mas não RSVPa ainda porque o evento é na quinta e quer ver se aparece algo mais perto do Capão Raso.",
+        "friction_encountered": "Não encontra filtro por dia da semana nem por horário — só os filtros de mood. Ela quer especificamente 'o que rola numa terça à tarde' e precisa fuçar card por card vendo as datas. Frustra um pouco, compara internamente com a grade horária do SESC que pelo menos tem calendário por dia.",
+        "emotion": "engajada mas com atrito",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Permite notificações push depois de hesitar",
+        "action_taken": "O app pede permissão de notificação. Ela quase recusa por reflexo — já tem notificação demais do hospital — mas lê o contexto ('avisa quando amigos confirmam eventos') e aceita, imaginando que pode ser útil pra saber se alguém conhecido apareceu num rolê antes de ela decidir ir.",
+        "friction_encountered": "O prompt de permissão do iOS é frio e genérico ('auê quer enviar notificações'). Sem contexto visual do que ela vai receber. Ela aceita no susto e fica levemente insegura se vai se arrepender.",
+        "emotion": "cautelosa",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Faz o primeiro RSVP num show pequeno no Centro depois de ler o 'Bora porque…'",
+        "action_taken": "Acha um show de voz e violão numa sexta, Casa da Memória, entrada franca. Toca em 'Bora porque…' e o pitch do Claude descreve: 'sexta sem compromisso, lugar pequenininho, você fica perto do palco de qualquer cadeira'. Ela ri do 'pequenininho' e RSVPa. É a primeira vez em meses que confirma algo solo.",
+        "friction_encountered": "O chip '📍 Mesmo lugar' aparece vinculado a um evento que ela nem tinha visto antes — ela não entende de onde veio a referência e ignora. Não tem tooltip explicando o contexto.",
+        "emotion": "animada e um pouco nervosa",
+        "outcome": "won"
+      },
+      {
+        "day": 6,
+        "moment": "Tenta convidar a amiga Bruna pelo código e encontra a lógica de amigos",
+        "action_taken": "Vai em Comunidade, acha o código de 6 caracteres e manda no WhatsApp pra Bruna com a mensagem 'baixa aqui ó'. Bruna está ocupada e fala que vê depois. Camila fica olhando a tela de amigos vazia e percebe que sem a Bruna lá dentro o recurso de 'amigos vão' nos cards fica mudo.",
+        "friction_encountered": "A espera pelo amigo aceitar o convite torna o app medio vazio nessa fase. O feed de eventos continua útil, mas a promessa social do 'alguém que você conhece vai' ainda não entregou nada concreto. Ela sente o app um pouco fantasma.",
+        "emotion": "levemente solitária",
+        "outcome": "partial"
+      },
+      {
+        "day": 7,
+        "moment": "Vai ao show sozinha na sexta e o evento supera a expectativa",
+        "action_taken": "Vai à Casa da Memória. O lugar é exatamente como a descrição disse — pequeno, acolhedor, ela fica numa mesa perto do palco. Não conhece ninguém mas não se sente estranha. Quando volta pra casa abre o auê e vê que o badge 'Primeiro auê' apareceu. Lê a descrição e sorri.",
+        "friction_encountered": "Na hora do evento ela queria checar no app se alguém mais tinha RSVPado — abriu o card mas não tinha nenhum rosto familiar listado. A feature de 'amigos vão' continua inútil sem a rede populada. Ela usa o feeling do vibe summary como substituto.",
+        "emotion": "orgulhosa e levemente nostálgica",
+        "outcome": "won"
+      },
+      {
+        "day": 9,
+        "moment": "Recebe notificação push de que Bruna confirmou um evento e acha graça",
+        "action_taken": "Bruna finalmente instalou o auê e RSVPou num festival de vinil no Passeio Público. A notificação chega: '🎉 Bruna vai · Feira de Vinil Curitiba'. Camila abre o app na hora, vê o evento, lê o vibe summary ('espalha bancas pelos corredores, dá pra ficar 20 minutos ou 3 horas') e RSVPa também. É o primeiro momento em que a feature social entrega o que prometeu.",
+        "friction_encountered": "null",
+        "emotion": "animada e conectada",
+        "outcome": "won"
+      },
+      {
+        "day": 10,
+        "moment": "Descobre a seção de Recordes Pessoais e fica uns minutos olhando",
+        "action_taken": "Navega pelo próprio perfil procurando onde ficam as badges e tropeça nos Recordes. Vê '2 RSVPs confirmados', '2 bairros visitados', 'lugar predileto: a definir'. Acha o conceito de 'números que só sobem' curiosamente reconfortante — faz sentido pra ela que trabalha com evolução de pacientes.",
+        "friction_encountered": "Fica confusa sobre a diferença entre Recordes e Conquistas por uns 30 segundos — as duas seções ficam próximas e os nomes não deixam claro qual é gamificação e qual é estatística pura. Ela entende depois de ler o subtítulo 'Conquistas atualizam após o evento rolar', mas o entendimento não foi imediato.",
+        "emotion": "contemplativa",
+        "outcome": "won"
+      },
+      {
+        "day": 12,
+        "moment": "RSVPa um terceiro evento mas percebe que badge não atualiza na hora — bate no anti-game",
+        "action_taken": "RSVPa uma feira de artesanato pra semana seguinte e imediatamente vai checar se alguma badge progrediu. Nada mudou. Lê o subtítulo 'Conquistas atualizam após o evento rolar' e entende a lógica, mas sente uma frustração pequena — ela tinha RSVPado com aquela expectativa semiconsciente de ver um número subir.",
+        "friction_encountered": "O comportamento é correto e ela entendeu, mas o timing da descoberta é levemente decepcionante. Ela compara internamente com o Sympla onde pelo menos dá pra ver histórico de ingressos imediatamente. A mecânica anti-game é honesta mas não foi comunicada proativamente antes do primeiro RSVP.",
+        "emotion": "levemente frustrada mas compreende",
+        "outcome": "partial"
+      },
+      {
+        "day": 14,
+        "moment": "Abre o Companion Chat pra perguntar sobre eventos gratuitos perto do Capão Raso",
+        "action_taken": "Descobre o ícone do chat lateral quase por acidente enquanto procura filtro por bairro. Digita: 'tem alguma coisa gratuita perto do Capão Raso nessa semana?'. O chatbot responde com 2 sugestões — uma no Parque do Iguaçu (auê Original) e uma feira no bairro vizinho. Ela salva o evento do parque. É exatamente o que ela queria desde o dia 3.",
+        "friction_encountered": "A resposta demora ~4 segundos pra aparecer — ela já ia fechar achando que tinha travado. Além disso, o Companion Chat não aparece em nenhum onboarding ou tooltip, ela só achou por acidente na segunda semana. Se não tivesse explorado, nunca teria descoberto.",
+        "emotion": "surpresa e satisfeita",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P34",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Amiga Júlia manda o link do auê no WhatsApp com 'olha isso aqui'",
+        "action_taken": "Lorena toca no link direto pelo WhatsApp — abre no navegador embutido do app. A página carrega, mas o banner de instalação PWA não aparece. Ela rola a tela sem entender muito o que é o site, vê o nome 'Reroot' (ainda não renomeado) e torce o nariz — 'reroot, que nome estranho'. Tenta criar conta pelo Google Sign-In, o pop-up abre dentro do in-app browser do WhatsApp e trava na autenticação.",
+        "friction_encountered": "In-app browser do WhatsApp bloqueia o fluxo de Google Sign-In e não oferece opção de instalar como PWA. Ela não sabe que precisa abrir no Chrome.",
+        "emotion": "confusa",
+        "outcome": "failed"
+      },
+      {
+        "day": 1,
+        "moment": "Tenta de novo pelo Chrome depois que Júlia manda 'abre no Chrome'",
+        "action_taken": "Abre o Chrome no Android, cola o link manualmente. O banner 'Adicionar à tela inicial' aparece na parte de baixo. Ela toca, confirma. O ícone aparece na home screen. Abre o app, o walkthrough de instalação não foi necessário — ela já instalou. Faz login com Google sem problema.",
+        "friction_encountered": "Teve que receber instrução extra da amiga pra sair do WhatsApp e abrir no Chrome. Sem isso, teria desistido na primeira tentativa.",
+        "emotion": "aliviada",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Vê o onboarding com os 4 cards rotativos pela primeira vez",
+        "action_taken": "Abre o app no ônibus pro curso de manhã. Os cards ciclan: show, sarau, festa, stand-up. Ela para no card do sarau — 'isso rola em Curitiba?'. Fica assistindo o ciclo duas vezes inteiro antes de tocar em continuar.",
+        "friction_encountered": "null",
+        "emotion": "curiosa",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed e bate de cara com eventos pagos sem preço visível",
+        "action_taken": "Vai pro feed principal, filtro em 'Tudo'. Vê eventos com fotos bonitas mas nenhum preço no card. Toca em dois eventos seguidos pra descobrir que custam R$60 e R$45. Lembra exatamente da frustração que tinha no Sympla. Procura filtro de preço — não acha. Testa os filtros de mood (Tranquilo, Cultural, Comunidade) esperando que algum filtre por custo. Não filtra.",
+        "friction_encountered": "Não existe filtro de custo (gratuito / até R$20) — a principal expectativa dela listada antes mesmo de baixar o app. Ela não desiste, mas anota mentalmente como ponto negativo.",
+        "emotion": "frustrada",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Descobre o filtro 'Comunidade' e acha um evento no Cajuru",
+        "action_taken": "No intervalo da farmácia, abre o app e decide testar o mood 'Comunidade'. Aparece uma feira comunitária com entrada gratuita no próprio Cajuru — exatamente o tipo de coisa que ela dizia só saber pelo boca a boca. Fica olhando o card por um tempo. Toca no 'Bora porque…' e lê o pitch gerado: fala em tom leve sobre o bairro, artesanato local, nada de moralismo. Ela sorri. Manda screenshot pra Júlia pelo WhatsApp.",
+        "friction_encountered": "Ainda precisou entrar no evento pra confirmar que era gratuito — a informação não estava no card do feed.",
+        "emotion": "animada",
+        "outcome": "won"
+      },
+      {
+        "day": 4,
+        "moment": "Adiciona Júlia como amiga e vê que ela já tem RSVP em um evento",
+        "action_taken": "Tenta conectar com Júlia. Vai na aba Comunidade, depois Amigos. Pede o invite code de 6 chars pra Júlia pelo WhatsApp. Júlia demora 40 minutos pra responder onde fica o código. Lorena acha o campo, digita, conecta. Vê que Júlia confirmou presença num sarau no Centro. Tooltip 'amigos vão' aparece no card desse evento.",
+        "friction_encountered": "O fluxo de convite via código de 6 chars exige que a outra pessoa saiba onde encontrar o próprio código — gerou troca de mensagens no WhatsApp antes de resolver. Sem deep link de convite direto.",
+        "emotion": "satisfeita",
+        "outcome": "partial"
+      },
+      {
+        "day": 5,
+        "moment": "Faz o primeiro RSVP — sarau no Centro onde Júlia vai",
+        "action_taken": "Porque Júlia já confirmou presença, Lorena se sente segura suficiente pra confirmar também. Toca em 'Vou!'. Aparecem os chips contextuais — nenhum se aplica aqui. Aparece o prompt de permissão de notificação push. Ela lê 'receba avisos quando amigos confirmarem eventos' e aceita. Primeira badge desbloqueada: 'Primeiro auê' (Bronze). Pop-up aparece na tela.",
+        "friction_encountered": "null",
+        "emotion": "empolgada",
+        "outcome": "won"
+      },
+      {
+        "day": 6,
+        "moment": "Recebe push notification — Júlia confirmou outro evento",
+        "action_taken": "Notificação chega: '🎉 Júlia vai · Feira de Vinil – Centro'. Lorena está na aula, vê a notificação na tela bloqueada. Não abre na hora. No almoço abre o app, vai direto no evento. Gratuito. Sábado à tarde. Toca em 'Bora porque…', lê o pitch. Fica em dúvida se vale a passagem de ônibus. Não confirma ainda.",
+        "friction_encountered": "Ainda sem filtro de custo no feed, mas dentro do evento a informação de gratuito aparece. A dúvida não é do app — é da passagem de ônibus, que o app não resolve.",
+        "emotion": "indecisa",
+        "outcome": "partial"
+      },
+      {
+        "day": 8,
+        "moment": "Vai ao sarau no Centro com Júlia — primeiro evento de fato",
+        "action_taken": "Evento aconteceu no sábado. No domingo de manhã abre o app sem objetivo claro. Vê que a seção de Conquistas atualizou — 'Conquistas atualizam após o evento rolar.' Aparece o badge 'Vai junto' (Bronze) além do 'Primeiro auê' que já tinha. Vai nos Recordes Pessoais: 1 RSVP realizado, 1 bairro visitado (Centro), lugar predileto ainda vazio. Fica olhando os números por uns dois minutos.",
+        "friction_encountered": "null",
+        "emotion": "satisfeita",
+        "outcome": "won"
+      },
+      {
+        "day": 10,
+        "moment": "Tenta entender a seção de Grupos e cria um pra chamar Júlia e mais uma colega",
+        "action_taken": "Vê a aba Comunidade — padrão em Grupos. Acha a opção de criar grupo, nomeia 'Cajuru sai', coloca como privado. Adiciona Júlia pelo invite do grupo. Tenta adicionar a colega Bruna, mas Bruna não tem cadastro no auê. Lorena manda o link de instalação pro WhatsApp de Bruna. Bruna não instala naquele dia.",
+        "friction_encountered": "Só é possível adicionar ao grupo quem já está no app. O ciclo de convite externo é lento — depende da pessoa do outro lado instalar e aceitar, o que não acontece em tempo real.",
+        "emotion": "paciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 12,
+        "moment": "Faz RSVP na Feira de Vinil e bate no anti-game sem saber",
+        "action_taken": "Decide confirmar a Feira de Vinil pra o próximo sábado. Confirma. Espera aparecer alguma badge nova. Nada. Lê o subtítulo da seção: 'Conquistas atualizam após o evento rolar.' Entende a lógica, não fica frustrada — achou até honesto. Comenta com Júlia: 'tem que ir de verdade, não adianta só confirmar'.",
+        "friction_encountered": "null",
+        "emotion": "neutra",
+        "outcome": "won"
+      },
+      {
+        "day": 14,
+        "moment": "Abre o Companion Chat pra perguntar sobre eventos gratuitos no fim de semana",
+        "action_taken": "Vê o ícone do chat lateral e resolve testar. Digita: 'tem algum evento gratuito no Cajuru ou perto esse fim de semana?'. O chatbot responde com sugestões, mas algumas são do Centro ou Batel — não exatamente no Cajuru. Lorena lê, acha duas opções relevantes. Não clica nas sugestões de imediato, mas salva mentalmente. Fecha o app. O auê virou parte do loop dela: Instagram pra descobrir, auê pra confirmar se vale ir e ver se Júlia vai junto.",
+        "friction_encountered": "O chat não filtra por bairro com precisão — ela perguntou 'Cajuru' e recebeu respostas mais genéricas de 'região leste'. Útil, mas não cirúrgico o suficiente pra sua necessidade principal de hiperlocal.",
+        "emotion": "cautelosamente engajada",
+        "outcome": "partial"
+      }
+    ]
+  },
+  {
+    "persona_id": "P35",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link do auê pelo WhatsApp e tenta abrir",
+        "action_taken": "Marcos clica no link direto pelo WhatsApp no Android. A página abre no navegador in-app do WhatsApp — carrega, mas o banner de instalação PWA não aparece. Ele lê 'instale o app' na tela mas não entende por que não tem botão de Play Store. Fecha e reabre no Chrome, aí aparece o prompt de 'Adicionar à tela inicial'.",
+        "friction_encountered": "In-app browser do WhatsApp não exibe o prompt de instalação PWA. Marcos tem que descobrir sozinho que precisa abrir no Chrome — nenhuma instrução explícita apareceu antes disso.",
+        "emotion": "confuso",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Instala o PWA pelo Chrome e vê o onboarding",
+        "action_taken": "Aceita o prompt do Chrome, o ícone aparece na tela inicial. Abre o app e assiste os 4 cards rotativos: show, sarau, festa, stand-up. Fica uns 10 segundos olhando — o card de stand-up prende a atenção dele ('isso daria pra levar o Gustavo de 16'). Faz login com Google sem travar.",
+        "friction_encountered": "null",
+        "emotion": "cautelosamente animado",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed e testa os filtros de mood",
+        "action_taken": "Abre o app no intervalo do trabalho. Clica em 'Família' esperando um filtro que liste só eventos adequados pra adolescente. Encontra 3 eventos — um festival gastronômico, uma exposição no MON e uma feira de quadrinhos. Abre o card da feira, lê o vibe summary, salva mentalmente.",
+        "friction_encountered": "O filtro 'Família' existe, mas não tem nenhuma sinalização explícita de faixa etária ou 'bom pra teen'. Marcos fica na dúvida se a exposição do MON vai segurar a atenção de dois adolescentes ou vai ser 'aquele museu chato'. Sem badge de adequação, ele precisaria ler a descrição inteira — exatamente o que queria evitar.",
+        "emotion": "esperançoso com reservas",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Tenta ver se algum conhecido vai nos eventos",
+        "action_taken": "Vê o campo 'amigos vão' nos cards — aparece vazio em todos. Lembra que o amigo que mandou o link deve estar no app. Vai em Comunidade, aba Amigos, tenta encontrá-lo pelo nome. Não acha — percebe que precisaria do código de 6 caracteres ou que o amigo aparecesse em sugestões.",
+        "friction_encountered": "O amigo não configurou o perfil ainda ou tem 'showInFriendSuggestions' desativado. Marcos não sabe como pedir o invite code — não é óbvio que existe esse mecanismo sem o amigo explicar por fora (WhatsApp de novo).",
+        "emotion": "frustrado",
+        "outcome": "failed"
+      },
+      {
+        "day": 4,
+        "moment": "Manda mensagem pro amigo pedindo o código e conecta",
+        "action_taken": "Pergunta o código pelo WhatsApp. O amigo manda os 6 caracteres. Marcos digita no app, aparece o perfil do amigo, adiciona. Agora volta nos eventos e vê '1 amigo vai' na feira de quadrinhos. Mostra o card pro filho Gustavo na hora do jantar.",
+        "friction_encountered": "O fluxo de conexão depende totalmente de canal externo (WhatsApp). Para Marcos, isso é normal — mas sublinha que o app ainda não tem autonomia própria pra construir rede.",
+        "emotion": "satisfeito",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Primeiro RSVP — feira de quadrinhos com os filhos",
+        "action_taken": "Sábado à tarde, Marcos confirma presença na Feira de Quadrinhos do Portão pra ele e planeja levar os dois filhos. Clica em 'Bora' no card, lê o pitch 'Bora porque…' gerado pelo Claude — menciona ambiente familiar, artistas locais, entrada gratuita. Gustavo, de 16, vê por cima do ombro e diz 'tá, pode ir'.",
+        "friction_encountered": "Não tem como confirmar presença por mais de uma pessoa (ele + dois filhos). O RSVP é individual — Marcos registra só ele, o que vai distorcer qualquer 'Recordes' futuros sobre programas em família.",
+        "emotion": "animado",
+        "outcome": "won"
+      },
+      {
+        "day": 7,
+        "moment": "Recebe notificação push na quinta e não entende a origem",
+        "action_taken": "Quinta à noite, chega push: '🎉 [amigo] vai · Show no SESC Portão — sábado'. Marcos olha o celular, lembra do app, abre. Vê o evento no feed, clica em 'Tudo', localiza o show. Não é adequado pra levar os filhos (show noturno, 22h), mas anota mentalmente como opção pra ele sozinho algum dia.",
+        "friction_encountered": "A notificação não traz contexto de horário ou se é evento diurno/noturno — Marcos tem que abrir o app e cavar. Para alguém que quer agilidade no planejamento, esse passo extra importa.",
+        "emotion": "neutro / levemente interessado",
+        "outcome": "partial"
+      },
+      {
+        "day": 8,
+        "moment": "Vai na feira de quadrinhos, evento acontece — badge destrava",
+        "action_taken": "Fim de semana. Vai com os filhos. Na volta, abre o app por hábito. Aparece notificação interna: badge 'Primeiro auê' desbloqueado. Lê o subtítulo 'Conquistas atualizam após o evento rolar' — isso faz sentido pra ele, não acha estranho. Mostra pros filhos a conquista como se fosse piada, mas sorri.",
+        "friction_encountered": "null",
+        "emotion": "divertido / nostálgico",
+        "outcome": "won"
+      },
+      {
+        "day": 9,
+        "moment": "Explora a seção de Recordes Pessoais",
+        "action_taken": "Curioso com os badges, navega até o perfil e acha os Recordes. Vê: 1 RSVP total, 1 bairro visitado (Portão), semana-streak de 1. Acha a ideia boa — 'tipo um diário sem ter que escrever nada' — mas acha os números muito baixos ainda pra fazer sentido emocional. Passa rápido.",
+        "friction_encountered": "Com apenas 1 evento, os Recordes parecem vazios. A proposta de 'memória afetiva' que Marcos busca ainda não se materializou — falta massa crítica de histórico.",
+        "emotion": "curioso mas sem impacto ainda",
+        "outcome": "partial"
+      },
+      {
+        "day": 11,
+        "moment": "Tenta criar grupo pra turma do trabalho",
+        "action_taken": "Lembra da motivação de organizar saída com colegas. Vai em Comunidade > Grupos > criar grupo. Nomeia 'Turma da manutenção', deixa privado. Gera link de convite. Cola no grupo do WhatsApp do trabalho com a mensagem 'testando esse negócio aqui'.",
+        "friction_encountered": "Dos 6 colegas, só 1 clica. Esse 1 tenta instalar pelo iPhone via Chrome iOS — não funciona, precisa do Safari. Volta no WhatsApp reclamando 'não instalou'. Marcos vira suporte técnico involuntário, exatamente o que queria evitar. Explica o Safari, o colega consegue, mas a energia já esfriou.",
+        "emotion": "resignado / persistente",
+        "outcome": "partial"
+      },
+      {
+        "day": 13,
+        "moment": "Descobre o Companion Chat e pergunta sobre eventos pra teen",
+        "action_taken": "Vê o ícone do chat lateral pela primeira vez (nunca tinha notado). Digita: 'tem algo esse fim de semana bom pra pai e dois filhos adolescentes?'. O chat responde com 2 sugestões com contexto. Uma delas é um evento que ele não tinha achado pelo filtro Família — uma oficina de grafite num centro cultural.",
+        "friction_encountered": "A resposta do chat é boa, mas Marcos fica com a pulga: 'isso tá no app ou o robô inventou?'. Clica no evento sugerido, existe de verdade no feed. Alívio — mas a desconfiança inicial revela que o valor do chat não é óbvio pra um usuário casual que não confia em IA por padrão.",
+        "emotion": "surpreso positivamente",
+        "outcome": "won"
+      },
+      {
+        "day": 14,
+        "moment": "Segundo RSVP e avalia se vai continuar usando",
+        "action_taken": "Confirma presença na oficina de grafite pro sábado seguinte. Fica no app. Pensa: usa o Sympla às vezes, mas Sympla não tem os filtros de mood nem o chat. Instagram ele quase não abre mais. O auê virou o lugar onde ele olha 'o que rola' sem ter que garimpar. Não indica pra todo mundo — 'ainda tô testando' — mas não desinstala.",
+        "friction_encountered": "Ainda sente falta de uma marcação clara de adequação pra adolescente nos cards (não quer depender do chat toda vez). E o grupo do trabalho ficou só com 2 pessoas — sem massa crítica pra gerar o efeito social que faria os filhos acharem 'cool'.",
+        "emotion": "adotante cauteloso / com afeto nascendo",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P36",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Abre o link do auê direto no WhatsApp no Android",
+        "action_taken": "Clicou no link https://reroot-production.up.railway.app que a amiga Priya mandou no WhatsApp — abriu no navegador in-app do WhatsApp mesmo, sem pensar em copiar pra outro browser",
+        "friction_encountered": "O walkthrough de /install detectou in-app browser e mostrou aviso pedindo pra abrir no Chrome. Ela ficou confusa — 'mas já tá aberto, né?' — teve que copiar o link manualmente, colar no Chrome e refazer o acesso. Levou uns 2 minutos a mais do que esperava pra uma coisa simples.",
+        "emotion": "curiosa com pitada de impaciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Instala o PWA pelo Chrome no Android e vê os cards do onboarding",
+        "action_taken": "No Chrome, seguiu o walkthrough: tocou nos três pontinhos, 'Adicionar à tela inicial', confirmou. Ícone apareceu na home. Abriu o app e ficou assistindo os 4 cards rotativos — show, sarau, festa, stand-up — sem pular.",
+        "friction_encountered": "null",
+        "emotion": "animada — o card do sarau especificamente fisgou. 'Isso existe em Curitiba?'",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Faz login com Google e fica em dúvida sobre as permissões",
+        "action_taken": "Escolheu 'Entrar com Google'. Quando o Chrome pediu permissão pra notificações, ela pausou uns 4 segundos lendo o prompt antes de aceitar — não é o tipo que clica sem ler.",
+        "friction_encountered": "A tela de permissão de notificação do Chrome não tem contexto nenhum do auê — é o popup genérico do sistema. Ela não sabia exatamente o que ia receber. Aceitou, mas com reserva.",
+        "emotion": "cautelosa",
+        "outcome": "won"
+      },
+      {
+        "day": 3,
+        "moment": "Explora o feed com filtro 'Cultural' e encontra um sarau de poesia",
+        "action_taken": "Abriu o app na hora do almoço, foi direto nos filtros de mood. Testou 'Tranquilo' primeiro (poucos resultados naquele dia), depois 'Cultural' — feed abriu com 8 eventos. Encontrou um sarau num café no Batel pra sábado. Leu o vibe summary e o pitch 'Bora porque…' gerado pelo Claude.",
+        "friction_encountered": "O pitch dizia algo como 'você vai adorar a energia criativa do espaço' — genérico demais pra ela, que já esperava algo mais personalizado já que tinha acabado de criar a conta e o app não sabia nada sobre ela ainda. Sentiu que era marketing, não curadoria.",
+        "emotion": "interessada mas levemente cética com o pitch",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Verifica se alguém conhecido vai ao sarau antes de confirmar presença",
+        "action_taken": "Procurou no card se aparecia 'amigos vão' — não apareceu nenhum nome porque ela não tinha amigos conectados no auê ainda. Decidiu mandar o link do sarau pra Priya pelo WhatsApp perguntando se ela topava ir.",
+        "friction_encountered": "Não tinha fluxo dentro do app pra 'chamar amigo pra esse evento especificamente' — ela teve que sair do auê, ir no WhatsApp, copiar o link do evento e mandar manualmente. Pequena fricção, mas revelou que o loop social ainda dependia do WhatsApp.",
+        "emotion": "neutro-pragmática",
+        "outcome": "partial"
+      },
+      {
+        "day": 5,
+        "moment": "Priya aceita o convite e se cadastra com o invite code — Beatriz conecta a primeira amiga",
+        "action_taken": "Priya mandou mensagem dizendo que instalou. Beatriz foi no perfil dela, achou a seção de invite code de 6 chars, passou o código pelo WhatsApp. Priya entrou, conectaram como amigas. Beatriz voltou pro card do sarau e agora via 'Priya vai' embaixo do evento.",
+        "friction_encountered": "O fluxo do invite code não era imediatamente óbvio — Beatriz ficou uns 30 segundos procurando onde estava o código dela antes de achar. Mas achou.",
+        "emotion": "satisfeita — o social proof funcionou",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Faz o primeiro RSVP — sarau no Batel com o marido e Priya",
+        "action_taken": "Com Priya confirmada, convenceu o marido Lucas a ir também ('tem uma amiga minha indo'). Ela mesma deu RSVP pelo app. Lucas não instalou o auê — confirmação dele ficou fora do sistema.",
+        "friction_encountered": "Não tinha como adicionar o marido como 'vai junto' sem ele ter conta. O card mostraria só Priya, não o contexto real do programa deles. Pequena decepção — ela queria que o app refletisse o programa real.",
+        "emotion": "animada com o sarau, levemente frustrada com a limitação do 'vai junto'",
+        "outcome": "partial"
+      },
+      {
+        "day": 7,
+        "moment": "Recebe push notification quando Priya confirma outro evento no fim de semana",
+        "action_taken": "Sábado de manhã, notificação chegou: '🎉 Priya vai · Mercado de Vinil — Praça Osório'. Beatriz abriu o app pelo push, viu o evento, achou interessante — ela e Lucas curtem música.",
+        "friction_encountered": "null — notificação chegou limpa, abriu no lugar certo dentro do app.",
+        "emotion": "agradavelmente surpreendida — 'ó, ela foi antes de mim'",
+        "outcome": "won"
+      },
+      {
+        "day": 8,
+        "moment": "Vai ao sarau, curte a noite — mas fica esperando badge que não aparece",
+        "action_taken": "Voltou do sarau animada, abriu o app ainda no Uber de volta. Foi em Conquistas esperando ver algo desbloqueado. Viu a seção com o subtítulo 'Conquistas atualizam após o evento rolar' — mas o evento tinha sido aquela noite, nada ainda.",
+        "friction_encountered": "Ela leu o subtítulo mas não ficou claro quanto tempo 'após o evento rolar' significava. Ficou com a sensação de que podia ser bug. Não era — era o mature filter funcionando — mas a comunicação não deixou isso explícito o suficiente.",
+        "emotion": "levemente confusa, um pouco impaciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Badge 'Primeiro auê' aparece — e ela entende o sistema",
+        "action_taken": "Abriu o app por hábito de manhã antes da aula. Badge 'Primeiro auê' tinha aparecido — tier Bronze. Ela ficou olhando os Recordes Pessoais: 1 RSVP, 1 bairro visitado (Batel), lugar predileto pendente ainda.",
+        "friction_encountered": "null",
+        "emotion": "satisfeita — 'ah, é após o evento mesmo, não bug' — sistema ganhou confiança dela",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Descobre a aba Comunidade e tenta criar um grupo com Priya",
+        "action_taken": "Navegando a aba Comunidade (foi em Grupos primeiro, que era o default). Criou um grupo privado chamado 'Sarau & Afins' e mandou o invite pra Priya. Ficou explorando a ideia de adicionar eventos pro grupo.",
+        "friction_encountered": "Achou a feature interessante mas ficou na dúvida: 'o que o grupo faz além de listar eventos?' Sentiu falta de um chat dentro do grupo — a lógica era clara no app mas a ausência de conversa tornava o grupo meio estático. Pensou 'bom, mas a gente ainda vai combinar no WhatsApp de qualquer jeito'.",
+        "emotion": "curiosa mas pragmática — vê valor parcial",
+        "outcome": "partial"
+      },
+      {
+        "day": 13,
+        "moment": "Faz segundo RSVP (Mercado de Vinil) e compara auê com Sympla mentalmente",
+        "action_taken": "Deu RSVP no Mercado de Vinil que Priya tinha sinalizado. Abriu o Sympla por reflexo pra checar o mesmo evento — achou a listagem lá, mas sem vibe summary, sem filtro de mood, sem ver que Priya ia.",
+        "friction_encountered": "null — a comparação foi favorável ao auê dessa vez.",
+        "emotion": "convicta — 'o Sympla não me diz se vai ser barulhento ou intimista, o auê pelo menos tenta'",
+        "outcome": "won"
+      },
+      {
+        "day": 14,
+        "moment": "Avalia o app depois de duas semanas — decide manter mas com expectativas calibradas",
+        "action_taken": "Domingo à tarde, abriu o app sem intenção específica. Checou Recordes: 2 RSVPs, 2 bairros, sarau como lugar predileto provisório. Ficou scrollando o feed com filtro Cultural por uns 5 minutos. Mandou print dos badges pro Lucas rindo ('olha que eu tô colecionando coisa').",
+        "friction_encountered": "Ainda sente que o pitch 'Bora porque…' vai melhorar com o tempo conforme ela usar mais — mas por enquanto parece genérico porque o app ainda não acumulou histórico dela. Também nota que sem o marido no app o 'vai junto' nunca vai refletir a realidade do casal.",
+        "emotion": "otimista cautelosa — vê potencial real, não é fã incondicional",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P37",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link pelo WhatsApp e abre direto no navegador embutido",
+        "action_taken": "Gustavo tá no intervalo do treino, vê a mensagem do colega de república com o link do auê, clica sem pensar — abre no WebView do WhatsApp mesmo",
+        "friction_encountered": "A tela de /install detecta in-app browser e mostra o aviso pra abrir no Safari. Gustavo lê rápido, acha que é só burocracia, tenta clicar em 'instalar' mesmo assim. Não rola. Fecha o app sem instalar — vai resolver depois.",
+        "emotion": "impaciente",
+        "outcome": "failed"
+      },
+      {
+        "day": 1,
+        "moment": "Segunda tentativa à noite — abre no Safari por curiosidade",
+        "action_taken": "Lembra do link quando tá deitado, cola a URL direto no Safari do iPhone. Segue o walkthrough de 'Adicionar à Tela de Início', vê os passos com screenshots. Consegue instalar o PWA.",
+        "friction_encountered": "Passa uns 40 segundos procurando o ícone de compartilhamento do Safari — confunde com o ícone de favoritos por um segundo. Nada crítico, só delay.",
+        "emotion": "satisfeito",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Abre o app pela primeira vez e vê o onboarding com os 4 cards rotativos",
+        "action_taken": "Abre o ícone na home screen antes de ir pro treino. Fica parado vendo os cards: show, sarau, festa, stand-up. Espera um segundo ciclo pra ver se aparece algo de esporte ou corrida.",
+        "friction_encountered": "Nenhum dos 4 cards é evento físico/esportivo. Gustavo franze a testa — 'mais um app de show e teatro'. Continua mesmo assim porque o colega disse que tinha filtro 'Ativo'.",
+        "emotion": "cético",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Explora o feed e testa o filtro 'Ativo' procurando pelada ou corrida",
+        "action_taken": "Vai direto no filtro de mood, seleciona 'Ativo'. Rola o feed inteiro. Acha um evento de trilha no Parque Barigui e uma corrida de rua no Tarumã no fim de semana seguinte. Abre o card da corrida, lê o vibe summary.",
+        "friction_encountered": "Dos ~15 cards em 'Ativo', só 2 são claramente esportivos/físicos — o resto é workshop de dança e feira de artesanato 'ativo'. A corrida no Tarumã fica do outro lado da cidade do Pilarzinho. Checa 'amigos vão': zero amigos confirmados.",
+        "emotion": "animado mas ressabiado",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Dá RSVP na corrida do Tarumã e tenta convencer a república pelo app",
+        "action_taken": "Confirma presença na corrida impulsivamente. Vai em Comunidade, tenta criar um grupo da república. Cria o grupo 'República Alfredo', copia o código de 6 chars e manda no grupo do WhatsApp deles: 'entra aqui ó, é 6 letras'.",
+        "friction_encountered": "Dois colegas entram no grupo no auê no mesmo dia — mas um terceiro não instala o PWA porque recebe o código pelo WhatsApp in-app e cai no mesmo problema do dia 1. Gustavo explica por áudio. O terceiro desiste.",
+        "emotion": "entusiasmado",
+        "outcome": "partial"
+      },
+      {
+        "day": 5,
+        "moment": "Adiciona evento de pelada que achou fora do app ao grupo da república",
+        "action_taken": "Viu no Instagram um racha de futebol society aberto no campo do Pilarzinho no sábado. Volta pro auê, abre o grupo 'República Alfredo', tenta adicionar o evento ao grupo. Procura a opção de adicionar evento externo.",
+        "friction_encountered": "Só consegue adicionar eventos que já estão no catálogo do auê — não tem campo livre pra colar link externo ou criar evento manual. Fica frustrado: era exatamente o caso de uso que ele queria. Acaba mandando o link da pelada no WhatsApp do grupo mesmo, fora do auê.",
+        "emotion": "frustrado",
+        "outcome": "failed"
+      },
+      {
+        "day": 7,
+        "moment": "Recebe push de que colega confirmou na corrida do Tarumã",
+        "action_taken": "Tá treinando cliente no parque quando chega a notificação: '🎉 Felipe vai · Corrida Tarumã'. Abre o app na hora, vê o card do evento com 'Felipe vai'. Manda áudio pro Felipe no WhatsApp comemorando.",
+        "friction_encountered": "Quis responder direto no app tipo 'vai junto então?' — não tem chat no evento nem no grupo. Volta inevitavelmente pro WhatsApp.",
+        "emotion": "animado",
+        "outcome": "won"
+      },
+      {
+        "day": 8,
+        "moment": "Vai na corrida, espera badge aparecer na hora — não aparece",
+        "action_taken": "Corre o evento no domingo, chega suado, abre o auê logo depois. Vai em Conquistas esperando ver alguma coisa desbloqueada — Primeiro auê, Noiteiro, qualquer coisa.",
+        "friction_encountered": "Nada atualizou. Lê o subtítulo 'Conquistas atualizam após o evento rolar' pela primeira vez de verdade. Acha meio chato, mas entende a lógica quando pensa um segundo. Fica na expectativa pra ver o que aparece depois.",
+        "emotion": "impaciente mas curioso",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Badges do primeiro evento aparecem — descobre Recordes Pessoais",
+        "action_taken": "Abre o app na segunda-feira. Badge 'Primeiro auê' desbloqueada, 'Vai junto' porque foi com Felipe. Vai fuçar o perfil e encontra a seção de Recordes Pessoais pela primeira vez.",
+        "friction_encountered": "Fica levemente confuso sobre a diferença entre Conquistas e Recordes — acha que são a mesma coisa até ler com atenção. Não é bloqueante, só leve ruído de UX.",
+        "emotion": "satisfeito",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Testa o QR code do perfil com o Felipe pessoalmente",
+        "action_taken": "Na república, mostra o perfil pro Felipe e nota o QR code. Toca pra tela cheia, Felipe escaneia com o celular — vira amigos no app em 10 segundos.",
+        "friction_encountered": "Null — funcionou fluido. Gustavo achou 'muito mais simples que código'.",
+        "emotion": "impressionado",
+        "outcome": "won"
+      },
+      {
+        "day": 13,
+        "moment": "Procura evento de fim de semana e sente a lacuna de eventos do Pilarzinho",
+        "action_taken": "Filtra 'Ativo' de novo, tenta mentalmente mapear quais eventos ficam perto do Pilarzinho. Não tem filtro por bairro explícito. Abre três cards, dois são Batel/Centro, um é Água Verde.",
+        "friction_encountered": "Confirmação da frustração original: o app agrega bem o eixo central mas eventos de bairros como Pilarzinho e Boa Vista somem. Não abandona o app, mas registra mentalmente como limitação real — pensa 'vou continuar usando pra saber o que rola, mas não vou achar coisa aqui do bairro'.",
+        "emotion": "resignado",
+        "outcome": "partial"
+      },
+      {
+        "day": 14,
+        "moment": "Dá RSVP na trilha do Barigui com o grupo, encerra a quinzena como usuário ativo mas com expectativas calibradas",
+        "action_taken": "Adiciona a trilha do Barigui ao grupo 'República Alfredo' no auê. Dois colegas recebem push e confirmam. Gustavo tem agora 2 RSVPs concluídos, badge 'Explorador' em progresso, streak ativa. App virou segunda tela pra eventos — não substituiu o WhatsApp, mas virou a fonte de descoberta.",
+        "friction_encountered": "Ainda não resolve o gap de eventos esportivos amadores e do bairro — esse é o buraco que o app não fecha. Mas pra corridas organizadas e trilhas abertas, funciona melhor que o Sympla (sem surpresa de 'esgotado') e melhor que o Instagram (sem patrocinado misturado).",
+        "emotion": "engajado com ressalvas",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P38",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link pelo WhatsApp e tenta abrir direto no navegador embutido",
+        "action_taken": "Clicou no link https://reroot-production.up.railway.app dentro do próprio WhatsApp no iPhone — o in-app browser do WhatsApp abriu a página normalmente, mas o walkthrough de instalação avisou que ela precisava abrir no Safari para instalar e receber notificações. Ela leu a instrução, achou confuso, fechou e voltou pra conversa.",
+        "friction_encountered": "In-app browser do WhatsApp no iOS não permite adicionar à tela de início — o aviso apareceu mas ela não entendeu imediatamente que precisava copiar o link e abrir no Safari separado. Ninguém explicou esse passo extra.",
+        "emotion": "cética",
+        "outcome": "failed"
+      },
+      {
+        "day": 1,
+        "moment": "Segunda tentativa — abre o link no Safari após a amiga explicar por mensagem",
+        "action_taken": "A amiga mandou um áudio explicando 'abre no Safari, não pelo WhatsApp'. Sônia copiou o link, abriu o Safari, acessou o site. Apareceu o walkthrough de instalação com o passo de 'Compartilhar > Adicionar à Tela de Início'. Ela seguiu os passos devagar, um por um, e conseguiu adicionar o ícone na tela.",
+        "friction_encountered": "O ícone do 'Compartilhar' no Safari (a setinha pra cima) não é óbvio pra ela — ficou procurando por uns 30 segundos antes de achar. Mas o walkthrough mostrava exatamente aquele ícone e ela reconheceu.",
+        "emotion": "concentrada",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Abre o app pela primeira vez com calma e vê o onboarding",
+        "action_taken": "Abriu o ícone novo na tela de início, viu os 4 cards animados ciclar — show, sarau, festa, stand-up. Ficou olhando os dois primeiros, o sarau literário chamou atenção. Esperou o ciclo terminar antes de clicar em qualquer coisa.",
+        "friction_encountered": "null",
+        "emotion": "curiosa",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed e descobre o filtro de mood 'Cultural'",
+        "action_taken": "No feed principal, clicou em 'Cultural' nos filtros de mood. O feed reduziu bastante — apareceram eventos no MON, um sarau no Santa Felicidade, uma exposição de gravura no SESC Portão. Ficou uns 10 minutos lendo os cards, gostou do 'vibe summary' que descrevia o clima de cada evento (ex: 'intimista, público seleto, sem dress code').",
+        "friction_encountered": "Um evento do MON aparecia com data passada — ela ficou confusa por um segundo se o filtro mostrava eventos futuros ou histórico. Verificou a data manualmente e percebeu que era um evento recorrente com próxima edição em duas semanas. O card não deixava isso claro de imediato.",
+        "emotion": "animada",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Faz o primeiro RSVP — sarau literário no SESC Cajuru",
+        "action_taken": "Voltou ao app especificamente pra confirmar o sarau que tinha visto no dia 2. Clicou em 'Bora' no card. Apareceu o pitch personalizado 'Bora porque…' gerado pelo Claude — algo como 'sarau intimista, sem microfone aberto obrigatório, boa pra quem quer ouvir mais do que falar'. Isso a convenceu. Confirmou o RSVP.",
+        "friction_encountered": "Depois de confirmar, ela procurou algum botão pra 'salvar pra decidir depois' — mas só tinha o RSVP definitivo ou sair. Ficou levemente incomodada, lembrou que no Sympla também não tem essa opção sem se cadastrar. Aceitou o RSVP como marcador mesmo.",
+        "emotion": "satisfeita",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Recebe notificação push e estranha o remetente",
+        "action_taken": "Uma notificação apareceu: '🎉 Débora vai · Sarau Literário SESC Cajuru'. Sônia não lembrava que tinha permitido notificações — abriu o app, viu que a Débora (a amiga que mandou o link) também tinha dado RSVP no mesmo evento. Ficou levemente surpresa e achou graça.",
+        "friction_encountered": "Ela não sabia que tinha aceitado permissão de notificações — provavelmente clicou em 'Permitir' distraidamente após o login. Não foi um problema grave, mas ela ficou um segundo confusa sobre de onde vinha a notificação antes de associar ao auê.",
+        "emotion": "surpresa positiva",
+        "outcome": "won"
+      },
+      {
+        "day": 7,
+        "moment": "Tenta convidar o filho mais novo via link de evento",
+        "action_taken": "Encontrou um evento de cinema mudo com piano ao vivo no MON — exatamente o tipo de coisa que sabia que o filho (28 anos, mora em São Paulo) curtiria. Procurou dentro do card algum botão de 'compartilhar' ou 'mandar link'. Encontrou uma opção de compartilhamento, copiou o link e mandou pelo WhatsApp pro filho.",
+        "friction_encountered": "O filho abriu o link no Android e conseguiu ver a página do evento sem instalar nada — isso funcionou. Mas ele não tinha conta no auê e não podia ver quem mais ia nem confirmar presença sem criar conta. Sônia ficou satisfeita que pelo menos ele viu o evento, mas não sabia se ele tinha conseguido entender o contexto do app.",
+        "emotion": "carinhosa",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Descobre a seção de Conquistas esperando badge do primeiro RSVP",
+        "action_taken": "Navegando no Profile, encontrou a seção de Conquistas. Viu o badge 'Primeiro auê' listado mas ainda não desbloqueado. Leu o subtítulo: 'Conquistas atualizam após o evento rolar.' Entendeu a lógica, achou razoável — 'faz sentido, eu ainda nem fui'.",
+        "friction_encountered": "Ficou uns 20 segundos tentando entender a diferença entre os tiers Bronze/Prata/Ouro/Platina antes de entender que era progressão. O layout não era imediatamente intuitivo pra ela.",
+        "emotion": "neutra",
+        "outcome": "partial"
+      },
+      {
+        "day": 10,
+        "moment": "Vai ao sarau e volta pra ver se o badge apareceu",
+        "action_taken": "Foi ao sarau no SESC Cajuru — sozinha, como planejava. Gostou do evento. No dia seguinte abriu o app e foi direto na seção de Conquistas. O badge 'Primeiro auê' (Bronze) tinha aparecido. Ficou olhando por alguns segundos com uma expressão de 'ah, que fofo'.",
+        "friction_encountered": "null",
+        "emotion": "nostálgica/terna",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Tenta entender os Grupos e se pergunta se precisa disso",
+        "action_taken": "Explorou a aba Comunidade, viu a seção de Grupos. Tinha um grupo público chamado 'Amantes de Arte Curitiba' com 12 membros. Ficou na dúvida se entrava — leu a descrição, viu que membros adicionam eventos pro grupo. Não entrou, mas não saiu da tela imediatamente. Ficou olhando.",
+        "friction_encountered": "Não havia forma de ver os eventos que o grupo tinha adicionado sem entrar. Ela queria uma prévia antes de se comprometer. Essa barreira de 'entrar pra ver' a fez recuar — perfil introvertido clássico.",
+        "emotion": "hesitante",
+        "outcome": "failed"
+      },
+      {
+        "day": 13,
+        "moment": "Faz segundo RSVP — exposição de gravura no SESC Portão — e manda pro filho",
+        "action_taken": "Voltou ao feed com filtro Cultural, encontrou a exposição que tinha visto no dia 2. Confirmou RSVP. Dessa vez mandou o link pro filho antes mesmo de ir, escrevendo 'se vier em dezembro tem isso aqui'. Usou o auê como forma de mostrar ao filho o que ela anda fazendo em Curitiba.",
+        "friction_encountered": "null",
+        "emotion": "conectada",
+        "outcome": "won"
+      },
+      {
+        "day": 14,
+        "moment": "Verifica Recordes Pessoais e compara com o que usava antes",
+        "action_taken": "Encontrou a seção de Recordes Pessoais no Profile. Via: 2 RSVPs, 2 bairros, streak de 1 semana. Ficou olhando os números e pensou em voz alta (sozinha) 'mais do que eu achei que ia sair esse mês'. Comparou mentalmente com o Sympla — onde ela mal lembrava a senha — e com o Instagram, onde os eventos de Curitiba sumiam no meio de posts de SP. Não desinstalou.",
+        "friction_encountered": "O 'lugar predileto' ainda não aparecia populado — precisaria de 3+ RSVPs no mesmo venue. Ela achou que o dado estava quebrado por um segundo antes de entender que era threshold mínimo.",
+        "emotion": "levemente orgulhosa",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P39",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Recebe o link pelo WhatsApp e tenta abrir direto no chat",
+        "action_taken": "Clica no link https://reroot-production.up.railway.app dentro do próprio WhatsApp no Android — o app abre no in-app browser do WhatsApp",
+        "friction_encountered": "A página carrega mas o banner de instalação PWA não aparece no in-app browser do WhatsApp. Rodrigo rola a tela, vê o catálogo de eventos por cima, mas não entende que precisa abrir no Chrome pra instalar. Fecha sem instalar, acha que 'é só um site mesmo'.",
+        "emotion": "indiferente",
+        "outcome": "partial"
+      },
+      {
+        "day": 2,
+        "moment": "Amigo pergunta no WhatsApp se ele já instalou — Rodrigo tenta de novo, dessa vez no Chrome",
+        "action_taken": "Abre o link no Chrome do Android. O walkthrough do /install detecta a plataforma corretamente e aparece o prompt 'Adicionar à tela inicial'. Ele segue os passos, ícone do auê aparece no home screen.",
+        "friction_encountered": "O nome do ícone aparece como 'Reroot' (ainda não rebrandeado para auê em produção neste momento do beta). Rodrigo estranha levemente — o amigo falou 'auê' mas o ícone diz outra coisa. Segue em frente mas fica com um pé atrás sobre se instalou a coisa certa.",
+        "emotion": "cauteloso",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Vê o onboarding com os 4 cards rotativos",
+        "action_taken": "Abre o app recém-instalado, assiste aos cards animados: show, sarau, festa, stand-up. Fica parado vendo os três primeiros ciclos sem interagir.",
+        "friction_encountered": "O card de sarau não diz nada pra ele — ele não sabe bem o que é sarau e por um segundo acha que o app é 'coisa de artista'. O card de stand-up aparece logo depois e ele relaxa. Continua o onboarding.",
+        "emotion": "curioso",
+        "outcome": "won"
+      },
+      {
+        "day": 3,
+        "moment": "Explora o feed pela primeira vez e tenta entender os filtros de mood",
+        "action_taken": "Abre o app numa tarde de quarta remota. Clica em 'Ativo', 'Cultural', 'Tudo' em sequência testando os filtros. Lê alguns cards de eventos do fim de semana.",
+        "friction_encountered": "Os filtros de mood (Tranquilo, Ativo, Criativo…) não são intuitivos pra ele — ele pensa em tipo de evento (show, stand-up) não em 'vibe'. Fica um tempo em 'Tudo' porque não sabe em qual mood stand-up se encaixa. Não tem filtro por bairro ou distância, que era exatamente o que ele queria: saber se vale pegar o carro do Boa Vista.",
+        "emotion": "cético",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Encontra um show de rock nacional no sábado e lê o pitch 'Bora porque…'",
+        "action_taken": "Acha um evento de rock no Tulipa (bairro Rebouças) para sábado. Clica no card, lê o vibe summary gerado pelo Claude. O pitch menciona que é uma banda curitibana com influências de Ultraje a Rigor e que o público costuma ser da faixa dos 35+.",
+        "friction_encountered": "Quer saber se alguém que ele conhece vai. A seção 'amigos vão' aparece mas está vazia — ele ainda não conectou nenhum amigo. Esse é exatamente o gatilho que faltou: sem social proof de amigo, ele hesita em confirmar presença e comprar ingresso.",
+        "emotion": "hesitante",
+        "outcome": "partial"
+      },
+      {
+        "day": 4,
+        "moment": "Tenta conectar o amigo que mandou o link usando o invite code",
+        "action_taken": "Navega até a aba Comunidade, encontra a seção Amigos, tenta adicionar o amigo. Pede o código de 6 caracteres pelo WhatsApp. O amigo demora 2h pra responder com o código.",
+        "friction_encountered": "O fluxo de invite code funciona quando o amigo responde, mas a fricção é humana: exige uma troca ativa de mensagem fora do app. Rodrigo acha 'trabalhoso pra conectar uma pessoa só'. Compara mentalmente com o Spotify Friends onde viu o perfil do amigo aparecer automaticamente pelo Google.",
+        "emotion": "impaciente",
+        "outcome": "won"
+      },
+      {
+        "day": 5,
+        "moment": "Vê que o amigo confirmou presença no show de rock e faz o primeiro RSVP",
+        "action_taken": "Abre o app de manhã, o feed mostra o mesmo evento do Tulipa agora com '1 amigo vai' no card. Clica, vê o nome do amigo, lê o pitch de novo e confirma presença. Primeiro RSVP do Rodrigo no auê.",
+        "friction_encountered": "Nenhuma fricção técnica. O flow foi exatamente o que ele esperava: ver amigo confirmado → decidir ir. Mas nota que o app não tem link direto pra compra de ingresso integrado — vai ter que ir pro Sympla mesmo assim pra comprar. Pequeno atrito extra, mas não quebra a experiência.",
+        "emotion": "animado",
+        "outcome": "won"
+      },
+      {
+        "day": 6,
+        "moment": "Recebe notificação push sobre o amigo confirmando outro evento",
+        "action_taken": "Sábado de manhã, chega uma notificação: '🎉 [Nome do amigo] vai · Stand-up no Estação'. Rodrigo vê no lock screen, desliza pra abrir o app.",
+        "friction_encountered": "Nenhuma fricção técnica — a notificação funcionou corretamente no Android. Mas o evento de stand-up é naquela mesma noite do show de rock que ele já confirmou. Vê o chip '⚠ Mesma noite' no card do stand-up. Fica na dúvida por uns minutos, mas decide manter o rock.",
+        "emotion": "engajado",
+        "outcome": "won"
+      },
+      {
+        "day": 8,
+        "moment": "Volta ao app na segunda depois do show e procura a badge de 'Primeiro auê'",
+        "action_taken": "Domingo à noite, abre o app esperando ver alguma conquista desbloqueada. O evento do sábado ainda não aparece como 'acontecido' — a mature filter ainda não processou porque o evento acabou poucas horas atrás. Navega até a seção de Conquistas, vê 'Conquistas atualizam após o evento rolar.' no subtítulo.",
+        "friction_encountered": "Rodrigo entende o texto mas acha frustrante: ele foi ao show, quer o feedback imediato, e o app não dá. Compara mentalmente com jogos e apps de fitness que dão badge na hora. Racionalmente aceita a lógica anti-game, emocionalmente fica sem o dopamine hit esperado.",
+        "emotion": "frustrado",
+        "outcome": "partial"
+      },
+      {
+        "day": 9,
+        "moment": "Badge 'Primeiro auê' aparece e ele descobre os Recordes Pessoais",
+        "action_taken": "Abre o app na terça e a badge finalmente está lá: 'Primeiro auê — Bronze'. Fica satisfeito. Rolando a tela de perfil descobre a seção Recordes Pessoais: 1 RSVP, 1 bairro visitado (Rebouças), streak de 1 semana.",
+        "friction_encountered": "Nenhuma fricção. Fica alguns minutos comparando os números, gosta da ideia de 'números que só sobem'. Pensa que seria legal ver isso daqui a seis meses. É a primeira vez que ele sente que o app tem memória dele.",
+        "emotion": "satisfeito",
+        "outcome": "won"
+      },
+      {
+        "day": 11,
+        "moment": "Tenta usar o Companion Chat AI pra achar show de rock na próxima semana",
+        "action_taken": "Descobre o chatbot lateral. Digita: 'tem algum show de rock nacional esse fim de semana no Curitiba?'. Recebe uma resposta com 2 sugestões do catálogo.",
+        "friction_encountered": "Uma das sugestões é um evento que já passou (data incorreta no catálogo agregado, provavelmente lag de atualização de uma fonte externa). Rodrigo nota o erro, perde um pouco da confiança no chatbot. Vai checar manualmente no feed e confirma que o evento realmente já rolou. Anota mentalmente: 'não confiar 100% no chat pra data'.",
+        "emotion": "cético",
+        "outcome": "partial"
+      },
+      {
+        "day": 13,
+        "moment": "Faz segundo RSVP e tenta compartilhar o QR code com o amigo pessoalmente",
+        "action_taken": "Confirma presença num stand-up comedy no Centro para o sábado seguinte. No perfil, descobre o QR code, toca pra ver em fullscreen. Mostra pro amigo quando se encontram pra almoçar — amigo escaneia e os dois ficam conectados de forma mais rápida do que pelo código de 6 chars.",
+        "friction_encountered": "Nenhuma fricção técnica. Mas Rodrigo percebe que o QR só funciona pessoalmente — não dá pra mandar por WhatsApp como imagem de forma útil (um print poderia ser falsificado ou expirado). Pra quem mora em Boa Vista e encontra os amigos menos frequentemente, o fluxo de invite code pelo WhatsApp vai ser o default mesmo.",
+        "emotion": "curiosamente satisfeito",
+        "outcome": "won"
+      }
+    ]
+  },
+  {
+    "persona_id": "P40",
+    "moments": [
+      {
+        "day": 1,
+        "moment": "Fábio recebe o link do auê pelo WhatsApp no intervalo do almoço",
+        "action_taken": "Clicou no link direto pelo WhatsApp no Android — abriu o navegador interno do WhatsApp. Viu a tela de instalação mas o walkthrough detectou in-app browser e mostrou aviso pedindo pra abrir no Chrome. Fábio não entendeu bem a diferença, tentou ignorar o aviso e continuar mesmo assim.",
+        "friction_encountered": "O navegador in-app do WhatsApp não suporta instalação de PWA. O botão 'Adicionar à tela' não apareceu. Fábio ficou olhando pra tela sem saber o que fazer com a instrução 'Abra no Chrome'.",
+        "emotion": "confuso",
+        "outcome": "partial"
+      },
+      {
+        "day": 1,
+        "moment": "Fábio reabre o link no Chrome à noite, em casa",
+        "action_taken": "Copiou o link do WhatsApp, abriu o Chrome manualmente, colou a URL. O walkthrough do /install detectou Android Chrome corretamente e mostrou o passo a passo com screenshot de 'Adicionar à tela inicial'. Fábio seguiu sem problema — ícone apareceu na home.",
+        "friction_encountered": "Levou uns 40 segundos pra achar onde colar a URL no Chrome — hábito de não usar a barra de endereço com frequência. Mas conseguiu.",
+        "emotion": "satisfeito",
+        "outcome": "won"
+      },
+      {
+        "day": 2,
+        "moment": "Primeira abertura do app — vê o onboarding com os 4 cards rotativos",
+        "action_taken": "Abriu o ícone na home. Viu os cards animados passando: show, sarau, festa, stand-up. Assistiu os três primeiros sem mexer, esperando carregar alguma coisa. Só no quarto percebeu que era intencional, uma prévia mesmo.",
+        "friction_encountered": "Achou que estava travado no carregamento por uns 8 segundos. Não tinha indicador claro de 'isso é um teaser, não um loading'. Quase fechou.",
+        "emotion": "impaciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 2,
+        "moment": "Explora o feed de eventos pela primeira vez, testa filtros de mood",
+        "action_taken": "Passou pelos filtros: ficou em 'Tudo', depois clicou 'Cultural', depois 'Tranquilo'. Leu dois ou três cards com o vibe summary. Gostou da linguagem — 'rola', 'vai' — achou diferente dos apps que conhece. Procurou algum filtro por horário ou período do dia mas não encontrou.",
+        "friction_encountered": "Não existe filtro por período do dia (tarde, noite). Fábio sai do turno da manhã às 13h e queria ver só o que rola a partir da tarde — teve que checar data/hora de cada card manualmente.",
+        "emotion": "curioso mas levemente frustrado",
+        "outcome": "partial"
+      },
+      {
+        "day": 3,
+        "moment": "Encontra um evento de stand-up gratuito no Centro e faz o primeiro RSVP",
+        "action_taken": "Viu o card de um stand-up no sábado, gratuito, no Centro. Leu o vibe summary, tocou em 'Bora porque…' e leu o pitch gerado pelo Claude — achou engraçado e pertinente. Confirmou presença. App pediu permissão de notificações, ele aceitou sem pensar muito.",
+        "friction_encountered": "O evento era a dois dias. Fábio ficou ligeiramente incomodado que não havia nenhum amigo conectado ainda — o campo 'amigos vão' estava vazio, zero referência social. Esse era exatamente o ponto que mais queria ver.",
+        "emotion": "animado mas levemente inseguro",
+        "outcome": "won"
+      },
+      {
+        "day": 4,
+        "moment": "Tenta conectar o amigo que mandou o link para ver se aparece nos eventos",
+        "action_taken": "Foi na aba Comunidade, viu que o default era Grupos. Procurou onde adicionar amigos — achou a sub-aba 'Amigos', tentou buscar pelo nome do amigo (Rodrigo). Não apareceu nada. Percebeu que precisava de um invite code. Mandou mensagem pro Rodrigo pelo WhatsApp pedindo o código.",
+        "friction_encountered": "O fluxo de adicionar amigo exige código de 6 caracteres — Fábio não sabia disso. Achou burocrático pra algo que parecia simples. Ficou esperando Rodrigo responder.",
+        "emotion": "impaciente",
+        "outcome": "partial"
+      },
+      {
+        "day": 5,
+        "moment": "Rodrigo manda o invite code, Fábio conecta e recebe primeira notificação push",
+        "action_taken": "Inseriu o código, conectou com Rodrigo. Alguns minutos depois chegou uma notificação: '🎉 Rodrigo vai · Stand-up Gratuito Centro'. Fábio abriu — era o mesmo evento que ele tinha confirmado. Ficou genuinamente satisfeito.",
+        "friction_encountered": "Nenhuma fricção técnica. Mas Fábio percebeu que a notificação veio só porque Rodrigo confirmou depois dele — não tinha como saber se Rodrigo ia antes de dar o RSVP. A informação social chegou tarde no processo de decisão.",
+        "emotion": "animado",
+        "outcome": "won"
+      },
+      {
+        "day": 6,
+        "moment": "Vai ao stand-up no sábado, evento acontece de verdade",
+        "action_taken": "Foi ao evento, gostou. Voltou ao app no domingo pra ver se tinha ganho alguma badge. Foi na aba de Conquistas, viu 'Conquistas atualizam após o evento rolar' e as badges ainda mostravam zero. Ficou confuso — o evento tinha rolado.",
+        "friction_encountered": "O subtítulo 'Conquistas atualizam após o evento rolar' é correto mas não informa prazo. Fábio não sabe se é em horas, no dia seguinte, ou manual. Ficou sem entender se era bug ou funcionalidade.",
+        "emotion": "confuso",
+        "outcome": "partial"
+      },
+      {
+        "day": 7,
+        "moment": "Badge 'Primeiro auê' aparece — descobre as Conquistas e os Recordes Pessoais",
+        "action_taken": "Na segunda-feira abriu o app e viu que a badge 'Primeiro auê' tinha sido desbloqueada. Explorou a seção de Recordes — viu RSVPs total (1), bairros visitados (1), lugar predileto. Achou interessante, ficou alguns minutos olhando. Comparou mentalmente com o Sympla que nunca deu nenhum feedback do tipo.",
+        "friction_encountered": "Nenhuma fricção. Mas achou o número de bairros (1) meio magro — percebeu que vai demorar pra ter dados interessantes. Expectativa de longo prazo que talvez não sustente o engajamento de curto prazo.",
+        "emotion": "levemente orgulhoso, curioso",
+        "outcome": "won"
+      },
+      {
+        "day": 9,
+        "moment": "Fim de semana com o filho de 16 anos — procura programa pra ir junto",
+        "action_taken": "Filtrou por 'Cultural' e 'Família'. Encontrou dois eventos que pareciam interessantes: uma exposição aberta no Jardim Botânico e uma feira de quadrinhos. Leu os vibe summaries pros dois, achou o pitch da feira mais adequado pro filho teen. Mostrou o card pro filho.",
+        "friction_encountered": "O filho olhou por dois segundos e deu de ombros — não era o app dele, era o do pai. Fábio não conseguiu compartilhar o evento de forma fluida pro celular do filho (não há share nativo do card). Acabou mandando o link da página do evento pelo WhatsApp, o que funcionou mas saiu do app.",
+        "emotion": "motivado mas um pouco travado",
+        "outcome": "partial"
+      },
+      {
+        "day": 11,
+        "moment": "Faz segundo RSVP — feira de quadrinhos com o filho — e explora o QR code do perfil",
+        "action_taken": "Confirmou presença na feira de quadrinhos. Navegando no próprio perfil, encontrou o QR code. Tocou, abriu em fullscreen. Ficou olhando sem saber muito bem pra que servia — leu a descrição, entendeu que era pra outro celular escanear. Chamou o filho, escaneou. O filho achou 'estranho mas ok'.",
+        "friction_encountered": "O QR code como feature de adicionar amigo é pouco intuitivo pra Fábio — ele associa QR a pagamento ou cardápio de restaurante, não a redes sociais. Funcionou, mas pareceu desnecessariamente complicado quando o invite code pelo WhatsApp já tinha funcionado antes.",
+        "emotion": "neutro, levemente entediado com a feature",
+        "outcome": "partial"
+      },
+      {
+        "day": 14,
+        "moment": "Fim das duas semanas — balanço espontâneo enquanto espera o ônibus",
+        "action_taken": "Abriu o app por hábito pra checar o que rola no próximo fim de semana. Ficou dois eventos no feed que chamaram atenção. Não desinstalou. Mandou mensagem pro Rodrigo perguntando se ia em algum.",
+        "friction_encountered": "Ainda sente falta de filtro por horário/período do dia — é a fricção que mais volta. E o campo social ainda é fraco: só Rodrigo conectado, a promessa de 'ver quem vai' depende de mais amigos no app, e convencer esses amigos a instalar via Chrome (não pelo WhatsApp direto) é uma barreira real.",
+        "emotion": "engajado com ressalvas",
+        "outcome": "won"
+      }
+    ]
+  }
+]
