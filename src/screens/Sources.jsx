@@ -611,7 +611,7 @@ function UngeocodedVenues({ email }) {
         gap: 8, marginBottom: 8,
       }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#8D6E10' }}>
-          📍 {venues.length} local{venues.length === 1 ? '' : 'ais'} sem coordenadas
+          📍 {venues.length} {venues.length === 1 ? 'local' : 'locais'} sem coordenadas
         </div>
         <button
           onClick={() => setExpanded(v => !v)}
