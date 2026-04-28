@@ -5,6 +5,18 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { fetchGroups, createGroup, joinGroup } from '../services/api'
 
+// Tells App.jsx to hide the FAB while this sheet is open. Without this the
+// FAB visually overlaps the sheet because AnimatedPage establishes its own
+// stacking context (framer-motion transform), trapping the sheet inside it
+// while the FAB sits one level up at the phone-shell.
+function useModalBroadcast(open) {
+  useEffect(() => {
+    if (!open) return
+    window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: 1 } }))
+    return () => window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: -1 } }))
+  }, [open])
+}
+
 export default function Groups({ embedded = false }) {
   const { state } = useApp()
   const t = useT()
@@ -146,6 +158,8 @@ function CreateGroupSheet({ open, onClose, onCreate, t }) {
   const [visibility, setVisibility] = useState('private')
   const [saving, setSaving] = useState(false)
 
+  useModalBroadcast(open)
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!name.trim()) return
@@ -215,6 +229,8 @@ function JoinGroupSheet({ open, onClose, onJoin, t }) {
   const [code, setCode] = useState('')
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
+
+  useModalBroadcast(open)
 
   async function handleSubmit(e) {
     e.preventDefault()

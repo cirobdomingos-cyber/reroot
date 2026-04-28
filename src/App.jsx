@@ -54,6 +54,12 @@ export default function App() {
   const location = useLocation()
   const t = useT()
   const [companionOpen, setCompanionOpen] = useState(false)
+  // Counter incremented/decremented by any bottom-sheet via the `aue-modal`
+  // CustomEvent. We hide the FAB while any sheet is open because the FAB
+  // sits in the phone-shell stacking context and AnimatedPage establishes
+  // its own (framer-motion sets inline transform), so a sheet inside an
+  // AnimatedPage cannot stack above the FAB no matter how high its z-index.
+  const [modalCount, setModalCount] = useState(0)
 
   // First-visit coach-mark: show a hint bubble for 6s the first time the FAB renders,
   // then fall back to the compact extended-FAB. Persisted in localStorage.
@@ -93,6 +99,16 @@ export default function App() {
     function onOpen() { setCompanionOpen(true) }
     window.addEventListener('open-companion', onOpen)
     return () => window.removeEventListener('open-companion', onOpen)
+  }, [])
+
+  // Track open bottom-sheets globally so we can hide the FAB while one is up.
+  useEffect(() => {
+    function onModal(e) {
+      const delta = e.detail?.delta || 0
+      setModalCount(c => Math.max(0, c + delta))
+    }
+    window.addEventListener('aue-modal', onModal)
+    return () => window.removeEventListener('aue-modal', onModal)
   }, [])
 
   function openCompanion() {
@@ -149,7 +165,7 @@ export default function App() {
       {showNav && <BottomNav />}
 
       {/* AI Companion FAB — extended pill, pulsing halo, first-visit hint bubble */}
-      {showNav && !companionOpen && (
+      {showNav && !companionOpen && modalCount === 0 && (
         <div style={{ position: 'absolute', bottom: 84, right: 16, zIndex: 50 }}>
           {/* First-visit hint bubble */}
           <AnimatePresence>
