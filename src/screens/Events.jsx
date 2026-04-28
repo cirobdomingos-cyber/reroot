@@ -14,6 +14,7 @@ import Aue from '../components/Aue'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
+import EventsMap from '../components/EventsMap'
 import { shareLink, appLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -134,6 +135,11 @@ export default function Events() {
   const t = useT()
 
   const [activeFilter, setActiveFilter]     = useState('all')
+  // List vs. Map view. Filters/search apply to both — only the
+  // presentation changes. Map view drops events without lat/lng (they
+  // exist in the catalog but haven't been geocoded yet) and shows a
+  // banner when the active filter yields zero pinnable events.
+  const [viewMode, setViewMode]             = useState('list')
   // Specific-day filter from the week strip (events mode). null = all days.
   const [selectedDay, setSelectedDay]       = useState(null)
   const [venueSubFilter, setVenueSubFilter] = useState('all')
@@ -634,8 +640,46 @@ export default function Events() {
 
       </div>
 
-      {/* ── Week strip with per-day event counts (events mode only) ── */}
+      {/* ── Lista / Mapa toggle. Same filters drive both — only the
+          presentation flips. We hide the week strip in Mapa mode
+          because day-of-week filtering doesn't add much when you're
+          looking at "what's nearby"; users can still narrow by
+          category and search. */}
       {!isVenueMode && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0 16px 8px' }}>
+          <div style={{
+            display: 'inline-flex', background: 'var(--cream)',
+            border: '1px solid var(--border)', borderRadius: 999,
+            padding: 3,
+          }}>
+            {[
+              { id: 'list', emoji: '📋', label: 'Lista' },
+              { id: 'map',  emoji: '🗺️', label: 'Mapa' },
+            ].map(opt => {
+              const active = viewMode === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setViewMode(opt.id)}
+                  style={{
+                    padding: '6px 14px', borderRadius: 999,
+                    border: 'none', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 600,
+                    background: active ? 'var(--terra)' : 'transparent',
+                    color: active ? 'white' : 'var(--charcoal-mid)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {opt.emoji} {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Week strip with per-day event counts (events mode only) ── */}
+      {!isVenueMode && viewMode === 'list' && (
         <EventsWeekStrip
           events={eventsForStrip}
           selectedDay={selectedDay}
@@ -800,8 +844,13 @@ export default function Events() {
           : <>{[0,1,2,3,4].map(i => <EventCardSkeleton key={i} />)}</>
       )}
 
+      {/* ── Map view ── */}
+      {!loading && !isVenueMode && viewMode === 'map' && (
+        <EventsMap events={filteredEvents} onPinTap={(ev) => openDetail(ev.id)} />
+      )}
+
       {/* ── List ── */}
-      {!loading && (
+      {!loading && viewMode === 'list' && (
         <AnimatePresence mode="popLayout">
           {filteredEvents.length === 0 ? (
             <motion.div

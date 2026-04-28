@@ -154,6 +154,10 @@ function normalizeBackendEvent(ev) {
     createdBy: ev.createdBy ?? null,
     inviteeCount: ev.inviteeCount ?? 0,
     note: ev.note ?? '',
+    // Pin coordinates — populated when the venue's been geocoded. Map
+    // view filters out events where these are null. List view ignores.
+    lat: typeof ev.lat === 'number' ? ev.lat : null,
+    lng: typeof ev.lng === 'number' ? ev.lng : null,
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
