@@ -21,6 +21,28 @@ import { NavigationRoute, registerRoute } from 'workbox-routing'
 // __WB_MANIFEST is replaced at build time by VitePWA with the actual asset list
 precacheAndRoute(self.__WB_MANIFEST)
 
+// ── Auto-update on every deploy ──────────────────────────────────────────────
+//
+// VitePWA's `registerType: 'autoUpdate'` only works in `generateSW` mode; in
+// `injectManifest` mode (which we use to attach the push handler) we have to
+// drive the lifecycle ourselves.
+//
+// skipWaiting(): the new SW activates as soon as it finishes installing,
+// without waiting for every tab/window to close — so a single reload after
+// a deploy actually picks up the new chunks. Default Workbox behavior is
+// to leave the old SW in charge until the user fully quits the PWA, which
+// turns "Ctrl+Shift+R" into a question mark.
+//
+// clients.claim(): once activated, the SW takes over open pages immediately
+// instead of waiting for the next navigation. Combined with skipWaiting,
+// this means a reload right after deploy pulls the new shell + chunks.
+//
+// Tradeoff: a fetch in flight during the SW swap could read a mix of old
+// and new chunks (tiny window). Self-corrects on the next navigation, and
+// is much better than the alternative of users seeing stale code for days.
+self.addEventListener('install', () => self.skipWaiting())
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
+
 // Navigation fallback: any in-scope navigation that's not a precached file
 // gets the cached index.html so the SPA boots offline. We DENY a few server
 // routes that must reach the backend (or we'd serve the React shell instead
