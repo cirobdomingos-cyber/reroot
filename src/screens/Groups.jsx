@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
@@ -15,6 +16,15 @@ function useModalBroadcast(open) {
     window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: 1 } }))
     return () => window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: -1 } }))
   }, [open])
+}
+
+// Portal target for bottom-sheets. We portal to document.body so the sheet
+// anchors to the real viewport instead of being trapped inside AnimatedPage
+// (whose framer-motion transform creates a containing block that clips
+// `position: fixed; bottom: 0`, hiding the action row on smaller phones).
+function SheetPortal({ children }) {
+  if (typeof document === 'undefined') return null
+  return createPortal(children, document.body)
 }
 
 export default function Groups({ embedded = false }) {
@@ -173,54 +183,56 @@ function CreateGroupSheet({ open, onClose, onCreate, t }) {
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} style={backdropStyle} />
-          <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
-            </div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 16, color: 'var(--charcoal)' }}>
-              {t.groups_create_title}
-            </h3>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <label style={labelStyle}>{t.groups_name}</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder={t.groups_name_placeholder}
-                style={inputStyle} required />
+    <SheetPortal>
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={onClose} style={backdropStyle} />
+            <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 16, color: 'var(--charcoal)' }}>
+                {t.groups_create_title}
+              </h3>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={labelStyle}>{t.groups_name}</label>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder={t.groups_name_placeholder}
+                  style={inputStyle} required />
 
-              <label style={labelStyle}>{t.groups_description}</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder={t.groups_desc_placeholder}
-                rows={2} style={{ ...inputStyle, resize: 'none' }} />
+                <label style={labelStyle}>{t.groups_description}</label>
+                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder={t.groups_desc_placeholder}
+                  rows={2} style={{ ...inputStyle, resize: 'none' }} />
 
-              <label style={labelStyle}>{t.groups_visibility}</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['private', 'public'].map(v => (
-                  <button key={v} type="button" onClick={() => setVisibility(v)}
-                    style={{
-                      flex: 1, padding: '10px 12px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                      background: visibility === v ? 'var(--sage)' : 'var(--cream)',
-                      color: visibility === v ? 'white' : 'var(--charcoal)',
-                      fontWeight: 600, fontSize: 13,
-                    }}>
-                    {v === 'private' ? `🔒 ${t.groups_private}` : `🌍 ${t.groups_public}`}
+                <label style={labelStyle}>{t.groups_visibility}</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['private', 'public'].map(v => (
+                    <button key={v} type="button" onClick={() => setVisibility(v)}
+                      style={{
+                        flex: 1, padding: '10px 12px', borderRadius: 12, border: 'none', cursor: 'pointer',
+                        background: visibility === v ? 'var(--sage)' : 'var(--cream)',
+                        color: visibility === v ? 'white' : 'var(--charcoal)',
+                        fontWeight: 600, fontSize: 13,
+                      }}>
+                      {v === 'private' ? `🔒 ${t.groups_private}` : `🌍 ${t.groups_public}`}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button type="button" onClick={onClose} style={cancelBtnStyle}>{t.groups_cancel}</button>
+                  <button type="submit" disabled={saving || !name.trim()} style={submitBtnStyle}>
+                    {saving ? '...' : t.groups_save}
                   </button>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button type="button" onClick={onClose} style={cancelBtnStyle}>{t.groups_cancel}</button>
-                <button type="submit" disabled={saving || !name.trim()} style={submitBtnStyle}>
-                  {saving ? '...' : t.groups_save}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </SheetPortal>
   )
 }
 
@@ -250,40 +262,42 @@ function JoinGroupSheet({ open, onClose, onJoin, t }) {
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} style={backdropStyle} />
-          <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
-            </div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 16, color: 'var(--charcoal)' }}>
-              {t.groups_join_title}
-            </h3>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <label style={labelStyle}>{t.groups_join_code_label}</label>
-              <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                placeholder={t.groups_join_code_placeholder} style={{ ...inputStyle, letterSpacing: 2, textAlign: 'center', fontWeight: 700 }}
-                maxLength={8} required />
-
-              {status === 'success' && <p style={{ color: 'var(--sage)', fontSize: 13, textAlign: 'center' }}>{t.groups_join_success}</p>}
-              {status === 'already' && <p style={{ color: 'var(--terra)', fontSize: 13, textAlign: 'center' }}>{t.groups_join_already}</p>}
-              {status === 'not_found' && <p style={{ color: '#e74c3c', fontSize: 13, textAlign: 'center' }}>{t.groups_join_not_found}</p>}
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button type="button" onClick={onClose} style={cancelBtnStyle}>{t.groups_cancel}</button>
-                <button type="submit" disabled={loading || !code.trim()} style={submitBtnStyle}>
-                  {loading ? '...' : t.groups_join_btn}
-                </button>
+    <SheetPortal>
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={onClose} style={backdropStyle} />
+            <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
               </div>
-            </form>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+              <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 16, color: 'var(--charcoal)' }}>
+                {t.groups_join_title}
+              </h3>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={labelStyle}>{t.groups_join_code_label}</label>
+                <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
+                  placeholder={t.groups_join_code_placeholder} style={{ ...inputStyle, letterSpacing: 2, textAlign: 'center', fontWeight: 700 }}
+                  maxLength={8} required />
+
+                {status === 'success' && <p style={{ color: 'var(--sage)', fontSize: 13, textAlign: 'center' }}>{t.groups_join_success}</p>}
+                {status === 'already' && <p style={{ color: 'var(--terra)', fontSize: 13, textAlign: 'center' }}>{t.groups_join_already}</p>}
+                {status === 'not_found' && <p style={{ color: '#e74c3c', fontSize: 13, textAlign: 'center' }}>{t.groups_join_not_found}</p>}
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button type="button" onClick={onClose} style={cancelBtnStyle}>{t.groups_cancel}</button>
+                  <button type="submit" disabled={loading || !code.trim()} style={submitBtnStyle}>
+                    {loading ? '...' : t.groups_join_btn}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </SheetPortal>
   )
 }
 
@@ -307,18 +321,20 @@ const adminBadgeStyle = {
 }
 
 const backdropStyle = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200,
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999,
 }
 
-// Cap at 90% viewport + scroll internally so the submit stays reachable
-// even when iOS keyboard pushes content up. safe-area-inset-bottom keeps
-// it clear of the iPhone home bar.
+// Cap at 85% viewport + scroll internally so the submit stays reachable
+// even when iOS keyboard pushes content up. The sheet is portaled to
+// document.body, so `bottom: 0` is the real viewport bottom — we add
+// generous bottom padding (safe-area + 24px) to lift the Cancel/Create
+// row clear of the iPhone home indicator on every device.
 const sheetStyle = {
   position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
   borderRadius: '20px 20px 0 0',
-  padding: '8px 20px max(28px, env(safe-area-inset-bottom))',
-  zIndex: 201,
-  maxHeight: '90vh',
+  padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
+  zIndex: 1000,
+  maxHeight: '85vh',
   overflowY: 'auto',
   overscrollBehavior: 'contain',
   WebkitOverflowScrolling: 'touch',
