@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { fetchSources } from '../services/api'
 import { useApp } from '../context/AppContext'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
@@ -179,6 +183,12 @@ export default function Sources() {
           two paths share the same UX. */}
       {!loading && canCurate && (
         <AddHandleForm email={email} onAdded={refreshSources} />
+      )}
+
+      {/* Curator-only: list of venues missing coordinates. Pin-on-map
+          editor opens when one's tapped. */}
+      {!loading && canCurate && (
+        <UngeocodedVenues email={email} />
       )}
 
       {/* Search */}
@@ -554,4 +564,356 @@ function SourceRow({ source: s, onOpen }) {
       </div>
     </div>
   )
+}
+
+
+// ── Curator UI: ungeocoded venues + manual fix sheet ──────────────────
+
+const CTBA_CENTER = [-25.4284, -49.2733]
+
+function UngeocodedVenues({ email }) {
+  const [venues, setVenues] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(null)  // venue dict or null
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/venues?requesting_email=${encodeURIComponent(email)}&status=pending`,
+      )
+      if (r.ok) {
+        const data = await r.json()
+        setVenues(data.venues || [])
+      }
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [email])
+
+  if (loading) return null
+  if (!venues.length) return null
+
+  // Default: collapsed strip showing just the count + a "Ver lista" link.
+  // Expanded: scrollable list with click-to-edit. Editor sheet (with the
+  // pin-on-map) opens for the picked venue.
+  const visible = expanded ? venues : venues.slice(0, 6)
+
+  return (
+    <div style={{
+      margin: '0 16px 14px', padding: '12px 14px',
+      background: '#FFF8E1', border: '1px solid #FFD54F',
+      borderRadius: 12,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 8, marginBottom: 8,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#8D6E10' }}>
+          📍 {venues.length} local{venues.length === 1 ? '' : 'ais'} sem coordenadas
+        </div>
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 11, fontWeight: 700, color: '#8D6E10',
+          }}
+        >
+          {expanded ? '− Esconder' : '+ Ver lista'}
+        </button>
+      </div>
+      <div style={{
+        fontSize: 11, color: '#8D6E10', marginBottom: 10, lineHeight: 1.4,
+      }}>
+        O Nominatim não achou esses locais. Toca pra colocar a coordenada
+        manualmente — pode digitar o endereço, lat/lng, ou pinar direto no
+        mapa.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {visible.map(v => (
+          <button
+            key={v.name_normalized}
+            onClick={() => setEditing(v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 10px', background: 'white',
+              border: '1px solid var(--border)', borderRadius: 8,
+              cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {v.name_original}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                {v.event_count} evento{v.event_count === 1 ? '' : 's'}
+                {v.attempt_count > 0 && ` · ${v.attempt_count} tentativa${v.attempt_count === 1 ? '' : 's'}`}
+              </div>
+            </div>
+            <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</span>
+          </button>
+        ))}
+        {!expanded && venues.length > visible.length && (
+          <button
+            onClick={() => setExpanded(true)}
+            style={{
+              padding: '6px', background: 'none', border: 'none',
+              cursor: 'pointer', fontSize: 11, color: '#8D6E10', fontWeight: 700,
+            }}
+          >
+            + {venues.length - visible.length} mais
+          </button>
+        )}
+      </div>
+      {editing && (
+        <VenueLocationSheet
+          venue={editing}
+          email={email}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Hook component — react-leaflet's way to attach a click handler to the
+// MapContainer. Drops a pin where the user tapped.
+function MapClickHandler({ onClick }) {
+  useMapEvents({ click: (e) => onClick(e.latlng) })
+  return null
+}
+
+const _pinIcon = L.divIcon({
+  className: 'aue-edit-pin',
+  html: `<div style="
+    display:flex;align-items:center;justify-content:center;
+    width:34px;height:34px;
+    background:var(--terra,#E8623F);color:white;
+    border:2px solid white;border-radius:50%;
+    font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.25);
+  ">📍</div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
+})
+
+function VenueLocationSheet({ venue, email, onClose, onSaved }) {
+  const [address, setAddress] = useState(venue.address || '')
+  const [lat, setLat] = useState(venue.lat ?? null)
+  const [lng, setLng] = useState(venue.lng ?? null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  function setFromMap(latlng) {
+    setLat(Number(latlng.lat.toFixed(6)))
+    setLng(Number(latlng.lng.toFixed(6)))
+  }
+
+  async function retryNominatim() {
+    setError(null); setBusy(true)
+    try {
+      // Save the address first if it changed — gives Nominatim better input.
+      if ((address || '') !== (venue.address || '')) {
+        await fetch(
+          `${API_BASE}/admin/venues/${encodeURIComponent(venue.name_normalized)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requesting_email: email,
+              lat: null, lng: null, address,
+            }),
+          },
+        )
+      }
+      const r = await fetch(
+        `${API_BASE}/admin/venues/${encodeURIComponent(venue.name_normalized)}/geocode?requesting_email=${encodeURIComponent(email)}`,
+        { method: 'POST' },
+      )
+      const data = await r.json()
+      if (data.ok) {
+        setLat(data.lat); setLng(data.lng)
+      } else {
+        setError('Nominatim ainda não achou. Tenta pinar no mapa abaixo.')
+      }
+    } catch (e) {
+      setError(e?.message || 'Falha ao buscar')
+    }
+    setBusy(false)
+  }
+
+  async function save() {
+    if (lat == null || lng == null) {
+      setError('Defina uma coordenada antes de salvar (ou pina no mapa).')
+      return
+    }
+    setError(null); setBusy(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/venues/${encodeURIComponent(venue.name_normalized)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requesting_email: email,
+            lat: Number(lat), lng: Number(lng),
+            address: address || undefined,
+          }),
+        },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      onSaved?.()
+    } catch (e) {
+      setError(e?.message || 'Falha ao salvar')
+    }
+    setBusy(false)
+  }
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <>
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 999,
+      }} />
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: 'white', borderRadius: '20px 20px 0 0',
+        padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
+        zIndex: 1000, maxHeight: '90vh', overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(44,44,44,0.18)' }} />
+        </div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>
+          {venue.name_original}
+        </h2>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+          {venue.event_count} evento{venue.event_count === 1 ? '' : 's'} ·{' '}
+          {venue.geocode_status === 'failed' ? 'Nominatim falhou' : 'sem tentativa ainda'}
+        </div>
+
+        <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
+          Endereço (opcional, ajuda o Nominatim)
+        </label>
+        <input
+          value={address}
+          onChange={e => setAddress(e.target.value)}
+          placeholder="Rua XV de Novembro, 123, Curitiba"
+          style={_inputStyle}
+        />
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button
+            onClick={retryNominatim}
+            disabled={busy}
+            style={_secondaryBtn}
+          >
+            🔁 Tentar Nominatim
+          </button>
+        </div>
+
+        <div style={{ marginTop: 14, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 4 }}>
+            Pinar no mapa (toque pra mover)
+          </div>
+          <div style={{
+            height: 280, borderRadius: 10, overflow: 'hidden',
+            border: '1px solid var(--border)',
+          }}>
+            <MapContainer
+              center={lat != null && lng != null ? [lat, lng] : CTBA_CENTER}
+              zoom={lat != null ? 16 : 12}
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; OpenStreetMap'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <MapClickHandler onClick={setFromMap} />
+              {lat != null && lng != null && (
+                <Marker position={[lat, lng]} icon={_pinIcon} />
+              )}
+            </MapContainer>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
+              Latitude
+            </label>
+            <input
+              value={lat ?? ''}
+              onChange={e => setLat(e.target.value === '' ? null : Number(e.target.value))}
+              type="number"
+              step="any"
+              placeholder="-25.4284"
+              style={_inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
+              Longitude
+            </label>
+            <input
+              value={lng ?? ''}
+              onChange={e => setLng(e.target.value === '' ? null : Number(e.target.value))}
+              type="number"
+              step="any"
+              placeholder="-49.2733"
+              style={_inputStyle}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div style={{
+            marginTop: 10, padding: '8px 12px', background: '#FFEBEE',
+            color: '#B71C1C', borderRadius: 8, fontSize: 12,
+          }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button onClick={onClose} disabled={busy} style={_secondaryBtn}>
+            Cancelar
+          </button>
+          <button onClick={save} disabled={busy} style={_primaryBtn}>
+            {busy ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </>,
+    document.body,
+  )
+}
+
+const _inputStyle = {
+  width: '100%', boxSizing: 'border-box',
+  padding: '8px 10px', borderRadius: 8,
+  border: '1px solid var(--border)', fontSize: 13,
+  background: 'white', color: 'var(--charcoal)', outline: 'none',
+  marginTop: 4,
+}
+
+const _secondaryBtn = {
+  flex: 1, padding: '10px 14px', borderRadius: 10,
+  border: '1px solid var(--border)', background: 'white',
+  fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
+  cursor: 'pointer',
+}
+
+const _primaryBtn = {
+  flex: 1, padding: '10px 14px', borderRadius: 10,
+  border: 'none', background: 'var(--terra)',
+  fontSize: 13, fontWeight: 700, color: 'white',
+  cursor: 'pointer',
 }

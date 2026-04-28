@@ -1977,6 +1977,109 @@ def list_venues_pending_geocode(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_venues(status: str = "all") -> list[dict]:
+    """List venues for the curator UI. `status` filters:
+       'pending' → never tried OR failed (the actionable bucket)
+       'ok'      → successfully geocoded (review/correct)
+       'all'     → everything
+
+    Each row includes how many catalog events reference the venue, so
+    curators can prioritize high-traffic gaps first ("Bar do Sax: 12
+    eventos sem coordenadas" beats "Random Café: 1 evento")."""
+    where = ""
+    if status == "pending":
+        where = "WHERE v.geocode_status != 'ok'"
+    elif status == "ok":
+        where = "WHERE v.geocode_status = 'ok'"
+    sql = f"""
+        SELECT v.name_normalized, v.name_original, v.address,
+               v.lat, v.lng, v.geocode_status, v.geocode_source,
+               v.attempt_count, v.last_attempt_at,
+               (SELECT COUNT(*) FROM events e
+                WHERE LOWER(json_extract(e.payload, '$.venue_name')) IS NOT NULL
+                  AND json_extract(e.payload, '$.venue_name') != ''
+               ) AS _total_events_unused
+        FROM venues v
+        {where}
+        ORDER BY v.attempt_count ASC, v.name_original ASC
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql).fetchall()
+    out: list[dict] = []
+    # Per-venue event count needs a separate pass — JSON match in SQL
+    # doesn't normalize the way our Python helper does.
+    counts = _venue_event_counts()
+    for r in rows:
+        d = dict(r)
+        d.pop("_total_events_unused", None)
+        d["event_count"] = counts.get(d["name_normalized"], 0)
+        out.append(d)
+    # Sort: high-event-count first within the result so the curator's
+    # next click moves the most pins.
+    out.sort(key=lambda v: (-v["event_count"], v["name_original"].lower()))
+    return out
+
+
+def _venue_event_counts() -> dict[str, int]:
+    """{normalized_key: count_of_events} across the whole catalog.
+    Used by the venue list to prioritize high-traffic gaps first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT json_extract(payload, '$.venue_name') AS name FROM events"
+        ).fetchall()
+    out: dict[str, int] = {}
+    for r in rows:
+        key = _normalize_venue_key(r["name"] or "")
+        if key:
+            out[key] = out.get(key, 0) + 1
+    return out
+
+
+def update_venue_manual(
+    name_normalized: str,
+    lat: Optional[float],
+    lng: Optional[float],
+    address: Optional[str] = None,
+) -> bool:
+    """Curator-driven update. Setting lat+lng marks the row 'ok' and
+    records the source as 'manual' so the geocode backfill skips it on
+    the next pass. Setting lat/lng to None resets the row to 'pending'
+    so the next backfill retries — useful when the curator updates the
+    address and wants Nominatim to retry. Returns True if a row was
+    updated.
+
+    Address is optional: when provided it's persisted (so the next
+    Nominatim retry has better input); when omitted the existing
+    address is left untouched."""
+    now = datetime.now(timezone.utc).isoformat()
+    has_coords = lat is not None and lng is not None
+    status = "ok" if has_coords else "pending"
+    source = "manual" if has_coords else ""
+    with get_conn() as conn:
+        if address is None:
+            cur = conn.execute(
+                """UPDATE venues SET
+                       lat = ?, lng = ?,
+                       geocode_status = ?, geocode_source = ?,
+                       geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
+                       last_attempt_at = ?
+                   WHERE name_normalized = ?""",
+                (lat, lng, status, source, status, now, now, name_normalized),
+            )
+        else:
+            cur = conn.execute(
+                """UPDATE venues SET
+                       lat = ?, lng = ?, address = ?,
+                       geocode_status = ?, geocode_source = ?,
+                       geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
+                       last_attempt_at = ?
+                   WHERE name_normalized = ?""",
+                (lat, lng, address, status, source, status, now, now, name_normalized),
+            )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def record_geocode_result(
     name_normalized: str,
     lat: Optional[float],

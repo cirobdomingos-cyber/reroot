@@ -3248,6 +3248,80 @@ def admin_geocode_venues(requesting_email: str = "", limit: int = 25):
     return geocode_pending_venues(limit=limit)
 
 
+@app.get("/admin/venues")
+def admin_list_venues(requesting_email: str = "", status: str = "all"):
+    """List venues for the curator UI — typically filtered to status='pending'
+    so the curator can hand-fix what Nominatim couldn't resolve. Each row
+    includes the catalog event count so the high-impact gaps surface first."""
+    _require_curator(requesting_email)
+    if status not in ("pending", "ok", "all"):
+        raise HTTPException(status_code=400, detail="status must be 'pending', 'ok', or 'all'")
+    return {"venues": db.list_venues(status=status)}
+
+
+class VenueUpdateRequest(BaseModel):
+    requesting_email: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    address: Optional[str] = None  # when set, persisted for future Nominatim retries
+
+
+@app.put("/admin/venues/{name_normalized}")
+def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
+    """Manual curator override. Two modes:
+      - lat + lng provided → mark 'ok', source='manual'. Pin appears
+        on the map immediately; Nominatim won't overwrite it.
+      - lat + lng both None → mark 'pending'. Useful when the curator
+        updated the address and wants Nominatim to retry on the next
+        backfill pass.
+
+    Address is optional in both modes: when provided we persist it (so
+    the next geocode retry has cleaner input); when omitted the existing
+    address is left untouched."""
+    _require_curator(req.requesting_email)
+    if (req.lat is None) != (req.lng is None):
+        raise HTTPException(status_code=400, detail="lat and lng must both be provided or both omitted")
+    if req.lat is not None:
+        # Sanity check — Curitiba lives roughly between (-25.7, -49.5)
+        # and (-25.2, -49.0). Accepting anything in Brazil's lat range
+        # would drop pins on the wrong continent if a typo creeps in.
+        if not (-26.5 <= req.lat <= -24.5 and -50.5 <= req.lng <= -48.0):
+            raise HTTPException(
+                status_code=400,
+                detail="Coordenadas fora da região de Curitiba — verifica antes de salvar",
+            )
+    ok = db.update_venue_manual(
+        name_normalized=name_normalized,
+        lat=req.lat, lng=req.lng,
+        address=req.address,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Local não encontrado")
+    return {"ok": True}
+
+
+@app.post("/admin/venues/{name_normalized}/geocode")
+def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
+    """Re-run Nominatim against a single venue immediately — useful right
+    after the curator updated the address and wants the pin to fill in
+    without waiting for the next /admin/venues/geocode batch."""
+    _require_curator(requesting_email)
+    from geocoding import geocode_one
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT name_original, address FROM venues WHERE name_normalized = ?",
+            (name_normalized,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Local não encontrado")
+    coords = geocode_one(row["name_original"], row["address"] or "")
+    if coords:
+        db.record_geocode_result(name_normalized, coords[0], coords[1])
+        return {"ok": True, "lat": coords[0], "lng": coords[1]}
+    db.record_geocode_result(name_normalized, None, None)
+    return {"ok": False, "lat": None, "lng": None}
+
+
 @app.delete("/admin/cleanup/dead-sources")
 def admin_cleanup_dead_sources(requesting_email: str = ""):
     """Purge events (and their RSVPs) from scrapers we no longer run.
