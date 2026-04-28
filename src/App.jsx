@@ -197,20 +197,10 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* Pulsing halo ring (behind button) */}
-          <motion.div
-            aria-hidden
-            animate={{ scale: [1, 1.35, 1], opacity: [0.55, 0, 0.55] }}
-            transition={{ duration: 2.2, repeat: Infinity, ease: 'easeOut' }}
-            style={{
-              position: 'absolute', inset: 0,
-              borderRadius: 999,
-              background: 'rgba(232, 98, 63, 0.45)',
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* Extended FAB */}
+          {/* Compact FAB — was a 56px tall pill with a pulsing halo and 32px
+              icon, which the user flagged as "ocupando muito espaço". Now a
+              ~36px slim pill with no halo, lighter shadow, smaller icon —
+              still discoverable, no longer dominates the lower-right corner. */}
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -219,20 +209,20 @@ export default function App() {
             aria-label={t.companion_fab_hint ?? 'Companion chat'}
             style={{
               position: 'relative',
-              display: 'flex', alignItems: 'center', gap: 8,
-              height: 56, padding: '0 18px 0 14px',
+              display: 'flex', alignItems: 'center', gap: 6,
+              height: 36, padding: '0 12px 0 9px',
               borderRadius: 999, border: 'none', cursor: 'pointer',
               background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
               color: 'white',
-              boxShadow: '0 6px 20px rgba(232, 98, 63, 0.55), 0 0 0 3px rgba(255,255,255,0.08)',
-              fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
+              boxShadow: '0 3px 10px rgba(232, 98, 63, 0.35)',
+              fontSize: 12, fontWeight: 700, letterSpacing: 0.2,
             }}
           >
             <span style={{
-              width: 32, height: 32, borderRadius: '50%',
+              width: 22, height: 22, borderRadius: '50%',
               background: 'rgba(255,255,255,0.22)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18,
+              fontSize: 13,
             }}>🎉</span>
             {t.companion_fab_label ?? 'Companheiro'}
           </motion.button>

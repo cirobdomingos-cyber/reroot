@@ -892,20 +892,22 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     ? ev.venue.split(' · ')
     : [ev.venue, null]
 
-  // Group events get an inset left stripe (no layout shift) and a tinted
-  // background so they read instantly as "yours / private". Recurring
-  // routines go bolder — full lilac wash + matching border + stripe — so
-  // skim recognition is immediate; the user wanted the whole card to read
-  // as "this is a regular thing", not a subtle accent.
+  // Highlight model (inverted from a prior iteration that highlighted
+  // routines): the SCARCE thing is what catches the eye. Routines happen
+  // every week by definition, so they read as background; one-off events
+  // are time-sensitive ("if you miss it, it's gone") and get the warm
+  // peach wash + brand-tinted border. Group events keep their cream + sage
+  // stripe (different signal: "yours / private"). The date label still
+  // says "Toda quinta · próx. X" for routines, so the recurrence info is
+  // preserved in text without competing visually with one-offs.
   const isGroupEvent = !!ev.isGroupEvent
   const isRecurring = !!ev.isRecurring && !isGroupEvent
+  const isOneOff = !isGroupEvent && !isRecurring
   const cardBackground = isGroupEvent ? '#FFFAF3'
-                       : isRecurring ? '#EDE7F6'  // lavender wash, ~2× saturation of prior #F5F3FF
-                       : 'white'
-  const cardBorder = isRecurring ? '1px solid #B39DDB' : '1px solid var(--border)'
-  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)'
-                   : isRecurring ? 'inset 4px 0 0 #7E57C2'
-                   : 'none'
+                       : isOneOff ? '#FFF4EC'   // warm peach — brand-aligned, soft
+                       : 'white'                  // routines = neutral default
+  const cardBorder = isOneOff ? '1px solid #FFCCB0' : '1px solid var(--border)'
+  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)' : 'none'
 
   return (
     <div
@@ -957,32 +959,17 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           )}
         </div>
 
-        {/* Date + time. Recurring events take the lilac/purple color so
-            the date itself reads as "regular thing" — same color family
-            as the left stripe and badge, anchoring the routine signal. */}
+        {/* Date + time. One-offs get the terra accent (matches the peach
+            card wash and signals "time-sensitive"); routines stay charcoal
+            so the row reads as ambient/regular. The date label itself
+            already includes "Toda quinta · próx. X" for routines, so the
+            recurrence info survives the visual de-emphasis. */}
         <div style={{
           fontSize: 11, fontWeight: 600, marginTop: 2,
-          color: isRecurring ? '#7E57C2' : 'var(--terra)',
+          color: isOneOff ? 'var(--terra)' : 'var(--charcoal-mid)',
         }}>
           {isRecurring ? '🔁' : '🗓'} {ev.date} · {ev.time}
         </div>
-
-        {/* Routine badge — bolder than the date hint above so a skim catches
-            it. Renders the day pattern ("Toda quinta-feira") inside an
-            ROTINA-prefixed pill; with the lilac stripe + bg + colored date,
-            three independent signals say "this is a weekly thing". */}
-        {isRecurring && (
-          <div style={{
-            fontSize: 10, fontWeight: 800, color: 'white',
-            background: '#7E57C2', padding: '3px 9px', borderRadius: 6,
-            marginTop: 6, display: 'inline-flex', alignItems: 'center',
-            gap: 5, letterSpacing: 0.4, textTransform: 'uppercase',
-          }}>
-            🔁 Rotina · <span style={{
-              textTransform: 'none', letterSpacing: 0, fontWeight: 600,
-            }}>{ev.recurrenceLabel || 'recorrente'}</span>
-          </div>
-        )}
 
         {/* Friends going (live from friends_feed) */}
         {friendsGoing.length > 0 && (
