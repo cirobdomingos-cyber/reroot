@@ -1004,11 +1004,9 @@ export default function Events() {
                     friendsGoing={friendsByEventId[ev.id] || []}
                     personalChip={getPersonalChip(ev, state.rsvps)}
                     onOpen={() => openDetail(ev.id)}
-                    onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
                     onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
-                    onAddToGroup={state.googleUser?.id && !ev.isGroupEvent ? () => setAddToGroupEvent(ev) : null}
                     t={t}
                   />
                 </motion.div>
@@ -1296,11 +1294,17 @@ function SourceBadge({ ev, onSourceTap }) {
 }
 
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onRsvp, onFriend, onSourceTap, onOpenGroup, onAddToGroup, t }) {
-  // Split "Venue Name · Neighborhood" into two parts
-  const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, t }) {
+  // Prefer the geocoded bairro from venues.bairro (canonical, normalized
+  // by Nominatim/Claude) over the legacy `Venue · Bairro` suffix split.
+  // Falls back to the suffix when the venue isn't in the cache yet so
+  // newly-scraped events still show their bairro until the auto-pipeline
+  // catches up.
+  const [venueRaw, suffixBairro] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
     : [ev.venue, null]
+  const venueName = (venueRaw || '').trim()
+  const venueNeighborhood = (ev.bairro && ev.bairro.trim()) || suffixBairro
 
   // Highlight model (inverted from a prior iteration that highlighted
   // routines): the SCARCE thing is what catches the eye. Routines happen
@@ -1473,30 +1477,11 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
               </span>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <AddToCalendar event={ev} />
-            {onAddToGroup && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onAddToGroup() }}
-                title="Adicionar a um grupo"
-                style={{
-                  background: 'none', border: '1px solid var(--border)',
-                  borderRadius: 10, cursor: 'pointer',
-                  padding: '5px 9px', fontSize: 13,
-                  color: 'var(--charcoal-mid)',
-                }}
-              >
-                👥
-              </button>
-            )}
-            <button
-              className="btn btn--primary"
-              style={{ width: 'auto', padding: '7px 16px', fontSize: 11, borderRadius: 10 }}
-              onClick={onRsvp}
-            >
-              {rsvped ? `✓ ${t.events_rsvped.replace(' ✓', '')}` : t.events_rsvp}
-            </button>
-          </div>
+          {/* Action buttons removed from the card. AddToCalendar / Add
+              to group / Confirmar all live in the DetailPanel instead —
+              tapping the card opens it. The card stays an info surface;
+              actions are one tap deeper, where they have room and don't
+              compete with the dozens of cards in the list. */}
         </div>
       </div>
     </div>

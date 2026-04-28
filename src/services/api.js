@@ -158,6 +158,10 @@ function normalizeBackendEvent(ev) {
     // view filters out events where these are null. List view ignores.
     lat: typeof ev.lat === 'number' ? ev.lat : null,
     lng: typeof ev.lng === 'number' ? ev.lng : null,
+    // Bairro from the geocoded venues cache. Frontend prefers this over
+    // the legacy "Venue · Bairro" suffix split for the venue chip on
+    // event cards. Empty string when the venue isn't geocoded yet.
+    bairro: ev.bairro || '',
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
