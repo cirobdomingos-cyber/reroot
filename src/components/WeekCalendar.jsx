@@ -57,8 +57,12 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
   })
 
   groupEvents.forEach(ev => {
-    if (!ev.date_start) return
-    const key = ev.date_start.slice(0, 10)
+    // Group events from /groups have date_start (snake_case); events from
+    // /events/group return dateStart (camelCase). Both flow through here,
+    // so accept either.
+    const ds = ev.date_start || ev.dateStart
+    if (!ds) return
+    const key = ds.slice(0, 10)
     if (!eventsByDate[key]) eventsByDate[key] = []
     eventsByDate[key].push({ ...ev, _type: 'group' })
   })
