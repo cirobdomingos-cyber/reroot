@@ -741,7 +741,18 @@ export default function Events() {
                           icon: ev.icon, headerBg: ev.headerBg,
                         },
                       })}
-                      onOpen={() => openDetail(ev.id)}
+                      onOpen={() => {
+                        // Tracked-IG venues: open the source page (shows
+                        // recent events from this handle's posts). Falls
+                        // back to the generic detail panel if igHandle
+                        // isn't present (defensive — shouldn't happen
+                        // since /places now always returns IG-backed venues).
+                        if (ev.igHandle) {
+                          navigate(`/sources/${encodeURIComponent('ig:' + ev.igHandle)}`)
+                        } else {
+                          openDetail(ev.id)
+                        }
+                      }}
                       t={t}
                     />
                   </motion.div>

@@ -64,7 +64,7 @@ Essa curadoria é o que faz o usuário falar "esse app realmente tem os eventos 
 | Database | SQLite (dev + prod, com volume Railway) |
 | Scraping | httpx + BeautifulSoup, [Apify](https://apify.com) pro Instagram |
 | LLM enrichment | Claude Haiku 4.5 (Anthropic API) |
-| Venue data | Google Places API (Nearby Search) |
+| Venue data | Tracked Instagram handles (`tracked_ig_accounts`) — bars/cafés/parques/livrarias vêm da nossa lista curada |
 | Auth | Google Identity Services (OAuth) |
 | Notifications | Web Push API (VAPID) + Capacitor Local Notifications |
 | State | useReducer + localStorage (offline-first) |
@@ -158,7 +158,6 @@ Variáveis de ambiente (criar `backend/.env`):
 ```
 ANTHROPIC_API_KEY=your_key       # obrigatório pro enrichment + extração Instagram
 APIFY_API_TOKEN=apify_api_xxx    # obrigatório pra pipeline Instagram
-GOOGLE_PLACES_API_KEY=your_key   # opcional — habilita seção Bares & Cafés
 TWA_SHA256_FINGERPRINT=AB:CD:... # opcional — preenche /.well-known/assetlinks.json (só prod)
 ENV_NAME=production              # production (default) | staging — gates comportamento per-environment
 ```

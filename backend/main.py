@@ -52,7 +52,6 @@ class Settings(BaseSettings):
     instagram_user: str = ""
     instagram_pass: str = ""
     apify_api_token: str = ""
-    google_places_api_key: str = ""
     city: str = "Curitiba"
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
@@ -767,7 +766,6 @@ def health():
         "sesc_configured": True,
         "teatro_guaira_configured": True,
         "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
-        "google_places_configured": bool(settings.google_places_api_key),
         # SMTP shows whether scrape-summary emails will fire. Both vars
         # required — missing either silently skips email send.
         "smtp_configured": bool(settings.smtp_user and settings.smtp_password),
@@ -1869,17 +1867,19 @@ def friends_feed(google_id: str):
     return {"events": events}
 
 
-# ── Google Places ──
-
-_CURITIBA_LAT = -25.4290
-_CURITIBA_LNG = -49.2671
-_PLACES_BASE = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+# ── Venues (tracked IG handles by category) ──
+#
+# Was previously backed by Google Places (random bakeries, no curation).
+# Now each chip surfaces the IG handles WE curate via tracked_ig_accounts,
+# grouped by their `category` field. Tap a card → opens that handle's
+# source page (recent events scraped from their IG feed).
 
 _PLACES_TYPE_MAP: dict[str, list[str]] = {
-    "bars_cafes": ["bar", "cafe"],
-    "parks":      ["park"],
-    "cinema":     ["movie_theater"],
-    "bookstore":  ["book_store"],
+    # chip id → list of category values stored on tracked_ig_accounts
+    "bars_cafes": ["bar", "cafe", "restaurante"],
+    "parks":      ["parque"],
+    "cinema":     ["cinema"],
+    "bookstore":  ["livraria"],
 }
 
 _PLACES_META: dict[str, dict] = {
@@ -1903,132 +1903,79 @@ _PLACES_META: dict[str, dict] = {
 
 
 @app.get("/places")
-async def list_places(type: str = "bars_cafes", limit: int = 20):
+def list_places(type: str = "bars_cafes", limit: int = 50):
     """
-    Busca locais reais no Google Places por tipo e retorna no formato frontend.
-    type: bars_cafes | parks | cinema | bookstore
+    Returns the venues we curate for the given chip type, sourced from
+    tracked_ig_accounts (NOT Google Places, which we removed). Each entry
+    is shaped to look like an event-card so the existing Events tab UI
+    can render it without forking; tap → /sources/ig:<handle>.
     """
-    if not settings.google_places_api_key:
-        raise HTTPException(status_code=503, detail="GOOGLE_PLACES_API_KEY não configurada")
-
-    place_types = _PLACES_TYPE_MAP.get(type, ["bar"])
+    cats = _PLACES_TYPE_MAP.get(type, ["bar"])
     meta = _PLACES_META.get(type, _PLACES_META["bars_cafes"])
+    cats_set = {c.lower() for c in cats}
 
-    all_places: list[dict] = []
-    seen_ids: set[str] = set()
+    accounts = [
+        a for a in db.list_ig_accounts()
+        if a.get("enabled")
+        and (a.get("category") or "").strip().lower() in cats_set
+    ]
 
-    google_statuses: list[str] = []
+    # Compute future-event yield per handle so we can surface "rolling"
+    # venues first — the handles that actually post events read as the
+    # most alive bars/cafés to a browser.
+    yields_by_handle = db.count_future_events_by_ig_handle()
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        for place_type in place_types:
-            params = {
-                "location": f"{_CURITIBA_LAT},{_CURITIBA_LNG}",
-                "radius": 8000,
-                "type": place_type,
-                "key": settings.google_places_api_key,
-                "language": "pt-BR",
-            }
-            r = await client.get(_PLACES_BASE, params=params)
-            if r.status_code != 200:
-                log.warning(f"Places API erro {r.status_code} para type={place_type}")
-                google_statuses.append(f"{place_type}:http_{r.status_code}")
-                continue
-            body = r.json()
-            g_status = body.get("status", "UNKNOWN")
-            google_statuses.append(f"{place_type}:{g_status}")
-            if g_status not in ("OK", "ZERO_RESULTS"):
-                log.warning(f"Places API status={g_status} para type={place_type}: {body.get('error_message', '')}")
-            raw_results = body.get("results", [])
-            google_statuses[-1] += f"({len(raw_results)} raw)"
-            for place in raw_results:
-                pid = place.get("place_id", "")
-                if not pid:
-                    continue
-                if pid not in seen_ids:
-                    seen_ids.add(pid)
-                    try:
-                        all_places.append(_place_to_frontend(place, type, meta))
-                    except Exception as e:
-                        log.warning(f"Places parse error for {pid}: {e}")
-
-    # Sort by number of ratings (popularity proxy), cap at limit
-    all_places.sort(key=lambda p: p["attendeesConfirmed"], reverse=True)
-    top = all_places[:limit]
-
-    return {"places": top, "total": len(all_places), "type": type}
+    venues = [_ig_handle_to_venue(a, type, meta, yields_by_handle.get(a["handle"], 0))
+              for a in accounts]
+    venues.sort(key=lambda v: (-v["attendeesConfirmed"], v["name"].lower()))
+    return {"places": venues[:limit], "total": len(venues), "type": type}
 
 
-def _place_to_frontend(place: dict, category: str, meta: dict) -> dict:
-    rating = place.get("rating", 0)
-    ratings_total = place.get("user_ratings_total", 0)
-    price_level = place.get("price_level", 1)
-    vicinity = place.get("vicinity", "Curitiba")
-    name = place["name"]
-    place_id = place["place_id"]
-    types = place.get("types", [])
-    # Google's nearbysearch returns opening_hours.open_now as a boolean
-    # (when the venue has hours data registered). It's present today —
-    # absent for parks and some institutions. Surface it as `openNow` so
-    # the frontend can show an "Aberto agora" pill.
-    opening = place.get("opening_hours") or {}
-    open_now = opening.get("open_now") if isinstance(opening, dict) else None
-
-    _price_labels = {0: "Gratuito", 1: "R$ até 30", 2: "R$ 30–60", 3: "R$ 60–100", 4: "R$ 100+"}
-    _price_tiers  = {0: "free", 1: "low", 2: "mid", 3: "high", 4: "high"}
-
-    has_food = any(t in types for t in ["restaurant", "food", "meal_takeaway", "bakery", "cafe"])
-    is_cafe = "cafe" in types or "café" in name.lower() or "coffee" in name.lower()
-    is_low_pressure = is_cafe or price_level <= 1
-
-    vibe = f"⭐ {rating}" if rating else ""
-    if ratings_total:
-        vibe += f" · {ratings_total:,} avaliações".replace(",", ".")
-
-    pitch = _places_pitch(category, is_cafe)
-    maps_url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+def _ig_handle_to_venue(acc: dict, chip_type: str, meta: dict, future_count: int) -> dict:
+    """Shape a tracked_ig_accounts row as a venue card. Reuses the event
+    shape so Events.jsx renders it without a separate code path."""
+    handle = acc["handle"]
+    name = acc.get("display_name") or acc.get("label") or f"@{handle}"
+    cat = (acc.get("category") or "").lower()
+    is_cafe = cat in ("cafe", "padaria")
+    bio = (acc.get("bio_snippet") or "").strip()[:140]
+    vibe = bio if bio else f"@{handle}"
 
     return {
-        "id": place_id,
+        "id": f"ig_handle_{handle}",
         "name": name,
-        "category": category,
+        "category": chip_type,
         "categoryLabel": meta["label"],
         "categoryEmoji": meta["emoji"],
-        "venue": f"{name} · {vicinity}",
+        "venue": f"@{handle}",
         "date": "Sempre disponível",
         "time": "",
         "duration": "",
         "headerBg": meta["headerBg"],
-        "icon": meta["icon"],
-        "price": _price_labels.get(price_level, "R$ 30–60"),
-        "priceTier": _price_tiers.get(price_level, "mid"),
-        "hasFood": has_food,
-        "isLowPressure": is_low_pressure,
-        "attendeesConfirmed": ratings_total,
-        "expectedSize": "intimate" if price_level <= 1 else "medium",
-        "vibeSummary": vibe.strip(" ·"),
-        "pitch": pitch,
-        "url": maps_url,
+        "icon": "☕" if is_cafe else meta["icon"],
+        "price": "",
+        "priceTier": "free",
+        "hasFood": cat in ("bar", "cafe", "restaurante"),
+        "isLowPressure": is_cafe,
+        # attendeesConfirmed doubles as the sort key; using future-event
+        # count makes "alive" venues bubble up.
+        "attendeesConfirmed": future_count,
+        "expectedSize": "intimate",
+        "vibeSummary": vibe,
+        "pitch": "",
+        "url": f"https://www.instagram.com/{handle}/",
         "cohortGoing": [],
-        "source": "places",
+        "source": "instagram",
+        "igHandle": handle,
         "isReal": True,
-        "rating": rating,
-        "placeSubtype": "cafe" if is_cafe else "bar",
-        "openNow": open_now,  # True | False | None (None = unknown / not registered)
+        "rating": 0,
+        "placeSubtype": cat,
+        # No "Aberto agora" — we don't have hours data. None hides the pill.
+        "openNow": None,
+        "imageUrl": acc.get("profile_pic_url") or None,
+        # Future event count surfaced so the card can show "3 eventos próximos".
+        "futureEventCount": future_count,
     }
-
-
-def _places_pitch(category: str, is_cafe: bool) -> str:
-    reasons = {
-        "bars_cafes": (
-            "Um café solo é o primeiro passo. Lugar com movimento, sem compromisso."
-            if is_cafe else
-            "Ambiente animado, fácil de entrar e sair. Bom para quebrar o isolamento."
-        ),
-        "parks": "Contato com natureza reduz cortisol. Caminhada solo ou com alguém — ambos valem.",
-        "cinema": "Programa solo sem pressão social. Ótimo para sair de casa com propósito claro.",
-        "bookstore": "Livraria é espaço de pertencimento silencioso. Fácil de ficar, fácil de ir.",
-    }
-    return reasons.get(category, "Lugar real, energia real.")
 
 
 # ── Serialização para o frontend ──
