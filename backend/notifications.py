@@ -26,6 +26,7 @@ Setup (fallback — Gmail SMTP, only works on hosts allowing port 587):
        SMTP_PASSWORD = the 16-char App Password (NOT your regular password)
 """
 import asyncio
+import json
 import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -124,10 +125,37 @@ async def send_email(settings, to: str, subject: str,
     )
 
 
-async def send_scrape_summary(settings, run_started_iso: str) -> None:
+def _ig_handle(external_id: str) -> str:
+    """Pull the handle out of `ig_<handle>_<post>`. Empty string when the
+    id doesn't fit (aue_originals, AI-generated events)."""
+    if not external_id or not external_id.startswith("ig_"):
+        return ""
+    rest = external_id[3:]
+    idx = rest.rfind("_")
+    return rest[:idx] if idx > 0 else ""
+
+
+def _format_event_short(payload: dict) -> tuple[str, str]:
+    """Return (name, when_label) for the email row."""
+    name = (payload.get("name") or "?").strip()
+    ds = (payload.get("date_start") or "")[:16]  # YYYY-MM-DDTHH:MM
+    when = ds.replace("T", " · ") if ds else "—"
+    venue = (payload.get("venue_name") or "").strip()
+    if venue:
+        return name, f"{venue} · {when}"
+    return name, when
+
+
+async def send_scrape_summary(settings, run_started_iso: str, new_event_ids: list[str] | None = None) -> None:
     """
-    Build and send a per-source summary of the scrape that started at
-    `run_started_iso`. Looks up `refresh_log` rows for that window.
+    Build and send a summary of the scrape that started at `run_started_iso`.
+
+    Post-Apr 2026 the catalog is IG-only — there's no longer a per-source
+    table to render (Sympla/Eventbrite/etc. are gone). Instead we group
+    the newly-added events by IG handle and list them inline with
+    venue + date, so the founder can scan "what showed up today, from whom".
+
+    Handles with zero hits are hidden — keeps the email tight on slow days.
     """
     if not settings.smtp_user or not settings.smtp_password:
         return
@@ -135,75 +163,93 @@ async def send_scrape_summary(settings, run_started_iso: str) -> None:
     if not rows:
         return
 
-    total_new = sum((r.get("events_new") or 0) for r in rows)
-    total_updated = sum((r.get("events_updated") or 0) for r in rows)
     errors = [r for r in rows if (r.get("error") or "").strip()]
+    total_in_db = db.count_events()
+    new_events = db.get_events_by_ids(list(new_event_ids or []))
 
-    rows_sorted = sorted(
-        rows,
-        key=lambda r: (-(r.get("events_new") or 0), r.get("source") or ""),
+    # Group new events by IG handle (or by source for non-IG events).
+    by_handle: dict[str, list[dict]] = {}
+    for ev in new_events:
+        try:
+            payload = json.loads(ev["payload"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        handle = _ig_handle(ev.get("external_id") or "")
+        if not handle:
+            handle = ev.get("source") or "outro"
+        by_handle.setdefault(handle, []).append(payload)
+
+    # Sort handles by hit count DESC, then alphabetic. Curators can scan
+    # the email top-down and see the most active handles first.
+    sorted_handles = sorted(
+        by_handle.items(),
+        key=lambda kv: (-len(kv[1]), kv[0].lower()),
     )
 
-    rows_html = ""
-    rows_text = ""
-    for r in rows_sorted:
-        src = r.get("source") or "?"
-        n = r.get("events_new") or 0
-        u = r.get("events_updated") or 0
-        err = (r.get("error") or "").strip()
-        bgcolor = "#FFEBEE" if err else ("#E8F5E9" if n > 0 else "#FAFAFA")
-        rows_html += (
-            f'<tr><td style="padding:6px 10px;border-bottom:1px solid #EEE;'
-            f'background:{bgcolor};font-family:monospace">{src}</td>'
-            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
-            f'background:{bgcolor};text-align:right">{n}</td>'
-            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
-            f'background:{bgcolor};text-align:right;color:#888">{u}</td>'
-            f'<td style="padding:6px 10px;border-bottom:1px solid #EEE;'
-            f'background:{bgcolor};color:#B71C1C;font-size:11px">{err[:80]}</td></tr>'
-        )
-        rows_text += f"  {src:18s}  new={n:3d}  updated={u:3d}  {err[:60]}\n"
-
-    total_in_db = db.count_events()
-    err_summary = f"{len(errors)} fonte(s) com erro" if errors else "nenhum erro"
-
+    total_new = len(new_events)
+    err_summary = f"{len(errors)} erro(s)" if errors else "sem erros"
     subject = f"[auê] scrape {total_new} novos · {total_in_db} no DB"
+
+    # Build the per-handle blocks. Each block is one IG handle + an inline
+    # list of its new events (name + venue/date). No table — handle blocks
+    # read better as cards on mobile email clients.
+    blocks_html = ""
+    blocks_text = ""
+    for handle, evs in sorted_handles:
+        is_ig = handle and handle != "outro" and handle in {h["handle"] for h in db.get_enabled_ig_accounts()}
+        title = f"@{handle}" if is_ig else handle
+        ig_link = f'<a href="https://www.instagram.com/{handle}/" style="color:#E8623F;text-decoration:none">{title}</a>' if is_ig else title
+        items_html = ""
+        for payload in evs:
+            name, when = _format_event_short(payload)
+            items_html += (
+                f'<li style="padding:4px 0;font-size:13px;color:#2C2C2C">'
+                f'<strong>{name}</strong><br>'
+                f'<span style="color:#888;font-size:12px">{when}</span></li>'
+            )
+            blocks_text += f"    · {name}  ({when})\n"
+        blocks_html += f"""
+  <div style="margin-bottom:16px;padding:12px 14px;background:#FAFAFA;border-left:3px solid #E8623F;border-radius:6px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:6px">
+      {ig_link} <span style="color:#888;font-weight:400">· {len(evs)} novo{'s' if len(evs) != 1 else ''}</span>
+    </div>
+    <ul style="margin:0;padding-left:18px">{items_html}</ul>
+  </div>"""
+        blocks_text = f"  {title}  ({len(evs)} novos)\n" + blocks_text
+
+    if not sorted_handles:
+        blocks_html = '<p style="color:#888;font-size:13px">Nenhum evento novo nessa rodada.</p>'
+        blocks_text = "  (nenhum evento novo)\n"
+
+    err_html = ""
+    if errors:
+        err_lines = "".join(
+            f'<li style="font-size:12px;color:#B71C1C">{(r.get("source") or "?")}: {(r.get("error") or "")[:120]}</li>'
+            for r in errors
+        )
+        err_html = f"""
+  <div style="margin-top:14px;padding:10px 14px;background:#FFEBEE;border-radius:6px">
+    <strong style="font-size:13px;color:#B71C1C">Erros:</strong>
+    <ul style="margin:6px 0 0;padding-left:18px">{err_lines}</ul>
+  </div>"""
+
     html = f"""\
 <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;color:#2C2C2C">
   <h2 style="font-size:18px;margin:0 0 4px">auê · resumo do scrape</h2>
   <p style="font-size:13px;color:#888;margin:0 0 16px">
-    {run_started_iso} · {len(rows)} fonte(s) consultada(s) · {err_summary}
+    {run_started_iso} · {total_new} novo{'s' if total_new != 1 else ''} de {len(sorted_handles)} fonte{'s' if len(sorted_handles) != 1 else ''} · {err_summary}
   </p>
-  <table style="border-collapse:collapse;width:100%;font-size:12px">
-    <thead>
-      <tr style="background:#2C2C2C;color:white">
-        <th style="padding:8px 10px;text-align:left">Fonte</th>
-        <th style="padding:8px 10px;text-align:right">Novos</th>
-        <th style="padding:8px 10px;text-align:right">Atualizados</th>
-        <th style="padding:8px 10px;text-align:left">Erro</th>
-      </tr>
-    </thead>
-    <tbody>{rows_html}</tbody>
-    <tfoot>
-      <tr style="background:#FAFAFA;font-weight:700">
-        <td style="padding:8px 10px">Total</td>
-        <td style="padding:8px 10px;text-align:right">{total_new}</td>
-        <td style="padding:8px 10px;text-align:right;color:#888">{total_updated}</td>
-        <td style="padding:8px 10px;color:#888">{total_in_db} no DB</td>
-      </tr>
-    </tfoot>
-  </table>
+  {blocks_html}
+  {err_html}
   <p style="font-size:11px;color:#999;margin-top:18px">
-    auê · enviado automaticamente após cada refresh
+    auê · enviado automaticamente após cada refresh · catálogo agora: {total_in_db} eventos
   </p>
 </div>
 """
     text = (
         f"auê — resumo do scrape\n"
-        f"{run_started_iso}  ·  {len(rows)} fontes  ·  {err_summary}\n\n"
-        f"{rows_text}\n"
-        f"Total novos: {total_new}\n"
-        f"Total atualizados: {total_updated}\n"
+        f"{run_started_iso}  ·  {total_new} novos  ·  {err_summary}\n\n"
+        f"{blocks_text}\n"
         f"Catálogo agora: {total_in_db} eventos\n"
     )
     ok = await send_email(

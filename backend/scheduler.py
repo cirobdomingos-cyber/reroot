@@ -86,12 +86,14 @@ async def run_refresh(settings):
     # ── Persistência (com contagem real por fonte) ──
     inserts_by_source: dict[str, int] = defaultdict(int)
     updates_by_source: dict[str, int] = defaultdict(int)
+    new_event_ids: list[str] = []
     saved = 0
     for ev in enriched:
         try:
             was_new = db.upsert_event(ev)
             if was_new:
                 inserts_by_source[ev.source] += 1
+                new_event_ids.append(ev.id)
             else:
                 updates_by_source[ev.source] += 1
             saved += 1
@@ -110,6 +112,7 @@ async def run_refresh(settings):
                     was_new = db.upsert_event(ev)
                     if was_new:
                         inserts_by_source[ev.source] += 1
+                        new_event_ids.append(ev.id)
                     else:
                         updates_by_source[ev.source] += 1
                     saved += 1
@@ -130,9 +133,20 @@ async def run_refresh(settings):
     total = db.count_events()
     log.info(f"✅ Refresh concluído: {saved} eventos salvos ({total} total no banco)")
 
+    # Seed the venues cache with any new venue names the scrape introduced.
+    # Geocoding itself is async + rate-limited, so we don't run Nominatim
+    # here — the curator/founder triggers /admin/venues/geocode when they
+    # want pins to fill in. This call is just "make sure the rows exist".
+    try:
+        new_venues = db.seed_venues_from_events()
+        if new_venues:
+            log.info(f"  Venues cache: {new_venues} novos pendentes de geocoding")
+    except Exception as e:
+        log.warning(f"  seed_venues_from_events falhou: {e}")
+
     # Best-effort summary email (silent if RESEND_API_KEY isn't set).
     try:
-        await send_scrape_summary(settings, run_started_iso)
+        await send_scrape_summary(settings, run_started_iso, new_event_ids)
     except Exception as e:
         log.warning(f"Scrape summary email failed: {e}")
 

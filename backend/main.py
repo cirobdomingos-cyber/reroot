@@ -880,8 +880,13 @@ def list_events(
     ))
     deduped = _dedupe_events(cleaned)[:limit]
 
+    # Pull the venue→coords map once per request so every event's
+    # _to_frontend lookup is O(1). Map is small (~150 venues) — fits
+    # easily in memory and the geocoded subset is what we actually use.
+    venue_coords = db.get_venue_coords_map()
+
     return {
-        "events": [_to_frontend(ev) for ev in deduped],
+        "events": [_to_frontend(ev, venue_coords=venue_coords) for ev in deduped],
         "total": len(deduped),
         "city": settings.city,
     }
@@ -1383,7 +1388,7 @@ def get_event(event_id: str, google_id: str = ""):
     # Catalog events first.
     ev = db.get_event_by_id(event_id)
     if ev:
-        return _to_frontend(ev, detail=True)
+        return _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
 
     # Fallback: group events (ids start with "grp_ev_") so a friend's
     # public-group RSVP can be opened from the catalog detail panel.
@@ -1634,9 +1639,10 @@ def source_detail(source_id: str):
         if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
     ]
     deduped = _dedupe_events(cleaned)
+    venue_coords = db.get_venue_coords_map()
     return {
         "source": meta,
-        "events": [_to_frontend(ev) for ev in deduped],
+        "events": [_to_frontend(ev, venue_coords=venue_coords) for ev in deduped],
         "total": len(deduped),
     }
 
@@ -2104,10 +2110,16 @@ def _next_recurring_occurrence(reference_dt: datetime, days: list) -> datetime:
     return reference_dt
 
 
-def _to_frontend(ev, detail: bool = False) -> dict:
+def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) -> dict:
     """
     Converte EnrichedEvent para o formato que o React espera.
     Mantém consistência com o shape do data/events.js existente.
+
+    `venue_coords` is an optional {normalized_key: {lat, lng}} map fetched
+    once per /events call. Per-event lookups would be N queries — passing
+    the map in keeps it batched. Events whose venue isn't in the map (or
+    whose venue_name is empty) get lat/lng=None so the frontend can drop
+    them from the map view but still show in list view.
     """
     price_label = _format_price(ev.price_min, ev.price_max, ev.currency)
     member_count = ev.attendees_confirmed  # "popularidade real"
@@ -2201,6 +2213,15 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         "recurrenceLabel": getattr(ev, "recurrence_label", None),
         "recurrenceDays": list(getattr(ev, "recurrence_days", []) or []),
     }
+
+    # Attach pin coordinates when the venue's been geocoded. Frontend uses
+    # these in the map view; list view ignores them.
+    coords = None
+    if venue_coords and ev.venue_name:
+        key = db._normalize_venue_key(ev.venue_name)
+        coords = venue_coords.get(key)
+    out["lat"] = coords["lat"] if coords else None
+    out["lng"] = coords["lng"] if coords else None
 
     if detail:
         out["description"] = ev.description
@@ -3187,6 +3208,83 @@ def admin_seed_default_ig_accounts(requesting_email: str = ""):
     if inserted:
         _bust_handle_cache()
     return {"inserted": inserted, "total_defaults": len(_DEFAULT_IG_ACCOUNTS)}
+
+
+# ── Map / venues (founder-only ops) ───────────────────────
+
+# Sources we used to scrape but have since dropped. Events from these
+# sources still sit in the DB and the rsvps table can still reference
+# them — without an explicit purge they age out only when their date
+# passes. The purge endpoint below cleans both.
+_DROPPED_SCRAPER_SOURCES = (
+    "sympla", "eventbrite", "ingresso", "meetup", "sesc", "mon",
+    "teatro_guaira", "turismo_curitiba", "catraca_livre", "google_places",
+    "prefeitura",
+)
+
+
+@app.post("/admin/venues/seed")
+def admin_seed_venues(requesting_email: str = ""):
+    """Walk every event in the catalog and ensure a venue row exists for
+    each distinct venue_name. Idempotent — safe to re-run after every
+    scrape. Curators can run it: it's append-only (INSERT OR IGNORE), no
+    rows are modified, and the only side-effect is queueing more rows
+    for the geocode backfill."""
+    _require_curator(requesting_email)
+    new_count = db.seed_venues_from_events()
+    return {"new_venues": new_count}
+
+
+@app.post("/admin/venues/geocode")
+def admin_geocode_venues(requesting_email: str = "", limit: int = 25):
+    """Run the Nominatim backfill for up to `limit` pending venues.
+    Bounded by `limit` so a single HTTP call doesn't run for minutes —
+    Nominatim's ToS asks for ≤1 req/sec, so 25 venues ≈ 30s of wall time.
+    Curators can trigger this: the only external touch is Nominatim
+    (free, public, no API key), and a curator-driven fix to a missing
+    pin shouldn't have to wait for the founder."""
+    _require_curator(requesting_email)
+    from geocoding import geocode_pending_venues
+    return geocode_pending_venues(limit=limit)
+
+
+@app.delete("/admin/cleanup/dead-sources")
+def admin_cleanup_dead_sources(requesting_email: str = ""):
+    """Purge events (and their RSVPs) from scrapers we no longer run.
+    Mayra-style RSVPs to ghost eventbrite events get cleaned in one pass.
+
+    Founder-only because the delete is irreversible. Returns counts so the
+    caller sees what hit. Group events / personal plans are untouched —
+    those live in `group_events`, not `events`."""
+    _require_founder(requesting_email)
+    if not _DROPPED_SCRAPER_SOURCES:
+        return {"events_deleted": 0, "rsvps_deleted": 0}
+    placeholders = ",".join("?" * len(_DROPPED_SCRAPER_SOURCES))
+    with db.get_conn() as conn:
+        ghost_ids = [
+            r["id"] for r in conn.execute(
+                f"SELECT id FROM events WHERE source IN ({placeholders})",
+                _DROPPED_SCRAPER_SOURCES,
+            ).fetchall()
+        ]
+        rsvps_deleted = 0
+        if ghost_ids:
+            id_placeholders = ",".join("?" * len(ghost_ids))
+            cur = conn.execute(
+                f"DELETE FROM rsvps WHERE event_id IN ({id_placeholders})",
+                ghost_ids,
+            )
+            rsvps_deleted = cur.rowcount or 0
+            conn.execute(
+                f"DELETE FROM events WHERE source IN ({placeholders})",
+                _DROPPED_SCRAPER_SOURCES,
+            )
+        conn.commit()
+    return {
+        "events_deleted": len(ghost_ids),
+        "rsvps_deleted": rsvps_deleted,
+        "sources_purged": list(_DROPPED_SCRAPER_SOURCES),
+    }
 
 
 # ── Curator management (founder-only) ─────────────────────

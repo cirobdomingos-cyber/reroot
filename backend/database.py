@@ -7,6 +7,7 @@ import os
 import secrets
 import sqlite3
 import json
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
@@ -324,6 +325,29 @@ def init_db():
             conn.execute("ALTER TABLE user_badges ADD COLUMN tier INTEGER NOT NULL DEFAULT 1")
         except sqlite3.OperationalError:
             pass  # column already present
+
+        # Venues cache — lazy geocoding store for the map view. Keyed by a
+        # normalized venue name (lowercased, accent-stripped, whitespace-
+        # collapsed) so different scrape variants of the same place collapse
+        # to one row. lat/lng are NULL until a geocoder fills them; the
+        # `geocode_status` column distinguishes "not yet tried" from "tried
+        # and failed", so the backfill can retry transient failures without
+        # re-hitting permanently-bad rows on every run.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS venues (
+                name_normalized  TEXT PRIMARY KEY,
+                name_original    TEXT NOT NULL,
+                address          TEXT NOT NULL DEFAULT '',
+                lat              REAL,
+                lng              REAL,
+                geocode_source   TEXT NOT NULL DEFAULT '',  -- 'nominatim' | 'manual' | ''
+                geocode_status   TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'ok' | 'failed'
+                geocoded_at      TEXT NOT NULL DEFAULT '',
+                last_attempt_at  TEXT NOT NULL DEFAULT '',
+                attempt_count    INTEGER NOT NULL DEFAULT 0,
+                created_at       TEXT NOT NULL
+            )
+        """)
         conn.commit()
 
 
@@ -916,6 +940,23 @@ def get_funnel_counts() -> list[dict]:
             "SELECT event_name, COUNT(*) as total FROM analytics_events GROUP BY event_name ORDER BY total DESC"
         ).fetchall()
     return [{"event_name": row["event_name"], "total": row["total"]} for row in rows]
+
+
+def get_events_by_ids(ids: list[str]) -> list[dict]:
+    """Fetch the payload + source for a specific set of event IDs.
+    Used by the post-scrape summary email to render newly-added events
+    with their venue + date + IG handle, grouped by source. Returns the
+    rows in the same order as `ids` (insertion order from the scrape)."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" * len(ids))
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, source, external_id, payload FROM events WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+    by_id = {r["id"]: dict(r) for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
 
 
 def upsert_event(ev: EnrichedEvent) -> bool:
@@ -1856,6 +1897,140 @@ def delete_group_event(event_id: str) -> bool:
         conn.execute("DELETE FROM rsvps WHERE event_id = ?", (event_id,))
         conn.commit()
         return cur.rowcount > 0
+
+
+# ── Venues (geocoding cache) ──────────────────────────────
+# Keyed by a normalized venue name. Geocoding is lazy: rows start as
+# `pending` (created when an event references a venue we haven't seen),
+# get filled in by the Nominatim backfill, and either land at `ok` with
+# real coordinates or `failed` if the geocoder couldn't resolve them.
+# Failed rows still count as "tried" so the backfill skips them on the
+# next pass — but attempt_count + last_attempt_at let us re-try on
+# explicit ops requests if the data improves.
+
+def _normalize_venue_key(name: str) -> str:
+    """Collapse a venue name to its dedup key: lowercase, strip accents,
+    drop punctuation, collapse whitespace. Mirrors the same heuristic the
+    event dedup uses on names so 'Café Lucca' and 'Cafe lucca!' resolve
+    to one row."""
+    if not name:
+        return ""
+    folded = unicodedata.normalize("NFKD", name)
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    folded = folded.lower()
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in folded)
+    return " ".join(cleaned.split())
+
+
+def upsert_venue_seed(name_original: str, address: str = "") -> str:
+    """Ensure a venue row exists for this name. No-op when one already does
+    (the geocoding columns stay untouched). Returns the normalized key so
+    callers can lookup coords without re-normalizing."""
+    key = _normalize_venue_key(name_original)
+    if not key:
+        return ""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO venues
+                   (name_normalized, name_original, address, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (key, name_original, address or "", now),
+        )
+        conn.commit()
+    return key
+
+
+def get_venue_coords_map() -> dict[str, dict]:
+    """Return {normalized_key: {lat, lng, name_original}} for every venue
+    that's been successfully geocoded. The map endpoint joins this against
+    the active events to attach pin coordinates."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT name_normalized, name_original, lat, lng
+               FROM venues
+               WHERE geocode_status = 'ok'
+                 AND lat IS NOT NULL AND lng IS NOT NULL"""
+        ).fetchall()
+    return {
+        r["name_normalized"]: {
+            "lat": r["lat"], "lng": r["lng"],
+            "name_original": r["name_original"],
+        }
+        for r in rows
+    }
+
+
+def list_venues_pending_geocode(limit: int = 50) -> list[dict]:
+    """Venues that haven't been geocoded yet (or only attempted long ago).
+    Ordered by attempt_count ASC then created_at ASC, so brand-new venues
+    are processed before retry candidates. Used by the backfill task."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT name_normalized, name_original, address, attempt_count
+               FROM venues
+               WHERE geocode_status != 'ok'
+               ORDER BY attempt_count ASC, created_at ASC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def record_geocode_result(
+    name_normalized: str,
+    lat: Optional[float],
+    lng: Optional[float],
+    source: str = "nominatim",
+) -> None:
+    """Persist a geocode attempt. lat/lng both present → status='ok';
+    either missing → status='failed' (still increments attempt_count
+    so the next backfill pass deprioritizes it)."""
+    now = datetime.now(timezone.utc).isoformat()
+    status = "ok" if (lat is not None and lng is not None) else "failed"
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE venues SET
+                   lat = ?, lng = ?,
+                   geocode_status = ?, geocode_source = ?,
+                   geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
+                   last_attempt_at = ?,
+                   attempt_count = attempt_count + 1
+               WHERE name_normalized = ?""",
+            (lat, lng, status, source, status, now, now, name_normalized),
+        )
+        conn.commit()
+
+
+def seed_venues_from_events() -> int:
+    """Walk every event in the catalog and ensure a venue row exists for
+    each distinct venue_name. Idempotent (INSERT OR IGNORE) so it's safe to
+    re-run after each scrape. Returns the number of NEW venues registered
+    on this pass."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT json_extract(payload, '$.venue_name')    AS name,
+                      json_extract(payload, '$.venue_address') AS addr
+               FROM events"""
+        ).fetchall()
+    new_count = 0
+    seen: set[str] = set()
+    for row in rows:
+        name = row["name"] or ""
+        addr = row["addr"] or ""
+        key = _normalize_venue_key(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        # Check if it already exists; only count actual inserts.
+        with get_conn() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM venues WHERE name_normalized = ?", (key,)
+            ).fetchone()
+            if not existing:
+                upsert_venue_seed(name, addr)
+                new_count += 1
+    return new_count
 
 
 # ── User badges ───────────────────────────────────────────
