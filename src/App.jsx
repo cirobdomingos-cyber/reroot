@@ -164,9 +164,12 @@ export default function App() {
 
       {showNav && <BottomNav />}
 
-      {/* AI Companion FAB — extended pill, pulsing halo, first-visit hint bubble */}
+      {/* AI Companion FAB — extended pill, pulsing halo, first-visit hint bubble.
+          bottom:96 (BottomNav is 80) gives 16px clearance above the nav so
+          the FAB doesn't visually crowd the rightmost tab; the original 84
+          left only 4px which read as overlap on real devices. */}
       {showNav && !companionOpen && modalCount === 0 && (
-        <div style={{ position: 'absolute', bottom: 84, right: 16, zIndex: 50 }}>
+        <div style={{ position: 'absolute', bottom: 96, right: 16, zIndex: 50 }}>
           {/* First-visit hint bubble */}
           <AnimatePresence>
             {showHint && (
