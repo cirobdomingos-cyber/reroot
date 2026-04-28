@@ -18,6 +18,22 @@ window.addEventListener('unhandledrejection', (event) => {
   reportError('js_unhandled_promise', String(event.reason).slice(0, 500))
 })
 
+// PWA install prompt capture — Chrome/Edge/Brave fire `beforeinstallprompt`
+// when the app is installable. We stash the event so any component (e.g.
+// the Share/Install section in Profile) can call `prompt()` later when
+// the user opts in. iOS Safari never fires this — install is manual via
+// Add to Home Screen.
+window.__aueDeferredInstallPrompt = null
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault()
+  window.__aueDeferredInstallPrompt = e
+  window.dispatchEvent(new CustomEvent('aue-install-available'))
+})
+window.addEventListener('appinstalled', () => {
+  window.__aueDeferredInstallPrompt = null
+  window.dispatchEvent(new CustomEvent('aue-install-installed'))
+})
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>

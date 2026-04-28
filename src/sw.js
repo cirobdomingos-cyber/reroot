@@ -28,7 +28,8 @@ precacheAndRoute(self.__WB_MANIFEST)
 const navigationHandler = createHandlerBoundToURL('/index.html')
 registerRoute(new NavigationRoute(navigationHandler, {
   denylist: [
-    /^\/ios(\/|$|\?)/,         // /ios install walkthrough (server HTML)
+    /^\/install(\/|$|\?)/,     // /install universal walkthrough (server HTML)
+    /^\/ios(\/|$|\?)/,         // /ios → /install redirect (back-compat)
     /^\/privacy(\/|$|\?)/,     // /privacy LGPD policy (server HTML)
     /^\/\.well-known\//,       // assetlinks.json + future verification files
     /^\/manifest\.webmanifest/,// PWA manifest itself

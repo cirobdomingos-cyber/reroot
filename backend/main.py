@@ -287,19 +287,22 @@ def privacy():
     return PlainTextResponse(_PRIVACY_HTML, media_type="text/html; charset=utf-8")
 
 
-# ── iOS install instructions ─────────────────────────────
-# Standalone HTML so you can share the link in WhatsApp/email and friends
-# get a polished install walkthrough — works as a stopgap until we ship a
-# proper TestFlight build. JS detects iOS-but-not-Safari (WhatsApp/Chrome
-# in-app browsers) and shows a "Open in Safari first" warning, since
-# "Add to Home Screen" only works in Safari proper.
-_IOS_INSTALL_HTML = """<!DOCTYPE html>
+# ── /install — universal install walkthrough ─────────────
+# Single page that detects platform and shows the right walkthrough:
+#   - iOS Safari      → Add to Home Screen (3 steps)
+#   - iOS in-app      → "open in Safari" warning + copy-link button
+#   - Android Chrome  → menu → Install app (3 steps)
+#   - Android in-app  → "open in Chrome" warning + copy-link button
+#   - Desktop         → install icon in address bar (Chrome/Edge/Brave)
+# Plus a universal "share with friends" button using Web Share API
+# (falls back to clipboard copy).
+_INSTALL_HTML = """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#E8623F">
-<title>auê — Instalar no iPhone</title>
+<title>auê — Instalar</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -315,54 +318,79 @@ _IOS_INSTALL_HTML = """<!DOCTYPE html>
   .tag  { text-align: center; color: #2C2C2C; opacity: 0.65;
           font-size: 13px; font-weight: 500; margin-bottom: 32px;
           text-transform: uppercase; letter-spacing: 1.5px; }
-  h1 { font-size: 26px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
-  .sub { color: #2C2C2C; opacity: 0.7; font-size: 15px;
-         margin: 0 0 28px; line-height: 1.55; }
+  h1 { font-size: 24px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
+  .sub { color: #2C2C2C; opacity: 0.7; font-size: 14px;
+         margin: 0 0 24px; line-height: 1.55; }
   .warning {
     background: #FFF4E5; border-left: 4px solid #E8A93F;
-    padding: 14px 16px; border-radius: 10px; margin-bottom: 24px;
+    padding: 14px 16px; border-radius: 10px; margin-bottom: 18px;
     font-size: 14px; line-height: 1.5;
   }
   .warning strong { color: #B8761F; display: block; margin-bottom: 6px; }
-  .warning button {
+  .warning button, .copy-btn {
     display: block; width: 100%; margin-top: 10px;
     background: #E8623F; color: white; border: none;
     padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700;
     cursor: pointer; -webkit-tap-highlight-color: transparent;
+    font-family: inherit;
   }
-  .warning button:active { background: #C84F30; }
+  .warning button:active, .copy-btn:active { background: #C84F30; }
   .step {
-    background: white; border-radius: 16px; padding: 18px 18px;
-    margin-bottom: 12px; display: flex; gap: 14px; align-items: flex-start;
+    background: white; border-radius: 16px; padding: 16px;
+    margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
   }
   .num {
-    width: 32px; height: 32px; border-radius: 50%;
+    width: 30px; height: 30px; border-radius: 50%;
     background: #E8623F; color: white;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 15px; flex-shrink: 0;
+    font-weight: 800; font-size: 14px; flex-shrink: 0;
   }
   .sc { flex: 1; min-width: 0; }
-  .st { font-weight: 700; font-size: 15px; margin-bottom: 4px; line-height: 1.3; }
-  .sd { font-size: 14px; color: #2C2C2C; opacity: 0.75; line-height: 1.5; }
+  .st { font-weight: 700; font-size: 15px; margin-bottom: 3px; line-height: 1.3; }
+  .sd { font-size: 13px; color: #2C2C2C; opacity: 0.75; line-height: 1.5; }
   .ic {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 26px; vertical-align: -7px;
-    background: #F4EFE6; border-radius: 6px; padding: 3px; margin: 0 3px;
+    width: 24px; height: 24px; vertical-align: -6px;
+    background: #F4EFE6; border-radius: 5px; padding: 3px; margin: 0 2px;
   }
   .done {
-    text-align: center; margin-top: 24px;
+    text-align: center; margin-top: 16px;
     background: #7A9E7E12; border: 1px solid #7A9E7E40;
-    padding: 18px; border-radius: 14px;
-    font-size: 14px; color: #2C2C2C; line-height: 1.55;
+    padding: 14px; border-radius: 12px;
+    font-size: 13px; color: #2C2C2C; line-height: 1.5;
   }
-  .done strong { color: #5A7E5E; display: block; margin-bottom: 4px; font-size: 15px; }
+  .done strong { color: #5A7E5E; display: block; margin-bottom: 4px; font-size: 14px; }
+  .share {
+    margin-top: 32px; padding: 18px 16px; border-radius: 14px;
+    background: white; border: 1px solid #E8623F30;
+    text-align: center;
+  }
+  .share-title {
+    font-size: 13px; font-weight: 700; color: #2C2C2C;
+    margin-bottom: 4px;
+  }
+  .share-sub {
+    font-size: 12px; color: #2C2C2C; opacity: 0.6;
+    margin-bottom: 12px;
+  }
+  .share button {
+    display: inline-block; width: auto; min-width: 220px;
+    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
+    color: white; border: none;
+    padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 700;
+    cursor: pointer; font-family: inherit;
+    box-shadow: 0 4px 14px rgba(232, 98, 63, 0.35);
+  }
+  .share button:active { transform: translateY(1px); }
+  .share .copied { font-size: 12px; color: #5A7E5E; margin-top: 8px; min-height: 16px; }
   .footer {
-    text-align: center; margin-top: 32px; font-size: 13px;
+    text-align: center; margin-top: 24px; font-size: 12px;
     color: #2C2C2C; opacity: 0.55; line-height: 1.7;
   }
   .footer a { color: #7A9E7E; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -370,42 +398,111 @@ _IOS_INSTALL_HTML = """<!DOCTYPE html>
   <div class="logo">auê</div>
   <div class="tag">Curitiba que acontece</div>
 
-  <h1>Instalar no iPhone</h1>
-  <p class="sub">Em 30 segundos você tem o auê na tela inicial, com ícone próprio e sem barra do navegador. Funciona como um app de verdade.</p>
-
-  <div id="warn-not-safari" class="warning" style="display:none">
-    <strong>⚠️ Você precisa abrir no Safari</strong>
-    O "Adicionar à Tela de Início" só aparece no Safari — não funciona aqui no WhatsApp/Chrome.
-    <button onclick="copyLink()">Copiar link e abrir no Safari</button>
-  </div>
-
-  <div class="step">
-    <div class="num">1</div>
-    <div class="sc">
-      <div class="st">Toque o botão Compartilhar</div>
-      <div class="sd">É o ícone <span class="ic"><svg width="16" height="20" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
+  <!-- ── iOS Safari ── -->
+  <section id="ios-safari" hidden>
+    <h1>Instalar no iPhone</h1>
+    <p class="sub">Em 30 segundos você tem o auê na tela inicial, com ícone próprio e sem barra do navegador.</p>
+    <div class="step">
+      <div class="num">1</div>
+      <div class="sc">
+        <div class="st">Toque o botão Compartilhar</div>
+        <div class="sd">É o ícone <span class="ic"><svg width="14" height="18" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
+      </div>
     </div>
-  </div>
-
-  <div class="step">
-    <div class="num">2</div>
-    <div class="sc">
-      <div class="st">Role e toque "Adicionar à Tela de Início"</div>
-      <div class="sd">A opção fica na lista de ações, perto do final. Tem um ícone de <span class="ic"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#2C2C2C" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="sc">
+        <div class="st">Role e toque "Adicionar à Tela de Início"</div>
+        <div class="sd">A opção fica perto do final da lista. Tem um ícone <span class="ic"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#2C2C2C" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
+      </div>
     </div>
-  </div>
-
-  <div class="step">
-    <div class="num">3</div>
-    <div class="sc">
-      <div class="st">Toque "Adicionar" no canto superior direito</div>
-      <div class="sd">Pronto. O ícone laranja do auê aparece na sua tela inicial junto dos outros apps.</div>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="sc">
+        <div class="st">Toque "Adicionar" no canto superior direito</div>
+        <div class="sd">Pronto. O ícone laranja do auê aparece na sua tela inicial.</div>
+      </div>
     </div>
-  </div>
+    <div class="done"><strong>🎉 É isso</strong>Da próxima vez, é só tocar no ícone — abre tela cheia, sem Safari por cima.</div>
+  </section>
 
-  <div class="done">
-    <strong>🎉 É isso</strong>
-    Da próxima vez, é só tocar no ícone do auê — abre tela cheia, sem Safari por cima.
+  <!-- ── iOS in-app browser (WhatsApp, Instagram, Chrome iOS) ── -->
+  <section id="ios-inapp" hidden>
+    <h1>Abre no Safari primeiro</h1>
+    <p class="sub">"Adicionar à Tela de Início" só aparece no Safari de verdade — aqui no app de mensagem não dá.</p>
+    <div class="warning">
+      <strong>⚠️ Como fazer</strong>
+      Toca no botão abaixo pra copiar o link, abre o app Safari (azul) no teu iPhone, cola na barra de endereço e segue o passo a passo de instalação.
+      <button onclick="copyLink('Link copiado! Abra o Safari e cole na barra de endereço.')">Copiar link</button>
+    </div>
+  </section>
+
+  <!-- ── Android Chrome / Edge / Brave / Samsung ── -->
+  <section id="android-chrome" hidden>
+    <h1>Instalar no Android</h1>
+    <p class="sub">O Chrome pode oferecer "Instalar app" automaticamente no rodapé. Se não aparecer:</p>
+    <div class="step">
+      <div class="num">1</div>
+      <div class="sc">
+        <div class="st">Toque o menu (3 pontinhos)</div>
+        <div class="sd">No canto superior direito do navegador.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="sc">
+        <div class="st">Toque "Instalar app"</div>
+        <div class="sd">Em alguns Androids aparece como "Adicionar à Tela inicial" — é a mesma coisa.</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="sc">
+        <div class="st">Confirme "Instalar"</div>
+        <div class="sd">O ícone do auê aparece junto dos outros apps. Da próxima vez, abre direto sem navegador.</div>
+      </div>
+    </div>
+    <div class="done"><strong>🎉 É isso</strong>Funciona como app de verdade — incluindo notificações.</div>
+  </section>
+
+  <!-- ── Android in-app (WhatsApp, Instagram, etc.) ── -->
+  <section id="android-inapp" hidden>
+    <h1>Abre no Chrome primeiro</h1>
+    <p class="sub">A opção "Instalar app" só aparece no Chrome (ou Edge / Samsung Browser) — não funciona dentro do app de mensagem.</p>
+    <div class="warning">
+      <strong>⚠️ Como fazer</strong>
+      Toca pra copiar o link, abre o Chrome no teu Android, cola na barra de endereço e segue.
+      <button onclick="copyLink('Link copiado! Abra o Chrome e cole na barra de endereço.')">Copiar link</button>
+    </div>
+  </section>
+
+  <!-- ── Desktop ── -->
+  <section id="desktop" hidden>
+    <h1>Instalar no computador</h1>
+    <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na tua área de trabalho.</p>
+    <div class="step">
+      <div class="num">1</div>
+      <div class="sc">
+        <div class="st">Procure o ícone de instalação na barra de endereço</div>
+        <div class="sd">É um quadradinho com seta pra baixo, do lado direito da URL. Senão, abre o menu (3 pontos) → "Instalar auê".</div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="sc">
+        <div class="st">Confirme "Instalar"</div>
+        <div class="sd">O auê abre numa janela própria, sem abas — comportamento de app.</div>
+      </div>
+    </div>
+    <div class="done"><strong>📱 Bonus</strong>No celular, instala como app também — fica com ícone na tela inicial e abre offline.</div>
+  </section>
+
+  <!-- ── Universal share section ── -->
+  <div class="share">
+    <div class="share-title">📲 Manda pra um amigo</div>
+    <div class="share-sub">Galera de Curitiba — bora junto saber o que rola.</div>
+    <button onclick="shareApp()" id="share-btn">Compartilhar com amigos</button>
+    <div class="copied" id="copied-msg"></div>
   </div>
 
   <div class="footer">
@@ -415,23 +512,56 @@ _IOS_INSTALL_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+  // ── Platform detection: pick one section, hide the rest ──
   (function() {
-    var ua = navigator.userAgent;
+    var ua = navigator.userAgent || "";
     var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-    // Catch in-app browsers (WhatsApp, Instagram, FB, Line) and Chrome/Firefox/Edge for iOS.
-    var notSafari = /CriOS|FxiOS|EdgiOS|GSA|FBAN|FBAV|FB_IAB|FBIOS|Instagram|Line|WhatsApp|Twitter/.test(ua);
-    if (isIOS && notSafari) {
-      document.getElementById('warn-not-safari').style.display = 'block';
+    var isAndroid = /Android/.test(ua);
+    // In-app browsers and non-Safari browsers on iOS: install option missing.
+    var inApp = /FB_IAB|FBAN|FBAV|FBIOS|Instagram|Line|WhatsApp|Twitter|GSA|CriOS|FxiOS|EdgiOS|MicroMessenger|TikTok/i.test(ua);
+    var which;
+    if (isIOS) which = inApp ? "ios-inapp" : "ios-safari";
+    else if (isAndroid) which = inApp ? "android-inapp" : "android-chrome";
+    else which = "desktop";
+    var el = document.getElementById(which);
+    if (el) el.hidden = false;
+    // If running in standalone (already installed), say so up top.
+    if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) {
+      document.querySelector(".container").insertAdjacentHTML("afterbegin",
+        '<div class="done" style="margin-bottom:24px"><strong>✓ Já instalado</strong>Você está abrindo o auê instalado. Pode mandar o link pra um amigo abaixo.</div>');
     }
   })();
-  function copyLink() {
-    var url = window.location.href;
+
+  // ── Copy URL to clipboard (used by in-app warning sections) ──
+  function copyLink(msg) {
+    var url = window.location.origin + "/";
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(function() {
-        alert('Link copiado! Agora abre o Safari e cola na barra de endereço.');
+        alert(msg || "Link copiado!");
+      }, function() {
+        prompt("Copie o link:", url);
       });
     } else {
-      prompt('Copie o link abaixo e cole no Safari:', url);
+      prompt("Copie o link:", url);
+    }
+  }
+
+  // ── Web Share API with clipboard fallback ──
+  function shareApp() {
+    var url = window.location.origin + "/install";
+    var text = "Olha o auê — app de eventos em Curitiba. Bora ver o que tá rolando? 🎉";
+    var msg = document.getElementById("copied-msg");
+    if (navigator.share) {
+      navigator.share({ title: "auê — Curitiba que acontece", text: text, url: url })
+        .then(function() { msg.textContent = ""; })
+        .catch(function() { /* user cancelled — no-op */ });
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function() {
+        msg.textContent = "✓ Link copiado — cola onde quiser mandar.";
+        setTimeout(function() { msg.textContent = ""; }, 4000);
+      });
+    } else {
+      prompt("Copie o link:", url);
     }
   }
 </script>
@@ -440,9 +570,19 @@ _IOS_INSTALL_HTML = """<!DOCTYPE html>
 """
 
 
-@app.get("/ios", response_class=PlainTextResponse)
-def ios_install():
-    return PlainTextResponse(_IOS_INSTALL_HTML, media_type="text/html; charset=utf-8")
+@app.get("/install", response_class=PlainTextResponse)
+def install_page():
+    return PlainTextResponse(_INSTALL_HTML, media_type="text/html; charset=utf-8")
+
+
+@app.get("/ios")
+def ios_redirect():
+    """Backward-compat: /ios was the iOS-only walkthrough before /install
+    became universal. 301 so any cached share links still land somewhere
+    sensible (the universal page detects iOS Safari and shows the same
+    walkthrough)."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/install", status_code=301)
 
 
 @app.get("/health")

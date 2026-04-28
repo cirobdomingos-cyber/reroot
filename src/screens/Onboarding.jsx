@@ -1,9 +1,54 @@
 import { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { trackEvent } from '../services/api'
+
+// Sample events shown in the welcome teaser. NOT real catalog entries —
+// these illustrate the variety (music/creative/community/comedy across 4
+// different bairros) so a first-time visitor immediately gets what auê
+// is. The real feed comes from /events once the user lands on /home.
+const TEASER_EVENTS = [
+  {
+    icon: '🎵',
+    headerBg: 'linear-gradient(135deg, #F5DDD1, #EDCBB8)',
+    name: 'Show da Bossa na Pedreira',
+    venue: 'Pedreira Paulo Leminski',
+    bairro: 'Pilarzinho',
+    date: 'Sex, 25 · 21h',
+    friends: ['Maria', 'João'],
+  },
+  {
+    icon: '🎨',
+    headerBg: 'linear-gradient(135deg, #E4EFE5, #CDDECE)',
+    name: 'Roda de cerâmica',
+    venue: 'Ateliê do Bairro',
+    bairro: 'São Francisco',
+    date: 'Sáb, 26 · 14h',
+    friends: [],
+  },
+  {
+    icon: '🍻',
+    headerBg: 'linear-gradient(135deg, #FFF3E0, #FFE0B2)',
+    name: 'Feira do Largo da Ordem',
+    venue: 'Largo da Ordem',
+    bairro: 'Centro Histórico',
+    date: 'Dom, 27 · todo o dia',
+    friends: ['Pedro'],
+  },
+  {
+    icon: '🎭',
+    headerBg: 'linear-gradient(135deg, #E8EAF6, #C8CBE9)',
+    name: 'Stand-up no Quintal',
+    venue: 'O Quintal',
+    bairro: 'Bigorrilho',
+    date: 'Seg, 28 · 21h',
+    friends: ['Ana', 'Lu', 'João'],
+  },
+]
+const TEASER_AVATAR_COLORS = ['#5B8DD9', '#7A9E7E', '#E8623F', '#E8A93F']
 
 // Onboarding (post-pivot) — two short steps:
 //   1. Welcome + sign-in (Google or visitor).
@@ -121,30 +166,125 @@ export default function Onboarding() {
   )
 }
 
+// ── Teaser: rotating event-card preview ──
+// Shows 4 sample events in sequence so a first-time visitor immediately
+// sees "this is an events catalog with my friends in it" instead of just
+// reading marketing copy. AnimatePresence with `mode="wait"` makes the
+// transitions feel like a slot-machine reveal, not a flicker.
+function TeaserCard() {
+  const [idx, setIdx] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setIdx(i => (i + 1) % TEASER_EVENTS.length), 2800)
+    return () => clearInterval(id)
+  }, [])
+  const ev = TEASER_EVENTS[idx]
+  return (
+    <div style={{ position: 'relative', height: 120, marginBottom: 4 }}>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={idx}
+          initial={{ opacity: 0, y: 24, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -16, scale: 0.96 }}
+          transition={{ type: 'spring', damping: 22, stiffness: 280 }}
+          style={{ position: 'absolute', inset: 0 }}
+        >
+          <div style={{
+            background: 'white', borderRadius: 14, padding: '12px 14px',
+            display: 'flex', gap: 12, alignItems: 'flex-start',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.04)',
+            height: '100%', boxSizing: 'border-box',
+          }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              background: ev.headerBg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22,
+            }}>{ev.icon}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 14, fontWeight: 700, color: '#2C2C2C',
+                lineHeight: 1.25, marginBottom: 3,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{ev.name}</div>
+              <div style={{
+                fontSize: 11, color: '#5B5B5B',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                📍 {ev.venue}
+                <span style={{ color: '#9A9A9A' }}> · {ev.bairro}</span>
+              </div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, color: '#E8623F', marginTop: 1,
+              }}>🗓 {ev.date}</div>
+              {ev.friends.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                  <div style={{ display: 'flex' }}>
+                    {ev.friends.slice(0, 3).map((name, i) => (
+                      <div key={i} style={{
+                        width: 18, height: 18, borderRadius: '50%',
+                        background: TEASER_AVATAR_COLORS[i % TEASER_AVATAR_COLORS.length],
+                        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 9, fontWeight: 700,
+                        marginLeft: i === 0 ? 0 : -5,
+                        border: '2px solid white',
+                      }}>{name[0]}</div>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: '#5B8DD9' }}>
+                    {ev.friends.length === 1 ? `${ev.friends[0]} vai` : `${ev.friends.length} amigos vão`}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+      {/* Progress dots — visualize "X of N" so the user knows it's cycling */}
+      <div style={{
+        position: 'absolute', bottom: -14, left: 0, right: 0,
+        display: 'flex', justifyContent: 'center', gap: 5,
+      }}>
+        {TEASER_EVENTS.map((_, i) => (
+          <div key={i} style={{
+            width: i === idx ? 14 : 5, height: 5, borderRadius: 3,
+            background: i === idx ? 'var(--sage)' : 'rgba(255,255,255,0.25)',
+            transition: 'all 0.3s',
+          }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Step 1: welcome / sign-in ─────────────────────────────
 function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, privacyText }) {
   return (
     <>
-      <div style={{ flex: 1, padding: '40px 20px 0', color: 'white' }}>
+      <div style={{ flex: 1, padding: '24px 20px 0', color: 'white' }}>
         <div style={{
-          fontSize: 28, fontWeight: 700, lineHeight: 1.25, marginBottom: 14,
+          fontSize: 26, fontWeight: 700, lineHeight: 1.25, marginBottom: 18,
         }}>
-          Tudo que tá rolando<br />em Curitiba,<br />
+          Tudo que tá rolando<br />
+          em Curitiba,{' '}
           <span style={{ color: 'var(--sage)' }}>com a galera junto.</span>
         </div>
+
+        <TeaserCard />
+
         <div style={{
-          fontSize: 14, color: 'rgba(255,255,255,0.7)',
-          lineHeight: 1.55, maxWidth: 360,
+          fontSize: 11, color: 'rgba(255,255,255,0.45)',
+          lineHeight: 1.6, marginTop: 22, textAlign: 'center',
+          letterSpacing: 0.3,
         }}>
-          Shows, exposições, feiras, oficinas, encontros pequenos.
-          Reunidos de Sympla, Eventbrite, MON, SESC, Catraca Livre e
-          Instagram — atualizado todo dia.
+          Sympla · Eventbrite · MON · SESC · Catraca Livre · Instagram<br/>
+          Atualizado todo dia.
         </div>
       </div>
 
       <div style={{
         background: 'var(--cream)', borderRadius: '28px 28px 0 0',
-        padding: '24px 20px 32px', marginTop: 24,
+        padding: '24px 20px 32px', marginTop: 20,
       }}>
         {googleConfigured ? (
           <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }} />
@@ -163,7 +303,7 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, pri
             color: 'var(--charcoal-mid)', cursor: 'pointer',
           }}
         >
-          Continuar como visitante
+          Bora ver →
         </button>
 
         <div style={{

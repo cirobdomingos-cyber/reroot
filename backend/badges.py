@@ -46,8 +46,8 @@ BADGES: dict[str, dict] = {
     "first_friend": {
         "label": "Galera junto",
         "emoji": "👥",
-        "desc": "Você adicionou seu primeiro amigo.",
-        "category": "first_step",
+        "desc": "Quantos amigos você adicionou — escala social pura.",
+        "category": "social",
     },
     "first_group": {
         "label": "Crew",
@@ -66,13 +66,26 @@ BADGES: dict[str, dict] = {
     "versatil": {
         "label": "Versátil",
         "emoji": "🎭",
-        "desc": "Você foi a 1 evento de cada tipo (tranquilo, ativo, criativo, comunidade) em 90 dias.",
+        "desc": "Você foi a 1 evento de cada tipo (tranquilo, ativo, criativo, comunidade) numa janela de tempo. Tier maior = janela mais apertada.",
         "category": "diversity",
+        "tier_unit": "d",  # tiers exibidos como "90d", "30d", etc.
     },
     "noiteiro": {
         "label": "Noiteiro",
         "emoji": "🌃",
         "desc": "Eventos confirmados depois das 19h.",
+        "category": "diversity",
+    },
+    "diurno": {
+        "label": "Diurno",
+        "emoji": "☀️",
+        "desc": "Eventos confirmados antes das 19h — yoga, feira, café, matinê.",
+        "category": "diversity",
+    },
+    "maratonista": {
+        "label": "Maratonista",
+        "emoji": "🏃",
+        "desc": "Vezes que você confirmou 2 ou mais eventos no mesmo dia.",
         "category": "diversity",
     },
 
@@ -88,6 +101,20 @@ BADGES: dict[str, dict] = {
         "emoji": "👯",
         "desc": "Maior número de amigos no mesmo evento que você.",
         "category": "social",
+    },
+    "anfitriao": {
+        "label": "Anfitrião",
+        "emoji": "🎤",
+        "desc": "Grupos criados por você que têm 3 ou mais membros.",
+        "category": "social",
+    },
+
+    # ── Curador (rewards adding events to groups for the crew) ──
+    "curador": {
+        "label": "Curador",
+        "emoji": "📝",
+        "desc": "Eventos que você adicionou a um grupo — ajuda a galera a saber o que rola.",
+        "category": "curador",
     },
 
     # ── Loyalty (the bridge to partner discounts in v2+) ──
@@ -108,14 +135,26 @@ BADGES: dict[str, dict] = {
 # Roman-style label per tier is computed in _tier_label.
 TIERS: dict[str, list[int]] = {
     "first_rsvp":    [1],
-    "first_friend":  [1],
     "first_group":   [1],
-    "versatil":      [1],
+    "first_friend":  [1, 5, 15, 30],        # accepted friend count
+    "versatil":      [1, 2, 3, 4],          # encoded tier (1=90d, 2=30d, 3=7d, 4=3d window)
     "explorer":      [3, 5, 10],            # bairros distintos (lifetime)
     "noiteiro":      [3, 10, 25],           # eventos ≥19h (lifetime)
+    "diurno":        [3, 10, 25],           # eventos <19h (lifetime)
+    "maratonista":   [1, 3, 5],             # distinct days with 2+ RSVPs
     "vai_junto":     [5, 15, 30],           # eventos com amigo (lifetime)
     "cohort":        [3, 5, 10],            # amigos no mesmo evento (best ever)
+    "anfitriao":     [1, 3, 5],             # grupos próprios com 3+ membros
+    "curador":       [1, 5, 15],            # eventos adicionados a grupos
     "local_da_casa": [3, 5, 10, 25],        # RSVPs no mesmo venue
+}
+
+# Display thresholds shown to the user. For badges where the engine's
+# internal value is a tier-num (e.g. versatil, where value=2 means "did
+# it in 30 days"), this overrides what the modal/tile shows. Combined
+# with `tier_unit` on the badge it renders as "90d", "30d", etc.
+DISPLAY_TIERS: dict[str, list[int]] = {
+    "versatil": [90, 30, 7, 3],  # days windows, widest → tightest
 }
 
 ALL_KINDS = {"quiet_social", "active", "creative", "community"}
@@ -156,8 +195,10 @@ def _tier_for_value(base_id: str, value: int) -> int:
 
 
 def _next_threshold(base_id: str, current_tier: int) -> int | None:
-    """Threshold for the NEXT tier above current. None if maxed out."""
-    thresholds = TIERS.get(base_id, [1])
+    """User-facing threshold for the NEXT tier — uses DISPLAY_TIERS when the
+    engine value differs from what the UI shows (e.g. versatil: engine 1→2,
+    display 90d→30d). None if maxed out."""
+    thresholds = DISPLAY_TIERS.get(base_id) or TIERS.get(base_id, [1])
     if current_tier >= len(thresholds):
         return None
     return thresholds[current_tier]
@@ -212,8 +253,112 @@ def _is_after(iso_ts: str, hour: int) -> bool:
     return dt.hour >= hour
 
 
+def _is_before(iso_ts: str, hour: int) -> bool:
+    """Symmetric to _is_after — used by Diurno (events earlier than 19h).
+    Same parse-failure semantics: under-award rather than crash."""
+    if not iso_ts:
+        return False
+    try:
+        dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return dt.hour < hour
+
+
+def _busy_day_count(rsvps: list[dict]) -> int:
+    """Number of distinct days where the user has 2+ RSVPs. Bronze=1 such
+    day, Prata=3, Ouro=5 (Maratonista)."""
+    by_day: dict[str, int] = {}
+    for r in rsvps:
+        d = (r.get("event_date") or "")[:10]
+        if d:
+            by_day[d] = by_day.get(d, 0) + 1
+    return sum(1 for c in by_day.values() if c >= 2)
+
+
+def _hosted_group_count(google_id: str) -> int:
+    """Count groups created by the user that have 3+ members (Anfitrião)."""
+    if not google_id:
+        return 0
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            """SELECT COUNT(*) AS c FROM (
+                   SELECT g.id
+                   FROM groups g
+                   JOIN group_members gm ON gm.group_id = g.id
+                   WHERE g.created_by = ?
+                   GROUP BY g.id
+                   HAVING COUNT(gm.google_id) >= 3
+               )""",
+            (google_id,),
+        ).fetchone()
+    return int(rows["c"]) if rows else 0
+
+
+def _curated_count(google_id: str, mature_before_iso: str | None = None) -> int:
+    """Count of events the user added to groups (group_events.created_by).
+    With `mature_before_iso`, filter to past-date events — prevents the
+    add-then-delete farm by waiting for the event to actually happen."""
+    if not google_id:
+        return 0
+    sql = "SELECT COUNT(*) AS c FROM group_events WHERE created_by = ?"
+    params: list = [google_id]
+    if mature_before_iso:
+        sql += " AND date_start != '' AND date_start < ?"
+        params.append(mature_before_iso)
+    with db.get_conn() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row["c"]) if row else 0
+
+
+# Versatil tiers are time-window-based: widest window with all 4 kinds
+# determines the tier. Same set, faster = higher tier.
+_VERSATIL_WINDOWS = [(3, 4), (7, 3), (30, 2), (90, 1)]  # (days, tier)
+
+
+def _versatil_tier(rsvps: list[dict], now: datetime) -> int:
+    """Highest versatil tier reached. Iterates tightest→widest, returns
+    first window where all 4 kinds were RSVPed. 0 if never achieved."""
+    for days, tier in _VERSATIL_WINDOWS:
+        cutoff = (now - timedelta(days=days)).isoformat()
+        recent_ids = [r["event_id"] for r in rsvps if (r.get("created_at") or "") >= cutoff]
+        if ALL_KINDS.issubset(_kinds_for_event_ids(recent_ids)):
+            return tier
+    return 0
+
+
 def _venue_name(venue_full: str) -> str:
     return (venue_full or "").split(" · ", 1)[0].strip()
+
+
+# ── Anti-game: mature-event filter ───────────────────────
+# Counting only "matured" events (date already passed) makes the spike-
+# and-cancel attack ineffective: you can't cancel a past event to undo a
+# badge unlock. New users still get instant gratification on first_rsvp
+# and first_group (welcome bonuses); everything count-based waits for
+# the event to actually happen before contributing.
+
+def _is_mature_event(event_date_iso: str, now: datetime) -> bool:
+    """True if the event's date has already passed. Empty/unparseable
+    dates → False (conservative; better to under-award than to count
+    evergreens that the user can RSVP+cancel freely)."""
+    if not event_date_iso:
+        return False
+    try:
+        dt = datetime.fromisoformat(event_date_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt < now
+
+
+def _mature_rsvps(rsvps: list[dict], now: datetime) -> list[dict]:
+    """Subset of rsvps where the event has already happened — these are
+    'committed' (you can't go back and cancel something that already
+    occurred). Used by every count-based badge to make spike-and-cancel
+    farming ineffective."""
+    return [r for r in rsvps if _is_mature_event(r.get("event_date") or "", now)]
 
 
 def _venue_counts(rsvps: list[dict]) -> dict[str, int]:
@@ -234,11 +379,19 @@ def _distinct_neighborhoods(rsvps: list[dict]) -> set[str]:
     return out
 
 
-def _friend_event_overlap(google_id: str) -> dict[str, int]:
+def _friend_event_overlap(google_id: str, mature_before_iso: str | None = None) -> dict[str, int]:
+    """Return {event_id: friend_count} — events the user AND ≥1 accepted
+    friend both RSVPed. Empty if no friends. When `mature_before_iso` is
+    set, filter to events whose date already passed (anti-game guard)."""
     friends = [f["google_id"] for f in db.get_friends(google_id) if f.get("status") == "accepted"]
     if not friends:
         return {}
     placeholders = ",".join("?" * len(friends))
+    extra = ""
+    params: list = [google_id, *friends]
+    if mature_before_iso:
+        extra = " AND my.event_date != '' AND my.event_date < ?"
+        params.append(mature_before_iso)
     with db.get_conn() as conn:
         rows = conn.execute(
             f"""SELECT my.event_id, COUNT(DISTINCT theirs.google_id) AS friend_count
@@ -246,8 +399,9 @@ def _friend_event_overlap(google_id: str) -> dict[str, int]:
                 JOIN rsvps theirs ON theirs.event_id = my.event_id
                 WHERE my.google_id = ?
                   AND theirs.google_id IN ({placeholders})
+                  {extra}
                 GROUP BY my.event_id""",
-            [google_id, *friends],
+            params,
         ).fetchall()
     return {r["event_id"]: r["friend_count"] for r in rows}
 
@@ -311,34 +465,57 @@ def evaluate(google_id: str) -> list[dict]:
     newly: list[dict] = []
     rsvps = _rsvps_for(google_id)
     now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    # Anti-game: count-based badges only count "matured" RSVPs (events
+    # whose date already passed). Spike-and-cancel farming has no payoff
+    # because you can't cancel a past event to undo the unlock.
+    mature = _mature_rsvps(rsvps, now)
 
-    # ── First-step (binary) ──
+    # ── First-step (binary, instant — welcome bonus) ──
+    # first_rsvp + first_group skip the maturity filter so a brand-new
+    # user gets the dopamine hit immediately. Both are tier-1-only and
+    # cosmetically gameable but not meaningfully so.
     if rsvps:
         _award_or_upgrade(newly, google_id, "first_rsvp", value=1)
-    if _accepted_friend_count(google_id) >= 1:
-        _award_or_upgrade(newly, google_id, "first_friend", value=1)
     if _group_count(google_id) >= 1:
         _award_or_upgrade(newly, google_id, "first_group", value=1)
 
-    # ── Versátil (binary — tier 1 if all 4 kinds in 90d) ──
-    cutoff_90 = (now - timedelta(days=90)).isoformat()
-    recent_ids = [r["event_id"] for r in rsvps if (r.get("created_at") or "") >= cutoff_90]
-    if ALL_KINDS.issubset(_kinds_for_event_ids(recent_ids)):
-        _award_or_upgrade(newly, google_id, "versatil", value=1,
-                          metadata={"kinds": sorted(ALL_KINDS)})
+    # ── Galera junto (friend count, tiered 1/5/15/30) ──
+    # Solo-game-resistant: needs another user to accept the friendship.
+    friend_count = _accepted_friend_count(google_id)
+    _award_or_upgrade(newly, google_id, "first_friend", value=friend_count,
+                      metadata={"count": friend_count})
 
-    # ── Explorer (lifetime distinct bairros, 3-tier ladder) ──
-    bairros = _distinct_neighborhoods(rsvps)
+    # ── Versátil (4-tier ladder by time window — wider→tighter) ──
+    # Mature filter: kinds are counted from past events only.
+    versatil = _versatil_tier(mature, now)
+    if versatil > 0:
+        _award_or_upgrade(newly, google_id, "versatil", value=versatil,
+                          metadata={"window_tier": versatil, "kinds": sorted(ALL_KINDS)})
+
+    # ── Explorer (distinct bairros from MATURED RSVPs, 3-tier ladder) ──
+    bairros = _distinct_neighborhoods(mature)
     _award_or_upgrade(newly, google_id, "explorer", value=len(bairros),
                       metadata={"bairros": sorted(bairros)})
 
-    # ── Noiteiro (lifetime ≥19h count, 3-tier ladder) ──
-    night_count = sum(1 for r in rsvps if _is_after(r.get("event_date") or "", 19))
+    # ── Noiteiro (matured ≥19h count, 3-tier ladder) ──
+    night_count = sum(1 for r in mature if _is_after(r.get("event_date") or "", 19))
     _award_or_upgrade(newly, google_id, "noiteiro", value=night_count,
                       metadata={"count": night_count})
 
-    # ── Social: vai_junto (overlap event count) + cohort (max friends ever) ──
-    overlap = _friend_event_overlap(google_id)
+    # ── Diurno (matured <19h count, symmetric to Noiteiro) ──
+    day_count = sum(1 for r in mature if _is_before(r.get("event_date") or "", 19))
+    _award_or_upgrade(newly, google_id, "diurno", value=day_count,
+                      metadata={"count": day_count})
+
+    # ── Maratonista (distinct matured days with 2+ RSVPs) ──
+    busy_days = _busy_day_count(mature)
+    if busy_days > 0:
+        _award_or_upgrade(newly, google_id, "maratonista", value=busy_days,
+                          metadata={"count": busy_days})
+
+    # ── Social: vai_junto + cohort, mature-only via SQL filter ──
+    overlap = _friend_event_overlap(google_id, mature_before_iso=now_iso)
     if overlap:
         events_with_friend = sum(1 for c in overlap.values() if c >= 1)
         max_friends = max(overlap.values())
@@ -347,8 +524,23 @@ def evaluate(google_id: str) -> list[dict]:
         _award_or_upgrade(newly, google_id, "cohort", value=max_friends,
                           metadata={"max_friends_at_event": max_friends})
 
-    # ── Loyalty: local_da_casa per venue, 4-tier ladder (3/5/10/25) ──
-    for venue, count in _venue_counts(rsvps).items():
+    # ── Anfitrião (groups created by user with 3+ members) ──
+    # Solo-game-resistant: needs 3 distinct google accounts to join.
+    hosted = _hosted_group_count(google_id)
+    if hosted > 0:
+        _award_or_upgrade(newly, google_id, "anfitriao", value=hosted,
+                          metadata={"count": hosted})
+
+    # ── Curador (matured events added to groups by user) ──
+    # Mature filter prevents add-then-delete farm — user has to wait
+    # for the event to actually happen for it to count.
+    curated = _curated_count(google_id, mature_before_iso=now_iso)
+    if curated > 0:
+        _award_or_upgrade(newly, google_id, "curador", value=curated,
+                          metadata={"count": curated})
+
+    # ── Loyalty: local_da_casa per venue (matured RSVPs, 4-tier) ──
+    for venue, count in _venue_counts(mature).items():
         _award_or_upgrade(newly, google_id, "local_da_casa", value=count,
                           instance_label=venue,
                           metadata={"venue": venue, "count": count})
@@ -361,16 +553,20 @@ def evaluate(google_id: str) -> list[dict]:
 
 def catalog() -> list[dict]:
     """Return the static catalog with tier ladder info attached. Frontend
-    uses tiers to render the progression bar / 'next tier in N' hint."""
-    return [
-        {
+    uses tiers to render the progression bar / 'next tier in N' hint.
+    `tiers` is the *display* threshold (e.g. days for versatil) — for the
+    engine logic, callers should still use TIERS directly."""
+    out = []
+    for bid, meta in BADGES.items():
+        engine_tiers = TIERS.get(bid, [1])
+        display = DISPLAY_TIERS.get(bid, engine_tiers)
+        out.append({
             "id": bid,
             **meta,
-            "tiers": TIERS.get(bid, [1]),
-            "max_tier": len(TIERS.get(bid, [1])),
-        }
-        for bid, meta in BADGES.items()
-    ]
+            "tiers": display,
+            "max_tier": len(engine_tiers),
+        })
+    return out
 
 
 def for_user(google_id: str) -> list[dict]:
