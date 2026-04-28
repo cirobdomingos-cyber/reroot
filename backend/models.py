@@ -23,6 +23,13 @@ class RawEvent(BaseModel):
     url: str
     image_url: Optional[str] = None
 
+    # Recurring routines (e.g. "every Thursday 20h: live MPB"). When True,
+    # date_start is the next occurrence; the daily scheduler rolls it forward
+    # so the event stays visible. Default False keeps one-off events unchanged.
+    is_recurring: bool = False
+    recurrence_label: Optional[str] = None  # e.g. "Toda quinta", "Sextas e sábados"
+    recurrence_days: list[int] = []          # ISO weekdays, 1=Mon … 7=Sun
+
 
 class RerootCategory(str):
     QUIET_SOCIAL = "quiet_social"
@@ -68,3 +75,8 @@ class EnrichedEvent(BaseModel):
     image_url: Optional[str]
     fetched_at: datetime
     enriched_at: Optional[datetime] = None
+
+    # Recurring routines — see RawEvent for semantics.
+    is_recurring: bool = False
+    recurrence_label: Optional[str] = None
+    recurrence_days: list[int] = []

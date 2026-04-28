@@ -921,10 +921,10 @@ def get_events(
     today = datetime.now(timezone.utc).date().isoformat()
     query += """
         AND (
-            (json_extract(payload, '$.date_end') IS NULL
+            json_extract(payload, '$.is_recurring') = 1
+            OR (json_extract(payload, '$.date_end') IS NULL
                 AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
-            OR
-            (json_extract(payload, '$.date_end') IS NOT NULL
+            OR (json_extract(payload, '$.date_end') IS NOT NULL
                 AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
         )
     """
@@ -1055,10 +1055,10 @@ def get_future_events_by_source(source: str, ig_handle: Optional[str] = None,
         SELECT payload, external_id FROM events
         WHERE source = ?
         AND (
-            (json_extract(payload, '$.date_end') IS NULL
+            json_extract(payload, '$.is_recurring') = 1
+            OR (json_extract(payload, '$.date_end') IS NULL
                 AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
-            OR
-            (json_extract(payload, '$.date_end') IS NOT NULL
+            OR (json_extract(payload, '$.date_end') IS NOT NULL
                 AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
         )
     """

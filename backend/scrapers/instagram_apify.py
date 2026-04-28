@@ -94,44 +94,68 @@ Hoje (data do scrape): {today}
 Legenda:
 {caption}
 
-Sua tarefa: decidir se o post anuncia um evento ESPECÍFICO em Curitiba ou \
-região metropolitana com uma data identificável. Se NÃO for um evento específico \
-(foto pessoal, propaganda genérica, "passou aqui hoje", lista de dicas, recap), \
-responda {{"is_event": false}}.
+Sua tarefa: classificar o post em UMA das três categorias:
 
-Responda SOMENTE JSON válido (sem markdown, sem texto extra):
+(A) EVENTO ÚNICO — anuncia algo com data específica em Curitiba/RMC. Ex: \
+"Show da Banda X no sábado 26/04 às 21h".
+
+(B) ROTINA RECORRENTE — descreve uma programação que se repete \
+semanalmente/diariamente. Ex: "Toda quinta tem MPB ao vivo", "Happy hour \
+de quinta a domingo das 17h às 21h", "Feijoada todo sábado".
+
+(C) NÃO É EVENTO — foto pessoal, propaganda genérica, recap, lista de dicas.
+
+Para (C) responda {{"is_event": false}}.
+
+Para (A) e (B) responda SOMENTE JSON válido (sem markdown, sem texto extra):
 {{
   "is_event": true,
-  "name": "<nome do evento em português>",
+  "is_recurring": false | true,
+  "recurrence_label": "<frase curta em pt-BR descrevendo a rotina, ex: 'Toda \
+quinta-feira', 'Sextas e sábados, 19h-23h'. null se is_recurring=false>",
+  "recurrence_days": [<lista de ISO weekdays 1=segunda...7=domingo, ex: [4] \
+para quintas, [5,6] para sex+sab, [1,2,3,4,5,6,7] para diariamente. [] se \
+is_recurring=false>],
+  "name": "<nome do evento/rotina em português>",
   "description": "<descrição curta em português, máx 200 caracteres>",
   "venue_name": "<local específico, ou nome da conta como fallback>",
   "venue_address": "<endereço/bairro em Curitiba, ou vazio>",
   "neighborhood": "<bairro em Curitiba, ou vazio>",
-  "date_start": "<YYYY-MM-DDTHH:MM:SS — ver REGRA DE DATA abaixo>",
+  "date_start": "<YYYY-MM-DDTHH:MM:SS — ver REGRAS DE DATA abaixo>",
   "date_end": "<YYYY-MM-DDTHH:MM:SS ou null>",
   "price_min": <número, 0 se gratuito>,
   "price_max": <número, 0 se gratuito>
 }}
 
-REGRA DE DATA — leia com atenção, é o erro mais comum:
-1. Se há uma data ABSOLUTA no post ("21 de abril", "25/04", "Sábado, 25 de Abril \
-de 2026"), use ESSA data. Inclui datas que aparecem na imagem (use a imagem \
-anexada). NÃO recompute.
-2. Se há uma data RELATIVA na legenda ("amanhã", "sábado", "terça que vem", \
-"hoje"), calcule a partir da DATA DO POST ({post_date}), NUNCA da data do scrape \
-({today}). Exemplo: post de 16/04 dizendo "terça que vem" → 21/04, não 28/04.
-3. Se a legenda menciona apenas "dezembro" ou "em breve" sem data específica, \
+REGRAS DE DATA:
+
+Para EVENTO ÚNICO (is_recurring=false):
+1. Se há data ABSOLUTA ("21 de abril", "25/04", "Sábado, 25 de Abril 2026"), \
+use ESSA data. Inclui datas na imagem (use a imagem anexada). NÃO recompute.
+2. Se há data RELATIVA na legenda ("amanhã", "sábado", "terça que vem"), \
+calcule a partir da DATA DO POST ({post_date}), NUNCA da data do scrape \
+({today}). Exemplo: post de 16/04 dizendo "terça que vem" → 21/04.
+3. Sanity check: data deve estar entre {post_date} e {post_date}+30 dias.
+4. Se a legenda menciona apenas "dezembro" ou "em breve" sem data específica, \
 responda {{"is_event": false}}.
-4. Sanity check: a data resultante deve estar entre {post_date} e {post_date} + \
-30 dias. Se ficar fora, revise — provavelmente errou a âncora.
+
+Para ROTINA RECORRENTE (is_recurring=true):
+1. date_start = a PRÓXIMA OCORRÊNCIA da rotina a partir de HOJE ({today}). \
+Ex: hoje é segunda e a rotina é "toda quinta" → date_start = próxima quinta \
+às hora-da-rotina.
+2. Se a rotina cobre múltiplos dias (ex: quinta a domingo), use o PRIMEIRO dia \
+após hoje na lista.
+3. Use HORÁRIO da rotina se mencionado ("17h-21h" → 17:00); senão padrão por \
+tipo (shows/encontros à noite=19:00, tarde=14:00, manhã=10:00).
+4. date_end pode ser null para rotinas, OU mesmo dia + horário de término.
 
 Outras regras:
-- Se NÃO há horário específico, use 19:00 (shows/encontros à noite), 14:00 \
-(tarde), 10:00 (manhã).
-- Eventos fora de Curitiba ou da Região Metropolitana → {{"is_event": false}}.
+- Eventos/rotinas fora de Curitiba ou RMC → {{"is_event": false}}.
 - "Gratuito", "entrada franca", "rolê livre" → preço 0.
-- venue_name fallback: nome da conta (ex: "Café Lucca") quando o post diz \
-"venha ao nosso lugar" sem repetir o local.
+- venue_name fallback: nome da conta quando post diz "venha ao nosso lugar" \
+sem repetir o local.
+- Prefira EVENTO ÚNICO se o post mistura ambos (ex: "esta sexta show da X, e \
+toda terça tem open mic"). O evento único é mais time-sensitive.
 """
 
 
@@ -544,20 +568,37 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
     if not data.get("is_event", False):
         return None
 
+    is_recurring = bool(data.get("is_recurring", False))
+    recurrence_label = data.get("recurrence_label") or None
+    raw_days = data.get("recurrence_days") or []
+    recurrence_days = [
+        int(d) for d in raw_days
+        if isinstance(d, (int, str)) and str(d).strip().isdigit() and 1 <= int(d) <= 7
+    ]
+    if is_recurring and not recurrence_days:
+        # Claude said is_recurring=true but didn't give days — the prompt was
+        # ambiguous on this post; treat as one-off so we don't ship a routine
+        # we can't roll forward.
+        log.debug(f"IG: @{handle}/{shortcode} marked recurring but no days — demoting to one-off")
+        is_recurring = False
+        recurrence_label = None
+
     date_start = _parse_iso(data.get("date_start"))
     if not date_start:
         return None
-    # Only future events (allowing 12h grace for "happening now" posts)
+    # Only future events (allowing 12h grace for "happening now" posts).
+    # Recurring routines need a future-or-today next-occurrence by definition,
+    # so the same filter is correct for both.
     from datetime import timedelta
     if date_start < datetime.now(timezone.utc) - timedelta(hours=12):
         return None
 
-    # Sanity bound: a post almost never announces something more than ~2
-    # months out. If Claude lands a date way outside that window, the
-    # anchor was probably wrong (e.g. used scrape-date instead of post-date).
-    # Drop rather than ship a wrong date — better to miss it than mislead.
+    # Sanity bound: for ONE-OFF events, a post almost never announces something
+    # more than ~2 months out. Drop on anchor-mismatch suspicion. Recurring
+    # routines are exempt — their next-occurrence is always within 7 days, so
+    # the same bound would just be redundant.
     post_dt = _parse_iso(post_date) if post_date else None
-    if post_dt:
+    if post_dt and not is_recurring:
         max_window = post_dt + timedelta(days=60)
         if date_start > max_window:
             log.warning(
@@ -594,6 +635,9 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
         attendees_confirmed=likes,  # likes as a popularity proxy
         url=post_url,
         image_url=image_url,
+        is_recurring=is_recurring,
+        recurrence_label=recurrence_label,
+        recurrence_days=recurrence_days,
     )
 
 

@@ -200,6 +200,13 @@ class EnrichmentPipeline:
                 image_url=raw.image_url,
                 fetched_at=raw.date_start.replace(day=raw.date_start.day),  # placeholder
                 enriched_at=datetime.now(timezone.utc),
+
+                # Pass recurrence through unchanged — Claude's enrichment
+                # prompt doesn't override these (they're set by the source
+                # scraper, currently only IG via instagram_apify.py).
+                is_recurring=raw.is_recurring,
+                recurrence_label=raw.recurrence_label,
+                recurrence_days=list(raw.recurrence_days),
             )
         except Exception as e:
             # Defensive: a single malformed Claude response (or our partial

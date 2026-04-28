@@ -14,7 +14,7 @@ import os
 import re
 import unicodedata
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -1998,6 +1998,38 @@ def _places_pitch(category: str, is_cafe: bool) -> str:
 
 # ── Serialização para o frontend ──
 
+def _next_recurring_occurrence(reference_dt: datetime, days: list) -> datetime:
+    """
+    For a recurring event with stored `reference_dt` (potentially in the past),
+    compute the next occurrence on/after now whose ISO weekday is in `days`
+    (1=Mon … 7=Sun). Preserves the time-of-day from reference_dt.
+
+    Used by _to_frontend so a routine's stored date_start can drift past
+    without making the event vanish — we just compute the next match at
+    serialization time.
+    """
+    if not days:
+        return reference_dt
+    now = datetime.now(timezone.utc)
+    today_iso = now.isoweekday()
+    valid = {int(d) for d in days if isinstance(d, (int, str)) and str(d).isdigit() and 1 <= int(d) <= 7}
+    if not valid:
+        return reference_dt
+    for delta in range(0, 8):
+        candidate_iso = ((today_iso - 1 + delta) % 7) + 1
+        if candidate_iso not in valid:
+            continue
+        candidate_date = (now.date() + timedelta(days=delta))
+        candidate_dt = datetime.combine(
+            candidate_date,
+            reference_dt.time(),
+            tzinfo=reference_dt.tzinfo or timezone.utc,
+        )
+        if candidate_dt > now:
+            return candidate_dt
+    return reference_dt
+
+
 def _to_frontend(ev, detail: bool = False) -> dict:
     """
     Converte EnrichedEvent para o formato que o React espera.
@@ -2009,14 +2041,26 @@ def _to_frontend(ev, detail: bool = False) -> dict:
     # Reroot Originals are evergreen suggestions, not scheduled events.
     is_original = ev.source == "aue_original"
 
+    # Recurring routines: roll forward to the next occurrence whenever the
+    # stored date_start is in the past. The DB query layer also keeps these
+    # rows visible (is_recurring=1 OR date_start>=today), so the only thing
+    # left here is to compute a sensible effective start for display.
+    effective_start = ev.date_start
+    is_recurring = bool(getattr(ev, "is_recurring", False))
+    if is_recurring and ev.date_start < datetime.now(timezone.utc):
+        effective_start = _next_recurring_occurrence(
+            ev.date_start, getattr(ev, "recurrence_days", []) or []
+        )
+
     # Long-running events (museum exhibitions, programs) often started months
     # ago but are still on. Showing their start date misleads — surface the
     # END date as "Em cartaz até …" instead.
     today = datetime.now(timezone.utc).date()
     is_ongoing = (
         not is_original
+        and not is_recurring
         and ev.date_end is not None
-        and ev.date_start.date() < today
+        and effective_start.date() < today
         and ev.date_end.date() >= today
     )
 
@@ -2024,8 +2068,16 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         date_label = "Sempre disponível"
     elif is_ongoing:
         date_label = f"Em cartaz até {_format_event_date(ev.date_end)}"
+    elif is_recurring:
+        # Show the human-readable label ("Toda quinta") next to the next date
+        # so the user sees both the pattern and when it next happens.
+        rec_label = (getattr(ev, "recurrence_label", None) or "").strip()
+        if rec_label:
+            date_label = f"{rec_label} · próx. {_format_event_date(effective_start)}"
+        else:
+            date_label = _format_event_date(effective_start)
     else:
-        date_label = _format_event_date(ev.date_start)
+        date_label = _format_event_date(effective_start)
 
     out = {
         "id": ev.id,
@@ -2035,7 +2087,7 @@ def _to_frontend(ev, detail: bool = False) -> dict:
         "categoryEmoji": ev.category_emoji,
         "venue": f"{ev.venue_name} · {ev.neighborhood}",
         "date": date_label,
-        "time": "" if (is_original or is_ongoing) else ev.date_start.strftime("%H:%M"),
+        "time": "" if (is_original or is_ongoing) else effective_start.strftime("%H:%M"),
         "duration": "" if (is_original or is_ongoing) else _duration(ev),
         "headerBg": ev.header_gradient,
         "icon": _category_icon(ev.kind),
@@ -2065,7 +2117,15 @@ def _to_frontend(ev, detail: bool = False) -> dict:
             and len(ev.external_id.split("_", 2)) >= 2
             else None
         ),
-        "dateStart": ev.date_start.isoformat(),
+        "dateStart": effective_start.isoformat(),
+        # Recurring routines (e.g. "every Thursday MPB"). The frontend uses
+        # these for a distinct badge style + a filter chip. Defaults keep
+        # one-off events identical to before this change. dateStart above
+        # is the next-occurrence (rolled forward at serialization time);
+        # `recurrenceLabel` is the human-readable pattern.
+        "isRecurring": is_recurring,
+        "recurrenceLabel": getattr(ev, "recurrence_label", None),
+        "recurrenceDays": list(getattr(ev, "recurrence_days", []) or []),
     }
 
     if detail:
