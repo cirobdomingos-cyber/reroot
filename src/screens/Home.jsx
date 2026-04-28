@@ -513,7 +513,7 @@ export default function Home() {
           >
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed ?? 'Lembrete agendado'}</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed ?? '🎉 Confirmado!'}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
             </div>
           </motion.div>

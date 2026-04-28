@@ -696,7 +696,7 @@ export default function Events() {
           >
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Lembrete salvo</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>✓ Confirmado</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
             </div>
           </motion.div>

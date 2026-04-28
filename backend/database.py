@@ -73,9 +73,17 @@ def init_db():
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 endpoint   TEXT UNIQUE NOT NULL,
                 keys_json  TEXT NOT NULL,
+                google_id  TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             )
         """)
+        # Migration: older installs predate the google_id column. Without
+        # it we can't target a specific user — only broadcast — so adding
+        # it is what unlocks per-user pushes (group events, friend RSVPs).
+        try:
+            conn.execute("ALTER TABLE push_subscriptions ADD COLUMN google_id TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # already migrated
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_states (
                 google_id   TEXT PRIMARY KEY,
@@ -312,27 +320,63 @@ def count_upcoming_events(city: str) -> int:
 
 # ── Push subscriptions ─────────────────────────────────────
 
-def upsert_push_subscription(endpoint: str, keys_json: str) -> None:
-    """Insert or replace a Web Push subscription (upsert on endpoint)."""
+def upsert_push_subscription(endpoint: str, keys_json: str, google_id: str = "") -> None:
+    """Insert or replace a Web Push subscription (upsert on endpoint).
+    `google_id` links the subscription to a logged-in user — required for
+    per-user pushes (group events, friend RSVPs)."""
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute("""
-            INSERT INTO push_subscriptions (endpoint, keys_json, created_at)
-            VALUES (?, ?, ?)
+            INSERT INTO push_subscriptions (endpoint, keys_json, google_id, created_at)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(endpoint) DO UPDATE SET
                 keys_json  = excluded.keys_json,
+                google_id  = excluded.google_id,
                 created_at = excluded.created_at
-        """, (endpoint, keys_json, now))
+        """, (endpoint, keys_json, google_id, now))
         conn.commit()
 
 
 def get_all_push_subscriptions() -> list[dict]:
-    """Return all stored push subscriptions as dicts."""
+    """Return all stored push subscriptions as dicts. Used by the weekly
+    broadcast — per-user pushes use get_push_subscriptions_for_user()."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT endpoint, keys_json FROM push_subscriptions"
         ).fetchall()
     return [{"endpoint": r["endpoint"], "keys": json.loads(r["keys_json"])} for r in rows]
+
+
+def get_push_subscriptions_for_user(google_id: str) -> list[dict]:
+    """All subscriptions for a single user. A user can have multiple devices
+    (laptop + phone PWA), each registers its own endpoint."""
+    if not google_id:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT endpoint, keys_json FROM push_subscriptions WHERE google_id = ?",
+            (google_id,),
+        ).fetchall()
+    return [{"endpoint": r["endpoint"], "keys": json.loads(r["keys_json"])} for r in rows]
+
+
+def delete_push_subscription_by_endpoint(endpoint: str) -> None:
+    """Remove a dead subscription (push service returned 410 Gone or 404).
+    Keeps the table clean and prevents wasted retry attempts."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+        conn.commit()
+
+
+def rsvp_exists(google_id: str, event_id: str) -> bool:
+    """Pre-write check used to detect whether an RSVP is brand new vs a
+    re-confirm — prevents friend-RSVP push spam on toggle off→on cycles."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM rsvps WHERE google_id = ? AND event_id = ?",
+            (google_id, event_id),
+        ).fetchone()
+    return row is not None
 
 
 # ── User state persistence ─────────────────────────────────

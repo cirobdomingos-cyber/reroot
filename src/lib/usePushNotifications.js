@@ -29,7 +29,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function usePushNotifications() {
-  const { dispatch } = useApp()
+  const { state, dispatch } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -63,7 +63,10 @@ export function usePushNotifications() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
 
-      // Step 6: send subscription to our backend for storage
+      // Step 6: send subscription to our backend for storage. We pass the
+      // google_id so the backend can target this user specifically (group
+      // event added, friend confirmed, etc.) — anonymous subs only get
+      // the weekly broadcast.
       const subJson = subscription.toJSON()
       const res = await fetch(`${API_BASE}/push/subscribe`, {
         method: 'POST',
@@ -71,6 +74,7 @@ export function usePushNotifications() {
         body: JSON.stringify({
           endpoint: subJson.endpoint,
           keys: subJson.keys,  // { p256dh, auth }
+          google_id: state.googleUser?.id || '',
         }),
       })
       if (!res.ok) throw new Error('Falha ao registrar subscription no servidor.')
@@ -83,7 +87,7 @@ export function usePushNotifications() {
     } finally {
       setLoading(false)
     }
-  }, [dispatch])
+  }, [dispatch, state.googleUser?.id])
 
   const dismiss = useCallback(() => {
     dispatch({ type: 'SET_PUSH_DISMISSED' })

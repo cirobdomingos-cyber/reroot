@@ -461,7 +461,7 @@ export const T = {
     home_event_today_view:  'Ver detalhes →',
 
     // ── Notification toast ────────────────────────────────
-    home_notif_confirmed:  '🔔 Lembrete salvo',
+    home_notif_confirmed:  '🎉 Confirmado!',
 
     // ── Post-event attendees ─────────────────────────────
     people_you_met:     'Pessoas que você conheceu',

@@ -41,19 +41,39 @@ registerRoute(new NavigationRoute(navigationHandler, {
 // ── Push notification handler ─────────────────────────────────────────────────
 //
 // The browser calls this whenever the push service delivers a message from our
-// backend (/push/send-weekly → pywebpush → push service → here).
+// backend (per-user pushes: group event added, friend RSVP'd, weekly broadcast).
 // We MUST call showNotification() synchronously inside this handler; if we
 // don't, the browser may suppress the notification with a generic warning.
+//
+// Payload format (per-user pushes): JSON {title, body, url, tag}
+// Legacy format (weekly broadcast): plain text → used as body, generic title.
 self.addEventListener('push', event => {
-  const body = event.data ? event.data.text() : 'Olha o auê dessa semana — vai junto?'
+  let title = 'auê 🎉'
+  let body = 'Olha o auê dessa semana — vai junto?'
+  let url = '/'
+  let tag = 'weekly-checkin'
+
+  if (event.data) {
+    try {
+      const data = event.data.json()
+      if (data.title) title = data.title
+      if (data.body) body = data.body
+      if (data.url) url = data.url
+      if (data.tag) tag = data.tag
+    } catch {
+      // Plain-text payload (legacy weekly broadcast) — use it as body.
+      body = event.data.text() || body
+    }
+  }
+
   event.waitUntil(
-    self.registration.showNotification('auê 🎉', {
+    self.registration.showNotification(title, {
       body,
       icon: '/icon-192x192.png',
       badge: '/icon-192x192.png',
-      tag: 'weekly-checkin',        // replaces previous notification of same tag
+      tag,                          // replaces previous notification of same tag
       renotify: true,               // vibrate/sound even if tag exists
-      data: { url: '/' },
+      data: { url },
     })
   )
 })

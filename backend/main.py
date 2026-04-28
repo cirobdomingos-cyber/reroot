@@ -639,6 +639,10 @@ def health():
         "ingresso_configured": True,
         "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
         "google_places_configured": bool(settings.google_places_api_key),
+        # SMTP shows whether scrape-summary emails will fire. Both vars
+        # required — missing either silently skips email send.
+        "smtp_configured": bool(settings.smtp_user and settings.smtp_password),
+        "smtp_to": settings.founder_email or None,
     }
 
 
@@ -1448,8 +1452,10 @@ class RsvpUpsertRequest(BaseModel):
 @app.post("/rsvp")
 def rsvp_upsert(req: RsvpUpsertRequest):
     """Record that a user is going to an event (normalized, queryable).
-    Side-effect: evaluates the badge engine — RSVPs unlock first_rsvp,
-    explorer (3 bairros), versátil (4 kinds), noiteiro (3× ≥22h)."""
+    Side-effects: evaluates the badge engine + (when this is a NEW
+    RSVP, not a re-confirm) pushes a notification to friends with
+    privacy.shareRsvps = true."""
+    is_new = not db.rsvp_exists(req.google_id, req.event_id)
     db.upsert_rsvp(
         google_id=req.google_id,
         event_id=req.event_id,
@@ -1459,6 +1465,25 @@ def rsvp_upsert(req: RsvpUpsertRequest):
         event_url=req.event_url,
     )
     new_badges = badges.evaluate(req.google_id)
+
+    # Notify friends — only on a fresh RSVP (toggle off→on cycles
+    # don't re-spam) and only if the user opted in to sharing.
+    if is_new and _user_share_rsvps(req.google_id):
+        user_name = _user_display_name(req.google_id)
+        # Tag includes (user, event) so multiple friends RSVPing the same
+        # event don't pile up — each user/event pair gets one slot.
+        tag = f"friend-rsvp-{req.google_id}-{req.event_id}"
+        for friend in db.get_friends(req.google_id):
+            if friend.get("status") != "accepted":
+                continue
+            _send_push_to_user(
+                friend["google_id"],
+                title=f"🎉 {user_name} vai",
+                body=req.event_name,
+                url="/",
+                tag=tag,
+            )
+
     return {"ok": True, "new_badges": new_badges}
 
 
@@ -2301,7 +2326,9 @@ def remove_group_member(group_id: str, member_google_id: str, google_id: str):
 
 @app.post("/groups/{group_id}/events")
 def create_group_event(group_id: str, req: GroupEventCreateRequest):
-    """Create an event within a group. Any member can create events."""
+    """Create an event within a group. Any member can create events.
+    Side-effect: pushes a notification to all OTHER group members so the
+    crew finds out without having to open the app."""
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")
@@ -2315,6 +2342,22 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         date_end=req.date_end,
         visibility=req.visibility,
     )
+    # Notify other group members. Tag per (group, event) so accidental
+    # double-creates collapse instead of stacking.
+    group = db.get_group(group_id)
+    group_name = (group or {}).get("name") or "no grupo"
+    creator_name = _user_display_name(req.google_id)
+    tag = f"group-event-{group_id}-{event['id']}"
+    for member in db.get_group_members(group_id):
+        if member.get("google_id") == req.google_id:
+            continue  # skip the creator
+        _send_push_to_user(
+            member["google_id"],
+            title=f"🎲 {group_name}",
+            body=f"{creator_name} adicionou: {req.name.strip()}",
+            url=f"/#/groups/{group_id}",
+            tag=tag,
+        )
     return event
 
 
@@ -2761,6 +2804,36 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
     return db.get_usage_stats(window_days=window_days)
 
 
+@app.post("/admin/test-email")
+async def admin_test_email(requesting_email: str = ""):
+    """Founder-only: fire a test email and return the verdict so
+    misconfigured SMTP surfaces in seconds, not after a missed scrape."""
+    _require_founder(requesting_email)
+    if not settings.smtp_user or not settings.smtp_password:
+        return {
+            "ok": False,
+            "reason": "SMTP_USER ou SMTP_PASSWORD não configurados no Railway",
+            "smtp_user_set": bool(settings.smtp_user),
+            "smtp_password_set": bool(settings.smtp_password),
+            "founder_email": settings.founder_email,
+        }
+    from notifications import send_email
+    ok = await send_email(
+        settings=settings,
+        to=settings.founder_email,
+        subject="[auê] teste SMTP",
+        html="<p>Se você recebeu isso, o SMTP do <b>auê</b> está funcionando 🎉</p>",
+        text="Se você recebeu isso, SMTP do auê está funcionando.",
+    )
+    return {
+        "ok": ok,
+        "to": settings.founder_email,
+        "smtp_host": settings.smtp_host,
+        "smtp_user": settings.smtp_user,
+        "reason": None if ok else "send_email retornou False — ver logs do Railway (auth, conexão, etc.)",
+    }
+
+
 class FeedbackStatusUpdate(BaseModel):
     status: str            # 'open' | 'concluded' | 'canceled'
     requesting_email: str = ""
@@ -2793,14 +2866,85 @@ WEEKLY_PUSH_MESSAGE = "Olha o auê do fim de semana — vai junto? 🎉"
 class PushSubscriptionBody(BaseModel):
     endpoint: str
     keys: dict
+    google_id: str = ""  # links the subscription to a logged-in user
 
 
 @app.post("/push/subscribe")
 def push_subscribe(body: PushSubscriptionBody):
-    """Store or update a Web Push subscription from the browser."""
-    db.upsert_push_subscription(body.endpoint, json.dumps(body.keys))
-    log.info(f"Push subscription saved: {body.endpoint[:60]}…")
+    """Store or update a Web Push subscription from the browser. The
+    google_id, when present, lets us send per-user pushes (group events,
+    friend RSVPs) — anonymous subs only receive the weekly broadcast."""
+    db.upsert_push_subscription(body.endpoint, json.dumps(body.keys), body.google_id)
+    log.info(f"Push subscription saved (user={body.google_id or 'anon'}): {body.endpoint[:60]}…")
     return {"status": "subscribed"}
+
+
+# ── Per-user push helper ─────────────────────────────────
+# Sends a structured payload (title/body/url/tag) to every device the
+# user has registered. The Service Worker parses the JSON and shows a
+# rich notification — falls back to text body if it can't parse.
+# Failures are dropped silently and dead endpoints (410/404) are pruned.
+def _send_push_to_user(
+    google_id: str,
+    title: str,
+    body: str,
+    url: str = "/",
+    tag: str = "default",
+) -> int:
+    """Returns the number of devices the push was successfully delivered to."""
+    if not google_id:
+        return 0
+    subs = db.get_push_subscriptions_for_user(google_id)
+    if not subs:
+        return 0
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return 0
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
+    sent = 0
+    for sub in subs:
+        try:
+            webpush(
+                subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS,
+            )
+            sent += 1
+        except WebPushException as exc:
+            # 410 Gone / 404 Not Found = subscription invalid; drop it
+            status = getattr(exc.response, "status_code", None)
+            if status in (404, 410):
+                db.delete_push_subscription_by_endpoint(sub["endpoint"])
+            else:
+                log.warning(f"push to {google_id} failed ({status}): {exc}")
+        except Exception as exc:
+            log.warning(f"push to {google_id} errored: {exc}")
+    return sent
+
+
+def _user_share_rsvps(google_id: str) -> bool:
+    """Read user's privacy preference for sharing RSVPs with friends. Same
+    fallback as the frontend (privacy.shareRsvps → legacy shareRsvps → True)."""
+    if not google_id:
+        return False
+    state = db.get_user_state(google_id) or {}
+    privacy = state.get("privacy") or {}
+    if "shareRsvps" in privacy:
+        return bool(privacy["shareRsvps"])
+    if "shareRsvps" in state:
+        return bool(state["shareRsvps"])
+    return True  # default opted-in
+
+
+def _user_display_name(google_id: str) -> str:
+    """Best-effort first-name lookup. Falls back to "Alguém" if unset."""
+    if not google_id:
+        return "Alguém"
+    state = db.get_user_state(google_id) or {}
+    name = state.get("userName") or (state.get("googleUser") or {}).get("givenName")
+    return name or "Alguém"
 
 
 @app.post("/push/send-weekly")

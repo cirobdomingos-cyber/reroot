@@ -36,6 +36,11 @@ def _send_smtp_sync(host: str, port: int, user: str, password: str,
     if text:
         msg.attach(MIMEText(text, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
+    # Gmail App Passwords are displayed with spaces every 4 chars
+    # ("umgp jmbc ywkn mgrd"). The actual password is the 16 chars
+    # WITHOUT spaces — strip defensively so either format in env vars
+    # works. Also strips accidental trailing whitespace.
+    password = (password or "").replace(" ", "").strip()
     try:
         with smtplib.SMTP(host, port, timeout=15) as server:
             server.starttls()

@@ -59,7 +59,7 @@ export async function scheduleEventReminder(event) {
       await plugin.schedule({
         notifications: [{
           id: strHash(event.id),
-          title: '🌿 Você tem um evento amanhã!',
+          title: '🗓 Tem auê amanhã!',
           body: `${event.name} · ${event.time}`,
           schedule: { at: tomorrowAt8am() },
           smallIcon: 'ic_stat_icon_config_sample',
@@ -80,7 +80,7 @@ export async function scheduleEventReminder(event) {
     : await Notification.requestPermission()
 
   if (perm === 'granted') {
-    new Notification('🌿 Presença confirmada!', {
+    new Notification('🎉 Confirmado!', {
       body: `${event.name} · ${event.date} às ${event.time}`,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
@@ -114,8 +114,8 @@ export async function scheduleWeeklyCheckin() {
     await plugin.schedule({
       notifications: [{
         id: 99_999,
-        title: '🌿 Como foi a semana?',
-        body: 'Conta pra gente e já veja os eventos de amanhã.',
+        title: '🎉 Domingão',
+        body: 'Bora ver o que rola essa semana.',
         schedule: { at: nextSundayAt18(), every: 'week' },
         smallIcon: 'ic_stat_icon_config_sample',
       }],
@@ -155,8 +155,8 @@ export async function schedulePostEventNotification(event) {
     await plugin.schedule({
       notifications: [{
         id: strHash(event.id + '_post'),
-        title: '🤝 Você conheceu alguém hoje?',
-        body: `${event.name} — veja quem esteve lá e conecte-se.`,
+        title: '🤝 Quem foi com você?',
+        body: `${event.name} — quem mais foi tá listado lá.`,
         schedule: { at },
         smallIcon: 'ic_stat_icon_config_sample',
       }],
