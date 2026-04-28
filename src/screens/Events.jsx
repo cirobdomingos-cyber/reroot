@@ -151,6 +151,10 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
+  // Recurring routines (e.g. "every Thursday MPB") show alongside one-off
+  // events with distinct styling. 'all' (default) shows both, 'events' hides
+  // routines, 'routines' hides one-offs. The chip toggles cycle through.
+  const [routinesFilter, setRoutinesFilter] = useState('all')
   // Friends' RSVPs — feeds the friend-dot in the week strip. Only fetched
   // when the user is signed in.
   const [friendsFeed, setFriendsFeed]       = useState([])
@@ -293,6 +297,12 @@ export default function Events() {
   // Kids Welcome filter — additive
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
+  }
+  // Routines filter — show only one-offs, only routines, or both (default).
+  if (routinesFilter === 'events') {
+    filteredEvents = filteredEvents.filter(ev => !ev.isRecurring)
+  } else if (routinesFilter === 'routines') {
+    filteredEvents = filteredEvents.filter(ev => ev.isRecurring)
   }
 
   // A bairro filter was prototyped here but reverted — venue→bairro from
@@ -582,6 +592,26 @@ export default function Events() {
         >
           👶 {t.filter_kids_welcome}
         </button>
+        {[
+          { id: 'all',      label: 'Eventos & rotinas' },
+          { id: 'events',   label: '⚡ Só únicos' },
+          { id: 'routines', label: '🔁 Só rotinas' },
+        ].map(rf => (
+          <button
+            key={rf.id}
+            onClick={() => setRoutinesFilter(rf.id)}
+            style={{
+              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+              transition: 'all 0.15s',
+              border: routinesFilter === rf.id ? 'none' : '1px solid var(--border)',
+              background: routinesFilter === rf.id ? '#7E57C2' : 'transparent',
+              color: routinesFilter === rf.id ? 'white' : 'var(--charcoal-light)',
+            }}
+          >
+            {rf.label}
+          </button>
+        ))}
       </div>
 
       {/* ── AI suggestion CTA — sits above the list so it's reachable
@@ -873,10 +903,17 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
 
   // Group events get an inset left stripe (no layout shift) and a tinted
   // background so they read instantly as "yours / private" — distinct from
-  // the public catalog without being loud.
+  // the public catalog without being loud. Recurring routines reuse the
+  // same pattern with a distinct lilac/purple stripe so they read as
+  // "this happens regularly, not a one-off" at a glance.
   const isGroupEvent = !!ev.isGroupEvent
-  const cardBackground = isGroupEvent ? '#FFFAF3' : 'white'
-  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)' : 'none'
+  const isRecurring = !!ev.isRecurring && !isGroupEvent
+  const cardBackground = isGroupEvent ? '#FFFAF3'
+                       : isRecurring ? '#F5F3FF'  // soft lilac
+                       : 'white'
+  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)'
+                   : isRecurring ? 'inset 4px 0 0 #7E57C2'  // purple — visually distinct from group sage
+                   : 'none'
 
   return (
     <div
@@ -932,6 +969,20 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)', marginTop: 2 }}>
           🗓 {ev.date} · {ev.time}
         </div>
+
+        {/* Routine badge — recurring events get a small "🔁 Toda quinta"
+            chip below the date so the user instantly sees "this is a
+            weekly thing" alongside the next-occurrence date already shown
+            in the date label. */}
+        {isRecurring && (
+          <div style={{
+            fontSize: 10, fontWeight: 700, color: '#5E35B1',
+            background: '#EDE7F6', padding: '2px 8px', borderRadius: 6,
+            marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 4,
+          }}>
+            🔁 {ev.recurrenceLabel || 'Rotina'}
+          </div>
+        )}
 
         {/* Friends going (live from friends_feed) */}
         {friendsGoing.length > 0 && (
