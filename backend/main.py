@@ -867,6 +867,17 @@ def list_events(
         and _passes_content_filter(ev, curated=good_only)
         and mood_pred(ev)
     ]
+    # Host-first sort before dedup: when the same event is posted by a
+    # venue (bardosax) AND a curator (umcuradorqualquer), we want the
+    # venue's version to survive — it has the canonical time/venue and
+    # richer description. _dedupe_events keeps the first occurrence, so
+    # putting non-curators first naturally accomplishes this. date_start
+    # ASC is the secondary sort to preserve the existing chronology
+    # (which Tier 2.5 of dedup relies on for "earliest session wins").
+    cleaned.sort(key=lambda ev: (
+        _is_curator_event(ev),
+        ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
+    ))
     deduped = _dedupe_events(cleaned)[:limit]
 
     return {
@@ -1190,8 +1201,45 @@ def _enabled_ig_handles() -> frozenset[str]:
     return _enabled_ig_handles_cached()
 
 
+@functools.lru_cache(maxsize=1)
+def _curator_ig_handles_cached() -> frozenset[str]:
+    """Subset of enabled handles whose category is 'curador' — aggregator
+    pages that repost other venues' events rather than hosting their own.
+    Used to break dedup ties: when the same event is captured by both a
+    venue handle and a curator, we keep the venue's version (richer info,
+    canonical time/venue)."""
+    return frozenset(
+        a["handle"].lower()
+        for a in db.get_enabled_ig_accounts()
+        if (a.get("category") or "").lower() == "curador"
+    )
+
+
 def _bust_handle_cache() -> None:
     _enabled_ig_handles_cached.cache_clear()
+    _curator_ig_handles_cached.cache_clear()
+
+
+def _handle_for_event(ev) -> str:
+    """Extract the IG handle from an event's external_id. Returns '' for
+    non-IG events (aue_original) or malformed ids."""
+    if (ev.source or "").lower() != "instagram":
+        return ""
+    ext = ev.external_id or ""
+    if not ext.startswith("ig_"):
+        return ""
+    rest = ext[3:]
+    idx = rest.rfind("_")
+    if idx <= 0:
+        return ""
+    return rest[:idx].lower()
+
+
+def _is_curator_event(ev) -> bool:
+    """True when the event came from a handle categorized as 'curador'.
+    aue_original and venue handles return False — they're treated as
+    primary-host candidates in dedup ordering."""
+    return _handle_for_event(ev) in _curator_ig_handles_cached()
 
 
 def _is_in_curitiba(ev) -> bool:

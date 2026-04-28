@@ -751,8 +751,8 @@ export default function Events() {
       </div>
 
       {/* ── Inline CTAs — two slim pills side by side. Left: AI suggestion
-          ("ask the Companion for ideas"). Right: Convidar amigos pra um
-          plano (creates a personal-plan event with hand-picked invitees).
+          ("ask the Companion for ideas"). Right: "Criar um evento com
+          amigos" (creates a personal-plan event with hand-picked invitees).
           flexWrap so they stack on narrow screens. */}
       {!loading && !isVenueMode && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '4px 16px 10px' }}>
@@ -786,7 +786,7 @@ export default function Events() {
               }}
             >
               <span style={{ fontSize: 14 }}>🎲</span>
-              <span>Convidar amigos pra um plano</span>
+              <span>Criar um evento com amigos</span>
               <span style={{ opacity: 0.6 }}>→</span>
             </button>
           )}
