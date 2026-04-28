@@ -221,10 +221,16 @@ export async function fetchEvents(mood = 'all', { curated = false } = {}) {
   return { events: dropPastEvents(filtered), source: 'local', city: 'Curitiba' }
 }
 
-export async function fetchEventDetail(eventId) {
-  // Try backend first for richer data
+export async function fetchEventDetail(eventId, googleId = '') {
+  // Try backend first for richer data. Pass google_id when known so the
+  // server can authorize personal-plan reads (creator + invitees only —
+  // catalog events ignore the param). Without it, personal plans 403 →
+  // frontend falls back to embedded data and shows "event doesn't exist".
   try {
-    const res = await fetchWithTimeout(`${BASE_URL}/events/${eventId}`)
+    const url = googleId
+      ? `${BASE_URL}/events/${eventId}?google_id=${encodeURIComponent(googleId)}`
+      : `${BASE_URL}/events/${eventId}`
+    const res = await fetchWithTimeout(url)
     if (res.ok) {
       const data = await res.json()
       return { event: normalizeBackendEvent(data), source: 'live' }

@@ -227,7 +227,7 @@ export default function Events() {
       return
     }
     setDetailLoading(true)
-    const { event } = await fetchEventDetail(eventId)
+    const { event } = await fetchEventDetail(eventId, state.googleUser?.id || '')
     setDetailEvent(event)
     setDetailLoading(false)
   }
