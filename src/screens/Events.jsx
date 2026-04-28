@@ -87,6 +87,33 @@ function getPersonalChip(ev, rsvps) {
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
+// True when `dayIso` (YYYY-MM-DD) falls within the event's date range
+// (inclusive on both ends). One-off events (no dateEnd) collapse to a
+// strict equality on dateStart's day. Used by both the per-day filter
+// and the week-strip count so a "terça a domingo" festival shows up
+// every day it covers.
+function eventCoversDay(ev, dayIso) {
+  const start = (ev.dateStart || '').slice(0, 10)
+  if (!start) return false
+  const end = (ev.dateEnd || '').slice(0, 10) || start
+  return dayIso >= start && dayIso <= end
+}
+
+// True when the event's [dateStart..dateEnd] interval overlaps with the
+// time window [startTs, endTs). Used by the date-range pills (Hoje, Fim
+// de semana, Próx 7d) so a multi-day festival surfaces in every range
+// it touches, not just the one its dateStart falls into. Recurring
+// events bypass — they're evergreen and rolled forward upstream.
+function eventOverlapsRange(ev, startTs, endTs) {
+  if (ev.isRecurring) return true
+  if (!ev.dateStart) return false
+  const evStart = Date.parse(ev.dateStart)
+  if (Number.isNaN(evStart)) return false
+  const evEnd = ev.dateEnd ? Date.parse(ev.dateEnd) : evStart
+  const evEndSafe = Number.isNaN(evEnd) || evEnd < evStart ? evStart : evEnd
+  return evStart < endTs && evEndSafe >= startTs
+}
+
 function EventCardSkeleton() {
   return (
     <div style={{
@@ -428,12 +455,9 @@ export default function Events() {
       sat.setDate(sat.getDate() + daysUntilSat)
       const monAfter = new Date(sat)
       monAfter.setDate(monAfter.getDate() + 2)
-      filteredEvents = filteredEvents.filter(ev => {
-        if (ev.isRecurring) return true
-        if (!ev.dateStart) return false
-        const t = Date.parse(ev.dateStart)
-        return !Number.isNaN(t) && t >= sat.getTime() && t < monAfter.getTime()
-      })
+      filteredEvents = filteredEvents.filter(ev =>
+        eventOverlapsRange(ev, sat.getTime(), monAfter.getTime())
+      )
       rangeEnd = null  // already filtered above
     } else if (dateRange === 'week') {
       rangeEnd = new Date(startOfToday)
@@ -442,12 +466,9 @@ export default function Events() {
     if (rangeEnd) {
       const endTs = rangeEnd.getTime()
       const startTs = startOfToday.getTime()
-      filteredEvents = filteredEvents.filter(ev => {
-        if (ev.isRecurring) return true
-        if (!ev.dateStart) return false
-        const t = Date.parse(ev.dateStart)
-        return !Number.isNaN(t) && t >= startTs && t < endTs
-      })
+      filteredEvents = filteredEvents.filter(ev =>
+        eventOverlapsRange(ev, startTs, endTs)
+      )
     }
   }
 
@@ -464,7 +485,11 @@ export default function Events() {
   // the other days' counts.
   const eventsForStrip = filteredEvents
   if (!isVenueMode && selectedDay) {
-    filteredEvents = filteredEvents.filter(ev => (ev.dateStart || '').slice(0, 10) === selectedDay)
+    // Range events ("terça a domingo", multi-day exhibitions) cover every
+    // day between dateStart and dateEnd inclusive — they should show up
+    // when ANY of those days is selected, not just the start day. One-offs
+    // (no dateEnd) keep the simple equality check.
+    filteredEvents = filteredEvents.filter(ev => eventCoversDay(ev, selectedDay))
   }
 
   // Day-keyed sets for the strip's social signals. RSVP set comes from

@@ -135,6 +135,10 @@ function normalizeBackendEvent(ev) {
     placeSubtype: ev.placeSubtype,
     isReal: true,
     dateStart: ev.dateStart,
+    // dateEnd is null for one-off events; populated for ranges
+    // (multi-day exhibitions, "Tuesday through Sunday" runs). Frontend
+    // uses it to make the event surface on each day in the range.
+    dateEnd: ev.dateEnd ?? null,
     dateTag: computeDateTag(ev.dateStart),
     // Recurring routines (e.g. weekly bar happy hour). The API has been
     // shipping these since the recurring-events PR, but this normalizer

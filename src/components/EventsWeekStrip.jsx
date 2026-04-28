@@ -43,15 +43,33 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Bucket all events by ISO day. We bucket *every* event regardless of week
-  // so that future weeks still show counts when the user navigates forward.
+  // Bucket all events by ISO day. We bucket *every* event regardless of
+  // week so future weeks still show counts when the user navigates forward.
+  // Range events (dateStart..dateEnd, e.g. "terça a domingo") increment
+  // every day they cover so the week strip shows the right "you can go
+  // any day" intuition. Capped at 60 days defensively to avoid blowing
+  // up the map for malformed multi-year ranges.
   const countsByDay = useMemo(() => {
     const map = {}
     for (const ev of events) {
-      const iso = ev.dateStart || ev.date_start || ''
-      if (!iso) continue
-      const k = iso.slice(0, 10)
-      map[k] = (map[k] || 0) + 1
+      const isoStart = ev.dateStart || ev.date_start || ''
+      if (!isoStart) continue
+      const startKey = isoStart.slice(0, 10)
+      const isoEnd = ev.dateEnd || ev.date_end || ''
+      const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
+      // Iterate one day at a time. UTC math avoids DST edge cases.
+      const start = new Date(`${startKey}T00:00:00Z`)
+      const end = new Date(`${endKey}T00:00:00Z`)
+      if (Number.isNaN(start.getTime())) continue
+      const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
+      const cursor = new Date(start)
+      let n = 0
+      while (cursor <= finalEnd && n < 60) {
+        const k = cursor.toISOString().slice(0, 10)
+        map[k] = (map[k] || 0) + 1
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
+        n += 1
+      }
     }
     return map
   }, [events])

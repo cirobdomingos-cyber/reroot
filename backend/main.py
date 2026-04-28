@@ -2212,6 +2212,10 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "isRecurring": is_recurring,
         "recurrenceLabel": getattr(ev, "recurrence_label", None),
         "recurrenceDays": list(getattr(ev, "recurrence_days", []) or []),
+        # Range events ("terça a domingo", multi-day exhibitions, festivals
+        # spanning a weekend) need the end date so the frontend can show
+        # the event on every day it covers, not just its start day.
+        "dateEnd": ev.date_end.isoformat() if ev.date_end else None,
     }
 
     # Attach pin coordinates + bairro when the venue's been geocoded.
