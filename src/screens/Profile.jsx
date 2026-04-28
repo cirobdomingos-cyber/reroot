@@ -783,7 +783,8 @@ function BadgesSection({ googleId, initialOpenBadge = null }) {
       }}>
         Toque pra ver detalhe e progresso até o próximo tier.<br/>
         <span style={{ opacity: 0.8 }}>
-          Conquistas atualizam <strong>após o evento rolar</strong>.
+          As conquistas de participação <strong>atualizam após o evento rolar</strong> —
+          o "Primeiro auê" cai assim que você confirma.
         </span>
       </div>
       <div style={{

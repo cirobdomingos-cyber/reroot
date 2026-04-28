@@ -417,6 +417,52 @@ _INSTALL_HTML = """<!DOCTYPE html>
   .footer a { color: #7A9E7E; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
   [hidden] { display: none !important; }
+
+  /* Full-screen blocker for in-app browsers (WhatsApp/Instagram/etc.) — */
+  /* surface the install impossibility immediately instead of inline warning. */
+  /* R3 finding: 36 mentions of users giving up here. */
+  .iab-overlay {
+    position: fixed; inset: 0; z-index: 9000;
+    background: rgba(40, 30, 20, 0.92);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .iab-card {
+    background: white; border-radius: 24px;
+    padding: 32px 26px 26px;
+    max-width: 380px; width: 100%;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    text-align: center;
+  }
+  .iab-icon { font-size: 48px; line-height: 1; margin-bottom: 14px; }
+  .iab-title {
+    font-size: 20px; font-weight: 800; line-height: 1.25;
+    color: #2C2C2C; margin-bottom: 10px;
+  }
+  .iab-body {
+    font-size: 14px; color: #5A5A5A; line-height: 1.55;
+    margin-bottom: 22px;
+  }
+  .iab-body strong { color: #2C2C2C; }
+  .iab-cta {
+    display: block; width: 100%;
+    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
+    color: white; border: none; cursor: pointer;
+    padding: 16px 22px; border-radius: 14px;
+    font-size: 15px; font-weight: 800; letter-spacing: 0.2px;
+    box-shadow: 0 6px 18px rgba(232, 98, 63, 0.4);
+    -webkit-tap-highlight-color: transparent;
+    font-family: inherit;
+  }
+  .iab-cta:active { transform: translateY(1px); }
+  .iab-secondary {
+    display: block; width: 100%; margin-top: 10px;
+    background: none; border: none; cursor: pointer;
+    padding: 10px; font-size: 12px; color: #999;
+    font-family: inherit;
+  }
+  .iab-secondary:active { color: #666; }
 </style>
 </head>
 <body>
@@ -535,6 +581,25 @@ _INSTALL_HTML = """<!DOCTYPE html>
     <div class="done"><strong>📱 Bonus</strong>No celular, instala como app também — fica com ícone na tela inicial e abre offline.</div>
   </section>
 
+  <!-- ── Full-screen blocker for in-app browsers — shown by JS below ── -->
+  <div id="iab-blocker" class="iab-overlay" hidden>
+    <div class="iab-card">
+      <div class="iab-icon">⚠️</div>
+      <div class="iab-title" id="iab-title">Esse link não abre aqui</div>
+      <div class="iab-body" id="iab-body">
+        Você abriu o link dentro do <strong>WhatsApp / Instagram</strong> — esse
+        navegador não permite instalar apps. Toca no botão abaixo pra abrir
+        no <strong>Chrome ou Safari</strong> e seguir.
+      </div>
+      <button class="iab-cta" id="iab-cta-btn" onclick="iabAction()">
+        Abrir no navegador certo
+      </button>
+      <button class="iab-secondary" onclick="document.getElementById('iab-blocker').hidden = true">
+        Continuar mesmo assim
+      </button>
+    </div>
+  </div>
+
   <!-- ── Universal share section ── -->
   <div class="share">
     <div class="share-title">📲 Manda pra um amigo</div>
@@ -550,11 +615,17 @@ _INSTALL_HTML = """<!DOCTYPE html>
 </div>
 
 <script>
+  // Detected platform (set by IIFE below) — used by iabAction() too.
+  var __aueIsIOS = false;
+  var __aueIsAndroid = false;
+
   // ── Platform detection: pick one section, hide the rest ──
   (function() {
     var ua = navigator.userAgent || "";
     var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
     var isAndroid = /Android/.test(ua);
+    __aueIsIOS = isIOS;
+    __aueIsAndroid = isAndroid;
     // In-app browsers and non-Safari browsers on iOS: install option missing.
     var inApp = /FB_IAB|FBAN|FBAV|FBIOS|Instagram|Line|WhatsApp|Twitter|GSA|CriOS|FxiOS|EdgiOS|MicroMessenger|TikTok/i.test(ua);
     var which;
@@ -563,12 +634,64 @@ _INSTALL_HTML = """<!DOCTYPE html>
     else which = "desktop";
     var el = document.getElementById(which);
     if (el) el.hidden = false;
+
     // If running in standalone (already installed), say so up top.
     if (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) {
       document.querySelector(".container").insertAdjacentHTML("afterbegin",
         '<div class="done" style="margin-bottom:24px"><strong>✓ Já instalado</strong>Você está abrindo o auê instalado. Pode mandar o link pra um amigo abaixo.</div>');
+      return;
+    }
+
+    // Full-screen blocker for in-app browsers — single decision.
+    if (inApp) {
+      var blocker = document.getElementById("iab-blocker");
+      var btn = document.getElementById("iab-cta-btn");
+      var title = document.getElementById("iab-title");
+      var body = document.getElementById("iab-body");
+      if (isIOS) {
+        title.textContent = "Esse link não abre aqui";
+        body.innerHTML = "O <strong>WhatsApp/Instagram</strong> não permite instalar apps. Toca abaixo pra copiar o link e abrir no <strong>Safari</strong>.";
+        btn.textContent = "Copiar link e abrir Safari";
+      } else if (isAndroid) {
+        title.textContent = "Esse link não abre aqui";
+        body.innerHTML = "O <strong>WhatsApp/Instagram</strong> não permite instalar apps. Toca abaixo pra abrir direto no <strong>Chrome</strong>.";
+        btn.textContent = "Abrir no Chrome";
+      } else {
+        title.textContent = "Abre num navegador completo";
+        body.innerHTML = "Toca abaixo pra copiar o link e abrir no Chrome, Safari ou Firefox.";
+        btn.textContent = "Copiar link";
+      }
+      blocker.hidden = false;
     }
   })();
+
+  // ── In-app browser action — platform-specific escape ──
+  function iabAction() {
+    var canonical = window.location.origin + "/install";
+    if (__aueIsAndroid) {
+      // Android intent:// scheme — opens directly in Chrome bypassing the
+      // in-app webview. Fallback URL (http://) handles browsers that
+      // refuse the intent.
+      // Strip protocol via split to avoid Python SyntaxWarning on the JS regex.
+      var clean = canonical.indexOf("://") > 0 ? canonical.split("://")[1] : canonical;
+      window.location.href =
+        "intent://" + clean + "#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent(canonical) + ";end";
+      // Safety net: if the intent didn't fire, fall back to copy after 1.5s
+      setTimeout(function() { copyLink("Link copiado! Cola na barra do Chrome."); }, 1500);
+      return;
+    }
+    // iOS + everything else: copy and instruct.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(canonical).then(function() {
+        var msg = __aueIsIOS
+          ? "Link copiado! Abre o Safari (azul) e cola na barra de endereço."
+          : "Link copiado! Cola num navegador completo.";
+        alert(msg);
+      }, function() { prompt("Copie o link:", canonical); });
+    } else {
+      prompt("Copie o link:", canonical);
+    }
+  }
 
   // ── Copy URL to clipboard (used by in-app warning sections) ──
   function copyLink(msg) {
