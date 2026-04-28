@@ -159,6 +159,7 @@ export default function MyRsvps() {
             <FriendEventRow
               key={ev.event_id}
               event={ev}
+              kind={classify(ev.event_id)}
               onOpen={() => navigate('/events', { state: { openEventId: ev.event_id } })}
               onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
             />
@@ -304,23 +305,36 @@ function Section({ title, children, muted = false, help }) {
   )
 }
 
-function FriendEventRow({ event: ev, onOpen, onFriend }) {
+function FriendEventRow({ event: ev, kind = 'public', onOpen, onFriend }) {
+  // Mirrors RsvpRow's Confirmados pattern: kind badge + name on top,
+  // date · venue below, then the social signal (friend avatars + "N
+  // vão") on its own line. Same padding, same stripe-by-kind, same
+  // typography, so Amigos vão and Confirmados read as siblings.
   const dateLabel = formatDate(ev.event_date) || ''
   const friends = ev.friends_going || []
+  const stripeColor = kind === 'plan' ? 'var(--terra)'
+                    : kind === 'group' ? 'var(--sage)'
+                    : 'transparent'
   return (
     <div
       onClick={onOpen}
       style={{
         background: 'white', borderRadius: 14, padding: '12px 14px',
-        border: '1px solid var(--border)', cursor: 'pointer',
-        display: 'flex', flexDirection: 'column', gap: 8,
+        border: '1px solid var(--border)',
+        boxShadow: stripeColor !== 'transparent' ? `inset 4px 0 0 ${stripeColor}` : 'none',
+        cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', gap: 6,
       }}
     >
-      <div style={{
-        fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-      }}>
-        {ev.event_name}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <KindBadge kind={kind} />
+        <div style={{
+          fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          flex: 1, minWidth: 0,
+        }}>
+          {ev.event_name}
+        </div>
       </div>
       <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
         {dateLabel}{ev.event_venue ? ` · ${ev.event_venue}` : ''}
