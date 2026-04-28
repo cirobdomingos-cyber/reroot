@@ -243,9 +243,17 @@ def init_db():
                 date_end     TEXT,
                 created_by   TEXT NOT NULL,
                 visibility   TEXT NOT NULL DEFAULT 'members',
+                note         TEXT NOT NULL DEFAULT '',
                 created_at   TEXT NOT NULL
             )
         """)
+        # Migration: `note` field added so users can leave a "pessoal que tal
+        # esse?" message when adding an event to a group. R3 finding (P29 +
+        # P31): without it, users migrate the conversation to WhatsApp.
+        try:
+            conn.execute("ALTER TABLE group_events ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already present
         # Achievements/badges. One row per (user, badge) once earned —
         # categorical, never revoked. Metadata column captures context like
         # which venue triggered a "Local da casa" badge. Tier captures
@@ -1560,23 +1568,27 @@ def get_group_members(group_id: str) -> list[dict]:
 def create_group_event(
     group_id: str, google_id: str, name: str, description: str = "",
     venue: str = "", date_start: str = "", date_end: Optional[str] = None,
-    visibility: str = "members",
+    visibility: str = "members", note: str = "",
 ) -> dict:
-    """Create an event within a group. Returns the new event dict."""
+    """Create an event within a group. Returns the new event dict.
+    `note` is a short free-text message ("pessoal que tal esse?") attached
+    when the user adds the event — surfaced on the event card so the crew
+    sees the reason without scrolling into a chat thread."""
     now = datetime.now(timezone.utc).isoformat()
     event_id = f"grp_ev_{secrets.token_hex(6)}"
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO group_events (id, group_id, name, description, venue, date_start, date_end, created_by, visibility, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (event_id, group_id, name, description, venue, date_start, date_end, google_id, visibility, now),
+            """INSERT INTO group_events (id, group_id, name, description, venue, date_start, date_end, created_by, visibility, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, group_id, name, description, venue, date_start, date_end, google_id, visibility, note, now),
         )
         conn.commit()
     return {
         "id": event_id, "group_id": group_id, "name": name,
         "description": description, "venue": venue,
         "date_start": date_start, "date_end": date_end,
-        "created_by": google_id, "visibility": visibility, "created_at": now,
+        "created_by": google_id, "visibility": visibility,
+        "note": note, "created_at": now,
     }
 
 

@@ -314,6 +314,19 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
             📅 {event.date_start?.slice(0, 10)} {event.date_start?.slice(11, 16)}
           </div>
           {cleanDesc && <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 4 }}>{cleanDesc}</div>}
+          {event.note && (
+            <div style={{
+              marginTop: 8, padding: '8px 11px',
+              background: 'var(--cream)',
+              borderLeft: '3px solid var(--terra)',
+              borderRadius: 8,
+              fontSize: 12, color: 'var(--charcoal)',
+              lineHeight: 1.45,
+              fontStyle: 'italic',
+            }}>
+              💬 {event.note}
+            </div>
+          )}
           {creator && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
@@ -784,6 +797,22 @@ function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, on
               }}>
                 {cleanDesc}
               </p>
+            )}
+
+            {/* Free-text note from whoever added the event — shown
+                prominently in the drawer so the crew sees the framing */}
+            {event?.note && (
+              <div style={{
+                marginTop: 14, padding: '12px 14px',
+                background: 'var(--cream)',
+                borderLeft: '4px solid var(--terra)',
+                borderRadius: 10,
+                fontSize: 14, color: 'var(--charcoal)',
+                lineHeight: 1.5,
+                fontStyle: 'italic',
+              }}>
+                💬 {event.note}
+              </div>
             )}
 
             {/* Adicionado por */}

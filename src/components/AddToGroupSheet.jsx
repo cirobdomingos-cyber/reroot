@@ -16,6 +16,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   const [loading, setLoading] = useState(false)
   const [submittingId, setSubmittingId] = useState(null)
   const [doneId, setDoneId] = useState(null)
+  // Optional "que tal esse?" message attached to the group event card.
+  // R3 P29 + P31: without it, users open WhatsApp instead — leak of crew
+  // conversation outside the platform.
+  const [note, setNote] = useState('')
 
   useEffect(() => {
     if (!open || !googleId) return
@@ -28,6 +32,9 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     })
     return () => { cancelled = true }
   }, [open, googleId])
+
+  // Reset the note when the sheet closes/reopens for a different event.
+  useEffect(() => { if (!open) setNote('') }, [open])
 
   async function handlePick(group) {
     if (submittingId || !event) return
@@ -42,6 +49,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
         date_end: null,
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
+        note: note.trim().slice(0, 280),
       })
       setDoneId(group.id)
       setTimeout(() => { onClose(); setDoneId(null) }, 900)
@@ -83,6 +91,42 @@ export default function AddToGroupSheet({ open, onClose, event }) {
             <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 14, lineHeight: 1.4 }}>
               "{event?.name}"
             </div>
+
+            {/* Optional message — surfaces in the group event card so the
+                crew sees the "vibe" of the recommendation, not just the
+                title. Reduces the WhatsApp-migration leak. */}
+            {!loading && groups.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Que tal esse, pessoal? (opcional)"
+                  rows={2}
+                  maxLength={280}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: '1.5px solid var(--border)',
+                    fontSize: 13,
+                    fontFamily: 'inherit',
+                    resize: 'none',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    color: 'var(--charcoal)',
+                    background: 'var(--cream)',
+                  }}
+                />
+                {note.length > 0 && (
+                  <div style={{
+                    fontSize: 10, color: 'var(--charcoal-light)',
+                    textAlign: 'right', marginTop: 2,
+                  }}>
+                    {note.length} / 280
+                  </div>
+                )}
+              </div>
+            )}
 
             {loading ? (
               <div style={{ padding: 20, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>

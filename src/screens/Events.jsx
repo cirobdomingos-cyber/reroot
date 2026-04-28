@@ -301,8 +301,6 @@ export default function Events() {
   // the scrapers is too noisy to be trustworthy ("Curitiba" appearing as
   // a bairro, same venue mapped inconsistently across enrichment runs).
   // Re-enable after a canonical venue→bairro lookup + re-enrichment.
-  // The getBairro() helper above stays — used by the personal "📍 Mesmo
-  // lugar" chip and by future neighborhood features.
   // AI-curated/made-up events never surface in the Events tab — they're
   // reserved for a separate discovery surface (chatbot or dedicated tab,
   // TBD). The Events tab is the catalog of real, scraped Curitiba events.
