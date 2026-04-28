@@ -673,6 +673,26 @@ export async function leaveGroup(groupId, googleId) {
   return res.json()
 }
 
+// Promote a member to admin or demote them. Admin-only on the backend.
+// `role` must be 'admin' or 'member'. Throws on the last-admin guard so
+// the caller can show an inline error.
+export async function setGroupMemberRole(groupId, memberGoogleId, googleId, role) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberGoogleId)}/role`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, role }),
+    },
+  )
+  if (!res.ok) {
+    let detail = ''
+    try { detail = (await res.json()).detail || '' } catch {}
+    throw new Error(detail || `Set role failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function deleteGroup(groupId, googleId) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}?google_id=${encodeURIComponent(googleId)}`,

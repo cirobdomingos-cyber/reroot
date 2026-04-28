@@ -2533,12 +2533,15 @@ def update_group(group_id: str, req: GroupUpdateRequest):
 
 @app.delete("/groups/{group_id}")
 def delete_group(group_id: str, google_id: str):
-    """Delete a group. Requires admin role."""
+    """Delete a group. Requires admin role on the group — any admin can
+    delete, not just the original creator. Promote/demote happens via the
+    /members/{id}/role endpoint, so the admin set is intentional."""
     group = db.get_group(group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    if group["created_by"] != google_id:
-        raise HTTPException(status_code=403, detail="Only the group creator can delete it")
+    role = db.get_group_member_role(group_id, google_id)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Only group admins can delete the group")
     db.delete_group(group_id)
     return {"ok": True}
 
@@ -2585,6 +2588,36 @@ def remove_group_member(group_id: str, member_google_id: str, google_id: str):
             raise HTTPException(status_code=403, detail="Only admins can remove members")
     db.leave_group(group_id, member_google_id)
     return {"ok": True}
+
+
+class GroupMemberRoleUpdate(BaseModel):
+    google_id: str          # the requester (must be admin)
+    role: str               # 'admin' | 'member'
+
+
+@app.put("/groups/{group_id}/members/{member_google_id}/role")
+def update_group_member_role(group_id: str, member_google_id: str, req: GroupMemberRoleUpdate):
+    """Promote a member to admin or demote an admin back to member.
+    Admin-only. Refuses to demote the last remaining admin so the group
+    never ends up with zero admins (otherwise no-one could invite, edit
+    settings, or eject a bad actor)."""
+    if req.role not in ("admin", "member"):
+        raise HTTPException(status_code=400, detail="role must be 'admin' or 'member'")
+    actor_role = db.get_group_member_role(group_id, req.google_id)
+    if actor_role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can change roles")
+    target_role = db.get_group_member_role(group_id, member_google_id)
+    if target_role is None:
+        raise HTTPException(status_code=404, detail="Member not in group")
+    # Block the last-admin trapdoor.
+    if target_role == "admin" and req.role == "member":
+        if db.count_group_admins(group_id) <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Não dá pra remover o último admin — promova alguém antes",
+            )
+    db.set_group_member_role(group_id, member_google_id, req.role)
+    return {"ok": True, "role": req.role}
 
 
 @app.post("/groups/{group_id}/events")

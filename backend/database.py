@@ -1581,6 +1581,29 @@ def leave_group(group_id: str, google_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def set_group_member_role(group_id: str, google_id: str, role: str) -> bool:
+    """Update a member's role within a group. Returns True if a row updated.
+    Doesn't validate the role string — the caller is expected to enforce
+    'admin' or 'member' (or whatever the schema accepts in the future)."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE group_members SET role = ? WHERE group_id = ? AND google_id = ?",
+            (role, group_id, google_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def count_group_admins(group_id: str) -> int:
+    """How many admins a group has — used to block demoting the last one."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM group_members WHERE group_id = ? AND role = 'admin'",
+            (group_id,),
+        ).fetchone()
+    return int(row["n"]) if row else 0
+
+
 def get_group_members(group_id: str) -> list[dict]:
     """Return all members of a group with profile info from user_states."""
     with get_conn() as conn:

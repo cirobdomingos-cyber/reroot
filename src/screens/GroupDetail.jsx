@@ -10,6 +10,7 @@ import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
+  setGroupMemberRole,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -77,7 +78,30 @@ export default function GroupDetail() {
   }
 
   async function handleDelete() {
-    if (!window.confirm(t.groups_delete_confirm ?? 'Delete this group?')) return
+    // Two-step confirmation. The group has events + members + a shared
+    // calendar feed; one stray tap shouldn't take it all out. Spell out
+    // exactly what'll be lost so the admin doesn't claim ambush later.
+    const memberCount = group?.members?.length ?? 0
+    const eventCount = group?.events?.length ?? 0
+    const warning =
+      `⚠️ CUIDADO\n\n` +
+      `Você está prestes a apagar o grupo "${group?.name}" PARA TODO MUNDO.\n\n` +
+      `Vão sumir:\n` +
+      `• ${memberCount} membro${memberCount === 1 ? '' : 's'}\n` +
+      `• ${eventCount} evento${eventCount === 1 ? '' : 's'} de grupo\n` +
+      `• O feed de calendário e o link de convite\n\n` +
+      `Essa ação não pode ser desfeita.\n\n` +
+      `Quer mesmo apagar?`
+    if (!window.confirm(warning)) return
+    // Second step — typed confirm for groups with any content. Empty
+    // throwaway groups skip this so testers don't get stuck.
+    if (memberCount > 1 || eventCount > 0) {
+      const typed = window.prompt(`Pra confirmar, digite o nome do grupo:\n\n"${group?.name}"`)
+      if ((typed || '').trim() !== (group?.name || '').trim()) {
+        alert('Nome não bateu — ação cancelada.')
+        return
+      }
+    }
     try {
       await deleteGroup(groupId, googleId)
       navigate('/groups')
@@ -230,9 +254,13 @@ export default function GroupDetail() {
         </span>
       </button>
 
-      {/* Action buttons */}
+      {/* Action buttons. Inviting is admin-only — admins manage the
+          guest list (promote/demote happens in MembersSheet). Members
+          can still see who's in via the members header tap. */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        <ActionBtn label={`💬 ${t.groups_invite}`} onClick={() => setShowInvite(true)} />
+        {isAdmin && (
+          <ActionBtn label={`💬 ${t.groups_invite}`} onClick={() => setShowInvite(true)} />
+        )}
         <ActionBtn label={`📅 ${t.groups_calendar}`} onClick={() => setShowCalendar(true)} />
         <ActionBtn label="🌍 Do catálogo" onClick={() => setShowCatalog(true)} />
         <ActionBtn label={`+ ${t.groups_add_event}`} onClick={() => setShowAddEvent(true)} accent />
@@ -272,7 +300,7 @@ export default function GroupDetail() {
         <button onClick={handleLeave} style={{ ...textBtnStyle, color: '#e74c3c' }}>
           {t.groups_leave}
         </button>
-        {isAdmin && group.created_by === googleId && (
+        {isAdmin && (
           <button onClick={handleDelete} style={{ ...textBtnStyle, color: '#e74c3c', marginLeft: 16 }}>
             {t.groups_delete}
           </button>
@@ -284,7 +312,19 @@ export default function GroupDetail() {
       <CalendarSheet open={showCalendar} onClose={() => setShowCalendar(false)} group={group} feedUrl={feedUrl} t={t} />
       <AddEventSheet open={showAddEvent} onClose={() => setShowAddEvent(false)} onSave={handleAddEvent} t={t} />
       <CatalogPickerSheet open={showCatalog} onClose={() => setShowCatalog(false)} onPick={handleAddEvent} />
-      <MembersSheet open={showMembers} onClose={() => setShowMembers(false)} group={group} t={t} />
+      <MembersSheet
+        open={showMembers}
+        onClose={() => setShowMembers(false)}
+        group={group}
+        t={t}
+        viewerIsAdmin={isAdmin}
+        viewerGoogleId={googleId}
+        onRoleChanged={() => {
+          // Re-pull the group so the updated role propagates to the
+          // header chip, action-bar gating, and the open MembersSheet.
+          fetchGroupDetail(groupId, googleId).then(setGroup).catch(() => {})
+        }}
+      />
       <GroupEventHero
         event={selectedEvent}
         group={group}
@@ -926,7 +966,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
 // + name + admin/member role badge + joined date. Sorted: admins first,
 // then by joined_at ASC (oldest first), so the founder always reads
 // at the top.
-function MembersSheet({ open, onClose, group, t }) {
+function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, onRoleChanged }) {
   const members = group?.members || []
   const sorted = [...members].sort((a, b) => {
     const ra = (a.role === 'admin') ? 0 : 1
@@ -934,6 +974,8 @@ function MembersSheet({ open, onClose, group, t }) {
     if (ra !== rb) return ra - rb
     return (a.joined_at || '').localeCompare(b.joined_at || '')
   })
+  const [busyId, setBusyId] = useState(null)
+  const [error, setError] = useState(null)
 
   function fmtJoinedAt(iso) {
     if (!iso) return ''
@@ -943,40 +985,83 @@ function MembersSheet({ open, onClose, group, t }) {
     } catch { return '' }
   }
 
+  async function handleRole(member, nextRole) {
+    setError(null)
+    setBusyId(member.google_id)
+    try {
+      await setGroupMemberRole(group.id, member.google_id, viewerGoogleId, nextRole)
+      // Optimistic refresh — let parent re-fetch the group so the role
+      // chip + admin-only affordances update everywhere.
+      onRoleChanged?.()
+    } catch (e) {
+      setError(e?.message || 'Não consegui atualizar o papel')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <BottomSheet open={open} onClose={onClose} title={`${members.length} ${t.groups_members}`}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
-        {sorted.map(m => (
-          <div key={m.google_id} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 4px',
+        {error && (
+          <div style={{
+            background: '#FFEBEE', color: '#B71C1C', padding: '8px 12px',
+            borderRadius: 8, fontSize: 12, marginBottom: 8,
           }}>
-            <Avatar name={m.name} src={m.picture} size={48} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {m.name || m.google_id}
-              </div>
-              {m.joined_at && (
-                <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
-                  Entrou em {fmtJoinedAt(m.joined_at)}
+            {error}
+          </div>
+        )}
+        {sorted.map(m => {
+          const isAdmin = m.role === 'admin'
+          const canActOnMember = viewerIsAdmin && m.google_id !== viewerGoogleId
+          return (
+            <div key={m.google_id} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 4px',
+            }}>
+              <Avatar name={m.name} src={m.picture} size={48} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {m.name || m.google_id}
                 </div>
+                {m.joined_at && (
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                    Entrou em {fmtJoinedAt(m.joined_at)}
+                  </div>
+                )}
+              </div>
+              {isAdmin && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                  color: 'var(--terra)', background: 'var(--terra-pale)',
+                  padding: '3px 8px', borderRadius: 6,
+                  textTransform: 'uppercase', flexShrink: 0,
+                }}>
+                  Admin
+                </span>
+              )}
+              {canActOnMember && (
+                <button
+                  onClick={() => handleRole(m, isAdmin ? 'member' : 'admin')}
+                  disabled={busyId === m.google_id}
+                  style={{
+                    padding: '6px 10px', borderRadius: 8,
+                    border: '1px solid var(--border)', background: 'white',
+                    fontSize: 11, fontWeight: 600, color: 'var(--charcoal)',
+                    cursor: busyId === m.google_id ? 'wait' : 'pointer',
+                    flexShrink: 0,
+                  }}
+                  title={isAdmin ? 'Tirar admin' : 'Tornar admin'}
+                >
+                  {busyId === m.google_id ? '…' : isAdmin ? 'Tirar admin' : 'Tornar admin'}
+                </button>
               )}
             </div>
-            {m.role === 'admin' && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
-                color: 'var(--terra)', background: 'var(--terra-pale)',
-                padding: '3px 8px', borderRadius: 6,
-                textTransform: 'uppercase', flexShrink: 0,
-              }}>
-                Admin
-              </span>
-            )}
-          </div>
-        ))}
+          )
+        })}
         {members.length === 0 && (
           <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--charcoal-light)', fontSize: 13 }}>
             Nenhum membro ainda.
