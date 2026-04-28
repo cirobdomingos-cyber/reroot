@@ -429,18 +429,27 @@ export default function Events() {
             <div className="screen-header__title">{t.events_title}</div>
             <div className="screen-header__sub">{t.events_sub}</div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Sources entry — was a 36px icon-only button that read as
+                a settings cog. Promoted to a labeled pill so it reads as
+                "browse where this catalog comes from" — the canonical
+                venue/curator browser, especially after we dropped the
+                Bares & Cafés / Parques / Cinema / Livrarias chips. */}
             <button
               onClick={() => navigate('/sources')}
               title="Fontes monitoradas"
               style={{
-                width: 36, height: 36, borderRadius: 12,
+                height: 36, padding: '0 12px',
+                borderRadius: 999,
                 background: 'white', border: '1.5px solid var(--border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 15, cursor: 'pointer',
-                color: 'var(--charcoal-mid)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                color: 'var(--charcoal)',
               }}
-            >📡</button>
+            >
+              <span style={{ fontSize: 14 }}>📡</span>
+              <span>Fontes</span>
+            </button>
             <button
               onClick={() => setSearchOpen(o => !o)}
               style={{
@@ -495,15 +504,18 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Mood chips — top-level filter for the catalog */}
-        <div style={{ display: 'flex', gap: 7, padding: '0 16px 10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        {/* Mood chips — top-level filter for the catalog. flexWrap so all
+            chips are visible at a glance instead of needing horizontal
+            scroll; users were missing chips off-screen on narrower
+            phones, especially after we added Cultural + Família. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
           {MOODS.map(mood => (
             <button
               key={mood.id}
               onClick={() => handleCategoryChange(mood.id)}
               style={{
                 padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
-                fontSize: 12, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 transition: 'all 0.15s',
                 border: activeFilter === mood.id ? 'none' : '1.5px solid var(--border)',
                 background: activeFilter === mood.id ? 'var(--charcoal)' : 'white',

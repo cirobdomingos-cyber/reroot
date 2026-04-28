@@ -15,8 +15,9 @@ export const EVENTS = []
 // backend `mood` query param (handled in main.py:_mood_predicate). The
 // 4 kind-based moods replace the old CATEGORIES of the same names; the
 // 2 newer ones (cultural, familia) are filter combinations applied at the
-// API layer. `bars_cafes` is special-cased in services/api.js — it routes
-// to /places (Google Places) instead of /events.
+// API layer. The venue chips (bars_cafes / parks / cinema / bookstore)
+// were removed — venue browsing now lives on the Sources screen, which
+// is the canonical "where things come from" surface.
 export const MOODS = [
   { id: 'all',         label: '🌍 Tudo' },
   { id: 'tranquilo',   label: '🌿 Tranquilo' },
@@ -25,7 +26,6 @@ export const MOODS = [
   { id: 'comunidade',  label: '🤝 Comunidade' },
   { id: 'cultural',    label: '🎭 Cultural' },
   { id: 'familia',     label: '👨‍👩‍👧 Família' },
-  { id: 'bars_cafes',  label: '🍺 Bares & Cafés' },
 ]
 
 // Legacy alias — kept until every screen migrates to MOODS.
