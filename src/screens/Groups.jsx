@@ -294,9 +294,18 @@ const backdropStyle = {
   position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200,
 }
 
+// Cap at 90% viewport + scroll internally so the submit stays reachable
+// even when iOS keyboard pushes content up. safe-area-inset-bottom keeps
+// it clear of the iPhone home bar.
 const sheetStyle = {
   position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
-  borderRadius: '20px 20px 0 0', padding: '8px 20px 28px', zIndex: 201,
+  borderRadius: '20px 20px 0 0',
+  padding: '8px 20px max(28px, env(safe-area-inset-bottom))',
+  zIndex: 201,
+  maxHeight: '90vh',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  WebkitOverflowScrolling: 'touch',
 }
 
 const labelStyle = { fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)' }

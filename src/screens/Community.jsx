@@ -6,7 +6,7 @@ import Groups from './Groups'
 
 export default function Community() {
   const t = useT()
-  const [tab, setTab] = useState('friends') // 'friends' | 'groups'
+  const [tab, setTab] = useState('groups') // 'groups' | 'friends'
 
   return (
     <div>
@@ -22,7 +22,7 @@ export default function Community() {
           background: 'var(--cream)', borderRadius: 14,
           border: '1px solid var(--border)',
         }}>
-          {['friends', 'groups'].map(key => {
+          {['groups', 'friends'].map(key => {
             const active = tab === key
             const label = key === 'friends' ? t.community_tab_friends : t.community_tab_groups
             return (
@@ -49,7 +49,7 @@ export default function Community() {
       {/* Content */}
       <motion.div
         key={tab}
-        initial={{ opacity: 0, x: tab === 'friends' ? -12 : 12 }}
+        initial={{ opacity: 0, x: tab === 'groups' ? -12 : 12 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.18 }}
       >
