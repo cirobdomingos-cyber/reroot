@@ -305,7 +305,18 @@ input  { font-family: inherit; }
     height: 100dvh;
     border-radius: 0;
     box-shadow: none;
+    /* iOS safe area: real device OS already renders a status bar (real
+       time, real battery, real signal). Push our content below it instead
+       of letting it slide under. Requires viewport-fit=cover in index.html. */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
   }
   .phone-shell::before { display: none; }
-  .status-bar { height: 44px; padding-top: 10px; }
+  /* Fake StatusBar component (signal/wifi/battery SVGs + clock) is
+     desktop-preview chrome only. On a real phone it duplicated the OS
+     bar with always-full mock icons — what users were calling out as
+     the "fake battery" bug. Hidden here; safe-area padding above keeps
+     real content clear of the real OS bar. */
+  .status-bar { display: none; }
 }
