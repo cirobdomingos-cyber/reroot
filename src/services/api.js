@@ -663,6 +663,24 @@ export async function deleteGroupEvent(groupId, eventId, googleId) {
   return res.json()
 }
 
+// Aggregated upcoming events from every group the user belongs to,
+// shaped like catalog events. Server-gated by membership — users only
+// ever see events from their own groups. Returns [] for signed-out users
+// or backend failures (events should never block on optional layers).
+export async function fetchUserGroupEvents(googleId) {
+  if (!googleId) return []
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/events/group?google_id=${encodeURIComponent(googleId)}`,
+    )
+    if (!res.ok) return []
+    const { events } = await res.json()
+    return events || []
+  } catch {
+    return []
+  }
+}
+
 export function getGroupCalendarFeedUrl(feedToken) {
   const base = BASE_URL || window.location.origin
   return `${base}/groups/feed/${feedToken}.ics`

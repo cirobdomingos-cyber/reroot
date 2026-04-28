@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { MOODS } from '../data/events'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -156,15 +156,21 @@ export default function Events() {
   // Friends' RSVPs — feeds the friend-dot in the week strip. Only fetched
   // when the user is signed in.
   const [friendsFeed, setFriendsFeed]       = useState([])
+  // Upcoming events from groups the signed-in user belongs to. Server-gated
+  // by membership, so this is empty for signed-out users by construction.
+  const [groupEvents, setGroupEvents]       = useState([])
   // Add-to-group sheet target. null = sheet closed.
   const [addToGroupEvent, setAddToGroupEvent] = useState(null)
 
   useEffect(() => {
     const googleId = state.googleUser?.id
-    if (!googleId) { setFriendsFeed([]); return }
+    if (!googleId) { setFriendsFeed([]); setGroupEvents([]); return }
     let cancelled = false
     fetchFriendsFeed(googleId).then(events => {
       if (!cancelled) setFriendsFeed(events || [])
+    })
+    fetchUserGroupEvents(googleId).then(events => {
+      if (!cancelled) setGroupEvents(events || [])
     })
     return () => { cancelled = true }
   }, [state.googleUser?.id])
@@ -240,12 +246,27 @@ export default function Events() {
   const customEventsForFilter = (state.customEvents || []).filter(ev =>
     activeFilter === 'all' || ev.category === activeFilter
   )
-  const allDisplayEvents = [...customEventsForFilter, ...events].sort((a, b) => {
+  // Group events only surface in the unfiltered "Tudo" view — category
+  // filters are public taxonomies (Música, Comida) that don't fit private
+  // group plans. Search/price/kids/bairro filters still apply downstream
+  // so the user can search for "domingo na chácara" across everything.
+  const groupEventsForFilter = activeFilter === 'all' ? groupEvents : []
+  // Sort: by full timestamp ASC, but within the same day, pin group events
+  // to the top so the user's own crew shows above the public catalog. The
+  // day strip says "you have plans on Saturday" — opening Saturday should
+  // surface those plans first, not bury them under 30 public events.
+  const allDisplayEvents = [...customEventsForFilter, ...groupEventsForFilter, ...events].sort((a, b) => {
     const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
     const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
     if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
     if (Number.isNaN(ta)) return 1
     if (Number.isNaN(tb)) return -1
+    const dayA = a.dateStart.slice(0, 10)
+    const dayB = b.dateStart.slice(0, 10)
+    if (dayA === dayB) {
+      if (a.isGroupEvent && !b.isGroupEvent) return -1
+      if (!a.isGroupEvent && b.isGroupEvent) return 1
+    }
     return ta - tb
   })
 
@@ -275,6 +296,13 @@ export default function Events() {
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
   }
+
+  // A bairro filter was prototyped here but reverted — venue→bairro from
+  // the scrapers is too noisy to be trustworthy ("Curitiba" appearing as
+  // a bairro, same venue mapped inconsistently across enrichment runs).
+  // Re-enable after a canonical venue→bairro lookup + re-enrichment.
+  // The getBairro() helper above stays — used by the personal "📍 Mesmo
+  // lugar" chip and by future neighborhood features.
   // AI-curated/made-up events never surface in the Events tab — they're
   // reserved for a separate discovery surface (chatbot or dedicated tab,
   // TBD). The Events tab is the catalog of real, scraped Curitiba events.
@@ -684,7 +712,8 @@ export default function Events() {
                     onRsvp={e => { e.stopPropagation(); handleRsvpToggle(ev) }}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
-                    onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(ev) : null}
+                    onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
+                    onAddToGroup={state.googleUser?.id && !ev.isGroupEvent ? () => setAddToGroupEvent(ev) : null}
                     t={t}
                   />
                 </motion.div>
@@ -840,19 +869,27 @@ function SourceBadge({ ev, onSourceTap }) {
 }
 
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onRsvp, onFriend, onSourceTap, onAddToGroup, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onRsvp, onFriend, onSourceTap, onOpenGroup, onAddToGroup, t }) {
   // Split "Venue Name · Neighborhood" into two parts
   const [venueName, venueNeighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
     : [ev.venue, null]
 
+  // Group events get an inset left stripe (no layout shift) and a tinted
+  // background so they read instantly as "yours / private" — distinct from
+  // the public catalog without being loud.
+  const isGroupEvent = !!ev.isGroupEvent
+  const cardBackground = isGroupEvent ? '#FFFAF3' : 'white'
+  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)' : 'none'
+
   return (
     <div
       onClick={onOpen}
       style={{
-        background: 'white', borderRadius: 16,
+        background: cardBackground, borderRadius: 16,
         margin: '0 16px 9px', padding: '12px 13px',
         border: '1px solid var(--border)',
+        boxShadow: cardShadow,
         display: 'flex', gap: 12, alignItems: 'flex-start',
         cursor: 'pointer', transition: 'box-shadow 0.15s',
       }}
@@ -944,7 +981,25 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
             {personalChip && <PersonalChip chip={personalChip} />}
-            <SourceBadge ev={ev} onSourceTap={onSourceTap} />
+            {isGroupEvent ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); if (ev.groupId) onOpenGroup?.(ev.groupId) }}
+                title={`Ver grupo: ${ev.groupName || ''}`}
+                style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                  background: 'var(--sage-pale)', color: 'var(--sage)',
+                  padding: '2px 8px', borderRadius: 5,
+                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                  border: '1px solid var(--sage)', cursor: 'pointer',
+                  maxWidth: 180, whiteSpace: 'nowrap',
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+              >
+                🔒 {ev.groupName || 'Grupo'}
+              </button>
+            ) : (
+              <SourceBadge ev={ev} onSourceTap={onSourceTap} />
+            )}
             {ev.isCustom && (
               <span style={{
                 fontSize: 9, fontWeight: 700, letterSpacing: 0.3,

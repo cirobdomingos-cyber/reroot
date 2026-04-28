@@ -1167,6 +1167,93 @@ def _is_in_curitiba(ev) -> bool:
     return True
 
 
+def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
+    """Shape a `group_events` row into the EnrichedEvent dict the frontend
+    consumes. Used by GET /events/{id} and GET /events/group so both paths
+    return identical shapes."""
+    from datetime import datetime as _dt
+    ds = ge.get("date_start") or ""
+    try:
+        dt = _dt.fromisoformat(ds.replace("Z", "+00:00")) if ds else None
+    except (ValueError, AttributeError):
+        dt = None
+    time_str = dt.strftime("%H:%M") if dt else ""
+    date_label = dt.strftime("%a, %d %b") if dt else ""
+    venue = ge.get("venue") or "Evento de grupo"
+    # Catalog imports stash "Ver original: <url>" at the end of the
+    # description. Pull it out so the frontend's existing "Ver no <source>"
+    # button works, and remove from description so it doesn't duplicate
+    # above the button.
+    raw_desc = ge.get("description") or ""
+    url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
+    event_url = url_match.group(1).rstrip(".,;") if url_match else ""
+    cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
+    return {
+        "id": ge["id"],
+        "name": ge.get("name") or "Evento de grupo",
+        "category": "community",
+        "categoryLabel": "Grupo",
+        "categoryEmoji": "👥",
+        "venue": venue,
+        "date": date_label,
+        "time": time_str,
+        "duration": "",
+        "headerBg": "linear-gradient(135deg, #FFE0B2, #FFCC80)",
+        "icon": "👥",
+        "description": cleaned_desc,
+        "price": "",
+        "priceTier": "free",
+        "kidsWelcome": False,
+        "hasFood": False,
+        "isLowPressure": False,
+        "attendeesConfirmed": 0,
+        "expectedSize": "intimate",
+        "vibeSummary": "",
+        "pitch": "",
+        "url": event_url,
+        "source": "group",
+        "igHandle": None,
+        "dateStart": ds,
+        "venueAddress": "",
+        "city": "Curitiba",
+        "imageUrl": None,
+        "isCustom": False,
+        # Group-event markers — the frontend uses these to render the lock
+        # pill, group-name link, and to gate any "private" affordances.
+        "isGroupEvent": True,
+        "groupId": ge.get("group_id"),
+        "groupName": group_name,
+    }
+
+
+@app.get("/events/group")
+def list_user_group_events(google_id: str):
+    """Return all upcoming events from groups the requesting user is a
+    member of, shaped like catalog events. Used by the Events tab to
+    surface group plans alongside the public catalog (only visible to the
+    user — server-side gated by membership)."""
+    if not google_id:
+        return {"events": []}
+    groups = db.get_groups_for_user(google_id)
+    if not groups:
+        return {"events": []}
+    today = date.today().isoformat()
+    out: list[dict] = []
+    for g in groups:
+        events = db.get_group_events(g["id"], is_member=True)
+        for ge in events:
+            # Filter to today-or-future. date_start is ISO 8601, so a
+            # prefix compare against YYYY-MM-DD is the same as a date
+            # compare for any well-formed value.
+            ds = ge.get("date_start") or ""
+            if ds and ds[:10] < today:
+                continue
+            out.append(_group_event_to_frontend(ge, group_name=g.get("name") or ""))
+    # Sort by dateStart asc, undated last
+    out.sort(key=lambda e: e.get("dateStart") or "9999-99-99")
+    return {"events": out}
+
+
 @app.get("/events/{event_id}")
 def get_event(event_id: str):
     # Catalog events first.
@@ -1180,54 +1267,8 @@ def get_event(event_id: str):
     if event_id.startswith("grp_ev_"):
         ge = db.get_group_event(event_id)
         if ge:
-            from datetime import datetime as _dt
-            ds = ge.get("date_start") or ""
-            try:
-                dt = _dt.fromisoformat(ds.replace("Z", "+00:00")) if ds else None
-            except (ValueError, AttributeError):
-                dt = None
-            time_str = dt.strftime("%H:%M") if dt else ""
-            date_label = dt.strftime("%a, %d %b") if dt else ""
-            venue = ge.get("venue") or "Evento de grupo"
-            # Catalog imports stash "Ver original: <url>" at the end of the
-            # description. Pull it out so the frontend's existing
-            # "Ver no <source>" button works, and remove from description
-            # so it doesn't duplicate above the button.
-            raw_desc = ge.get("description") or ""
-            url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
-            event_url = url_match.group(1).rstrip(".,;") if url_match else ""
-            cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
-            return {
-                "id": ge["id"],
-                "name": ge.get("name") or "Evento de grupo",
-                "category": "community",
-                "categoryLabel": "Grupo",
-                "categoryEmoji": "👥",
-                "venue": venue,
-                "date": date_label,
-                "time": time_str,
-                "duration": "",
-                "headerBg": "linear-gradient(135deg, #FFE0B2, #FFCC80)",
-                "icon": "👥",
-                "description": cleaned_desc,
-                "price": "",
-                "priceTier": "free",
-                "kidsWelcome": False,
-                "hasFood": False,
-                "isLowPressure": False,
-                "attendeesConfirmed": 0,
-                "expectedSize": "intimate",
-                "vibeSummary": "",
-                "pitch": "",
-                "url": event_url,
-                "source": "group",
-                "igHandle": None,
-                "dateStart": ds,
-                "venueAddress": "",
-                "city": "Curitiba",
-                "imageUrl": None,
-                "isCustom": False,
-            }
+            group = db.get_group(ge["group_id"])
+            return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
 
     raise HTTPException(status_code=404, detail="Evento não encontrado")
 
@@ -1775,12 +1816,22 @@ def friends_feed(google_id: str):
     rsvps = db.get_rsvps_for_users(visible_ids)
     today = date.today().isoformat()
 
+    # Privacy gate for group events: a friend's RSVP to a group event
+    # (event_id starts with "grp_ev_") must be filtered out unless the
+    # viewer is a member of that group. Otherwise the day-strip dot would
+    # leak the existence of private plans the viewer can't even open.
+    viewer_group_ids = {g["id"] for g in db.get_groups_for_user(google_id)}
+
     # Group by event_id, filter to future events
     grouped: dict[str, dict] = {}
     for rsvp in rsvps:
         if rsvp["event_date"] and rsvp["event_date"] < today:
             continue
         eid = rsvp["event_id"]
+        if eid.startswith("grp_ev_"):
+            ge = db.get_group_event(eid)
+            if not ge or ge["group_id"] not in viewer_group_ids:
+                continue
         if eid not in grouped:
             grouped[eid] = {
                 "event_id": eid,
@@ -2341,6 +2392,7 @@ class GroupEventCreateRequest(BaseModel):
     date_start: str
     date_end: Optional[str] = None
     visibility: str = "members"  # 'public' | 'members'
+    note: str = ""  # short free-text "que tal esse?" attached to the card
 
 
 @app.post("/groups")
@@ -2480,20 +2532,28 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         date_start=req.date_start,
         date_end=req.date_end,
         visibility=req.visibility,
+        note=req.note.strip(),
     )
     # Notify other group members. Tag per (group, event) so accidental
-    # double-creates collapse instead of stacking.
+    # double-creates collapse instead of stacking. The note (if any) shows
+    # in the push body — gives instant context without opening the app.
     group = db.get_group(group_id)
     group_name = (group or {}).get("name") or "no grupo"
     creator_name = _user_display_name(req.google_id)
     tag = f"group-event-{group_id}-{event['id']}"
+    note = (req.note or "").strip()
+    body = (
+        f'{creator_name}: "{note[:80]}" — {req.name.strip()}'
+        if note else
+        f"{creator_name} adicionou: {req.name.strip()}"
+    )
     for member in db.get_group_members(group_id):
         if member.get("google_id") == req.google_id:
             continue  # skip the creator
         _send_push_to_user(
             member["google_id"],
             title=f"🎲 {group_name}",
-            body=f"{creator_name} adicionou: {req.name.strip()}",
+            body=body,
             url=f"/#/groups/{group_id}",
             tag=tag,
         )
