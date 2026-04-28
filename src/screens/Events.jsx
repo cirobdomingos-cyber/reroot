@@ -545,47 +545,65 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Category chips — same taxonomy as the Sources page. Each chip
-            is a source category (bar / cafe / restaurante / etc.), only
-            those with ≥1 event in the current view appear so the strip
-            stays compact. flexWrap = no horizontal scroll. */}
+        {/* Category chips — same chip set as the Sources page (every
+            category that has ≥1 tracked source). Style + count format
+            mirror Sources for visual consistency: smaller pill, '· N'
+            after the label. The count here is # of EVENTS in that
+            category (not sources, like Sources shows). 0-event chips
+            still appear but dim — clicking them tells the user 'this
+            category exists, just nothing scheduled right now'. */}
         {(() => {
-          // Categories present in the current event list (pre-filter).
-          const presentCats = new Set()
+          // Source counts per category — drives chip visibility (same
+          // as Sources page).
+          const sourceCounts = {}
+          for (const c of Object.values(handleCategoryMap)) {
+            sourceCounts[c] = (sourceCounts[c] || 0) + 1
+          }
+          for (const c of Object.values(INST_CATEGORY)) {
+            sourceCounts[c] = (sourceCounts[c] || 0) + 1
+          }
+          // Event counts per category — drives the chip label badge.
+          const eventCounts = {}
           for (const ev of allDisplayEvents) {
             const c = categoryFor(ev)
-            if (c) presentCats.add(c)
+            if (c) eventCounts[c] = (eventCounts[c] || 0) + 1
           }
-          const orderedCats = [
-            ...CATEGORY_ORDER.filter(c => presentCats.has(c)),
-            ...[...presentCats].filter(c => !CATEGORY_ORDER.includes(c)),
+          const visibleCats = [
+            ...CATEGORY_ORDER.filter(c => (sourceCounts[c] || 0) > 0),
+            ...Object.keys(sourceCounts).filter(c => !CATEGORY_ORDER.includes(c)),
           ]
           const chips = [
-            { id: 'all', emoji: '🌍', label: 'Tudo' },
-            ...orderedCats.map(c => ({
+            { id: 'all', emoji: '🌍', label: 'Tudo', count: allDisplayEvents.length },
+            ...visibleCats.map(c => ({
               id: c,
               emoji: CATEGORY_META[c]?.emoji || '🔗',
               label: CATEGORY_META[c]?.label || c,
+              count: eventCounts[c] || 0,
             })),
           ]
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
-              {chips.map(chip => (
-                <button
-                  key={chip.id}
-                  onClick={() => handleCategoryChange(chip.id)}
-                  style={{
-                    padding: '6px 13px', borderRadius: 20, whiteSpace: 'nowrap',
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    border: activeFilter === chip.id ? 'none' : '1.5px solid var(--border)',
-                    background: activeFilter === chip.id ? 'var(--charcoal)' : 'white',
-                    color: activeFilter === chip.id ? 'white' : 'var(--charcoal-mid)',
-                  }}
-                >
-                  {chip.emoji} {chip.label}
-                </button>
-              ))}
+              {chips.map(chip => {
+                const active = activeFilter === chip.id
+                const empty = chip.id !== 'all' && chip.count === 0
+                return (
+                  <button
+                    key={chip.id}
+                    onClick={() => handleCategoryChange(chip.id)}
+                    style={{
+                      padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                      fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      border: active ? 'none' : '1px solid var(--border)',
+                      background: active ? 'var(--charcoal)' : 'transparent',
+                      color: active ? 'white' : 'var(--charcoal-light)',
+                      opacity: empty ? 0.45 : 1,
+                    }}
+                  >
+                    {chip.emoji} {chip.label}{chip.count > 0 ? ` · ${chip.count}` : ''}
+                  </button>
+                )
+              })}
             </div>
           )
         })()}
