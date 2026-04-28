@@ -844,17 +844,29 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource }) {
           )}
         </div>
         {(acc.display_name || acc.label) && (
-          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
+          <div style={{
+            fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
             {acc.display_name || acc.label}
           </div>
         )}
-        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 4 }}>
+        {/* Compact meta line — was a 4-5 line wrap of "Último scrape: full
+            date · N no último run · adicionado por ciro@..." that ate the
+            card. Trimmed to date+time without seconds, "N evt" instead of
+            "N no último run", and the curator email moved to a hover tooltip. */}
+        <div
+          style={{
+            fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
+          title={acc.added_by_email ? `Adicionado por ${acc.added_by_email}` : undefined}
+        >
           {acc.last_scraped_at
-            ? `Último scrape: ${new Date(acc.last_scraped_at).toLocaleString('pt-BR')}`
-            : 'Ainda não scrapeada'}
+            ? `📅 ${new Date(acc.last_scraped_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+            : 'Sem scrape ainda'}
           {' · '}
-          {`${acc.last_event_count || 0} no último run`}
-          {acc.added_by_email && ` · adicionado por ${acc.added_by_email}`}
+          {`${acc.last_event_count || 0} evt`}
         </div>
       </div>
 

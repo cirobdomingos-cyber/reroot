@@ -1184,18 +1184,24 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
     url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
     event_url = url_match.group(1).rstrip(".,;") if url_match else ""
     cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
+    # Personal plans (no group_id) flagged separately so the frontend can
+    # show "Convite de Ciro" instead of a group label, and to bypass any
+    # group-membership UI affordances.
+    is_personal = not ge.get("group_id")
     return {
         "id": ge["id"],
-        "name": ge.get("name") or "Evento de grupo",
+        "name": ge.get("name") or ("Plano" if is_personal else "Evento de grupo"),
         "category": "community",
-        "categoryLabel": "Grupo",
-        "categoryEmoji": "👥",
-        "venue": venue,
+        "categoryLabel": "Plano" if is_personal else "Grupo",
+        "categoryEmoji": "🎲" if is_personal else "👥",
+        "venue": venue if venue != "Evento de grupo" else (
+            "Plano" if is_personal else "Evento de grupo"
+        ),
         "date": date_label,
         "time": time_str,
         "duration": "",
         "headerBg": "linear-gradient(135deg, #FFE0B2, #FFCC80)",
-        "icon": "👥",
+        "icon": "🎲" if is_personal else "👥",
         "description": cleaned_desc,
         "price": "",
         "priceTier": "free",
@@ -1216,42 +1222,62 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
         "isCustom": False,
         # Group-event markers — the frontend uses these to render the lock
         # pill, group-name link, and to gate any "private" affordances.
+        # Personal plans set isPersonalPlan=true; isGroupEvent stays true
+        # so the existing "private/yours" sage stripe is reused.
         "isGroupEvent": True,
+        "isPersonalPlan": is_personal,
         "groupId": ge.get("group_id"),
         "groupName": group_name,
+        "createdBy": ge.get("created_by"),
+        "inviteeCount": len(ge.get("extra_invitee_ids", []) or []),
+        "note": ge.get("note") or "",
     }
 
 
 @app.get("/events/group")
 def list_user_group_events(google_id: str):
-    """Return all upcoming events from groups the requesting user is a
-    member of, shaped like catalog events. Used by the Events tab to
-    surface group plans alongside the public catalog (only visible to the
-    user — server-side gated by membership)."""
+    """Return all upcoming private events the user can see:
+      - Group events from groups they're a member of (classic case)
+      - Personal plans where they're creator OR in extra_invitee_ids
+      - Group + extras events where they're an invited friend even
+        though they're not in the group
+    Shaped like catalog events. Server-side gated by membership /
+    invitee status."""
     if not google_id:
-        return {"events": []}
-    groups = db.get_groups_for_user(google_id)
-    if not groups:
         return {"events": []}
     today = date.today().isoformat()
     out: list[dict] = []
-    for g in groups:
-        events = db.get_group_events(g["id"], is_member=True)
-        for ge in events:
-            # Filter to today-or-future. date_start is ISO 8601, so a
-            # prefix compare against YYYY-MM-DD is the same as a date
-            # compare for any well-formed value.
-            ds = ge.get("date_start") or ""
-            if ds and ds[:10] < today:
-                continue
-            out.append(_group_event_to_frontend(ge, group_name=g.get("name") or ""))
-    # Sort by dateStart asc, undated last
+    seen_ids: set[str] = set()
+
+    def _push(ge: dict, group_name: str = "") -> None:
+        ds = ge.get("date_start") or ""
+        if ds and ds[:10] < today:
+            return
+        if ge["id"] in seen_ids:
+            return
+        seen_ids.add(ge["id"])
+        out.append(_group_event_to_frontend(ge, group_name=group_name))
+
+    # Group events you're a member of
+    for g in db.get_groups_for_user(google_id):
+        for ge in db.get_group_events(g["id"], is_member=True):
+            _push(ge, group_name=g.get("name") or "")
+
+    # Personal plans — creator OR extra invitee
+    for ge in db.get_personal_plans_for_user(google_id):
+        _push(ge)
+
+    # Group + extras events where you're an extra invitee but not a member
+    for ge in db.get_group_events_with_extras_for_user(google_id):
+        # Skip if already seen via group membership
+        _push(ge)
+
     out.sort(key=lambda e: e.get("dateStart") or "9999-99-99")
     return {"events": out}
 
 
 @app.get("/events/{event_id}")
-def get_event(event_id: str):
+def get_event(event_id: str, google_id: str = ""):
     # Catalog events first.
     ev = db.get_event_by_id(event_id)
     if ev:
@@ -1259,12 +1285,19 @@ def get_event(event_id: str):
 
     # Fallback: group events (ids start with "grp_ev_") so a friend's
     # public-group RSVP can be opened from the catalog detail panel.
-    # Shaped like an EnrichedEvent enough for the frontend's normalizer.
+    # Personal plans live in the same table; visibility is creator-or-
+    # invitee. We require google_id for personal plans (no public reads).
     if event_id.startswith("grp_ev_"):
         ge = db.get_group_event(event_id)
         if ge:
-            group = db.get_group(ge["group_id"])
-            return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
+            if ge.get("group_id"):
+                group = db.get_group(ge["group_id"])
+                return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
+            # Personal plan: only creator + invitees may see it.
+            invitees = ge.get("extra_invitee_ids") or []
+            if google_id and (google_id == ge["created_by"] or google_id in invitees):
+                return _group_event_to_frontend(ge)
+            raise HTTPException(status_code=403, detail="Plano privado — só convidados podem ver")
 
     raise HTTPException(status_code=404, detail="Evento não encontrado")
 
@@ -2427,6 +2460,20 @@ class GroupEventCreateRequest(BaseModel):
     note: str = ""  # short free-text "que tal esse?" attached to the card
 
 
+class PersonalPlanCreateRequest(BaseModel):
+    """Create a personal plan — an event tied to a hand-picked invitee list,
+    with no group context. The 'add a whole group's members' affordance is
+    expanded on the frontend; backend just sees the final invitee list."""
+    google_id: str                       # creator
+    name: str
+    description: str = ""
+    venue: str = ""
+    date_start: str
+    date_end: Optional[str] = None
+    note: str = ""
+    invitee_google_ids: list[str] = []   # everyone invited (excluding creator)
+
+
 @app.post("/groups")
 def create_group(req: GroupCreateRequest):
     """Create a new group. Creator becomes admin automatically."""
@@ -2609,6 +2656,98 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
     role = db.get_group_member_role(group_id, google_id)
     if role != "admin" and event["created_by"] != google_id:
         raise HTTPException(status_code=403, detail="Only admins or the event creator can delete")
+    db.delete_group_event(event_id)
+    return {"ok": True}
+
+
+@app.post("/events/private")
+def create_personal_plan(req: PersonalPlanCreateRequest):
+    """Create a 'personal plan' — an event tied to hand-picked invitees,
+    no group attached. Side-effects:
+      - Auto-RSVPs the creator (per product decision: making the plan
+        means you're going).
+      - Pushes to every invitee with a friendly 'Ciro te convidou…'
+        message; invitees see the event in their group-events feed even
+        though it has no group_id.
+
+    The 'add a whole group's members' affordance is a frontend
+    convenience — backend just receives the expanded invitee list.
+    """
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Login required")
+    name = (req.name or "").strip()
+    if not name or len(name) < 3:
+        raise HTTPException(status_code=400, detail="Nome do plano muito curto")
+    if not req.date_start:
+        raise HTTPException(status_code=400, detail="Data é obrigatória")
+    invitees = sorted({str(g) for g in req.invitee_google_ids if g and g != req.google_id})
+    if not invitees:
+        raise HTTPException(
+            status_code=400,
+            detail="Convide pelo menos um amigo — sem invitees, é um custom event privado em vez de plano",
+        )
+
+    event = db.create_group_event(
+        group_id=None,
+        google_id=req.google_id,
+        name=name,
+        description=(req.description or "").strip(),
+        venue=(req.venue or "").strip(),
+        date_start=req.date_start,
+        date_end=req.date_end,
+        visibility="members",  # not used when group_id is null, but keep the column happy
+        note=(req.note or "").strip(),
+        extra_invitee_ids=invitees,
+    )
+
+    # Auto-RSVP the creator. Mirrors the contract from POST /rsvp so the
+    # event shows up in the creator's RSVPs immediately.
+    try:
+        db.upsert_rsvp(
+            google_id=req.google_id,
+            event_id=event["id"],
+            event_name=name,
+            event_venue=event.get("venue", ""),
+            event_date=req.date_start,
+            event_url="",
+        )
+    except Exception as e:
+        log.warning(f"Personal plan {event['id']}: auto-RSVP failed: {e}")
+
+    # Push to invitees. Tag per (creator, event) so accidental double-creates
+    # collapse instead of stacking.
+    creator_name = _user_display_name(req.google_id)
+    when_label = (req.date_start or "")[:10]
+    venue_label = event.get("venue") or ""
+    note = (req.note or "").strip()
+    body = (
+        f'{creator_name}: "{note[:80]}" — {name}'
+        if note else
+        f"{creator_name} te convidou pra {name}"
+        + (f" no {venue_label}" if venue_label else "")
+        + (f", {when_label}" if when_label else "")
+    )
+    tag = f"personal-plan-{event['id']}"
+    for invitee in invitees:
+        _send_push_to_user(
+            invitee,
+            title=f"🎲 Convite",
+            body=body,
+            url=f"/#/events/{event['id']}",
+            tag=tag,
+        )
+
+    return event
+
+
+@app.delete("/events/private/{event_id}")
+def delete_personal_plan(event_id: str, google_id: str):
+    """Only the creator can delete their own personal plan."""
+    event = db.get_group_event(event_id)
+    if not event or event.get("group_id"):
+        raise HTTPException(status_code=404, detail="Plano não encontrado")
+    if event["created_by"] != google_id:
+        raise HTTPException(status_code=403, detail="Só quem criou o plano pode apagar")
     db.delete_group_event(event_id)
     return {"ok": True}
 

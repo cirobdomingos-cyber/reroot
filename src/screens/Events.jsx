@@ -12,6 +12,7 @@ import EventsWeekStrip from '../components/EventsWeekStrip'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 import AddToGroupSheet from '../components/AddToGroupSheet'
+import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { shareLink, appLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -151,6 +152,8 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
+  // Personal-plan creation sheet — invite friends to a hand-picked event.
+  const [showPlanSheet, setShowPlanSheet]   = useState(false)
   // Recurring routines (e.g. "every Thursday MPB") show alongside one-off
   // events with distinct styling. 'all' (default) shows both, 'events' hides
   // routines, 'routines' hides one-offs. The chip toggles cycle through.
@@ -614,29 +617,47 @@ export default function Events() {
         ))}
       </div>
 
-      {/* ── AI suggestion CTA — slim inline pill so it doesn't crowd the
-          event list. Was a tall two-line card with a 38px icon; user
-          flagged it as taking too much space. Compressed to a single
-          ~32px row that still reads as a clear call-to-action without
-          competing with event cards for attention. */}
+      {/* ── Inline CTAs — two slim pills side by side. Left: AI suggestion
+          ("ask the Companion for ideas"). Right: Convidar amigos pra um
+          plano (creates a personal-plan event with hand-picked invitees).
+          flexWrap so they stack on narrow screens. */}
       {!loading && !isVenueMode && (
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('open-companion', { detail: { intent: 'suggest' } }))}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            margin: '4px 16px 10px', padding: '7px 12px',
-            background: '#FFF8E1',
-            border: '1px solid #FFD54F',
-            borderRadius: 999, cursor: 'pointer',
-            fontSize: 12, fontWeight: 600, color: '#8D6E10',
-            width: 'fit-content',
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: 14 }}>✦</span>
-          <span>Sugerir rolê com <Aue /> IA</span>
-          <span style={{ opacity: 0.6 }}>→</span>
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '4px 16px 10px' }}>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-companion', { detail: { intent: 'suggest' } }))}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '7px 12px',
+              background: '#FFF8E1',
+              border: '1px solid #FFD54F',
+              borderRadius: 999, cursor: 'pointer',
+              fontSize: 12, fontWeight: 600, color: '#8D6E10',
+              textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 14 }}>✦</span>
+            <span>Sugerir rolê com <Aue /> IA</span>
+            <span style={{ opacity: 0.6 }}>→</span>
+          </button>
+          {state.googleUser?.id && (
+            <button
+              onClick={() => setShowPlanSheet(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 12px',
+                background: '#FFFAF3',
+                border: '1px solid #C8E6C9',
+                borderRadius: 999, cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, color: 'var(--sage)',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 14 }}>🎲</span>
+              <span>Convidar amigos pra um plano</span>
+              <span style={{ opacity: 0.6 }}>→</span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* ── Loading skeletons ── */}
@@ -844,6 +865,18 @@ export default function Events() {
         open={!!addToGroupEvent}
         onClose={() => setAddToGroupEvent(null)}
         event={addToGroupEvent}
+      />
+
+      <PersonalPlanSheet
+        open={showPlanSheet}
+        onClose={() => setShowPlanSheet(false)}
+        googleId={state.googleUser?.id}
+        onCreated={() => {
+          // Refresh the group-events feed so the new plan shows up in the
+          // catalog without a manual page reload.
+          const gid = state.googleUser?.id
+          if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+        }}
       />
     </div>
   )

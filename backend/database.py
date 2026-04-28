@@ -235,7 +235,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_events (
                 id           TEXT PRIMARY KEY,
-                group_id     TEXT NOT NULL,
+                group_id     TEXT,
                 name         TEXT NOT NULL,
                 description  TEXT NOT NULL DEFAULT '',
                 venue        TEXT NOT NULL DEFAULT '',
@@ -244,6 +244,7 @@ def init_db():
                 created_by   TEXT NOT NULL,
                 visibility   TEXT NOT NULL DEFAULT 'members',
                 note         TEXT NOT NULL DEFAULT '',
+                extra_invitee_ids TEXT NOT NULL DEFAULT '[]',
                 created_at   TEXT NOT NULL
             )
         """)
@@ -252,6 +253,16 @@ def init_db():
         # P31): without it, users migrate the conversation to WhatsApp.
         try:
             conn.execute("ALTER TABLE group_events ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already present
+        # Migration: `extra_invitee_ids` (JSON array of google_ids) added so
+        # users can invite specific friends — either alongside a group OR
+        # as a "personal plan" (group_id IS NULL). Existing rows default to
+        # an empty array, preserving classic group-event semantics.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN extra_invitee_ids TEXT NOT NULL DEFAULT '[]'"
+            )
         except sqlite3.OperationalError:
             pass  # column already present
         # Achievements/badges. One row per (user, badge) once earned —
@@ -1566,21 +1577,30 @@ def get_group_members(group_id: str) -> list[dict]:
 # ── Group Events ──────────────────────────────────────────
 
 def create_group_event(
-    group_id: str, google_id: str, name: str, description: str = "",
+    group_id: Optional[str], google_id: str, name: str, description: str = "",
     venue: str = "", date_start: str = "", date_end: Optional[str] = None,
     visibility: str = "members", note: str = "",
+    extra_invitee_ids: Optional[list[str]] = None,
 ) -> dict:
-    """Create an event within a group. Returns the new event dict.
+    """Create an event row. Two flavors:
+      - Classic group event: group_id set, extra_invitee_ids empty/None.
+      - Personal plan: group_id None, extra_invitee_ids = list of google_ids.
+      - Hybrid (group + extras): both set — group members + invited friends.
+
     `note` is a short free-text message ("pessoal que tal esse?") attached
     when the user adds the event — surfaced on the event card so the crew
     sees the reason without scrolling into a chat thread."""
     now = datetime.now(timezone.utc).isoformat()
     event_id = f"grp_ev_{secrets.token_hex(6)}"
+    invitees_json = json.dumps([str(g) for g in (extra_invitee_ids or []) if g])
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO group_events (id, group_id, name, description, venue, date_start, date_end, created_by, visibility, note, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (event_id, group_id, name, description, venue, date_start, date_end, google_id, visibility, note, now),
+            """INSERT INTO group_events
+               (id, group_id, name, description, venue, date_start, date_end,
+                created_by, visibility, note, extra_invitee_ids, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, group_id, name, description, venue, date_start, date_end,
+             google_id, visibility, note, invitees_json, now),
         )
         conn.commit()
     return {
@@ -1588,12 +1608,26 @@ def create_group_event(
         "description": description, "venue": venue,
         "date_start": date_start, "date_end": date_end,
         "created_by": google_id, "visibility": visibility,
-        "note": note, "created_at": now,
+        "note": note,
+        "extra_invitee_ids": json.loads(invitees_json),
+        "created_at": now,
     }
 
 
+def _hydrate_invitees(row: dict) -> dict:
+    """Parse the JSON-stringified extra_invitee_ids into a real list."""
+    raw = row.get("extra_invitee_ids") or "[]"
+    try:
+        row["extra_invitee_ids"] = json.loads(raw) if isinstance(raw, str) else (raw or [])
+    except (json.JSONDecodeError, TypeError):
+        row["extra_invitee_ids"] = []
+    return row
+
+
 def get_group_events(group_id: str, is_member: bool = True) -> list[dict]:
-    """Return events for a group. Non-members only see public events."""
+    """Return events for a group. Non-members only see public events.
+    Personal plans (group_id IS NULL) are not returned here — see
+    get_events_for_user for the per-user feed that combines both."""
     query = "SELECT * FROM group_events WHERE group_id = ?"
     params = [group_id]
     if not is_member:
@@ -1601,14 +1635,54 @@ def get_group_events(group_id: str, is_member: bool = True) -> list[dict]:
     query += " ORDER BY date_start ASC"
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
-    return [dict(r) for r in rows]
+    return [_hydrate_invitees(dict(r)) for r in rows]
+
+
+def get_personal_plans_for_user(google_id: str) -> list[dict]:
+    """Return personal plans (group_id IS NULL) where `google_id` is either
+    the creator or appears in extra_invitee_ids. JSON-array LIKE matching
+    is fine here — google_ids are numeric strings, no false positives.
+    Caller is responsible for any date filtering."""
+    if not google_id:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM group_events
+            WHERE group_id IS NULL
+              AND (created_by = ? OR extra_invitee_ids LIKE ?)
+            ORDER BY date_start ASC
+            """,
+            (google_id, f'%"{google_id}"%'),
+        ).fetchall()
+    return [_hydrate_invitees(dict(r)) for r in rows]
+
+
+def get_group_events_with_extras_for_user(google_id: str) -> list[dict]:
+    """Return events that have a group_id AND list `google_id` as an
+    extra invitee (so non-members of the group still see it). Used to
+    surface 'group + extras' events for invited friends who aren't in
+    the group itself."""
+    if not google_id:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM group_events
+            WHERE group_id IS NOT NULL
+              AND extra_invitee_ids LIKE ?
+            ORDER BY date_start ASC
+            """,
+            (f'%"{google_id}"%',),
+        ).fetchall()
+    return [_hydrate_invitees(dict(r)) for r in rows]
 
 
 def get_group_event(event_id: str) -> Optional[dict]:
     """Return a single group event by ID."""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM group_events WHERE id = ?", (event_id,)).fetchone()
-    return dict(row) if row else None
+    return _hydrate_invitees(dict(row)) if row else None
 
 
 def delete_group_event(event_id: str) -> bool:
