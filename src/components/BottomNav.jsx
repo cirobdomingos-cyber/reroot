@@ -89,7 +89,7 @@ export default function BottomNav() {
     // avatar tap, not in this nav).
     isFounder && {
       path: '/admin/ig',
-      label: 'Curar',
+      label: 'Admin',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}

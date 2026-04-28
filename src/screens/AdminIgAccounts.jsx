@@ -725,7 +725,7 @@ function Header({ userName, email, isCurator, isFounder, enabledCount, totalCoun
   const roleColor = isFounder ? '#FF8F00' : isCurator ? 'var(--sage)' : 'var(--charcoal-light)'
   return (
     <div style={{ marginBottom: 20 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Curadoria de Instagram</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Admin</h1>
       <p style={{ fontSize: 13, color: 'var(--charcoal-light)', margin: '4px 0 0' }}>
         {enabledCount} de {totalCount} contas ativas. {' '}
         Você está logado como{' '}
@@ -741,9 +741,9 @@ function Header({ userName, email, isCurator, isFounder, enabledCount, totalCoun
 function NotLoggedIn({ onGoHome }) {
   return (
     <div style={{ padding: '40px 20px', maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700 }}>Curadoria de Instagram</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700 }}>Admin</h1>
       <p style={{ color: 'var(--charcoal-light)', fontSize: 14, lineHeight: 1.5 }}>
-        Faça login no app primeiro pra acessar a curadoria. Volte pra tela inicial,
+        Faça login no app primeiro pra acessar o admin. Volte pra tela inicial,
         complete o login com Google, e abra esse link de novo.
       </p>
       <button
