@@ -25,6 +25,7 @@ export default function GroupDetail() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showCatalog, setShowCatalog]   = useState(false)
+  const [showMembers, setShowMembers]   = useState(false)
   // Hero drawer for an individual group event. We hold the full event
   // object (not just the id) so the drawer has everything it needs
   // without a re-fetch — group payload already includes all events.
@@ -194,8 +195,18 @@ export default function GroupDetail() {
         )}
       </div>
 
-      {/* Member avatars */}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Member avatars — tap to open the full members list. The whole
+          row + count is one tap target since avatars overlap and stacking
+          a per-avatar handler felt cluttered. */}
+      <button
+        onClick={() => setShowMembers(true)}
+        aria-label="Ver todos os membros"
+        style={{
+          display: 'flex', alignItems: 'center', marginBottom: 16,
+          flexWrap: 'wrap', background: 'none', border: 'none',
+          padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
         {(group.members || []).slice(0, 8).map((m, i) => (
           <div
             key={m.google_id}
@@ -209,10 +220,14 @@ export default function GroupDetail() {
             <Avatar name={m.name} src={m.picture} size={32} />
           </div>
         ))}
-        <span style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginLeft: 8 }}>
+        <span style={{
+          fontSize: 12, color: 'var(--charcoal-mid)', marginLeft: 8,
+          textDecoration: 'underline', textDecorationColor: 'var(--border)',
+          textUnderlineOffset: 3,
+        }}>
           {group.members?.length} {t.groups_members}
         </span>
-      </div>
+      </button>
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -268,6 +283,7 @@ export default function GroupDetail() {
       <CalendarSheet open={showCalendar} onClose={() => setShowCalendar(false)} group={group} feedUrl={feedUrl} t={t} />
       <AddEventSheet open={showAddEvent} onClose={() => setShowAddEvent(false)} onSave={handleAddEvent} t={t} />
       <CatalogPickerSheet open={showCatalog} onClose={() => setShowCatalog(false)} onPick={handleAddEvent} />
+      <MembersSheet open={showMembers} onClose={() => setShowMembers(false)} group={group} t={t} />
       <GroupEventHero
         event={selectedEvent}
         group={group}
@@ -888,6 +904,73 @@ function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, on
 // motion sets an inline transform, which makes it the containing block
 // for `position: fixed` descendants — that's what was hiding the
 // "Criar evento" button on smaller phones).
+// Full members list — uses the BottomSheet pattern but with a taller
+// max height since the list can be long. Each row is a hero-sized avatar
+// + name + admin/member role badge + joined date. Sorted: admins first,
+// then by joined_at ASC (oldest first), so the founder always reads
+// at the top.
+function MembersSheet({ open, onClose, group, t }) {
+  const members = group?.members || []
+  const sorted = [...members].sort((a, b) => {
+    const ra = (a.role === 'admin') ? 0 : 1
+    const rb = (b.role === 'admin') ? 0 : 1
+    if (ra !== rb) return ra - rb
+    return (a.joined_at || '').localeCompare(b.joined_at || '')
+  })
+
+  function fmtJoinedAt(iso) {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso)
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+    } catch { return '' }
+  }
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title={`${members.length} ${t.groups_members}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
+        {sorted.map(m => (
+          <div key={m.google_id} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 4px',
+          }}>
+            <Avatar name={m.name} src={m.picture} size={48} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {m.name || m.google_id}
+              </div>
+              {m.joined_at && (
+                <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                  Entrou em {fmtJoinedAt(m.joined_at)}
+                </div>
+              )}
+            </div>
+            {m.role === 'admin' && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                color: 'var(--terra)', background: 'var(--terra-pale)',
+                padding: '3px 8px', borderRadius: 6,
+                textTransform: 'uppercase', flexShrink: 0,
+              }}>
+                Admin
+              </span>
+            )}
+          </div>
+        ))}
+        {members.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--charcoal-light)', fontSize: 13 }}>
+            Nenhum membro ainda.
+          </div>
+        )}
+      </div>
+    </BottomSheet>
+  )
+}
+
+
 function BottomSheet({ open, onClose, title, children }) {
   // Hide the Companion FAB while this sheet is up.
   useEffect(() => {
