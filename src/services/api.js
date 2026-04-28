@@ -673,6 +673,21 @@ export async function leaveGroup(groupId, googleId) {
   return res.json()
 }
 
+// Aggregate stats for a group's "Mural" panel. Member-only on the backend
+// — non-members get a 403, in which case we return null so the caller can
+// hide the section without a console scream.
+export async function fetchGroupStats(groupId, googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/groups/${encodeURIComponent(groupId)}/stats?google_id=${encodeURIComponent(googleId)}`,
+    )
+    if (res.ok) return await res.json()
+  } catch {
+    // Backend unavailable — silently no-op
+  }
+  return null
+}
+
 // Promote a member to admin or demote them. Admin-only on the backend.
 // `role` must be 'admin' or 'member'. Throws on the last-admin guard so
 // the caller can show an inline error.

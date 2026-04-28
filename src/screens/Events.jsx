@@ -333,21 +333,10 @@ export default function Events() {
   // Items without a parseable date sink to the bottom (custom events
   // without a date, anytime venues without dateStart). Events the
   // backend already returns in this order, but customs need merging.
-  // Custom events don't carry an IG handle / category, so they only
-  // surface in the unfiltered 'Tudo' view.
-  const customEventsForFilter = (state.customEvents || []).filter(() =>
-    activeFilter === 'all'
-  )
-  // Group events only surface in the unfiltered "Tudo" view — category
-  // filters are public taxonomies (Música, Comida) that don't fit private
-  // group plans. Search/price/kids/bairro filters still apply downstream
-  // so the user can search for "domingo na chácara" across everything.
-  const groupEventsForFilter = activeFilter === 'all' ? groupEvents : []
-  // Sort: by full timestamp ASC, but within the same day, pin group events
-  // to the top so the user's own crew shows above the public catalog. The
-  // day strip says "you have plans on Saturday" — opening Saturday should
-  // surface those plans first, not bury them under 30 public events.
-  const allDisplayEvents = [...customEventsForFilter, ...groupEventsForFilter, ...events].sort((a, b) => {
+  // Full union of everything we'll ever display — used both as the source
+  // of truth for chip counts (so "Tudo" doesn't fluctuate as the user
+  // filters) and as the input list to filter for the actual rendering.
+  const allDisplayEvents = [...(state.customEvents || []), ...groupEvents, ...events].sort((a, b) => {
     const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
     const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
     if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
@@ -356,6 +345,10 @@ export default function Events() {
     const dayA = a.dateStart.slice(0, 10)
     const dayB = b.dateStart.slice(0, 10)
     if (dayA === dayB) {
+      // Same day: pin group events to the top so the user's own crew
+      // shows above the public catalog. The day strip says "you have
+      // plans on Saturday" — opening Saturday should surface those
+      // plans first, not bury them under 30 public events.
       if (a.isGroupEvent && !b.isGroupEvent) return -1
       if (!a.isGroupEvent && b.isGroupEvent) return 1
     }
@@ -365,12 +358,15 @@ export default function Events() {
   // Apply search + source-category + date/venue filter
   let filteredEvents = allDisplayEvents
   // Source-category filter — uses the same taxonomy as the Sources page
-  // (bar / cafe / restaurante / musica / …). 'all' bypasses; any other
-  // chip narrows by the IG handle's tracked category (or aue_original's
-  // INST_CATEGORY mapping). Events whose source we can't classify just
-  // fall out of every specific bucket — matches the Sources behavior.
-  if (activeFilter !== 'all') {
-    filteredEvents = filteredEvents.filter(ev => categoryFor(ev) === activeFilter)
+  // (bar / cafe / restaurante / musica / …). 'all' bypasses; 'group'
+  // narrows to private events from the user's groups + personal plans;
+  // any other chip narrows by the IG handle's tracked category (or
+  // aue_original's INST_CATEGORY mapping). Events whose source we can't
+  // classify just fall out of every specific bucket — matches Sources.
+  if (activeFilter === 'group') {
+    filteredEvents = filteredEvents.filter(ev => ev.isGroupEvent)
+  } else if (activeFilter !== 'all') {
+    filteredEvents = filteredEvents.filter(ev => !ev.isGroupEvent && categoryFor(ev) === activeFilter)
   }
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
@@ -583,14 +579,17 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Category chips — only render categories that have ≥1 event
-            in the current catalog. Sources may have more chips (some
-            categories have tracked handles but no events posted yet);
-            here we keep the strip honest about what's actually available
-            to filter to. Style mirrors Sources: small pill + '· N' count. */}
+        {/* Category chips — counts are computed from the FULL union
+            (catalog + custom + group), independent of the active
+            filter, so 'Tudo · N' doesn't shrink the moment the user
+            picks a category and stops showing custom/group events.
+            'Grupo' is a synthetic bucket for private/group/personal
+            plans; the IG-handle categories drop those automatically. */}
         {(() => {
           const eventCounts = {}
+          let groupCount = 0
           for (const ev of allDisplayEvents) {
+            if (ev.isGroupEvent) { groupCount += 1; continue }
             const c = categoryFor(ev)
             if (c) eventCounts[c] = (eventCounts[c] || 0) + 1
           }
@@ -600,6 +599,7 @@ export default function Events() {
           ]
           const chips = [
             { id: 'all', emoji: '🌍', label: 'Tudo', count: allDisplayEvents.length },
+            ...(groupCount > 0 ? [{ id: 'group', emoji: '🎲', label: 'Grupo', count: groupCount }] : []),
             ...visibleCats.map(c => ({
               id: c,
               emoji: CATEGORY_META[c]?.emoji || '🔗',

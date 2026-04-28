@@ -2620,6 +2620,19 @@ def update_group_member_role(group_id: str, member_google_id: str, req: GroupMem
     return {"ok": True, "role": req.role}
 
 
+@app.get("/groups/{group_id}/stats")
+def group_stats(group_id: str, google_id: str):
+    """Mural stats for a group — event totals, RSVP rollup, top organizer.
+    Member-only (private groups never leak counts; public-group stats only
+    surface to members so the founder/admins keep some bargaining
+    information)."""
+    role = db.get_group_member_role(group_id, google_id)
+    if role is None:
+        raise HTTPException(status_code=403, detail="Apenas membros veem as estatísticas do grupo")
+    stats = db.get_group_stats(group_id)
+    return stats
+
+
 @app.post("/groups/{group_id}/events")
 def create_group_event(group_id: str, req: GroupEventCreateRequest):
     """Create an event within a group. Any member can create events.

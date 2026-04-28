@@ -1604,6 +1604,89 @@ def count_group_admins(group_id: str) -> int:
     return int(row["n"]) if row else 0
 
 
+def get_group_stats(group_id: str) -> dict:
+    """Aggregate stats for a group's "Mural" panel — events created, past
+    vs. upcoming split, total RSVPs across the group's events, and the
+    member who's added the most events. Returned counts are always
+    non-negative; missing rows are zero rather than null so the frontend
+    doesn't have to defend against undefined.
+
+    Past vs. upcoming uses the same date-only prefix compare the catalog
+    uses (today's ISO date), so a same-day event flips to "past" only
+    after midnight in UTC."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        events_total = conn.execute(
+            "SELECT COUNT(*) AS c FROM group_events WHERE group_id = ?",
+            (group_id,),
+        ).fetchone()["c"]
+
+        events_past = conn.execute(
+            """SELECT COUNT(*) AS c FROM group_events
+               WHERE group_id = ?
+                 AND substr(date_start, 1, 10) < ?""",
+            (group_id, today),
+        ).fetchone()["c"]
+        events_upcoming = max(0, events_total - events_past)
+
+        # RSVPs targeting events that belong to this group.
+        rsvps_total = conn.execute(
+            """SELECT COUNT(*) AS c FROM rsvps
+               WHERE event_id IN (
+                   SELECT id FROM group_events WHERE group_id = ?
+               )""",
+            (group_id,),
+        ).fetchone()["c"]
+
+        # Top organizer by created_by count. Ties broken by most-recent
+        # event, so a tied second-place doesn't displace the same-week one.
+        top_row = conn.execute(
+            """SELECT created_by, COUNT(*) AS c, MAX(created_at) AS recent
+               FROM group_events
+               WHERE group_id = ?
+                 AND created_by IS NOT NULL
+                 AND created_by != ''
+               GROUP BY created_by
+               ORDER BY c DESC, recent DESC
+               LIMIT 1""",
+            (group_id,),
+        ).fetchone()
+
+    top_organizer = None
+    if top_row and top_row["c"] > 0:
+        # Display name + picture live inside the user_states JSON blob,
+        # not as columns. Same shape get_event_attendees pulls.
+        gid = top_row["created_by"]
+        name = "Membro"
+        picture = ""
+        with get_conn() as conn:
+            us = conn.execute(
+                "SELECT state_json FROM user_states WHERE google_id = ?",
+                (gid,),
+            ).fetchone()
+        if us:
+            try:
+                state = json.loads(us["state_json"])
+                name = state.get("userName") or name
+                picture = (state.get("googleUser") or {}).get("picture", "")
+            except Exception:
+                pass
+        top_organizer = {
+            "google_id": gid,
+            "name": name,
+            "picture": picture,
+            "count": int(top_row["c"]),
+        }
+
+    return {
+        "events_total": int(events_total or 0),
+        "events_past": int(events_past or 0),
+        "events_upcoming": int(events_upcoming or 0),
+        "rsvps_total": int(rsvps_total or 0),
+        "top_organizer": top_organizer,
+    }
+
+
 def get_group_members(group_id: str) -> list[dict]:
     """Return all members of a group with profile info from user_states."""
     with get_conn() as conn:

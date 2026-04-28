@@ -10,7 +10,7 @@ import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
-  setGroupMemberRole,
+  setGroupMemberRole, fetchGroupStats,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -28,6 +28,7 @@ export default function GroupDetail() {
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showCatalog, setShowCatalog]   = useState(false)
   const [showMembers, setShowMembers]   = useState(false)
+  const [stats, setStats]               = useState(null)
   // Hero drawer for an individual group event. We hold the full event
   // object (not just the id) so the drawer has everything it needs
   // without a re-fetch — group payload already includes all events.
@@ -42,17 +43,20 @@ export default function GroupDetail() {
     fetchGroupDetail(groupId, googleId)
       .then(data => { setGroup(data); setLoading(false) })
       .catch(() => { setError('Failed to load group'); setLoading(false) })
+    fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
   }, [groupId, googleId])
 
   async function handleAddEvent(eventData) {
     const newEvent = await createGroupEvent(groupId, googleId, eventData)
     setGroup(prev => ({ ...prev, events: [...prev.events, newEvent] }))
     setShowAddEvent(false)
+    fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
   }
 
   async function handleDeleteEvent(eventId) {
     await deleteGroupEvent(groupId, eventId, googleId)
     setGroup(prev => ({ ...prev, events: prev.events.filter(e => e.id !== eventId) }))
+    fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
   }
 
   async function handleRename() {
@@ -266,6 +270,13 @@ export default function GroupDetail() {
         <ActionBtn label={`+ ${t.groups_add_event}`} onClick={() => setShowAddEvent(true)} accent />
       </div>
 
+      {/* Group stats — only shown when there's been activity, otherwise
+          we'd be staring at a wall of zeros for fresh groups. Members-only
+          on the backend; non-members can't even hit this endpoint. */}
+      {stats && stats.events_total > 0 && (
+        <GroupStatsPanel stats={stats} />
+      )}
+
       {/* Upcoming events */}
       <h2 style={sectionTitleStyle}>{t.groups_next_event} ({upcomingEvents.length})</h2>
       {upcomingEvents.length === 0 ? (
@@ -429,6 +440,80 @@ function ActionBtn({ label, onClick, accent }) {
     }}>
       {label}
     </button>
+  )
+}
+
+// "Mural do grupo" — at-a-glance counters + the most active organizer.
+// Lightweight panel, four cards for the headline numbers and one row for
+// the top organizer when there is one. Hidden by the parent for empty
+// groups so the very first event still feels like an arrival, not a
+// dashboard with zeros.
+function GroupStatsPanel({ stats }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h2 style={{
+        fontSize: 13, fontWeight: 700, color: 'var(--charcoal-mid)',
+        textTransform: 'uppercase', letterSpacing: 0.6,
+        margin: '0 0 8px',
+      }}>
+        Mural do grupo
+      </h2>
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8,
+        marginBottom: stats.top_organizer ? 8 : 0,
+      }}>
+        <StatTile emoji="📅" label="Eventos no total" value={stats.events_total} />
+        <StatTile emoji="🚀" label="Por vir" value={stats.events_upcoming} />
+        <StatTile emoji="✅" label="Já rolaram" value={stats.events_past} />
+        <StatTile emoji="🙌" label="Confirmações" value={stats.rsvps_total} />
+      </div>
+      {stats.top_organizer && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 12px', background: 'white',
+          border: '1px solid var(--border)', borderRadius: 12,
+        }}>
+          <Avatar
+            name={stats.top_organizer.name}
+            src={stats.top_organizer.picture}
+            size={32}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'var(--charcoal-light)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Quem mais bota evento aqui
+            </div>
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {stats.top_organizer.name}{' '}
+              <span style={{ fontWeight: 500, color: 'var(--charcoal-mid)' }}>
+                · {stats.top_organizer.count} {stats.top_organizer.count === 1 ? 'evento' : 'eventos'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatTile({ emoji, label, value }) {
+  return (
+    <div style={{
+      background: 'white', border: '1px solid var(--border)',
+      borderRadius: 12, padding: '10px 12px',
+    }}>
+      <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
+        {emoji} {label}
+      </div>
+      <div style={{
+        fontSize: 22, fontWeight: 800, color: 'var(--charcoal)',
+        marginTop: 2, fontVariantNumeric: 'tabular-nums',
+      }}>
+        {value}
+      </div>
+    </div>
   )
 }
 
