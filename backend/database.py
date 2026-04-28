@@ -265,6 +265,44 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+
+        # Migration: drop NOT NULL on group_id so personal plans (group_id
+        # IS NULL + extra_invitee_ids non-empty) are insertable. SQLite has
+        # no ALTER COLUMN, so we rebuild the table when the existing column
+        # is still NOT NULL. Idempotent: subsequent runs see the column
+        # already nullable and skip.
+        cols = conn.execute("PRAGMA table_info(group_events)").fetchall()
+        gid_col = next((c for c in cols if c[1] == "group_id"), None)
+        # PRAGMA table_info row: cid, name, type, notnull, dflt_value, pk
+        if gid_col and gid_col[3] == 1:
+            conn.execute("ALTER TABLE group_events RENAME TO group_events_old")
+            conn.execute("""
+                CREATE TABLE group_events (
+                    id           TEXT PRIMARY KEY,
+                    group_id     TEXT,
+                    name         TEXT NOT NULL,
+                    description  TEXT NOT NULL DEFAULT '',
+                    venue        TEXT NOT NULL DEFAULT '',
+                    date_start   TEXT NOT NULL,
+                    date_end     TEXT,
+                    created_by   TEXT NOT NULL,
+                    visibility   TEXT NOT NULL DEFAULT 'members',
+                    note         TEXT NOT NULL DEFAULT '',
+                    extra_invitee_ids TEXT NOT NULL DEFAULT '[]',
+                    created_at   TEXT NOT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT INTO group_events
+                  (id, group_id, name, description, venue, date_start, date_end,
+                   created_by, visibility, note, extra_invitee_ids, created_at)
+                SELECT
+                  id, group_id, name, description, venue, date_start, date_end,
+                  created_by, visibility, note, extra_invitee_ids, created_at
+                FROM group_events_old
+            """)
+            conn.execute("DROP TABLE group_events_old")
+            conn.commit()
         # Achievements/badges. One row per (user, badge) once earned —
         # categorical, never revoked. Metadata column captures context like
         # which venue triggered a "Local da casa" badge. Tier captures
