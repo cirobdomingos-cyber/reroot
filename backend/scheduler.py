@@ -134,15 +134,35 @@ async def run_refresh(settings):
     log.info(f"✅ Refresh concluído: {saved} eventos salvos ({total} total no banco)")
 
     # Seed the venues cache with any new venue names the scrape introduced.
-    # Geocoding itself is async + rate-limited, so we don't run Nominatim
-    # here — the curator/founder triggers /admin/venues/geocode when they
-    # want pins to fill in. This call is just "make sure the rows exist".
+    # Then auto-geocode in two passes so the map view doesn't lag behind
+    # the catalog: Nominatim picks up clean address-style hits first,
+    # then Claude (with web_search) sweeps the long-tail informal names.
+    # Curator UI for manual fixes was removed — this pipeline is the
+    # canonical path for getting coords on every new venue.
     try:
         new_venues = db.seed_venues_from_events()
         if new_venues:
             log.info(f"  Venues cache: {new_venues} novos pendentes de geocoding")
     except Exception as e:
         log.warning(f"  seed_venues_from_events falhou: {e}")
+
+    try:
+        from geocoding import geocode_pending_venues, autofill_pending_with_ai
+        # Pass 1: Nominatim. Cheap, fast (well, ≥1s/req), nails address-y
+        # venue names. Capped at 50 per scrape to bound the wall time.
+        nom = geocode_pending_venues(limit=50)
+        log.info(f"  Geocode (Nominatim): {nom['ok']} ok / {nom['failed']} fail")
+        # Pass 2: Claude + web_search for whatever Nominatim couldn't
+        # resolve. Costs ~$0.01/venue with the hosted search tool, so a
+        # 20-venue scrape stays under $0.25 worst case.
+        if settings.anthropic_api_key:
+            ai = autofill_pending_with_ai(
+                anthropic_api_key=settings.anthropic_api_key,
+                limit=30,
+            )
+            log.info(f"  Geocode (AI): {ai['ok']} ok / {ai['skipped']} skipped")
+    except Exception as e:
+        log.warning(f"  auto-geocode pipeline falhou: {e}")
 
     # Best-effort summary email (silent if RESEND_API_KEY isn't set).
     try:

@@ -142,47 +142,69 @@ def ai_lookup_venue(name: str, address: str = "", anthropic_api_key: str = "") -
     user_msg = (
         f"Venue name: {name}\n"
         f"Optional address hint: {address or '(none)'}\n\n"
-        "Return JSON with the venue's street address and coordinates IF "
-        "you have high confidence based on your training data. If you're "
-        "uncertain or don't recognize the venue, return null for those "
-        "fields — DO NOT GUESS.\n\n"
-        "Required JSON shape:\n"
+        "Find this venue's street address and coordinates in Curitiba, PR, "
+        "Brazil. Use web_search to look up the venue if you don't know it "
+        "from training — search for the venue name + 'Curitiba' and read "
+        "the results (Tripadvisor, Facebook pages, Instagram bios, news "
+        "articles, Google Maps citations) to find the address.\n\n"
+        "If after searching you still can't find a confident location, "
+        "return null fields — DO NOT GUESS.\n\n"
+        "Required JSON shape (return this as the LAST thing in your "
+        "response, with no surrounding prose or markdown fences):\n"
         "{\n"
         '  "address": "Rua XV de Novembro, 123, Centro, Curitiba" | null,\n'
         '  "lat": number (between -26.5 and -24.5) | null,\n'
         '  "lng": number (between -50.5 and -48.0) | null,\n'
         '  "confidence": "high" | "medium" | "low",\n'
-        '  "notes": "short note explaining why you\'re sure or unsure"\n'
+        '  "notes": "short note about source / why confident or not"\n'
         "}\n\n"
         "Rules:\n"
-        "- For famous venues (museums, theatres, parks, well-known bars/"
-        "cafés/livrarias), high confidence is fine.\n"
-        "- For generic names that could exist in many cities ('Café X', "
-        "'Bar Y') with no other signal — low confidence, null coords.\n"
-        "- Never invent a street number you don't know. If you only know "
-        "the street, set address to the street + 's/n' and still null "
-        "the lat/lng unless you're sure of the location.\n"
-        "- Coordinates must be within Curitiba metro.\n\n"
-        "Return ONLY valid JSON, no markdown fences, no prose around it."
+        "- For famous venues (museums, theatres, parks), training data "
+        "is enough → high confidence.\n"
+        "- For informal names ('Bar do X', 'Café Y'), web_search first.\n"
+        "- For generic names with no Curitiba match anywhere — low "
+        "confidence, null coords.\n"
+        "- Coordinates must be within Curitiba metro."
     )
     try:
         client = Anthropic(api_key=anthropic_api_key)
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=400,
+            # Sonnet (over Haiku) — web_search tool calls are heavier and
+            # benefit from better reasoning to dedupe/parse results.
+            model="claude-sonnet-4-6",
+            max_tokens=1500,
             system=(
                 "You help locate venues in Curitiba, PR, Brazil for a city "
                 "events catalog. Honesty matters more than coverage — "
-                "returning null when uncertain is correct behavior."
+                "returning null when uncertain is correct behavior. Use "
+                "web_search to research informal venue names; rely on "
+                "training only for famous landmarks."
             ),
+            tools=[{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 3,
+            }],
             messages=[{"role": "user", "content": user_msg}],
         )
-        text = msg.content[0].text.strip() if msg.content else ""
+        # Response can interleave tool_use / tool_result / text blocks
+        # (Anthropic runs hosted web_search server-side). We want the
+        # LAST text block — that's where the model's final JSON answer
+        # lives after it finished researching.
+        text_blocks = [b.text for b in (msg.content or []) if getattr(b, "type", "") == "text"]
+        text = (text_blocks[-1] if text_blocks else "").strip()
         # Strip code fences if Claude added them despite instructions.
         if text.startswith("```"):
             text = text.strip("`")
             if text.lower().startswith("json"):
-                text = text[4:]
+                text = text[4:].strip()
+        # Sometimes Claude wraps JSON inside prose despite our request.
+        # Pull the last {...} block as a fallback.
+        if not text.startswith("{"):
+            start = text.rfind("{")
+            end = text.rfind("}")
+            if start >= 0 and end > start:
+                text = text[start:end + 1]
         data = json.loads(text)
     except (json.JSONDecodeError, KeyError, IndexError, AttributeError) as exc:
         log.warning("AI venue lookup parse failed for %r: %s", name, exc)
@@ -222,3 +244,57 @@ def geocode_pending_venues(limit: int = 25) -> dict:
             failed += 1
             log.info("Geocode failed for %r", v["name_original"])
     return {"processed": len(pending), "ok": ok, "failed": failed}
+
+
+def autofill_pending_with_ai(anthropic_api_key: str, limit: int = 50) -> dict:
+    """For every still-pending venue, ask Claude (with the web_search tool)
+    to find a Curitiba address + coords. High/medium-confidence results
+    that pass the bbox check get saved as source='ai'. Low-confidence and
+    unfound venues stay pending so they don't get bad coords baked in.
+
+    This runs after the Nominatim batch in the scrape pipeline — Nominatim
+    handles the easy address-style hits, Claude+websearch picks up the
+    informal venue names ("Bar do Sax", "Olga's Speakeasy") that Nominatim
+    doesn't recognize.
+    """
+    if not anthropic_api_key:
+        return {"processed": 0, "ok": 0, "skipped": 0, "reason": "no api key"}
+    pending = db.list_venues_pending_geocode(limit=limit)
+    ok = 0
+    skipped = 0
+    for v in pending:
+        result = ai_lookup_venue(
+            v["name_original"], v.get("address") or "",
+            anthropic_api_key=anthropic_api_key,
+        )
+        if not result:
+            skipped += 1
+            continue
+        lat = result.get("lat")
+        lng = result.get("lng")
+        conf = (result.get("confidence") or "low").lower()
+        if lat is None or lng is None or conf not in ("high", "medium"):
+            skipped += 1
+            continue
+        if not _within_curitiba(float(lat), float(lng)):
+            skipped += 1
+            continue
+        db.update_venue_manual(
+            name_normalized=v["name_normalized"],
+            lat=float(lat), lng=float(lng),
+            address=result.get("address") or None,
+        )
+        # Stamp source as 'ai' so we know this didn't come from Nominatim
+        # or a curator pin. Updated_venue_manual marks it 'manual' by
+        # default; override the source column so we keep the provenance
+        # signal accurate for any future audit pass.
+        with db.get_conn() as conn:
+            conn.execute(
+                "UPDATE venues SET geocode_source = 'ai' WHERE name_normalized = ?",
+                (v["name_normalized"],),
+            )
+            conn.commit()
+        ok += 1
+        log.info("AI-geocoded %r [%s] → (%.4f, %.4f)",
+                 v["name_original"], conf, float(lat), float(lng))
+    return {"processed": len(pending), "ok": ok, "skipped": skipped}
