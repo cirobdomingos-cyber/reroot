@@ -140,6 +140,10 @@ export default function Events() {
   // exist in the catalog but haven't been geocoded yet) and shows a
   // banner when the active filter yields zero pinnable events.
   const [viewMode, setViewMode]             = useState('list')
+  // Chip strip collapse — default to ~2 rows worth of chips so the strip
+  // doesn't eat the whole top of the screen on phones with 18+ tracked
+  // categories. User can expand to see everything.
+  const [chipsExpanded, setChipsExpanded]   = useState(false)
   // Specific-day filter from the week strip (events mode). null = all days.
   const [selectedDay, setSelectedDay]       = useState(null)
   const [venueSubFilter, setVenueSubFilter] = useState('all')
@@ -599,23 +603,47 @@ export default function Events() {
             const c = categoryFor(ev)
             if (c) eventCounts[c] = (eventCounts[c] || 0) + 1
           }
-          const visibleCats = [
-            ...CATEGORY_ORDER.filter(c => (eventCounts[c] || 0) > 0),
-            ...Object.keys(eventCounts).filter(c => !CATEGORY_ORDER.includes(c)),
-          ]
+          // Sort categories by event count DESC — the busiest buckets
+          // float to the top so the visible-by-default rows always show
+          // the chips users actually want. Ties broken by CATEGORY_ORDER
+          // so the strip is stable scrape-to-scrape when counts match.
+          const orderedCats = Object.keys(eventCounts).sort((a, b) => {
+            const diff = eventCounts[b] - eventCounts[a]
+            if (diff !== 0) return diff
+            const ai = CATEGORY_ORDER.indexOf(a)
+            const bi = CATEGORY_ORDER.indexOf(b)
+            return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+          })
           const chips = [
             { id: 'all', emoji: '🌍', label: 'Tudo', count: allDisplayEvents.length },
             ...(groupCount > 0 ? [{ id: 'group', emoji: '🎲', label: 'Grupo', count: groupCount }] : []),
-            ...visibleCats.map(c => ({
+            ...orderedCats.map(c => ({
               id: c,
               emoji: CATEGORY_META[c]?.emoji || '🔗',
               label: CATEGORY_META[c]?.label || c,
               count: eventCounts[c] || 0,
             })),
           ]
+          // Default-collapsed cap: shows roughly 2 rows on a 360-380px
+          // viewport (the typical small Android). Always include the
+          // active chip in the visible set even when it would otherwise
+          // be in the overflow tail — otherwise picking "Cinema · 1"
+          // and then collapsing would hide what the user just selected.
+          const COLLAPSED_CAP = 10
+          let visible = chips
+          let hidden = 0
+          if (!chipsExpanded && chips.length > COLLAPSED_CAP) {
+            const head = chips.slice(0, COLLAPSED_CAP)
+            const activeChip = chips.find(c => c.id === activeFilter)
+            const includesActive = head.some(c => c.id === activeFilter)
+            visible = includesActive || !activeChip
+              ? head
+              : [...head.slice(0, COLLAPSED_CAP - 1), activeChip]
+            hidden = chips.length - visible.length
+          }
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
-              {chips.map(chip => {
+              {visible.map(chip => {
                 const active = activeFilter === chip.id
                 return (
                   <button
@@ -634,6 +662,19 @@ export default function Events() {
                   </button>
                 )
               })}
+              {(hidden > 0 || chipsExpanded) && chips.length > COLLAPSED_CAP && (
+                <button
+                  onClick={() => setChipsExpanded(v => !v)}
+                  style={{
+                    padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                    fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    border: '1px dashed var(--border)',
+                    background: 'transparent', color: 'var(--charcoal-mid)',
+                  }}
+                >
+                  {chipsExpanded ? '− Ver menos' : `+ Ver mais (${hidden})`}
+                </button>
+              )}
             </div>
           )
         })()}
