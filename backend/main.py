@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     google_places_api_key: str = ""
     city: str = "Curitiba"
-    refresh_interval_hours: int = 24
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
     founder_email: str = "ciro.b.domingos@gmail.com"

@@ -861,8 +861,16 @@ def get_funnel_counts() -> list[dict]:
     return [{"event_name": row["event_name"], "total": row["total"]} for row in rows]
 
 
-def upsert_event(ev: EnrichedEvent):
+def upsert_event(ev: EnrichedEvent) -> bool:
+    """Insert or update by (source, external_id). Returns True when a new row
+    was inserted, False when an existing row was updated. The flag drives the
+    truthful "novos vs atualizados" count in the post-scrape summary email."""
     with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM events WHERE source = ? AND external_id = ?",
+            (ev.source, ev.external_id),
+        ).fetchone()
+        was_new = existing is None
         conn.execute("""
             INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -881,6 +889,7 @@ def upsert_event(ev: EnrichedEvent):
             1 if ev.is_curated else 0,
         ))
         conn.commit()
+    return was_new
 
 
 def get_events(
@@ -1074,6 +1083,16 @@ def log_refresh_finish(log_id: int, events_new: int, events_updated: int, error:
             WHERE id = ?
         """, (datetime.now().isoformat(), events_new, events_updated, error, log_id))
         conn.commit()
+
+
+def get_last_refresh_started_at() -> Optional[str]:
+    """Most recent refresh_log.started_at across all sources, or None when the
+    table is empty. Used at boot to decide whether to skip the immediate
+    refresh — if the catalog was refreshed in the last 24h, deploys should
+    not re-trigger the full scrape + Claude pipeline."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT MAX(started_at) FROM refresh_log").fetchone()
+    return row[0] if row and row[0] else None
 
 
 def get_refresh_logs_since(started_at_iso: str) -> list[dict]:
