@@ -67,7 +67,19 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
     eventsByDate[key].push({ ...ev, _type: 'group' })
   })
 
-  const selectedEvents = eventsByDate[selectedDate] || []
+  // Flatten the week's events grouped by day. The day strip still
+  // highlights selectedDate for visual context, but the events list
+  // below now spans the whole visible week instead of just one day —
+  // user feedback was that single-day filtering hid plans they'd RSVP'd
+  // to and made the calendar feel empty most of the time.
+  const dayBuckets = days
+    .map(day => {
+      const key = dateKey(day)
+      const events = eventsByDate[key] || []
+      return { day, key, events }
+    })
+    .filter(b => b.events.length > 0)
+  const totalWeekEvents = dayBuckets.reduce((sum, b) => sum + b.events.length, 0)
 
   // Month label from the first day of the visible week
   const monthLabel = `${monthLabels[days[0].getMonth()]} ${days[0].getFullYear()}`
@@ -139,88 +151,107 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
         })}
       </div>
 
-      {/* Selected day events */}
+      {/* Week events — grouped by day. Each day gets a small label
+          (Ter, 28 Abr) before its events. Days with no events are
+          skipped entirely so the list stays compact. */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={selectedDate}
+          key={`${weekOffset}-week`}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.15 }}
           style={{ marginTop: 10 }}
         >
-          {selectedEvents.length === 0 ? (
+          {totalWeekEvents === 0 ? (
             <div style={{
               textAlign: 'center', padding: '14px 0', fontSize: 12,
               color: 'var(--charcoal-light)', fontStyle: 'italic',
             }}>
-              {language === 'pt' ? 'Nenhum evento neste dia' : 'No events on this day'}
+              {language === 'pt' ? 'Nenhum evento esta semana' : 'No events this week'}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {selectedEvents.map(ev => {
-                const isGroup = ev._type === 'group'
-                return (
-                  <div
-                    key={ev.id}
-                    onClick={() => onEventTap?.(ev, ev._type)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      background: 'white', borderRadius: 12, padding: '10px 12px',
-                      border: `1.5px solid ${isGroup ? 'var(--terra-pale)' : 'var(--sage-pale)'}`,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {/* Icon or group indicator */}
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 16,
-                      background: isGroup
-                        ? 'linear-gradient(135deg, var(--terra-pale), #f5ddd1)'
-                        : (ev.headerBg || 'var(--sage-pale)'),
-                    }}>
-                      {isGroup ? '👥' : (ev.icon || '📅')}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {ev.name}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
-                        {ev.time || ev.date_start?.slice(11, 16) || ''}
-                        {isGroup && ev.group_name && ` · ${ev.group_name}`}
-                        {!isGroup && ev.venue && ` · ${ev.venue}`}
-                      </div>
-                    </div>
-
-                    {/* Status badge */}
-                    {isGroup ? (
-                      <button
-                        onClick={e => { e.stopPropagation(); onGroupRsvp?.(ev) }}
-                        style={{
-                          padding: '5px 10px', borderRadius: 8, fontSize: 10,
-                          fontWeight: 700, cursor: 'pointer', border: 'none',
-                          background: 'var(--terra)', color: 'white', flexShrink: 0,
-                        }}
-                      >
-                        {language === 'pt' ? 'Aceitar' : 'Accept'}
-                      </button>
-                    ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {dayBuckets.map(({ day, key, events }) => (
+                <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+                    color: 'var(--charcoal-light)', textTransform: 'uppercase',
+                  }}>
+                    {dayLabels[day.getDay()]}, {day.getDate()} {monthLabels[day.getMonth()]}
+                    {isToday(day) && (
                       <span style={{
-                        fontSize: 10, fontWeight: 700, color: 'var(--sage)',
-                        background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
-                        flexShrink: 0,
+                        marginLeft: 6, color: 'var(--terra)', letterSpacing: 0,
                       }}>
-                        {language === 'pt' ? 'Confirmado' : 'Confirmed'}
+                        · {language === 'pt' ? 'hoje' : 'today'}
                       </span>
                     )}
                   </div>
-                )
-              })}
+                  {events.map(ev => {
+                    const isGroup = ev._type === 'group'
+                    return (
+                      <div
+                        key={ev.id}
+                        onClick={() => onEventTap?.(ev, ev._type)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          background: 'white', borderRadius: 12, padding: '10px 12px',
+                          border: `1.5px solid ${isGroup ? 'var(--terra-pale)' : 'var(--sage-pale)'}`,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {/* Icon or group indicator */}
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 16,
+                          background: isGroup
+                            ? 'linear-gradient(135deg, var(--terra-pale), #f5ddd1)'
+                            : (ev.headerBg || 'var(--sage-pale)'),
+                        }}>
+                          {isGroup ? '👥' : (ev.icon || '📅')}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {ev.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
+                            {ev.time || (ev.date_start || ev.dateStart || '').slice(11, 16) || ''}
+                            {isGroup && ev.group_name && ` · ${ev.group_name}`}
+                            {!isGroup && ev.venue && ` · ${ev.venue}`}
+                          </div>
+                        </div>
+
+                        {/* Status badge */}
+                        {isGroup ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); onGroupRsvp?.(ev) }}
+                            style={{
+                              padding: '5px 10px', borderRadius: 8, fontSize: 10,
+                              fontWeight: 700, cursor: 'pointer', border: 'none',
+                              background: 'var(--terra)', color: 'white', flexShrink: 0,
+                            }}
+                          >
+                            {language === 'pt' ? 'Aceitar' : 'Accept'}
+                          </button>
+                        ) : (
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+                            background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
+                            flexShrink: 0,
+                          }}>
+                            {language === 'pt' ? 'Confirmado' : 'Confirmed'}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </motion.div>
