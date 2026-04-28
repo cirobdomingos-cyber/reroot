@@ -48,12 +48,26 @@ export default function MyRsvps() {
     return () => { cancelled = true; document.removeEventListener('visibilitychange', onVisible) }
   }, [state.googleUser?.id])
 
+  // Build a lookup of group/personal-plan metadata so each RSVP entry
+  // can be tagged with its origin type (public catalog vs personal-plan
+  // invite vs classic group event). The /events/group fetch above
+  // already returns the user's invitations + member-of-group events.
+  const groupEventsById = Object.fromEntries(groupEvents.map(ev => [ev.id, ev]))
+
+  function classify(id) {
+    const ge = groupEventsById[id]
+    if (!ge) return 'public'  // catalog event (or anything not in our private feed)
+    if (ge.isPersonalPlan) return 'plan'
+    return 'group'
+  }
+
   const entries = Object.entries(state.rsvps).map(([id, info]) => ({
     id,
     name: info?.name || '',
     venue: info?.venue || '',
     dateStart: info?.dateStart || '',
     parsed: info?.dateStart ? Date.parse(info.dateStart) : NaN,
+    kind: classify(id),
   }))
 
   const upcoming = entries.filter(e => !Number.isNaN(e.parsed) && e.parsed > now)
@@ -129,7 +143,7 @@ export default function MyRsvps() {
         <div style={{ fontSize: 13, color: 'var(--charcoal-light)', marginTop: 2 }}>
           {entries.length === 0 && friendsUpcoming.length === 0 && pending.length === 0
             ? 'Você ainda não confirmou nenhum evento.'
-            : `${pending.length ? `${pending.length} pendente${pending.length === 1 ? '' : 's'} · ` : ''}${upcoming.length} seu${upcoming.length === 1 ? '' : 's'}${friendsUpcoming.length ? ` · ${friendsUpcoming.length} de amigos` : ''}${past.length ? ` · ${past.length} passado${past.length === 1 ? '' : 's'}` : ''}${undated.length ? ` · ${undated.length} sem data` : ''}.`}
+            : `${pending.length ? `${pending.length} pendente${pending.length === 1 ? '' : 's'} · ` : ''}${upcoming.length} confirmado${upcoming.length === 1 ? '' : 's'}${friendsUpcoming.length ? ` · ${friendsUpcoming.length} de amigos` : ''}${past.length ? ` · ${past.length} passado${past.length === 1 ? '' : 's'}` : ''}${undated.length ? ` · ${undated.length} sem data` : ''}.`}
         </div>
       </div>
 
@@ -179,7 +193,7 @@ export default function MyRsvps() {
       )}
 
       {upcoming.length > 0 && (
-        <Section title={`Próximos · ${upcoming.length}`}>
+        <Section title={`Confirmados · ${upcoming.length}`}>
           {upcoming.map(e => (
             <RsvpRow key={e.id} entry={e} onOpen={openEvent} onCancel={unRsvp} />
           ))}
@@ -384,26 +398,66 @@ function PendingRow({ event: ev, onOpen }) {
 }
 
 
+// Small kind badges — let the user tell at a glance what kind of event
+// they confirmed: catalog (public), invited plan, or group event. Color
+// matches the source elsewhere in the app: terra=plan/invite (warm
+// scarcity), sage=group (calm/private), neutral=public.
+const KIND_META = {
+  plan:   { label: 'Convite',  icon: '🎲', bg: 'var(--terra-pale)',         color: 'var(--terra)' },
+  group:  { label: 'Grupo',    icon: '👥', bg: 'var(--sage-pale)',          color: 'var(--sage)' },
+  public: { label: 'Público',  icon: '🌍', bg: 'rgba(44,44,44,0.06)',       color: 'var(--charcoal-mid)' },
+}
+
+function KindBadge({ kind }) {
+  const meta = KIND_META[kind] || KIND_META.public
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+      color: meta.color, background: meta.bg,
+      padding: '2px 7px', borderRadius: 5,
+      textTransform: 'uppercase', flexShrink: 0,
+    }}>
+      <span style={{ fontSize: 10 }}>{meta.icon}</span>
+      {meta.label}
+    </span>
+  )
+}
+
 function RsvpRow({ entry, onOpen, onCancel, muted, undated }) {
   const dateLabel = formatDate(entry.dateStart) || (undated ? '— sem data' : '')
+  // Highlight kind via a subtle inset stripe matching the badge color.
+  // Picks up the same visual language as group events / personal plans
+  // elsewhere in the app, so the row's origin reads at a glance.
+  const stripeColor = entry.kind === 'plan' ? 'var(--terra)'
+                    : entry.kind === 'group' ? 'var(--sage)'
+                    : 'transparent'
   return (
     <div
       onClick={() => onOpen(entry)}
       style={{
         background: 'white', borderRadius: 14, padding: '12px 14px',
         border: '1px solid var(--border)',
+        boxShadow: stripeColor !== 'transparent' ? `inset 4px 0 0 ${stripeColor}` : 'none',
         display: 'flex', alignItems: 'center', gap: 12,
         opacity: muted ? 0.7 : 1, cursor: 'pointer',
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          display: 'flex', alignItems: 'center', gap: 6,
+          marginBottom: 2,
         }}>
-          {entry.name || `Evento ${entry.id}`}
+          {entry.kind && <KindBadge kind={entry.kind} />}
+          <div style={{
+            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            flex: 1, minWidth: 0,
+          }}>
+            {entry.name || `Evento ${entry.id}`}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
           {dateLabel}{entry.venue ? ` · ${entry.venue}` : ''}
         </div>
       </div>
