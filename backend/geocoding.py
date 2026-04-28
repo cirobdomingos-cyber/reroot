@@ -48,13 +48,17 @@ def _within_curitiba(lat: float, lng: float) -> bool:
     )
 
 
-def _query_nominatim(query: str, timeout: float = 8.0) -> Optional[tuple[float, float]]:
+def _query_nominatim(query: str, timeout: float = 8.0) -> Optional[tuple[float, float, str]]:
     """Hit Nominatim's `search` endpoint with a Curitiba-biased viewbox.
-    Returns (lat, lng) on success, None if no result or out-of-bounds.
+    Returns (lat, lng, bairro) on success, None if no result or out-of-bounds.
 
     The User-Agent is mandatory per Nominatim ToS — anonymous queries get
     rate-limited to nothing. We identify the app + a contact route so
-    the OSM crew can reach out if we ever cause harm."""
+    the OSM crew can reach out if we ever cause harm.
+
+    `addressdetails=1` adds a parsed address breakdown so we can pull
+    the bairro from `suburb` / `neighbourhood` / `quarter` (Nominatim's
+    naming varies by region — Curitiba uses `suburb` most often)."""
     headers = {
         "User-Agent": "aue-curitiba-events/1.0 (https://reroot-production.up.railway.app)",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
@@ -65,7 +69,7 @@ def _query_nominatim(query: str, timeout: float = 8.0) -> Optional[tuple[float, 
         "limit": "1",
         "viewbox": ",".join(str(c) for c in _CTBA_VIEWBOX),
         "bounded": "1",
-        "addressdetails": "0",
+        "addressdetails": "1",
     }
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -86,13 +90,18 @@ def _query_nominatim(query: str, timeout: float = 8.0) -> Optional[tuple[float, 
         if not _within_curitiba(lat, lng):
             log.info("Nominatim out-of-bounds for %r → (%s, %s)", query, lat, lng)
             return None
-        return (lat, lng)
+        addr = hit.get("address") or {}
+        bairro = (
+            addr.get("suburb") or addr.get("neighbourhood")
+            or addr.get("quarter") or addr.get("city_district") or ""
+        )
+        return (lat, lng, bairro)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         log.warning("Nominatim error for %r: %s", query, exc)
         return None
 
 
-def geocode_one(name_original: str, address: str = "") -> Optional[tuple[float, float]]:
+def geocode_one(name_original: str, address: str = "") -> Optional[tuple[float, float, str]]:
     """Try increasingly less specific queries until something hits.
 
     Order matters: we want the most specific query first because broad
@@ -106,9 +115,9 @@ def geocode_one(name_original: str, address: str = "") -> Optional[tuple[float, 
     queries.append(f"{name_original}, Curitiba, PR, Brazil")
     queries.append(f"{name_original}, Curitiba")
     for q in queries:
-        coords = _query_nominatim(q)
-        if coords:
-            return coords
+        result = _query_nominatim(q)
+        if result:
+            return result
         # Nominatim ToS: ≥1 req/sec from a single source. Even on a miss
         # we have to wait before the next attempt or the second query
         # gets rate-limited.
@@ -153,6 +162,7 @@ def ai_lookup_venue(name: str, address: str = "", anthropic_api_key: str = "") -
         "response, with no surrounding prose or markdown fences):\n"
         "{\n"
         '  "address": "Rua XV de Novembro, 123, Centro, Curitiba" | null,\n'
+        '  "bairro": "Batel" | "Centro" | "Mercês" | ... | null,\n'
         '  "lat": number (between -26.5 and -24.5) | null,\n'
         '  "lng": number (between -50.5 and -48.0) | null,\n'
         '  "confidence": "high" | "medium" | "low",\n'
@@ -233,12 +243,13 @@ def geocode_pending_venues(limit: int = 25) -> dict:
     ok = 0
     failed = 0
     for v in pending:
-        coords = geocode_one(v["name_original"], v.get("address") or "")
-        if coords:
-            db.record_geocode_result(v["name_normalized"], coords[0], coords[1])
+        result = geocode_one(v["name_original"], v.get("address") or "")
+        if result:
+            lat, lng, bairro = result
+            db.record_geocode_result(v["name_normalized"], lat, lng, bairro=bairro)
             ok += 1
-            log.info("Geocoded %r → (%.4f, %.4f)",
-                     v["name_original"], coords[0], coords[1])
+            log.info("Geocoded %r → (%.4f, %.4f) %s",
+                     v["name_original"], lat, lng, bairro or "(no bairro)")
         else:
             db.record_geocode_result(v["name_normalized"], None, None)
             failed += 1
@@ -283,6 +294,7 @@ def autofill_pending_with_ai(anthropic_api_key: str, limit: int = 50) -> dict:
             name_normalized=v["name_normalized"],
             lat=float(lat), lng=float(lng),
             address=result.get("address") or None,
+            bairro=(result.get("bairro") or "") if result.get("bairro") else None,
         )
         # Stamp source as 'ai' so we know this didn't come from Nominatim
         # or a curator pin. Updated_venue_manual marks it 'manual' by

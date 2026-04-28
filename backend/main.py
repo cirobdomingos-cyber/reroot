@@ -2214,14 +2214,18 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "recurrenceDays": list(getattr(ev, "recurrence_days", []) or []),
     }
 
-    # Attach pin coordinates when the venue's been geocoded. Frontend uses
-    # these in the map view; list view ignores them.
+    # Attach pin coordinates + bairro when the venue's been geocoded.
+    # Frontend uses lat/lng in the map view (list view ignores) and
+    # bairro on the event card chip ("📍 Batel"). Bairro from the
+    # venues cache is the canonical source — feeds the Explorer badge
+    # and the "from this neighborhood" filter (TBD).
     coords = None
     if venue_coords and ev.venue_name:
         key = db._normalize_venue_key(ev.venue_name)
         coords = venue_coords.get(key)
     out["lat"] = coords["lat"] if coords else None
     out["lng"] = coords["lng"] if coords else None
+    out["bairro"] = (coords or {}).get("bairro") or ""
 
     if detail:
         out["description"] = ev.description
@@ -3314,12 +3318,80 @@ def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
         ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Local não encontrado")
-    coords = geocode_one(row["name_original"], row["address"] or "")
-    if coords:
-        db.record_geocode_result(name_normalized, coords[0], coords[1])
-        return {"ok": True, "lat": coords[0], "lng": coords[1]}
+    result = geocode_one(row["name_original"], row["address"] or "")
+    if result:
+        lat, lng, bairro = result
+        db.record_geocode_result(name_normalized, lat, lng, bairro=bairro)
+        return {"ok": True, "lat": lat, "lng": lng, "bairro": bairro}
     db.record_geocode_result(name_normalized, None, None)
     return {"ok": False, "lat": None, "lng": None}
+
+
+@app.post("/admin/venues/backfill-bairros")
+def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
+    """One-shot backfill: for venues that already have lat/lng but no
+    bairro, reverse-geocode the coords through Nominatim to fill the
+    bairro column. Doesn't touch lat/lng — just populates the missing
+    field so the Explorer badge stops missing the existing geocoded
+    venues from before bairro was tracked.
+
+    Bounded by `limit` (≥1s/req per Nominatim ToS, so 30 venues ≈ 35s).
+    Re-run until 'remaining' returns 0."""
+    _require_curator(requesting_email)
+    headers = {
+        "User-Agent": "aue-curitiba-events/1.0 (https://reroot-production.up.railway.app)",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+    }
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            """SELECT name_normalized, lat, lng FROM venues
+               WHERE geocode_status = 'ok'
+                 AND lat IS NOT NULL AND lng IS NOT NULL
+                 AND (bairro IS NULL OR bairro = '')
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    rows = [dict(r) for r in rows]
+    filled = 0
+    failed = 0
+    import time
+    for r in rows:
+        try:
+            res = httpx.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": r["lat"], "lon": r["lng"],
+                        "format": "json", "addressdetails": "1", "zoom": "16"},
+                headers=headers, timeout=8.0,
+            )
+            data = res.json()
+            addr = data.get("address") or {}
+            bairro = (
+                addr.get("suburb") or addr.get("neighbourhood")
+                or addr.get("quarter") or addr.get("city_district") or ""
+            )
+            if bairro:
+                with db.get_conn() as conn:
+                    conn.execute(
+                        "UPDATE venues SET bairro = ? WHERE name_normalized = ?",
+                        (bairro, r["name_normalized"]),
+                    )
+                    conn.commit()
+                filled += 1
+            else:
+                failed += 1
+        except Exception as exc:
+            log.warning("Reverse-geocode failed for %r: %s", r["name_normalized"], exc)
+            failed += 1
+        time.sleep(1.1)  # Nominatim ToS
+    # How many still need filling, so the admin UI knows whether to re-run.
+    with db.get_conn() as conn:
+        remaining = conn.execute(
+            """SELECT COUNT(*) AS c FROM venues
+               WHERE geocode_status = 'ok'
+                 AND lat IS NOT NULL AND lng IS NOT NULL
+                 AND (bairro IS NULL OR bairro = '')"""
+        ).fetchone()["c"]
+    return {"processed": len(rows), "filled": filled, "failed": failed, "remaining": int(remaining)}
 
 
 @app.post("/admin/venues/{name_normalized}/ai-lookup")

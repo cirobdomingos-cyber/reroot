@@ -440,11 +440,40 @@ def _venue_counts(rsvps: list[dict]) -> dict[str, int]:
 
 
 def _distinct_neighborhoods(rsvps: list[dict]) -> set[str]:
+    """Distinct bairros across the user's matured RSVPs.
+
+    Source of truth is the geocoded `venues.bairro` column, populated by
+    Nominatim (`addressdetails=1`) or Claude during the auto-geocode pass.
+    Replaces the older `venue_string.split(" · ")[1]` parser, which
+    silently dropped any RSVP whose venue lacked the suffix and counted
+    bairro typos as distinct ("Batel" vs "batel ").
+
+    Falls back to the suffix parser when a venue isn't in the cache yet —
+    keeps the badge working for users who RSVPed to events whose venues
+    haven't been seeded/geocoded yet, instead of regressing to zero
+    bairros while the pipeline catches up."""
+    bairro_map = db.get_venue_bairro_map()
     out: set[str] = set()
     for r in rsvps:
-        venue = r.get("event_venue") or ""
-        if " · " in venue:
-            out.add(venue.split(" · ", 1)[1].strip().lower())
+        venue_full = r.get("event_venue") or ""
+        # event_venue is "Café Lucca · Batel" — split off the venue name
+        # to look it up in the cache by normalized key.
+        venue_name = venue_full.split(" · ", 1)[0].strip()
+        if not venue_name:
+            continue
+        # Use the same normalization the venues table keys on so the
+        # lookup matches regardless of accents/casing variants.
+        from database import _normalize_venue_key
+        key = _normalize_venue_key(venue_name)
+        bairro = bairro_map.get(key, "").strip().lower()
+        if bairro:
+            out.add(bairro)
+            continue
+        # Fallback: legacy venue-string suffix when the cache hasn't
+        # caught up. Lower bar than the cached path so a typo'd suffix
+        # ("Centro " vs "Centro") still counts as the same bairro.
+        if " · " in venue_full:
+            out.add(venue_full.split(" · ", 1)[1].strip().lower())
     return out
 
 

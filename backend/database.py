@@ -332,7 +332,9 @@ def init_db():
         # to one row. lat/lng are NULL until a geocoder fills them; the
         # `geocode_status` column distinguishes "not yet tried" from "tried
         # and failed", so the backfill can retry transient failures without
-        # re-hitting permanently-bad rows on every run.
+        # re-hitting permanently-bad rows on every run. `bairro` is filled
+        # by the same geocode pass and feeds the Explorer badge — replaces
+        # the brittle venue-string ` · Batel` suffix parser.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS venues (
                 name_normalized  TEXT PRIMARY KEY,
@@ -340,7 +342,8 @@ def init_db():
                 address          TEXT NOT NULL DEFAULT '',
                 lat              REAL,
                 lng              REAL,
-                geocode_source   TEXT NOT NULL DEFAULT '',  -- 'nominatim' | 'manual' | ''
+                bairro           TEXT NOT NULL DEFAULT '',
+                geocode_source   TEXT NOT NULL DEFAULT '',  -- 'nominatim' | 'ai' | 'manual' | ''
                 geocode_status   TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'ok' | 'failed'
                 geocoded_at      TEXT NOT NULL DEFAULT '',
                 last_attempt_at  TEXT NOT NULL DEFAULT '',
@@ -348,6 +351,11 @@ def init_db():
                 created_at       TEXT NOT NULL
             )
         """)
+        # Migration: existing installs predate the bairro column.
+        try:
+            conn.execute("ALTER TABLE venues ADD COLUMN bairro TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.commit()
 
 
@@ -1942,12 +1950,13 @@ def upsert_venue_seed(name_original: str, address: str = "") -> str:
 
 
 def get_venue_coords_map() -> dict[str, dict]:
-    """Return {normalized_key: {lat, lng, name_original}} for every venue
-    that's been successfully geocoded. The map endpoint joins this against
-    the active events to attach pin coordinates."""
+    """Return {normalized_key: {lat, lng, name_original, bairro}} for every
+    venue that's been successfully geocoded. The /events endpoint joins
+    this against the active events to attach pin coordinates; badges
+    join against it for the Explorer (distinct-bairros) ladder."""
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT name_normalized, name_original, lat, lng
+            """SELECT name_normalized, name_original, lat, lng, bairro
                FROM venues
                WHERE geocode_status = 'ok'
                  AND lat IS NOT NULL AND lng IS NOT NULL"""
@@ -1956,9 +1965,21 @@ def get_venue_coords_map() -> dict[str, dict]:
         r["name_normalized"]: {
             "lat": r["lat"], "lng": r["lng"],
             "name_original": r["name_original"],
+            "bairro": r["bairro"] or "",
         }
         for r in rows
     }
+
+
+def get_venue_bairro_map() -> dict[str, str]:
+    """{normalized_key: bairro} for every venue that has a bairro filled.
+    Used by the badges Explorer rule — replaces the brittle venue-string
+    `Café Lucca · Batel` parser with a real geocoder-sourced lookup."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name_normalized, bairro FROM venues WHERE bairro != ''"
+        ).fetchall()
+    return {r["name_normalized"]: r["bairro"] for r in rows}
 
 
 def list_venues_pending_geocode(limit: int = 50) -> list[dict]:
@@ -2040,6 +2061,7 @@ def update_venue_manual(
     lat: Optional[float],
     lng: Optional[float],
     address: Optional[str] = None,
+    bairro: Optional[str] = None,
 ) -> bool:
     """Curator-driven update. Setting lat+lng marks the row 'ok' and
     records the source as 'manual' so the geocode backfill skips it on
@@ -2055,26 +2077,26 @@ def update_venue_manual(
     has_coords = lat is not None and lng is not None
     status = "ok" if has_coords else "pending"
     source = "manual" if has_coords else ""
+    # Bairro: when explicitly set, persist it; when None, leave whatever
+    # was on the row untouched. Same null-vs-empty semantics as address.
+    fields_extra = []
+    params_extra = []
+    if address is not None:
+        fields_extra.append("address = ?")
+        params_extra.append(address)
+    if bairro is not None:
+        fields_extra.append("bairro = ?")
+        params_extra.append(bairro)
+    extra_sql = (", " + ", ".join(fields_extra)) if fields_extra else ""
     with get_conn() as conn:
-        if address is None:
-            cur = conn.execute(
-                """UPDATE venues SET
-                       lat = ?, lng = ?,
-                       geocode_status = ?, geocode_source = ?,
-                       geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
-                       last_attempt_at = ?
-                   WHERE name_normalized = ?""",
-                (lat, lng, status, source, status, now, now, name_normalized),
-            )
-        else:
-            cur = conn.execute(
-                """UPDATE venues SET
-                       lat = ?, lng = ?, address = ?,
-                       geocode_status = ?, geocode_source = ?,
-                       geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
-                       last_attempt_at = ?
-                   WHERE name_normalized = ?""",
-                (lat, lng, address, status, source, status, now, now, name_normalized),
+        cur = conn.execute(
+            f"""UPDATE venues SET
+                   lat = ?, lng = ?{extra_sql},
+                   geocode_status = ?, geocode_source = ?,
+                   geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
+                   last_attempt_at = ?
+               WHERE name_normalized = ?""",
+            (lat, lng, *params_extra, status, source, status, now, now, name_normalized),
             )
         conn.commit()
         return cur.rowcount > 0
@@ -2085,23 +2107,37 @@ def record_geocode_result(
     lat: Optional[float],
     lng: Optional[float],
     source: str = "nominatim",
+    bairro: str = "",
 ) -> None:
     """Persist a geocode attempt. lat/lng both present → status='ok';
     either missing → status='failed' (still increments attempt_count
-    so the next backfill pass deprioritizes it)."""
+    so the next backfill pass deprioritizes it). `bairro` is overwritten
+    only on success — keeps a stale value from a previous OK around if
+    a new attempt failed."""
     now = datetime.now(timezone.utc).isoformat()
     status = "ok" if (lat is not None and lng is not None) else "failed"
     with get_conn() as conn:
-        conn.execute(
-            """UPDATE venues SET
-                   lat = ?, lng = ?,
-                   geocode_status = ?, geocode_source = ?,
-                   geocoded_at = CASE WHEN ? = 'ok' THEN ? ELSE geocoded_at END,
-                   last_attempt_at = ?,
-                   attempt_count = attempt_count + 1
-               WHERE name_normalized = ?""",
-            (lat, lng, status, source, status, now, now, name_normalized),
-        )
+        if status == "ok":
+            conn.execute(
+                """UPDATE venues SET
+                       lat = ?, lng = ?, bairro = ?,
+                       geocode_status = ?, geocode_source = ?,
+                       geocoded_at = ?,
+                       last_attempt_at = ?,
+                       attempt_count = attempt_count + 1
+                   WHERE name_normalized = ?""",
+                (lat, lng, bairro or "", status, source, now, now, name_normalized),
+            )
+        else:
+            conn.execute(
+                """UPDATE venues SET
+                       lat = ?, lng = ?,
+                       geocode_status = ?, geocode_source = ?,
+                       last_attempt_at = ?,
+                       attempt_count = attempt_count + 1
+                   WHERE name_normalized = ?""",
+                (lat, lng, status, source, now, name_normalized),
+            )
         conn.commit()
 
 
