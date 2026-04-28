@@ -545,32 +545,20 @@ export default function Events() {
           )}
         </AnimatePresence>
 
-        {/* Category chips — same chip set as the Sources page (every
-            category that has ≥1 tracked source). Style + count format
-            mirror Sources for visual consistency: smaller pill, '· N'
-            after the label. The count here is # of EVENTS in that
-            category (not sources, like Sources shows). 0-event chips
-            still appear but dim — clicking them tells the user 'this
-            category exists, just nothing scheduled right now'. */}
+        {/* Category chips — only render categories that have ≥1 event
+            in the current catalog. Sources may have more chips (some
+            categories have tracked handles but no events posted yet);
+            here we keep the strip honest about what's actually available
+            to filter to. Style mirrors Sources: small pill + '· N' count. */}
         {(() => {
-          // Source counts per category — drives chip visibility (same
-          // as Sources page).
-          const sourceCounts = {}
-          for (const c of Object.values(handleCategoryMap)) {
-            sourceCounts[c] = (sourceCounts[c] || 0) + 1
-          }
-          for (const c of Object.values(INST_CATEGORY)) {
-            sourceCounts[c] = (sourceCounts[c] || 0) + 1
-          }
-          // Event counts per category — drives the chip label badge.
           const eventCounts = {}
           for (const ev of allDisplayEvents) {
             const c = categoryFor(ev)
             if (c) eventCounts[c] = (eventCounts[c] || 0) + 1
           }
           const visibleCats = [
-            ...CATEGORY_ORDER.filter(c => (sourceCounts[c] || 0) > 0),
-            ...Object.keys(sourceCounts).filter(c => !CATEGORY_ORDER.includes(c)),
+            ...CATEGORY_ORDER.filter(c => (eventCounts[c] || 0) > 0),
+            ...Object.keys(eventCounts).filter(c => !CATEGORY_ORDER.includes(c)),
           ]
           const chips = [
             { id: 'all', emoji: '🌍', label: 'Tudo', count: allDisplayEvents.length },
@@ -585,7 +573,6 @@ export default function Events() {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 10px' }}>
               {chips.map(chip => {
                 const active = activeFilter === chip.id
-                const empty = chip.id !== 'all' && chip.count === 0
                 return (
                   <button
                     key={chip.id}
@@ -597,7 +584,6 @@ export default function Events() {
                       border: active ? 'none' : '1px solid var(--border)',
                       background: active ? 'var(--charcoal)' : 'transparent',
                       color: active ? 'white' : 'var(--charcoal-light)',
-                      opacity: empty ? 0.45 : 1,
                     }}
                   >
                     {chip.emoji} {chip.label}{chip.count > 0 ? ` · ${chip.count}` : ''}
