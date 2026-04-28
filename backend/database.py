@@ -1724,9 +1724,13 @@ def get_group_event(event_id: str) -> Optional[dict]:
 
 
 def delete_group_event(event_id: str) -> bool:
-    """Delete a group event. Returns True if deleted."""
+    """Delete a group event (or personal plan) and cascade RSVPs.
+    Without the cascade, friends_feed kept showing 'Mayra vai' for an
+    event that no longer existed, and the creator's auto-RSVP became
+    a zombie row pointing at a missing event_id."""
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM group_events WHERE id = ?", (event_id,))
+        conn.execute("DELETE FROM rsvps WHERE event_id = ?", (event_id,))
         conn.commit()
         return cur.rowcount > 0
 

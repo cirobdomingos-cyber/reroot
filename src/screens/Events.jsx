@@ -228,6 +228,22 @@ export default function Events() {
     }
     setDetailLoading(true)
     const { event } = await fetchEventDetail(eventId, state.googleUser?.id || '')
+    // Reconcile: if the backend doesn't know this event AND the user has
+    // a stale RSVP for it (group event was deleted out from under them,
+    // typically by the creator/admin), purge the local state.rsvps entry.
+    // Otherwise the row haunts My RSVPs forever.
+    if (!event && state.rsvps[eventId]) {
+      const stale = state.rsvps[eventId]
+      dispatch({
+        type: 'TOGGLE_RSVP',
+        payload: {
+          eventId,
+          dateStart: stale.dateStart,
+          name: stale.name,
+          venue: stale.venue,
+        },
+      })
+    }
     setDetailEvent(event)
     setDetailLoading(false)
   }
