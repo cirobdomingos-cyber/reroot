@@ -2806,13 +2806,19 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
 
 @app.post("/admin/test-email")
 async def admin_test_email(requesting_email: str = ""):
-    """Founder-only: fire a test email and return the verdict so
-    misconfigured SMTP surfaces in seconds, not after a missed scrape.
-    Wraps send_email in asyncio.wait_for so we always get a real
-    response (no more 502 from Railway when SMTP hangs). Distinguishes
-    "vars missing" from "auth failed" from "Gmail unreachable from
-    Railway" (port 587 blocked → would time out)."""
+    """Founder-only: SMTP smoke test that surfaces the real exception
+    (auth failure, port block, etc.) instead of swallowing it like the
+    production send_email path does. Distinguishes:
+      - vars missing
+      - SMTPAuthenticationError (App Password wrong/expired/with spaces)
+      - socket.timeout (Railway blocking port 587)
+      - other SMTPException
+    Always returns within 20s — no more 502s on a hung connection."""
     import asyncio as _asyncio
+    import smtplib as _smtplib
+    import socket as _socket
+    from email.mime.text import MIMEText as _MIMEText
+
     _require_founder(requesting_email)
     if not settings.smtp_user or not settings.smtp_password:
         return {
@@ -2822,41 +2828,59 @@ async def admin_test_email(requesting_email: str = ""):
             "smtp_password_set": bool(settings.smtp_password),
             "founder_email": settings.founder_email,
         }
-    from notifications import send_email
+
+    # Strip whitespace from the App Password — Gmail UI shows it formatted
+    # in 4-char groups but the actual secret is the 16 chars without spaces.
+    user = settings.smtp_user
+    password = (settings.smtp_password or "").replace(" ", "").strip()
+    pw_len = len(password)
+
+    def _send_test():
+        msg = _MIMEText("Teste SMTP do auê — se você recebeu isso, está funcionando.")
+        msg["Subject"] = "[auê] teste SMTP"
+        msg["From"] = user
+        msg["To"] = settings.founder_email
+        try:
+            with _smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=8) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(user, password)
+                server.sendmail(user, [settings.founder_email], msg.as_string())
+            return (True, None)
+        except _smtplib.SMTPAuthenticationError as e:
+            err_text = e.smtp_error.decode("utf-8", "replace") if isinstance(e.smtp_error, bytes) else str(e.smtp_error)
+            return (False, f"SMTPAuthenticationError {e.smtp_code}: {err_text}")
+        except _smtplib.SMTPException as e:
+            return (False, f"{type(e).__name__}: {e}")
+        except _socket.timeout:
+            return (False, "socket.timeout — conexão SMTP travou (Railway pode estar bloqueando port 587)")
+        except (_socket.gaierror, OSError) as e:
+            return (False, f"{type(e).__name__}: {e}")
+        except Exception as e:
+            return (False, f"{type(e).__name__}: {e}")
+
     try:
-        ok = await _asyncio.wait_for(
-            send_email(
-                settings=settings,
-                to=settings.founder_email,
-                subject="[auê] teste SMTP",
-                html="<p>Se você recebeu isso, o SMTP do <b>auê</b> está funcionando 🎉</p>",
-                text="Se você recebeu isso, SMTP do auê está funcionando.",
-            ),
-            timeout=20,
+        ok, err = await _asyncio.wait_for(
+            _asyncio.to_thread(_send_test),
+            timeout=15,
         )
     except _asyncio.TimeoutError:
         return {
             "ok": False,
-            "reason": (
-                "Timeout >20s — SMTP não respondeu. Causa provável: "
-                "Railway bloqueando port 587 outbound. Solução: usar "
-                "API HTTPS (Resend, SendGrid, Mailgun) em vez de SMTP."
-            ),
+            "reason": "Timeout >15s aguardando resposta do SMTP — Railway pode estar bloqueando port 587",
             "smtp_host": settings.smtp_host,
             "smtp_port": settings.smtp_port,
         }
-    except Exception as e:
-        return {
-            "ok": False,
-            "reason": f"Exceção: {type(e).__name__}: {e}",
-            "smtp_host": settings.smtp_host,
-        }
+
     return {
         "ok": ok,
         "to": settings.founder_email,
         "smtp_host": settings.smtp_host,
         "smtp_user": settings.smtp_user,
-        "reason": None if ok else "send_email retornou False — ver logs do Railway (auth, conexão, etc.)",
+        "smtp_port": settings.smtp_port,
+        "password_length_after_strip": pw_len,  # diagnostic: 16 = ok, ≠16 = malformed
+        "reason": err,
     }
 
 
