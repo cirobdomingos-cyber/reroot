@@ -4,7 +4,9 @@ Quick orientation for future Claude/agent sessions. The full product README live
 
 ## What this is
 
-**auê** ("Curitiba que acontece") — events catalog for Curitiba, Brazil. Aggregates Sympla, Eventbrite, MON, SESC, Catraca Livre, Instagram (via Apify), plus 12 hand-curated "auê Originals" for venues that don't post events.
+**auê** ("Curitiba que acontece") — events catalog for Curitiba, Brazil. Aggregates Eventbrite, MON, SESC, Teatro Guaíra, Turismo Curitiba, Instagram (via Apify), plus 12 hand-curated "auê Originals" for venues that don't post events.
+
+In April 2026 we dropped Sympla, Catraca Livre, Ingresso.com, and Meetup — Sympla's `curitiba-pr` discovery feed leaks 100% non-Curitiba events; the others are structurally bad fits (Catraca is a publication, Ingresso went client-side-only, Meetup density in Brazil is too low). Instagram via Apify carries most of the catalog now.
 
 The repo and Railway subdomain still say `reroot` — that's the old product name. **Always say "auê" in user-facing copy and code comments going forward.**
 

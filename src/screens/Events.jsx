@@ -17,7 +17,7 @@ import { shareLink, appLink } from '../lib/share'
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
 // Source provenance config — drives the badge label/style for every event origin.
-// Add new entries here when new scrapers go live (sympla, lu.ma, etc.).
+// Add new entries here when new scrapers go live.
 const SOURCE_CONFIG = {
   aue_original:     { label: 'Original auê',     icon: '⭐', bg: 'linear-gradient(135deg, #FFF8E1, #FFECB3)', border: '#FFD54F', color: '#8D6E10' },
   mon:              { label: 'MON',              icon: '🖼️', bg: '#F3E5F5',                                    border: '#CE93D8', color: '#4A148C' },
@@ -25,9 +25,7 @@ const SOURCE_CONFIG = {
   sesc:             { label: 'SESC',              icon: '🎭', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
   teatro_guaira:    { label: 'Teatro Guaíra',    icon: '🎭', bg: '#FFEBEE',                                    border: '#EF9A9A', color: '#B71C1C' },
   aue_ai:           { label: 'auê IA',           icon: '✦', bg: 'linear-gradient(135deg, #EDE7F6, #D1C4E9)', border: '#CE93D8', color: '#6A1B9A' },
-  sympla:           { label: 'Sympla',            icon: '🎟', bg: '#E8F5E9',                                    border: '#A5D6A7', color: '#1B5E20' },
   eventbrite:       { label: 'Eventbrite',        icon: '🎫', bg: '#FFF3E0',                                    border: '#FFCC80', color: '#BF360C' },
-  meetup:           { label: 'Meetup',            icon: '👥', bg: '#E3F2FD',                                    border: '#90CAF9', color: '#0D47A1' },
   instagram:        { label: 'Instagram',          icon: '📷', bg: 'linear-gradient(135deg, #FCE4EC, #F8BBD0)', border: '#F48FB1', color: '#AD1457' },
 }
 

@@ -26,7 +26,7 @@ const _MOOD_KIND = {
   comunidade: 'community',
 }
 const _CULTURAL_SOURCES = new Set([
-  'mon', 'sesc', 'teatro_guaira', 'ingresso', 'catraca_livre',
+  'mon', 'sesc', 'teatro_guaira',
 ])
 
 function eventMatchesMood(ev, mood) {
