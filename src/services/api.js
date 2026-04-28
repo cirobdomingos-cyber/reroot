@@ -136,6 +136,13 @@ function normalizeBackendEvent(ev) {
     isReal: true,
     dateStart: ev.dateStart,
     dateTag: computeDateTag(ev.dateStart),
+    // Recurring routines (e.g. weekly bar happy hour). The API has been
+    // shipping these since the recurring-events PR, but this normalizer
+    // was dropping them because they weren't on the whitelist — frontend
+    // saw isRecurring=undefined and rendered cards as one-offs.
+    isRecurring: ev.isRecurring ?? false,
+    recurrenceLabel: ev.recurrenceLabel ?? null,
+    recurrenceDays: ev.recurrenceDays ?? [],
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
