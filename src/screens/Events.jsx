@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { MOODS } from '../data/events'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, deletePersonalPlan } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -847,6 +847,43 @@ export default function Events() {
                 onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
+                onDelete={
+                  // Phase 1: only personal plans get a delete affordance
+                  // here. Group events have their own delete in GroupDetail
+                  // (admin or creator). createdBy is camelCase from
+                  // _group_event_to_frontend; the comparison is the source
+                  // of truth for "is this my plan".
+                  state.googleUser?.id &&
+                  detailEvent.isPersonalPlan &&
+                  detailEvent.createdBy === state.googleUser.id
+                    ? async () => {
+                        if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
+                        try {
+                          await deletePersonalPlan(detailEvent.id, state.googleUser.id)
+                          // Pull from local RSVP state if it was there
+                          // (creators are auto-RSVP'd at creation time).
+                          if (state.rsvps[detailEvent.id]) {
+                            dispatch({
+                              type: 'TOGGLE_RSVP',
+                              payload: {
+                                eventId: detailEvent.id,
+                                dateStart: detailEvent.dateStart,
+                                name: detailEvent.name,
+                                venue: detailEvent.venue,
+                              },
+                            })
+                          }
+                          // Refresh the group-events feed so the row vanishes
+                          // from Home + Events.
+                          const gid = state.googleUser?.id
+                          if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+                          closeDetail()
+                        } catch (e) {
+                          alert(`Erro ao apagar: ${e?.message || e}`)
+                        }
+                      }
+                    : null
+                }
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 onAttended={() => {
@@ -1281,7 +1318,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, userNeighborhood, t }) {
+function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
 
@@ -1582,6 +1619,24 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
             : shareStatus === 'failed' ? '✕ Falhou'
             : '🔗 Compartilhar'}
         </button>
+
+        {/* Delete — only when caller decides the user has authority
+            (personal plan creator). Red text + ghost background so it
+            reads as destructive without a loud full-color button. */}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            style={{
+              width: '100%', marginTop: 10,
+              padding: '12px', borderRadius: 12,
+              background: 'transparent', border: '1.5px solid #FFCDD2',
+              color: '#C62828',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            🗑 Apagar plano
+          </button>
+        )}
 
         {rsvped && (
           <div style={{ marginTop: 10 }}>
