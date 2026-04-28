@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     anthropic_api_key: str = ""
-    eventbrite_token: str = ""
     instagram_user: str = ""
     instagram_pass: str = ""
     apify_api_token: str = ""
@@ -243,10 +242,10 @@ por quê, e o que você pode pedir pra remover.</p>
 </ul>
 
 <h2>De onde vêm os eventos do catálogo</h2>
-<p>Os eventos exibidos vêm de fontes públicas: Eventbrite, sites de instituições
-culturais (MON, SESC, Teatro Guaíra, Turismo Curitiba) e perfis públicos
-do Instagram que você pode ver na tela <em>Fontes monitoradas</em>. Pra extrair informações
-estruturadas das legendas do Instagram, a gente usa a API da <a href="https://www.anthropic.com/legal/privacy">Anthropic (Claude)</a>;
+<p>Os eventos exibidos vêm de perfis públicos do Instagram que você pode ver
+na tela <em>Fontes monitoradas</em>, mais alguns eventos curados pela equipe.
+Pra extrair informações estruturadas das legendas do Instagram, a gente usa
+a API da <a href="https://www.anthropic.com/legal/privacy">Anthropic (Claude)</a>;
 nada de dados pessoais seus é enviado, só o conteúdo público dos posts.</p>
 
 <h2>Quem mais vê seus dados</h2>
@@ -760,11 +759,8 @@ def health():
         "anthropic_configured": bool(_anthropic_key_status.get("valid")),
         "anthropic_error": _anthropic_key_status.get("error"),
         "anthropic_checked_at": _anthropic_key_status.get("checked_at"),
-        "eventbrite_configured": bool(settings.eventbrite_token),
         "instagram_configured": bool(settings.apify_api_token),
         "apify_configured": bool(settings.apify_api_token),
-        "sesc_configured": True,
-        "teatro_guaira_configured": True,
         "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
         # SMTP shows whether scrape-summary emails will fire. Both vars
         # required — missing either silently skips email send.
@@ -792,7 +788,10 @@ _MOOD_KIND = {
 }
 _MOOD_SOURCES = {
     # Institutional curators — museums, theatres, public-cultural orgs
-    "cultural": {"mon", "sesc", "teatro_guaira"},
+    # Was a hard-coded list of institutional sources; now empty since we
+    # only have IG + aue_original. The 'cultural' mood now matches via
+    # event kind (creative/community) only — see _mood_predicate.
+    "cultural": set(),
 }
 
 
@@ -1326,9 +1325,7 @@ def stats():
         "sources": {
             src: sum(1 for e in events if e.source == src)
             for src in [
-                "eventbrite", "instagram",
-                "sesc", "teatro_guaira",
-                "mon", "turismo_curitiba",
+                "instagram",
                 "ai_generated", "submitted", "aue_original",
             ]
         },
@@ -1401,37 +1398,12 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
 # ── Sources catalog ─────────────────────────────────────────────────────
 # Transparency surface: lists every source the catalog pulls from with a
 # future-event count. Powers the `/sources` screen on the frontend.
+#
+# Apr 2026: dropped every web/institutional scraper (MON, SESC, Teatro
+# Guaíra, Eventbrite, Turismo Curitiba) — yields were near-zero for our
+# public, and the equivalent IG handles for those venues are already
+# tracked. aue_original stays as the curated-seed slot.
 _INSTITUTIONAL_SOURCES = {
-    "mon": {
-        "label": "MON — Museu Oscar Niemeyer",
-        "url": "https://www.museuoscarniemeyer.org.br/programacao/",
-        "icon": "🖼",
-        "blurb": "Maior museu do Sul do Brasil. Exposições, oficinas e o programa MON sem Paredes.",
-    },
-    "sesc": {
-        "label": "SESC Paraná",
-        "url": "https://www.sescpr.com.br/",
-        "icon": "🎭",
-        "blurb": "Programação cultural acessível em diversas unidades de Curitiba.",
-    },
-    "teatro_guaira": {
-        "label": "Teatro Guaíra",
-        "url": "https://www.teatroguaira.pr.gov.br/",
-        "icon": "🎭",
-        "blurb": "Teatro estatal do Paraná: concertos, balé, ópera, peças.",
-    },
-    "eventbrite": {
-        "label": "Eventbrite",
-        "url": "https://www.eventbrite.com.br/d/brazil--curitiba/events/",
-        "icon": "🎫",
-        "blurb": "Plataforma global de eventos e ingressos.",
-    },
-    "turismo_curitiba": {
-        "label": "Turismo Curitiba",
-        "url": "https://turismo.curitiba.pr.gov.br/",
-        "icon": "🏙",
-        "blurb": "Site oficial de turismo da Prefeitura de Curitiba.",
-    },
     "aue_original": {
         "label": "Original auê",
         "url": "",
@@ -1494,8 +1466,7 @@ def list_sources():
 def source_detail(source_id: str):
     """
     Detail for a single source: metadata + upcoming events.
-    `source_id` can be an institutional key ("mon", "eventbrite", ...) or
-    "ig:<handle>" for an Instagram handle.
+    `source_id` can be "aue_original" or "ig:<handle>" for an Instagram handle.
     """
     today = date.today().isoformat()
     if source_id.startswith("ig:"):

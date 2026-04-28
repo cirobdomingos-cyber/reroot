@@ -35,14 +35,11 @@ const CATEGORY_META = {
 const CATEGORY_ORDER = Object.keys(CATEGORY_META)
 
 // Institutional sources don't have a `category` field — map by id.
-// New institutional sources get a slot here when added to the backend.
+// We dropped the web/institutional scrapers (MON/SESC/Teatro Guaíra/
+// Eventbrite/Turismo CWB) in favor of equivalent IG handles, so this
+// table only has aue_original now. Keep the map shape for future slots.
 const INST_CATEGORY = {
-  mon:              'museu',
-  sesc:             'centro_cultural',
-  teatro_guaira:    'teatro',
-  eventbrite:       'curador',
-  turismo_curitiba: 'curador',
-  aue_original:     'cultural',
+  aue_original: 'cultural',
 }
 
 function categoryFor(source, isIg) {

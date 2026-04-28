@@ -25,9 +25,11 @@ const _MOOD_KIND = {
   criativo:   'creative',
   comunidade: 'community',
 }
-const _CULTURAL_SOURCES = new Set([
-  'mon', 'sesc', 'teatro_guaira',
-])
+// Was a source-id allowlist back when we scraped MON/SESC/Teatro Guaíra
+// directly. Those scrapers are gone — equivalent IG handles cover the
+// same venues. Cultural mood now matches by the LLM-extracted event
+// kind only (see _mood_predicate on the backend).
+const _CULTURAL_SOURCES = new Set()
 
 function eventMatchesMood(ev, mood) {
   if (!mood || mood === 'all') return true

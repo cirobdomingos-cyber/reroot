@@ -62,7 +62,7 @@ Essa curadoria é o que faz o usuário falar "esse app realmente tem os eventos 
 | Mobile | TWA via PWABuilder (Android/Play Store), Safari "Adicionar à Tela de Início" (iOS) |
 | Backend | FastAPI (Python 3.12) on Railway |
 | Database | SQLite (dev + prod, com volume Railway) |
-| Scraping | httpx + BeautifulSoup, [Apify](https://apify.com) pro Instagram |
+| Scraping | [Apify](https://apify.com) instagram-scraper (única fonte de eventos) |
 | LLM enrichment | Claude Haiku 4.5 (Anthropic API) |
 | Venue data | Tracked Instagram handles (`tracked_ig_accounts`) — bars/cafés/parques/livrarias vêm da nossa lista curada |
 | Auth | Google Identity Services (OAuth) |

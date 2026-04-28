@@ -277,7 +277,7 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, pri
           lineHeight: 1.6, marginTop: 22, textAlign: 'center',
           letterSpacing: 0.3,
         }}>
-          Eventbrite · MON · SESC · Teatro Guaíra · Turismo CWB · Instagram<br/>
+          80+ perfis do Instagram curados a dedo<br/>
           Atualizado todo dia.
         </div>
       </div>

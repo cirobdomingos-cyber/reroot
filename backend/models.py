@@ -5,7 +5,7 @@ from datetime import datetime
 
 class RawEvent(BaseModel):
     """Evento como vem da API externa — sem enriquecimento."""
-    source: str                   # "eventbrite" | "instagram" | "mon" | ...
+    source: str                   # "instagram" | "aue_original" | "submitted" | "ai_generated"
     external_id: str
     name: str
     description: str

@@ -24,28 +24,20 @@ scheduler = AsyncIOScheduler(timezone=SCHEDULER_TZ)
 async def run_refresh(settings):
     """
     Pipeline completo:
-      1. Busca eventos nas fontes ativas (Eventbrite, Instagram via Apify,
-         SESC, Teatro Guaíra, MON, Turismo Curitiba)
+      1. Busca eventos via Instagram (Apify scraper + Claude extração)
       2. Enriquece com Claude
       3. Persiste no SQLite
 
-    Sources removidos em 2026-04 (não vale a pena consertar):
-      - Sympla: discovery feed `curitiba-pr` vaza 100% de eventos de SC/RS,
-        portanto nada passa pelo filtro de cidade. Sympla precisa arrumar
-        o backend deles antes de re-habilitar.
-      - Catraca Livre: WP API serve majoritariamente artigos editoriais,
-        não calendário. Claude filtra tudo (corretamente).
-      - Ingresso.com: descoberta migrou pra client-side rendering, página
-        não tem mais conteúdo SSR. Precisaria de browser headless.
-      - Meetup: densidade de eventos no Brasil é genuinamente baixa.
+    Apr 2026: dropped every institutional/web scraper. The IG side covers
+    the same venues with way better signal — equivalent IG handles for
+    each removed source are already tracked: @museuoscarniemeyer (was MON),
+    @teatroguaira (was Teatro Guaíra), @sescpr-style handles (was SESC),
+    plus dozens more curated venues that the institutional sites never
+    surfaced. Eventbrite/Sympla/Catraca/Ingresso/Meetup/Turismo all dropped
+    over multiple PRs because the yields were near zero for our public.
     """
     # Imports aqui para evitar circular imports
-    from scrapers.eventbrite import fetch_events as eventbrite_fetch
-    # Instagram scraping now goes through Apify, not the instaloader-based
-    # scraper. The old module is kept for reference but no longer wired up.
     from scrapers.instagram_apify import fetch_events as instagram_fetch
-    from scrapers.sesc import fetch_events as sesc_fetch
-    from scrapers.prefeitura import fetch_events as prefeitura_fetch
     from enrichment import EnrichmentPipeline
     import database as db
     from notifications import send_scrape_summary
@@ -64,17 +56,6 @@ async def run_refresh(settings):
     # that come from the persistence loop, not from raw fetch sizes.
     pending_log_ids: dict[str, int] = {}
 
-    # ── Eventbrite ──
-    log_id = db.log_refresh_start("eventbrite")
-    try:
-        eb_events = await eventbrite_fetch(settings.eventbrite_token, city=city)
-        all_raws.extend(eb_events)
-        pending_log_ids["eventbrite"] = log_id
-        log.info(f"  Eventbrite: {len(eb_events)} eventos brutos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Eventbrite falhou: {e}")
-
     # ── Instagram via Apify (Claude extracts events from public profile posts) ──
     log_id = db.log_refresh_start("instagram")
     try:
@@ -88,52 +69,6 @@ async def run_refresh(settings):
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Instagram (Apify) falhou: {e}")
-
-    # ── SESC Paraná (free/low-cost cultural events — no credentials needed) ──
-    log_id = db.log_refresh_start("sesc")
-    try:
-        sesc_events = await sesc_fetch(city=city, anthropic_api_key=settings.anthropic_api_key)
-        all_raws.extend(sesc_events)
-        pending_log_ids["sesc"] = log_id
-        log.info(f"  SESC: {len(sesc_events)} eventos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  SESC falhou: {e}")
-
-    # ── Teatro Guaíra (major Curitiba cultural center — concerts, ballet, theatre) ──
-    log_id = db.log_refresh_start("teatro_guaira")
-    try:
-        pref_events = await prefeitura_fetch(city=city)
-        all_raws.extend(pref_events)
-        pending_log_ids["teatro_guaira"] = log_id
-        log.info(f"  Teatro Guaíra: {len(pref_events)} eventos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Teatro Guaíra falhou: {e}")
-
-    # ── MON (Museu Oscar Niemeyer — long-running exhibitions, perfect Reroot fit) ──
-    from scrapers.mon import fetch_events as mon_fetch
-    log_id = db.log_refresh_start("mon")
-    try:
-        mon_events = await mon_fetch(city=city)
-        all_raws.extend(mon_events)
-        pending_log_ids["mon"] = log_id
-        log.info(f"  MON: {len(mon_events)} exposições")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  MON falhou: {e}")
-
-    # ── Turismo Curitiba (city tourism portal — broad mix of events) ──
-    from scrapers.turismo_curitiba import fetch_events as turismo_fetch
-    log_id = db.log_refresh_start("turismo_curitiba")
-    try:
-        tur_events = await turismo_fetch(city=city)
-        all_raws.extend(tur_events)
-        pending_log_ids["turismo_curitiba"] = log_id
-        log.info(f"  Turismo Curitiba: {len(tur_events)} eventos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Turismo Curitiba falhou: {e}")
 
     if not all_raws:
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")
