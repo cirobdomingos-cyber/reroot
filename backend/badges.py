@@ -116,6 +116,24 @@ BADGES: dict[str, dict] = {
         "desc": "Eventos que você adicionou a um grupo — ajuda a galera a saber o que rola.",
         "category": "curador",
     },
+    # ── Organizador (rewards hosting personal plans — pulling friends
+    # together outside any group). Distinct from curador: curador feeds
+    # an existing crew chat, organizador creates the crew on the fly. ──
+    "organizador": {
+        "label": "Organizador",
+        "emoji": "🎯",
+        "desc": "Planos pessoais que você criou — convidando amigos pro evento direto, sem precisar de grupo.",
+        "category": "curador",
+    },
+    # ── Crew quente (rewards joining a group that's actually moving —
+    # rather than creating it). Tier reflects the most-active group the
+    # user belongs to, lifetime event count. ──
+    "crew_quente": {
+        "label": "Crew quente",
+        "emoji": "🔥",
+        "desc": "Eventos rolando no seu grupo mais ativo. Quanto mais a galera bota plano, mais sobe.",
+        "category": "social",
+    },
 
     # ── Loyalty (the bridge to partner discounts in v2+) ──
     # "Lenda" was folded in as tier IV — same axis (loyalty per venue),
@@ -145,7 +163,9 @@ TIERS: dict[str, list[int]] = {
     "vai_junto":     [5, 15, 30],           # eventos com amigo (lifetime)
     "cohort":        [3, 5, 10],            # amigos no mesmo evento (best ever)
     "anfitriao":     [1, 3, 5],             # grupos próprios com 3+ membros
-    "curador":       [1, 5, 15],            # eventos adicionados a grupos
+    "curador":       [1, 5, 15, 30],        # eventos adicionados a grupos (lifetime, mature)
+    "organizador":   [1, 3, 10],            # planos pessoais criados (lifetime, mature)
+    "crew_quente":   [5, 15, 50],           # eventos no grupo mais ativo do usuário
     "local_da_casa": [3, 5, 10, 25],        # RSVPs no mesmo venue
 }
 
@@ -296,12 +316,16 @@ def _hosted_group_count(google_id: str) -> int:
 
 
 def _curated_count(google_id: str, mature_before_iso: str | None = None) -> int:
-    """Count of events the user added to groups (group_events.created_by).
+    """Count of events the user added to groups (group_events.created_by,
+    group_id IS NOT NULL). Excludes personal plans (those have NULL
+    group_id and are rewarded by `organizador` instead).
+
     With `mature_before_iso`, filter to past-date events — prevents the
     add-then-delete farm by waiting for the event to actually happen."""
     if not google_id:
         return 0
-    sql = "SELECT COUNT(*) AS c FROM group_events WHERE created_by = ?"
+    sql = ("SELECT COUNT(*) AS c FROM group_events "
+           "WHERE created_by = ? AND group_id IS NOT NULL")
     params: list = [google_id]
     if mature_before_iso:
         sql += " AND date_start != '' AND date_start < ?"
@@ -309,6 +333,51 @@ def _curated_count(google_id: str, mature_before_iso: str | None = None) -> int:
     with db.get_conn() as conn:
         row = conn.execute(sql, params).fetchone()
     return int(row["c"]) if row else 0
+
+
+def _organized_count(google_id: str, mature_before_iso: str | None = None) -> int:
+    """Count of personal plans the user created (group_events with
+    group_id IS NULL). Symmetric to `_curated_count` but for plans
+    outside any group — the "I rallied my own crew" axis.
+
+    Same maturity filter rationale as curador: only past-date events
+    contribute, so create-and-cancel doesn't farm tiers."""
+    if not google_id:
+        return 0
+    sql = ("SELECT COUNT(*) AS c FROM group_events "
+           "WHERE created_by = ? AND group_id IS NULL")
+    params: list = [google_id]
+    if mature_before_iso:
+        sql += " AND date_start != '' AND date_start < ?"
+        params.append(mature_before_iso)
+    with db.get_conn() as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row["c"]) if row else 0
+
+
+def _hottest_group_event_count(google_id: str) -> int:
+    """For each group the user belongs to, count its lifetime events;
+    return the highest count. Drives the `crew_quente` ladder — being
+    in an active crew matters more than being in many quiet ones.
+
+    Counts ALL group events (past + future), not just matured ones —
+    the badge rewards belonging to a hot group, not a personal action,
+    so 'maturity' doesn't apply. The other members can't farm the
+    user's badge either: it's bounded by genuine multi-user activity."""
+    if not google_id:
+        return 0
+    with db.get_conn() as conn:
+        row = conn.execute(
+            """SELECT MAX(c) AS top FROM (
+                   SELECT ge.group_id, COUNT(*) AS c
+                   FROM group_members gm
+                   JOIN group_events ge ON ge.group_id = gm.group_id
+                   WHERE gm.google_id = ?
+                   GROUP BY ge.group_id
+               )""",
+            (google_id,),
+        ).fetchone()
+    return int(row["top"]) if row and row["top"] is not None else 0
 
 
 # Versatil tiers are time-window-based: widest window with all 4 kinds
@@ -538,6 +607,22 @@ def evaluate(google_id: str) -> list[dict]:
     if curated > 0:
         _award_or_upgrade(newly, google_id, "curador", value=curated,
                           metadata={"count": curated})
+
+    # ── Organizador (matured personal plans the user created) ──
+    # Same anti-farm guard as curador — count only past-date plans.
+    organized = _organized_count(google_id, mature_before_iso=now_iso)
+    if organized > 0:
+        _award_or_upgrade(newly, google_id, "organizador", value=organized,
+                          metadata={"count": organized})
+
+    # ── Crew quente (lifetime events in the user's most-active group) ──
+    # Solo-game-resistant: needs other members to keep a group going,
+    # and the count is the MAX across the user's groups, so joining
+    # five quiet groups doesn't help.
+    hottest = _hottest_group_event_count(google_id)
+    if hottest > 0:
+        _award_or_upgrade(newly, google_id, "crew_quente", value=hottest,
+                          metadata={"count": hottest})
 
     # ── Loyalty: local_da_casa per venue (matured RSVPs, 4-tier) ──
     for venue, count in _venue_counts(mature).items():

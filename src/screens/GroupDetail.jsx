@@ -216,6 +216,22 @@ export default function GroupDetail() {
                 </button>
               )}
               {group.visibility === 'private' && <span>🔒</span>}
+              {/* Lifetime event count pill — feeds into the crew_quente
+                  badge ladder. Lives on the header so the metric is
+                  always in sight, not buried inside Mural do grupo. */}
+              {stats && stats.events_total > 0 && (
+                <span
+                  title={`${stats.events_total} eventos no histórico do grupo`}
+                  style={{
+                    fontSize: 11, fontWeight: 700, color: 'var(--terra)',
+                    background: 'var(--terra-pale)',
+                    padding: '3px 8px', borderRadius: 999,
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  📅 {stats.events_total}
+                </span>
+              )}
             </>
           )}
         </div>

@@ -1472,15 +1472,32 @@ def create_group(google_id: str, name: str, description: str = "", visibility: s
 
 
 def get_groups_for_user(google_id: str) -> list[dict]:
-    """Return all groups a user belongs to, with member count and role."""
+    """Return all groups a user belongs to, with member count, role, and
+    last-activity timestamp.
+
+    Sort: most-recent activity first, where "activity" = MAX of the
+    group's most-recent event creation and the group's created_at. This
+    keeps active crews at the top, while a brand-new empty group still
+    surfaces (its created_at acts as the floor)."""
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT g.*, gm.role,
-                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count
+                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+                      COALESCE(
+                          (SELECT MAX(created_at) FROM group_events WHERE group_id = g.id),
+                          ''
+                      ) AS last_event_at,
+                      MAX(
+                          g.created_at,
+                          COALESCE(
+                              (SELECT MAX(created_at) FROM group_events WHERE group_id = g.id),
+                              g.created_at
+                          )
+                      ) AS last_activity_at
                FROM groups g
                JOIN group_members gm ON g.id = gm.group_id
                WHERE gm.google_id = ?
-               ORDER BY g.created_at DESC""",
+               ORDER BY last_activity_at DESC""",
             (google_id,),
         ).fetchall()
     return [dict(r) for r in rows]

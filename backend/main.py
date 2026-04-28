@@ -2675,7 +2675,12 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
             url=f"/#/groups/{group_id}",
             tag=tag,
         )
-    return event
+    # Run badge eval on the creator so curador progression surfaces on
+    # the next /user/state load. Other members get crew_quente tier-ups
+    # on their own next interaction (cheaper than evaluating N members
+    # synchronously here).
+    new_badges = badges.evaluate(req.google_id)
+    return {**event, "new_badges": new_badges}
 
 
 @app.get("/groups/{group_id}/events")
@@ -2789,7 +2794,11 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
                 log.warning(f"Personal plan {event_id}: push to {invitee} failed: {exc}")
 
     background_tasks.add_task(_fanout_pushes)
-    return event
+    # Eval the creator now so the organizador ladder + first_rsvp pop
+    # without waiting for the next reload. Mature filter still applies
+    # inside _organized_count so this isn't free progress.
+    new_badges = badges.evaluate(req.google_id)
+    return {**event, "new_badges": new_badges}
 
 
 @app.delete("/events/private/{event_id}")
