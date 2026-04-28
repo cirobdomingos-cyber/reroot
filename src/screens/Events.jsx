@@ -13,6 +13,7 @@ import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
+import AttendeesRow from '../components/AttendeesRow'
 import { shareLink, appLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -163,18 +164,26 @@ export default function Events() {
   // Upcoming events from groups the signed-in user belongs to. Server-gated
   // by membership, so this is empty for signed-out users by construction.
   const [groupEvents, setGroupEvents]       = useState([])
+  // Settled once the groupEvents fetch has resolved (or skipped because the
+  // user is signed out). Used to gate deep-link openDetail so a recipient
+  // tapping a share link doesn't race the membership-events load and end
+  // up hitting only the public /events/{id} fallback.
+  const [groupEventsReady, setGroupEventsReady] = useState(false)
   // Add-to-group sheet target. null = sheet closed.
   const [addToGroupEvent, setAddToGroupEvent] = useState(null)
 
   useEffect(() => {
     const googleId = state.googleUser?.id
-    if (!googleId) { setFriendsFeed([]); setGroupEvents([]); return }
+    if (!googleId) { setFriendsFeed([]); setGroupEvents([]); setGroupEventsReady(true); return }
     let cancelled = false
+    setGroupEventsReady(false)
     fetchFriendsFeed(googleId).then(events => {
       if (!cancelled) setFriendsFeed(events || [])
     })
     fetchUserGroupEvents(googleId).then(events => {
-      if (!cancelled) setGroupEvents(events || [])
+      if (cancelled) return
+      setGroupEvents(events || [])
+      setGroupEventsReady(true)
     })
     return () => { cancelled = true }
   }, [state.googleUser?.id])
@@ -229,7 +238,12 @@ export default function Events() {
     const params = new URLSearchParams(location.search)
     const queryId = params.get('event')
     const openId = stateId || queryId
-    if (openId && !loading) {
+    // Wait for both the public catalog AND the user's group events to be
+    // loaded — group event share links land here too, and matching against
+    // local state is more reliable than the round-trip (esp. on flaky
+    // mobile data, where the 5s fetch was timing out and rendering
+    // 'evento não está mais no catálogo').
+    if (openId && !loading && groupEventsReady) {
       openDetail(openId)
       if (queryId) {
         // Strip ?event= so the URL doesn't re-fire the effect on close
@@ -239,7 +253,7 @@ export default function Events() {
         window.history.replaceState({}, '')
       }
     }
-  }, [location.state?.openEventId, location.search, loading, navigate])
+  }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
@@ -249,13 +263,37 @@ export default function Events() {
       setDetailEvent(customMatch)
       return
     }
+    // Group events the user belongs to are already loaded locally — match
+    // there before hitting the backend so a recipient who taps a friend's
+    // share link renders the drawer instantly even on slow networks, and
+    // doesn't get the false "evento não está mais no catálogo" message
+    // when the fetch times out.
+    const groupMatch = groupEvents.find(e => e.id === eventId)
+    if (groupMatch) {
+      setDetailEvent(groupMatch)
+      return
+    }
+    // Catalog events that are already in the loaded list also don't need
+    // a round-trip — same survivability win for shared catalog links.
+    const catalogMatch = events.find(e => e.id === eventId)
+    if (catalogMatch) {
+      setDetailEvent(catalogMatch)
+      return
+    }
     setDetailLoading(true)
-    const { event, forbidden, message } = await fetchEventDetail(eventId, state.googleUser?.id || '')
+    const { event, forbidden, networkError, message } = await fetchEventDetail(eventId, state.googleUser?.id || '')
     if (forbidden) {
       // Backend returned 403 (private plan / private group event). Render
       // a friendly 'this is private' panel instead of the silent-empty
       // state that masquerades as "link is broken".
       setDetailEvent({ _forbidden: true, _message: message, id: eventId })
+      setDetailLoading(false)
+      return
+    }
+    if (networkError) {
+      // Couldn't reach the backend (timeout, offline, etc.). Don't pretend
+      // the event was deleted — surface a retry-friendly state instead.
+      setDetailEvent({ _networkError: true, id: eventId })
       setDetailLoading(false)
       return
     }
@@ -948,6 +986,43 @@ export default function Events() {
                   Voltar
                 </button>
               </div>
+            ) : detailEvent?._networkError ? (
+              // Couldn't reach the backend (timeout, offline, flaky link).
+              // Don't claim the event was deleted — let the user retry.
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '70%', padding: 32 }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📡</div>
+                <div style={{
+                  fontSize: 15, fontWeight: 700, color: 'var(--charcoal)',
+                  textAlign: 'center', marginBottom: 8,
+                }}>
+                  Sem conexão com o servidor
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 18, lineHeight: 1.5, maxWidth: 280 }}>
+                  Não consegui carregar esse evento agora. Bora tentar de novo?
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => openDetail(detailEvent.id)}
+                    style={{
+                      padding: '10px 22px', borderRadius: 12, border: 'none',
+                      background: 'var(--terra)', color: 'white',
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    Tentar de novo
+                  </button>
+                  <button
+                    onClick={closeDetail}
+                    style={{
+                      padding: '10px 22px', borderRadius: 12, border: '1px solid var(--border)',
+                      background: 'white', color: 'var(--charcoal)',
+                      fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    Voltar
+                  </button>
+                </div>
+              </div>
             ) : !detailEvent ? (
               // Backend returned 404 — show a friendly fallback rather than
               // looping on the spinner. Common when an old RSVP points at
@@ -972,6 +1047,9 @@ export default function Events() {
             ) : (
               <DetailPanel
                 event={detailEvent}
+                googleId={state.googleUser?.id || ''}
+                viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
+                viewerPicture={state.googleUser?.picture}
                 rsvped={
                   VENUE_CATEGORIES.has(detailEvent.category)
                     ? !!state.favorites?.[detailEvent.id]
@@ -1452,7 +1530,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
 
@@ -1619,41 +1697,22 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
           </div>
         )}
 
-        {/* Friends going (live from friends_feed) */}
-        {friendsGoing.length > 0 && (
-          <div style={{
-            background: 'white', borderRadius: 12, padding: '10px 12px',
-            border: '1px solid var(--border)', marginBottom: 12,
-          }}>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: '#5B8DD9',
-              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8,
-            }}>
-              Amigos vão
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {friendsGoing.map((f, i) => (
-                <button
-                  key={f.google_id ?? i}
-                  onClick={() => f.google_id && onFriend?.(f.google_id)}
-                  disabled={!f.google_id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    background: 'none', border: 'none', padding: 0,
-                    cursor: f.google_id ? 'pointer' : 'default',
-                    textAlign: 'left',
-                  }}
-                >
-                  <Avatar name={f.name} src={f.picture} size={28} />
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
-                    {f.name}
-                  </div>
-                  {f.google_id && (
-                    <div style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</div>
-                  )}
-                </button>
-              ))}
-            </div>
+        {/* Quem vai — full RSVP roster (friends + strangers + viewer if
+            confirmed). Replaces the older "Amigos vão" block: this row
+            covers both populations in one expandable strip, with friends
+            still tappable so the post-event "people you met" flow works
+            from the hero too. */}
+        {googleId && (
+          <div style={{ marginBottom: 12 }}>
+            <AttendeesRow
+              eventId={ev.id}
+              googleId={googleId}
+              isRsvped={rsvped}
+              refreshKey={rsvped ? 'rsvp-on' : 'rsvp-off'}
+              viewerName={viewerName}
+              viewerPicture={viewerPicture}
+              onFriend={onFriend}
+            />
           </div>
         )}
 

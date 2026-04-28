@@ -201,7 +201,12 @@ export async function fetchEvents(mood = 'all', { curated = false } = {}) {
 
   // Try backend as a bonus — don't block on it
   try {
-    const params = new URLSearchParams({ limit: '40' })
+    // Pull the full upcoming catalog. The Fontes screen counts every
+    // future event per source; capping /events at 40 made "Tudo" show
+    // a strict subset (e.g. 35 here vs. 71 in Fontes), so handles that
+    // sorted late lost their events from view. Catalog is ~150 events
+    // tops — one fetch handles it.
+    const params = new URLSearchParams({ limit: '500' })
     if (mood && mood !== 'all') params.set('mood', mood)
     if (curated) params.set('good_only', 'true')
     const url = `${BASE_URL}/events?${params.toString()}`
@@ -224,9 +229,11 @@ export async function fetchEvents(mood = 'all', { curated = false } = {}) {
 export async function fetchEventDetail(eventId, googleId = '') {
   // Try backend first for richer data. Pass google_id when known so the
   // server can authorize personal-plan reads (creator + invitees only —
-  // catalog events ignore the param). Returns a `forbidden` flag on 403
-  // so the caller can render a 'this is private' message instead of the
-  // silent-empty state that 'event doesn't exist' would imply.
+  // catalog events ignore the param). Returns:
+  //   - { event } on success
+  //   - { event: null, forbidden: true, message } on 403 (private)
+  //   - { event: null, networkError: true } on timeout / fetch failure
+  //     (so the caller can show "couldn't load now" vs. "doesn't exist")
   try {
     const url = googleId
       ? `${BASE_URL}/events/${eventId}?google_id=${encodeURIComponent(googleId)}`
@@ -241,8 +248,12 @@ export async function fetchEventDetail(eventId, googleId = '') {
       try { msg = (await res.json()).detail || '' } catch {}
       return { event: null, source: 'forbidden', forbidden: true, message: msg }
     }
+    // 404 (or any other non-OK): fall through to embedded data — if it's
+    // not in the static seed either, the caller will render "not found".
   } catch {
-    // Fall through to embedded data
+    // Network failure or timeout. Distinguish from a real 404 so the UI
+    // can suggest a retry instead of "this event no longer exists".
+    return { event: null, source: 'network-error', networkError: true }
   }
 
   const event = EVENTS.find(e => e.id === eventId) || null

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
+import AttendeesRow from '../components/AttendeesRow'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -287,6 +288,7 @@ export default function GroupDetail() {
       <GroupEventHero
         event={selectedEvent}
         group={group}
+        googleId={googleId}
         isRsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
         canDelete={selectedEvent ? (isAdmin || selectedEvent.created_by === googleId) : false}
         onClose={() => setSelectedEvent(null)}
@@ -686,7 +688,8 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, onDelete, t }) {
+function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, onRsvp, onDelete, t }) {
+  const { state } = useApp()
   const open = !!event
   const [shareStatus, setShareStatus] = useState(null)
 
@@ -844,6 +847,20 @@ function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, on
                 </span>
               </div>
             )}
+
+            {/* Quem vai — RSVP roster. Includes the viewer (if RSVPed) plus
+                everyone else the backend will reveal (friends always, plus
+                strangers who opted into showProfileToStrangers). Tap to
+                expand the per-attendee list inside the row itself. */}
+            <AttendeesRow
+              eventId={event?.id}
+              googleId={googleId}
+              isRsvped={isRsvped}
+              refreshKey={isRsvped ? 'rsvp-on' : 'rsvp-off'}
+              viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
+              viewerPicture={state.googleUser?.picture}
+              onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+            />
 
             {/* Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>

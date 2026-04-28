@@ -8,6 +8,7 @@ Deploy: Railway runs this via Dockerfile (PORT injected by Railway)
 (O nome do diretório/repo ainda é "reroot" — produto anterior; a voz e o
 branding já migraram pra auê.)
 """
+import functools
 import json
 import logging
 import os
@@ -854,6 +855,12 @@ def list_events(
         kids_welcome=kids_welcome,
         limit=limit * 3,
     )
+    # Only surface events whose source is currently active. The DB still
+    # holds rows from sources we've since dropped (sympla, eventbrite, IG
+    # handles a curator removed) — without this filter the catalog leaks
+    # them until they age past their date_start. Sources screen does the
+    # same gating per-handle, so this keeps Eventos and Fontes in sync.
+    raw = [ev for ev in raw if _is_active_source(ev)]
     cleaned = [
         ev for ev in raw
         if _is_in_curitiba(ev)
@@ -1137,6 +1144,54 @@ def _passes_content_filter(ev, curated: bool = False) -> bool:
     if curated and any(token in blob for token in _CURATED_CONTENT_DENY_TOKENS):
         return False
     return True
+
+
+def _is_active_source(ev) -> bool:
+    """
+    Drop events whose source is no longer being monitored. Two cases:
+      1. Legacy rows from scrapers we removed (sympla, eventbrite, sesc,
+         catraca_livre, etc.) — they sit in the DB until their date passes.
+      2. IG events from handles a curator deleted/disabled.
+
+    Only `aue_original` (institutional) and `instagram` (for currently-
+    enabled handles) are kept. External_id for IG is `ig_<handle>_<post>`,
+    so we extract the handle from the prefix.
+    """
+    source = (ev.source or "").lower()
+    if source == "aue_original":
+        return True
+    if source == "instagram":
+        ext = ev.external_id or ""
+        if not ext.startswith("ig_"):
+            return False
+        # Format: ig_<handle>_<post_id> — handle is everything between the
+        # first and last underscore.
+        rest = ext[3:]
+        idx = rest.rfind("_")
+        if idx <= 0:
+            return False
+        handle = rest[:idx].lower()
+        return handle in _enabled_ig_handles()
+    # Any other source (sympla, eventbrite, ingresso, meetup, sesc, mon,
+    # teatro_guaira, turismo_curitiba, catraca_livre, google_places…)
+    # is from a scraper we no longer run.
+    return False
+
+
+@functools.lru_cache(maxsize=1)
+def _enabled_ig_handles_cached() -> frozenset[str]:
+    return frozenset(a["handle"].lower() for a in db.get_enabled_ig_accounts())
+
+
+def _enabled_ig_handles() -> frozenset[str]:
+    """Cached lookup of currently-enabled IG handles. Cached for the life of
+    the process — handle changes via /admin/ig-accounts call _bust_handle_cache
+    so the catalog reflects them on the next /events fetch."""
+    return _enabled_ig_handles_cached()
+
+
+def _bust_handle_cache() -> None:
+    _enabled_ig_handles_cached.cache_clear()
 
 
 def _is_in_curitiba(ev) -> bool:
@@ -2915,11 +2970,13 @@ def admin_upsert_ig_account(req: IgAccountUpsert):
     handle = req.handle.strip().lstrip("@")
     if not re.match(r"^[A-Za-z0-9._]{1,30}$", handle):
         raise HTTPException(status_code=400, detail="Handle inválido (use letras, números, '.' ou '_')")
-    return {"account": db.upsert_ig_account(
+    account = db.upsert_ig_account(
         handle=handle, label=req.label.strip(), category=req.category.strip(),
         enabled=req.enabled, notes=req.notes.strip(),
         added_by_email=email,
-    )}
+    )
+    _bust_handle_cache()
+    return {"account": account}
 
 
 @app.delete("/admin/ig-accounts/{handle}")
@@ -2928,6 +2985,7 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     ok = db.delete_ig_account(handle)
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
+    _bust_handle_cache()
     return {"ok": True}
 
 
@@ -3023,6 +3081,8 @@ def admin_seed_default_ig_accounts(requesting_email: str = ""):
                 inserted += 1
         except Exception:
             pass
+    if inserted:
+        _bust_handle_cache()
     return {"inserted": inserted, "total_defaults": len(_DEFAULT_IG_ACCOUNTS)}
 
 

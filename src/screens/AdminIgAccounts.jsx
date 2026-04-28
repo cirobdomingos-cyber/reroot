@@ -16,11 +16,6 @@ import Avatar from '../components/Avatar'
 const API_BASE = import.meta.env.VITE_API_URL ??
   (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
-const CATEGORY_PRESETS = [
-  'museu', 'cultural', 'teatro', 'cafe', 'bar', 'curador',
-  'wellness', 'parque', 'musica', 'livraria', 'outro',
-]
-
 function withEmail(url, email) {
   const sep = url.includes('?') ? '&' : '?'
   return email ? `${url}${sep}requesting_email=${encodeURIComponent(email)}` : url
@@ -41,11 +36,6 @@ export default function AdminIgAccounts() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
-
-  // Add-account form state
-  const [newHandle, setNewHandle] = useState('')
-  const [newLabel, setNewLabel] = useState('')
-  const [newCategory, setNewCategory] = useState('cultural')
 
   // Search filter for the IG handles list — matches handle, label,
   // display_name, or category. Live filter, no debounce needed for ~25
@@ -92,32 +82,6 @@ export default function AdminIgAccounts() {
   }, [email])
 
   useEffect(() => { load() }, [load])
-
-  async function addAccount(e) {
-    e?.preventDefault()
-    const handle = newHandle.trim().replace(/^@/, '')
-    if (!handle) return
-    setBusy(true)
-    try {
-      const r = await fetch(`${API_BASE}/admin/ig-accounts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          handle, label: newLabel.trim(), category: newCategory,
-          enabled: true, notes: '', requesting_email: email,
-        }),
-      })
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.detail || `HTTP ${r.status}`)
-      }
-      setNewHandle(''); setNewLabel('')
-      await load()
-    } catch (e) {
-      setError(`Falha ao adicionar: ${e.message}`)
-    }
-    setBusy(false)
-  }
 
   async function toggleEnabled(acc) {
     setBusy(true)
@@ -266,47 +230,50 @@ export default function AdminIgAccounts() {
         <NotACuratorMessage email={email} />
       )}
 
+      {/* Section order (founder/curator view):
+          1. Statistics — usage dashboard up top so the founder lands on
+             the dial that matters most.
+          2. Curators — managing the team comes before content moderation.
+          3. Feedback — read what users said.
+          4. Active handles — operational list at the bottom; adding new
+             handles lives on the Sources page now (no duplicate form). */}
+      {isFounder && usage && <UsageSection usage={usage} />}
+
+      {isFounder && (
+        <CuratorsSection
+          curators={curators}
+          email={email}
+          newCuratorEmail={newCuratorEmail}
+          setNewCuratorEmail={setNewCuratorEmail}
+          newCuratorNotes={newCuratorNotes}
+          setNewCuratorNotes={setNewCuratorNotes}
+          onAdd={addCurator}
+          onRemove={removeCurator}
+          busy={busy}
+        />
+      )}
+
+      {isFounder && (
+        <FeedbackSection
+          feedback={feedback}
+          email={email}
+          onReload={load}
+          busy={busy}
+          setBusy={setBusy}
+        />
+      )}
+
       {isCurator && (
-        <>
-          {/* Add new account */}
-          <form onSubmit={addAccount} style={{
-            background: 'white', borderRadius: 14, padding: 14,
-            border: '1px solid var(--border)', marginBottom: 18,
-            display: 'flex', flexDirection: 'column', gap: 10,
-          }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Adicionar conta do Instagram</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                value={newHandle}
-                onChange={e => setNewHandle(e.target.value)}
-                placeholder="@handle"
-                style={inputStyle}
-              />
-              <input
-                value={newLabel}
-                onChange={e => setNewLabel(e.target.value)}
-                placeholder="Nome (ex: Café Lucca)"
-                style={{ ...inputStyle, flex: '2 1 200px' }}
-              />
-              <select
-                value={newCategory}
-                onChange={e => setNewCategory(e.target.value)}
-                style={{ ...inputStyle, flex: '0 1 130px', background: 'white' }}
-              >
-                {CATEGORY_PRESETS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <button
-                type="submit"
-                disabled={busy || !newHandle.trim()}
-                style={primaryBtn(busy || !newHandle.trim())}
-              >
-                Adicionar
-              </button>
-            </div>
-          </form>
+        <section style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
+            📷 Contas ativas
+          </h2>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+            Adicionar novas contas é na aba <b>Fontes</b>.
+          </div>
 
           {/* Quick actions */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button
               onClick={triggerRefresh}
               disabled={busy}
@@ -367,34 +334,8 @@ export default function AdminIgAccounts() {
             </div>
             )
           })()}
-        </>
+        </section>
       )}
-
-      {isFounder && (
-        <CuratorsSection
-          curators={curators}
-          email={email}
-          newCuratorEmail={newCuratorEmail}
-          setNewCuratorEmail={setNewCuratorEmail}
-          newCuratorNotes={newCuratorNotes}
-          setNewCuratorNotes={setNewCuratorNotes}
-          onAdd={addCurator}
-          onRemove={removeCurator}
-          busy={busy}
-        />
-      )}
-
-      {isFounder && (
-        <FeedbackSection
-          feedback={feedback}
-          email={email}
-          onReload={load}
-          busy={busy}
-          setBusy={setBusy}
-        />
-      )}
-
-      {isFounder && usage && <UsageSection usage={usage} />}
     </div>
   )
 }
