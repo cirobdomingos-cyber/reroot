@@ -2807,7 +2807,12 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
 @app.post("/admin/test-email")
 async def admin_test_email(requesting_email: str = ""):
     """Founder-only: fire a test email and return the verdict so
-    misconfigured SMTP surfaces in seconds, not after a missed scrape."""
+    misconfigured SMTP surfaces in seconds, not after a missed scrape.
+    Wraps send_email in asyncio.wait_for so we always get a real
+    response (no more 502 from Railway when SMTP hangs). Distinguishes
+    "vars missing" from "auth failed" from "Gmail unreachable from
+    Railway" (port 587 blocked → would time out)."""
+    import asyncio as _asyncio
     _require_founder(requesting_email)
     if not settings.smtp_user or not settings.smtp_password:
         return {
@@ -2818,13 +2823,34 @@ async def admin_test_email(requesting_email: str = ""):
             "founder_email": settings.founder_email,
         }
     from notifications import send_email
-    ok = await send_email(
-        settings=settings,
-        to=settings.founder_email,
-        subject="[auê] teste SMTP",
-        html="<p>Se você recebeu isso, o SMTP do <b>auê</b> está funcionando 🎉</p>",
-        text="Se você recebeu isso, SMTP do auê está funcionando.",
-    )
+    try:
+        ok = await _asyncio.wait_for(
+            send_email(
+                settings=settings,
+                to=settings.founder_email,
+                subject="[auê] teste SMTP",
+                html="<p>Se você recebeu isso, o SMTP do <b>auê</b> está funcionando 🎉</p>",
+                text="Se você recebeu isso, SMTP do auê está funcionando.",
+            ),
+            timeout=20,
+        )
+    except _asyncio.TimeoutError:
+        return {
+            "ok": False,
+            "reason": (
+                "Timeout >20s — SMTP não respondeu. Causa provável: "
+                "Railway bloqueando port 587 outbound. Solução: usar "
+                "API HTTPS (Resend, SendGrid, Mailgun) em vez de SMTP."
+            ),
+            "smtp_host": settings.smtp_host,
+            "smtp_port": settings.smtp_port,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "reason": f"Exceção: {type(e).__name__}: {e}",
+            "smtp_host": settings.smtp_host,
+        }
     return {
         "ok": ok,
         "to": settings.founder_email,
