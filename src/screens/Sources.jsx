@@ -11,6 +11,10 @@ export default function Sources() {
   const navigate = useNavigate()
   const [data, setData] = useState({ institutional: [], instagram: [] })
   const [loading, setLoading] = useState(true)
+  // Search across both groups — handle, label, category, blurb. The IG
+  // catalog grew past 60 handles; flat scroll is hard to skim. Substring
+  // match is enough at this size; no fuzzy search needed.
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -22,8 +26,20 @@ export default function Sources() {
     return () => { cancelled = true }
   }, [])
 
-  const totalInst = data.institutional.reduce((acc, s) => acc + s.future_events, 0)
-  const totalIg = data.instagram.reduce((acc, s) => acc + s.future_events, 0)
+  const q = query.trim().toLowerCase()
+  const matches = (s, isIg) => {
+    if (!q) return true
+    const fields = isIg
+      ? [s.handle, s.label, s.category]
+      : [s.id, s.label, s.blurb]
+    return fields.some(f => (f || '').toLowerCase().includes(q))
+  }
+
+  const filteredInst = data.institutional.filter(s => matches(s, false))
+  const filteredIg = data.instagram.filter(s => matches(s, true))
+  const totalInst = filteredInst.reduce((acc, s) => acc + s.future_events, 0)
+  const totalIg = filteredIg.reduce((acc, s) => acc + s.future_events, 0)
+  const noResults = q && filteredInst.length === 0 && filteredIg.length === 0
 
   return (
     <div style={{ padding: '20px 0 80px' }}>
@@ -46,43 +62,82 @@ export default function Sources() {
         </div>
       </div>
 
+      {/* Search — filters both institutional + IG groups by handle, label,
+          and category. Empty input = full list (no result-pruning). */}
+      {!loading && (
+        <div style={{ padding: '0 16px 14px', position: 'relative' }}>
+          <input
+            type="search"
+            inputMode="search"
+            placeholder="Buscar por nome, @handle ou categoria…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '11px 36px 11px 14px',
+              fontSize: 13, fontFamily: 'inherit',
+              background: 'white',
+              border: '1px solid var(--border)', borderRadius: 12,
+              outline: 'none', color: 'var(--charcoal)',
+            }}
+            aria-label="Buscar fontes"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Limpar busca"
+              style={{
+                position: 'absolute', right: 24, top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--charcoal-light)', fontSize: 16, padding: 4,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
           Carregando…
         </div>
+      ) : noResults ? (
+        <div style={{
+          margin: '0 16px', padding: '24px 16px', textAlign: 'center',
+          background: 'white', borderRadius: 12, border: '1px dashed var(--border)',
+          color: 'var(--charcoal-light)', fontSize: 13,
+        }}>
+          Nada com "{query}". Tenta uma palavra mais curta.
+        </div>
       ) : (
         <>
-          <Section
-            title={`Institucionais · ${data.institutional.length}`}
-            sub={`${totalInst} evento${totalInst === 1 ? '' : 's'} próximo${totalInst === 1 ? '' : 's'}`}
-          >
-            {data.institutional.map(s => (
-              <SourceRow
-                key={s.id}
-                icon={s.icon}
-                label={s.label}
-                blurb={s.blurb}
-                count={s.future_events}
-                officialUrl={s.url}
-                onOpen={() => navigate(`/sources/${encodeURIComponent(s.id)}`)}
-              />
-            ))}
-          </Section>
+          {filteredInst.length > 0 && (
+            <Section
+              title={`Institucionais · ${filteredInst.length}`}
+              sub={`${totalInst} evento${totalInst === 1 ? '' : 's'} próximo${totalInst === 1 ? '' : 's'}`}
+            >
+              {filteredInst.map(s => (
+                <SourceRow
+                  key={s.id}
+                  icon={s.icon}
+                  label={s.label}
+                  blurb={s.blurb}
+                  count={s.future_events}
+                  officialUrl={s.url}
+                  onOpen={() => navigate(`/sources/${encodeURIComponent(s.id)}`)}
+                />
+              ))}
+            </Section>
+          )}
 
-          <Section
-            title={`Instagram · ${data.instagram.length} contas`}
-            sub={`${totalIg} evento${totalIg === 1 ? '' : 's'} próximo${totalIg === 1 ? '' : 's'}`}
-          >
-            {data.instagram.length === 0 ? (
-              <div style={{
-                background: 'white', borderRadius: 12, padding: '14px 16px',
-                border: '1px dashed var(--border)',
-                fontSize: 12, color: 'var(--charcoal-light)',
-              }}>
-                Nenhuma conta cadastrada ainda.
-              </div>
-            ) : (
-              data.instagram.map(s => (
+          {filteredIg.length > 0 && (
+            <Section
+              title={`Instagram · ${filteredIg.length} conta${filteredIg.length === 1 ? '' : 's'}`}
+              sub={`${totalIg} evento${totalIg === 1 ? '' : 's'} próximo${totalIg === 1 ? '' : 's'}`}
+            >
+              {filteredIg.map(s => (
                 <SourceRow
                   key={s.handle}
                   isIg
@@ -93,9 +148,21 @@ export default function Sources() {
                   officialUrl={s.url}
                   onOpen={() => navigate(`/sources/${encodeURIComponent('ig:' + s.handle)}`)}
                 />
-              ))
-            )}
-          </Section>
+              ))}
+            </Section>
+          )}
+
+          {!q && data.instagram.length === 0 && (
+            <Section title="Instagram · 0 contas">
+              <div style={{
+                background: 'white', borderRadius: 12, padding: '14px 16px',
+                border: '1px dashed var(--border)',
+                fontSize: 12, color: 'var(--charcoal-light)',
+              }}>
+                Nenhuma conta cadastrada ainda.
+              </div>
+            </Section>
+          )}
         </>
       )}
     </div>
