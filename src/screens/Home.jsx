@@ -361,7 +361,7 @@ export default function Home() {
         <>
           <div
             className="section-label"
-            onClick={() => navigate('/community')}
+            onClick={() => navigate('/my-rsvps')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
           >
             <span>{t.home_friends_going_label ?? 'Amigos vão'}</span>
