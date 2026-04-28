@@ -534,7 +534,10 @@ _INSTALL_HTML = """<!DOCTYPE html>
 
   // ── Copy URL to clipboard (used by in-app warning sections) ──
   function copyLink(msg) {
-    var url = window.location.origin + "/";
+    // Copy /install (not /) so when the user pastes in Safari/Chrome they
+    // land on this walkthrough, not the app home — which would skip the
+    // platform-specific install instructions entirely.
+    var url = window.location.origin + "/install";
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(function() {
         alert(msg || "Link copiado!");
