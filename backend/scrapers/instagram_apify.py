@@ -372,10 +372,23 @@ async def fetch_events(
 
     # Update event-yield stats per account so the admin UI can show which
     # handles are producing real events vs. just consuming Apify quota.
+    # external_id is "ig_{handle}_{shortcode}" — but {handle} can contain
+    # underscores ("damarate_confeitaria") AND dots ("curiti.kids"), and
+    # shortcodes are alphanumeric+dashes. Naive splits get either truncated
+    # ("damarate" instead of "damarate_confeitaria") or wrong-handle hits.
+    # Match by prefix against the known set of handles we just scraped —
+    # robust against any handle character set.
+    # (Old code used split("_", 1)[0] which always returned "ig" — so every
+    # handle's last_event_count was stuck at 0 since adoption.)
     yields_by_handle: dict[str, int] = {}
     for ev in events:
-        h = ev.external_id.split("_", 1)[0]  # "ig_{handle}_{shortcode}" → handle
-        yields_by_handle[h] = yields_by_handle.get(h, 0) + 1
+        if not ev.external_id.startswith("ig_"):
+            continue
+        tail = ev.external_id[3:]  # strip "ig_" prefix
+        for h in handles_with_data:
+            if tail.startswith(f"{h}_"):
+                yields_by_handle[h] = yields_by_handle.get(h, 0) + 1
+                break
     for handle in handles_with_data:
         db.set_ig_account_last_event_count(handle, yields_by_handle.get(handle, 0))
 
