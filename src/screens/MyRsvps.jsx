@@ -58,6 +58,12 @@ export default function MyRsvps() {
     const ge = groupEventsById[id]
     if (!ge) return 'public'  // catalog event (or anything not in our private feed)
     if (ge.isPersonalPlan) return 'plan'
+    // Group event imported from the public catalog (e.g. "Brasilidades
+    // 13 Anos" added to a group) keeps the original URL in ge.url. The
+    // source is public; the group context is incidental, so tag it
+    // public. Native group-only events (no catalog source) have ge.url
+    // empty and stay as 'group'.
+    if (ge.url) return 'public'
     return 'group'
   }
 
