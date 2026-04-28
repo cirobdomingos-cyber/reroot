@@ -1,11 +1,24 @@
 """
-Email notifications via SMTP (Gmail by default).
+Email notifications — Resend (HTTPS) preferred, SMTP fallback.
 
 Used to notify the founder after each scrape completes with a summary of
 new events found per source. Best-effort — silent on failure so the
 scrape pipeline never fails because the email transport blipped.
 
-Setup (Gmail):
+Why two transports:
+  - Many cloud hosts (Railway, Fly.io, Render) block outbound SMTP ports
+    25/465/587 to prevent spam abuse. SMTP fails with "Network is
+    unreachable" on those.
+  - Resend uses HTTPS so it works on every cloud.
+
+Setup (preferred — Resend):
+  1. Sign up at resend.com (free 3,000/month)
+  2. Dashboard → API Keys → create one
+  3. Set env var: RESEND_API_KEY = re_xxx...
+  4. Without a verified domain, you can only send to the email used to
+     sign up. Add a domain later (DNS ~5min) for sending to other users.
+
+Setup (fallback — Gmail SMTP, only works on hosts allowing port 587):
   1. Enable 2FA on the Google account
   2. Visit myaccount.google.com/apppasswords → generate a 16-char App Password
   3. Set env vars:
@@ -52,11 +65,49 @@ def _send_smtp_sync(host: str, port: int, user: str, password: str,
         return False
 
 
+def _send_resend_sync(api_key: str, from_addr: str, to: str,
+                      subject: str, html: str, text: Optional[str] = None) -> bool:
+    """Send via Resend HTTPS API. Synchronous — call from a thread.
+    Returns True on 2xx, False on auth/quota/other error."""
+    try:
+        import resend
+        resend.api_key = api_key
+        params = {
+            "from": from_addr,
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        }
+        if text:
+            params["text"] = text
+        resend.Emails.send(params)
+        return True
+    except Exception as e:
+        log.warning(f"Resend send failed: {type(e).__name__}: {e}")
+        return False
+
+
 async def send_email(settings, to: str, subject: str,
                      html: str, text: Optional[str] = None) -> bool:
-    """Returns True on success, False otherwise. Never raises."""
+    """Returns True on success, False otherwise. Never raises.
+    Routes via Resend when RESEND_API_KEY is set (cloud-friendly),
+    else falls back to SMTP. SMTP fails on hosts that block outbound
+    port 587 (e.g. Railway) — Resend works everywhere."""
+    # Prefer Resend when configured — works through HTTPS, no port issues.
+    if getattr(settings, "resend_api_key", "").strip():
+        from_addr = settings.resend_from or "auê <onboarding@resend.dev>"
+        return await asyncio.to_thread(
+            _send_resend_sync,
+            api_key=settings.resend_api_key.strip(),
+            from_addr=from_addr,
+            to=to,
+            subject=subject,
+            html=html,
+            text=text,
+        )
+    # Fallback: SMTP (works on hosts that allow port 587)
     if not settings.smtp_user or not settings.smtp_password:
-        log.info("SMTP credentials not set — skipping email send")
+        log.info("Neither RESEND_API_KEY nor SMTP credentials set — skipping email send")
         return False
     from_addr = settings.smtp_from or formataddr(("auê", settings.smtp_user))
     return await asyncio.to_thread(

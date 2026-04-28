@@ -68,6 +68,17 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""  # falls back to smtp_user if empty
+    # Resend (https://resend.com) — HTTPS API for transactional email.
+    # Used when SMTP outbound is blocked by the host (Railway blocks
+    # port 587). When RESEND_API_KEY is set, send_email routes via
+    # Resend instead of SMTP. Free tier = 3,000/month, enough for
+    # founder-only scrape summaries + future user pings.
+    resend_api_key: str = ""
+    # The "From" address Resend uses. Without a verified domain,
+    # use "onboarding@resend.dev" — sends only to the email used to
+    # sign up Resend (i.e., founder_email). Add a verified domain
+    # later for sending to other users.
+    resend_from: str = "auê <onboarding@resend.dev>"
     # Android Trusted Web Activity — exposes /.well-known/assetlinks.json so
     # the Play Store app can verify domain ownership. Both vars come from
     # PWABuilder's signing-key-info.txt after generating the AAB bundle.
@@ -642,7 +653,13 @@ def health():
         # SMTP shows whether scrape-summary emails will fire. Both vars
         # required — missing either silently skips email send.
         "smtp_configured": bool(settings.smtp_user and settings.smtp_password),
-        "smtp_to": settings.founder_email or None,
+        # Resend (HTTPS) — preferred when set, since Railway blocks SMTP outbound.
+        "resend_configured": bool(settings.resend_api_key),
+        "email_transport": (
+            "resend" if settings.resend_api_key
+            else ("smtp" if (settings.smtp_user and settings.smtp_password) else "none")
+        ),
+        "email_to": settings.founder_email or None,
     }
 
 
@@ -2806,81 +2823,56 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
 
 @app.post("/admin/test-email")
 async def admin_test_email(requesting_email: str = ""):
-    """Founder-only: SMTP smoke test that surfaces the real exception
-    (auth failure, port block, etc.) instead of swallowing it like the
-    production send_email path does. Distinguishes:
-      - vars missing
-      - SMTPAuthenticationError (App Password wrong/expired/with spaces)
-      - socket.timeout (Railway blocking port 587)
-      - other SMTPException
-    Always returns within 20s — no more 502s on a hung connection."""
+    """Founder-only: smoke test the email transport. Routes through
+    notifications.send_email() which prefers Resend (HTTPS) when
+    RESEND_API_KEY is set, else falls back to SMTP. Returns the
+    transport used + verdict so misconfig surfaces in seconds."""
     import asyncio as _asyncio
-    import smtplib as _smtplib
-    import socket as _socket
-    from email.mime.text import MIMEText as _MIMEText
-
     _require_founder(requesting_email)
-    if not settings.smtp_user or not settings.smtp_password:
+
+    transport = (
+        "resend" if settings.resend_api_key
+        else ("smtp" if (settings.smtp_user and settings.smtp_password) else "none")
+    )
+    if transport == "none":
         return {
             "ok": False,
-            "reason": "SMTP_USER ou SMTP_PASSWORD não configurados no Railway",
-            "smtp_user_set": bool(settings.smtp_user),
-            "smtp_password_set": bool(settings.smtp_password),
-            "founder_email": settings.founder_email,
+            "transport": "none",
+            "reason": (
+                "Nenhum transport configurado. Defina RESEND_API_KEY (recomendado, "
+                "HTTPS) ou SMTP_USER+SMTP_PASSWORD nas env vars do Railway."
+            ),
         }
 
-    # Strip whitespace from the App Password — Gmail UI shows it formatted
-    # in 4-char groups but the actual secret is the 16 chars without spaces.
-    user = settings.smtp_user
-    password = (settings.smtp_password or "").replace(" ", "").strip()
-    pw_len = len(password)
-
-    def _send_test():
-        msg = _MIMEText("Teste SMTP do auê — se você recebeu isso, está funcionando.")
-        msg["Subject"] = "[auê] teste SMTP"
-        msg["From"] = user
-        msg["To"] = settings.founder_email
-        try:
-            with _smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=8) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(user, password)
-                server.sendmail(user, [settings.founder_email], msg.as_string())
-            return (True, None)
-        except _smtplib.SMTPAuthenticationError as e:
-            err_text = e.smtp_error.decode("utf-8", "replace") if isinstance(e.smtp_error, bytes) else str(e.smtp_error)
-            return (False, f"SMTPAuthenticationError {e.smtp_code}: {err_text}")
-        except _smtplib.SMTPException as e:
-            return (False, f"{type(e).__name__}: {e}")
-        except _socket.timeout:
-            return (False, "socket.timeout — conexão SMTP travou (Railway pode estar bloqueando port 587)")
-        except (_socket.gaierror, OSError) as e:
-            return (False, f"{type(e).__name__}: {e}")
-        except Exception as e:
-            return (False, f"{type(e).__name__}: {e}")
-
+    from notifications import send_email
     try:
-        ok, err = await _asyncio.wait_for(
-            _asyncio.to_thread(_send_test),
+        ok = await _asyncio.wait_for(
+            send_email(
+                settings=settings,
+                to=settings.founder_email,
+                subject=f"[auê] teste {transport}",
+                html=f"<p>Se você recebeu isso, o transport <b>{transport}</b> do auê está funcionando 🎉</p>",
+                text=f"Se você recebeu isso, transport {transport} do auê está funcionando.",
+            ),
             timeout=15,
         )
     except _asyncio.TimeoutError:
         return {
             "ok": False,
-            "reason": "Timeout >15s aguardando resposta do SMTP — Railway pode estar bloqueando port 587",
-            "smtp_host": settings.smtp_host,
-            "smtp_port": settings.smtp_port,
+            "transport": transport,
+            "reason": "Timeout >15s — sem resposta do transport.",
         }
-
+    except Exception as e:
+        return {
+            "ok": False,
+            "transport": transport,
+            "reason": f"{type(e).__name__}: {e}",
+        }
     return {
         "ok": ok,
+        "transport": transport,
         "to": settings.founder_email,
-        "smtp_host": settings.smtp_host,
-        "smtp_user": settings.smtp_user,
-        "smtp_port": settings.smtp_port,
-        "password_length_after_strip": pw_len,  # diagnostic: 16 = ok, ≠16 = malformed
-        "reason": err,
+        "reason": None if ok else "send_email retornou False — ver logs do Railway",
     }
 
 
