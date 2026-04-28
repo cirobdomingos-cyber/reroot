@@ -141,6 +141,25 @@ export default function Home() {
     state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
   )
 
+  // Accept a pending invite — local RSVP + backend sync + move from
+  // pending to accepted bucket. Used by both the WeekCalendar's invite
+  // button and the new "Convites pendentes" section above the calendar.
+  function handleAcceptInvite(ev) {
+    const ds = ev.date_start || ev.dateStart || ''
+    const venue = ev.group_name || ev.groupName || ev.venue || ''
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: { eventId: ev.id, dateStart: ds, name: ev.name, venue },
+    })
+    if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
+      syncRsvp(state.googleUser.id, {
+        id: ev.id, name: ev.name, venue, dateStart: ds, url: '',
+      }, true)
+    }
+    setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
+    setGroupEventsAccepted(prev => [...prev, ev])
+  }
+
   // Suggested events — events the user hasn't RSVPd to, ordered by the
   // user's profile preference (if set) then by date. Profile picks the
   // priority order of moods; events matching priority[0] come first,
@@ -261,6 +280,35 @@ export default function Home() {
         ))}
       </div>
 
+      {/* Pending invites — surfaces personal plans and group events the
+          user was invited to but hasn't RSVP'd yet. Dots on the calendar
+          alone weren't enough discovery — users had to tap the right day
+          to see invites at all. This section pins them at the top with
+          inline Confirmar buttons. */}
+      {groupEventsPending.length > 0 && (
+        <>
+          <div className="section-label">
+            {t.home_pending_label ?? 'Convites pendentes'} · {groupEventsPending.length}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 16px', marginBottom: 14 }}>
+            {groupEventsPending.map(ev => (
+              <PendingInviteRow
+                key={ev.id}
+                event={ev}
+                onOpen={() => {
+                  if (ev.group_id || ev.groupId) {
+                    navigate(`/groups/${ev.group_id || ev.groupId}`)
+                  } else {
+                    navigate('/events', { state: { openEventId: ev.id } })
+                  }
+                }}
+                onAccept={() => handleAcceptInvite(ev)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Week Calendar */}
       <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
       <WeekCalendar
@@ -286,32 +334,7 @@ export default function Home() {
             navigate('/events', { state: { openEventId: ev.id } })
           }
         }}
-        onGroupRsvp={(ev) => {
-          // Group event RSVP — local state + backend sync (so friends see
-          // it via /friends/feed). dateStart on group events comes back
-          // from /groups as `date_start`.
-          dispatch({
-            type: 'TOGGLE_RSVP',
-            payload: {
-              eventId: ev.id,
-              dateStart: ev.date_start || ev.dateStart || '',
-              name: ev.name,
-              venue: ev.group_name || ev.venue || '',
-            },
-          })
-          if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
-            syncRsvp(state.googleUser.id, {
-              id: ev.id,
-              name: ev.name,
-              venue: ev.group_name || ev.venue || '',
-              dateStart: ev.date_start || ev.dateStart || '',
-              url: '',
-            }, true)
-          }
-          // Move from pending to accepted
-          setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
-          setGroupEventsAccepted(prev => [...prev, ev])
-        }}
+        onGroupRsvp={handleAcceptInvite}
       />
 
       {/* Post-event reconnect nudge */}
@@ -528,6 +551,61 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+
+// ── Pending invite row — Home page ─────────────────────────
+
+function PendingInviteRow({ event: ev, onOpen, onAccept }) {
+  const ds = ev.date_start || ev.dateStart || ''
+  const dateLabel = formatFriendsFeedDate(ds)
+  const venue = ev.group_name || ev.groupName || ev.venue || ''
+  const isPlan = ev.isPersonalPlan
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        background: 'white', borderRadius: 14,
+        border: '1px solid var(--border)',
+        boxShadow: 'inset 4px 0 0 var(--terra)',
+        padding: '10px 12px', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}
+    >
+      <div style={{
+        width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+        background: 'var(--terra-pale)', fontSize: 18,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {isPlan ? '🎲' : '👥'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {ev.name}
+        </div>
+        <div style={{
+          fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {dateLabel}{venue ? ` · ${venue}` : ''}
+        </div>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onAccept() }}
+        style={{
+          background: 'var(--terra)', color: 'white', border: 'none',
+          padding: '7px 14px', borderRadius: 999,
+          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        Confirmar
+      </button>
     </div>
   )
 }
