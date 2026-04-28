@@ -871,7 +871,22 @@ export default function Events() {
         open={showPlanSheet}
         onClose={() => setShowPlanSheet(false)}
         googleId={state.googleUser?.id}
-        onCreated={() => {
+        onCreated={(event) => {
+          // Backend auto-RSVPs the creator into the rsvps table, but the
+          // RSVPs tab reads from client-side state.rsvps — without a local
+          // dispatch the user wouldn't see their own plan in My RSVPs.
+          // Mirror the auto-RSVP into client state so both views agree.
+          if (event?.id) {
+            dispatch({
+              type: 'TOGGLE_RSVP',
+              payload: {
+                eventId: event.id,
+                name: event.name,
+                venue: event.venue,
+                dateStart: event.date_start,
+              },
+            })
+          }
           // Refresh the group-events feed so the new plan shows up in the
           // catalog without a manual page reload.
           const gid = state.googleUser?.id

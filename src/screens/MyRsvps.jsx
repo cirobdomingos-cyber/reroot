@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { syncRsvp, fetchFriendsFeed } from '../services/api'
+import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents } from '../services/api'
 import Avatar from '../components/Avatar'
 
 // All RSVPs in one place — yours + your friends'.
 //
 // Sections:
 //   - Amigos vão     (events friends RSVPd to, that you haven't yet)
+//   - Pendentes      (group events + personal plans you were invited to but
+//                     haven't confirmed — drives "I got invited, what now?"
+//                     discovery so plans don't get lost in the catalog)
 //   - Próximos       (your upcoming RSVPs)
 //   - Passados       (your past RSVPs)
 //   - Sem data       (legacy entries without metadata — pre-rebrand
@@ -18,8 +21,12 @@ export default function MyRsvps() {
   const navigate = useNavigate()
   const now = Date.now()
 
-  // Friends' RSVPs — fetched on mount + when the tab regains focus.
+  // Friends' RSVPs + group/plan invitations — fetched on mount + when the
+  // tab regains focus. groupEvents covers both classic group events (member
+  // of a group) and personal plans (invited by friend) since the backend
+  // unions them under /events/group.
   const [friendsFeed, setFriendsFeed] = useState([])
+  const [groupEvents, setGroupEvents] = useState([])
   useEffect(() => {
     const googleId = state.googleUser?.id
     if (!googleId) return
@@ -28,6 +35,9 @@ export default function MyRsvps() {
       fetchFriendsFeed(googleId).then(events => {
         if (cancelled) return
         setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
+      })
+      fetchUserGroupEvents(googleId).then(events => {
+        if (!cancelled) setGroupEvents(events || [])
       })
     }
     load()
@@ -69,6 +79,19 @@ export default function MyRsvps() {
     })
     .sort((a, b) => Date.parse(a.event_date) - Date.parse(b.event_date))
 
+  // Pending invitations — group events you're a member of OR personal plans
+  // where you were invited, that you haven't RSVP'd to yet. Future-dated only.
+  // The same backend endpoint returns both shapes, already filtered by
+  // membership/invitee gates, so we just need to filter out already-RSVP'd
+  // and past events here.
+  const pending = groupEvents
+    .filter(ev => !state.rsvps[ev.id])
+    .filter(ev => {
+      const t = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+      return !Number.isNaN(t) && t > now
+    })
+    .sort((a, b) => Date.parse(a.dateStart) - Date.parse(b.dateStart))
+
   function unRsvp(entry) {
     if (!confirm(`Cancelar RSVP de "${entry.name || entry.id}"?`)) return
     dispatch({
@@ -104,9 +127,9 @@ export default function MyRsvps() {
         </button>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>RSVPs</h1>
         <div style={{ fontSize: 13, color: 'var(--charcoal-light)', marginTop: 2 }}>
-          {entries.length === 0 && friendsUpcoming.length === 0
+          {entries.length === 0 && friendsUpcoming.length === 0 && pending.length === 0
             ? 'Você ainda não confirmou nenhum evento.'
-            : `${upcoming.length} seu${upcoming.length === 1 ? '' : 's'}${friendsUpcoming.length ? ` · ${friendsUpcoming.length} de amigos` : ''}${past.length ? ` · ${past.length} passado${past.length === 1 ? '' : 's'}` : ''}${undated.length ? ` · ${undated.length} sem data` : ''}.`}
+            : `${pending.length ? `${pending.length} pendente${pending.length === 1 ? '' : 's'} · ` : ''}${upcoming.length} seu${upcoming.length === 1 ? '' : 's'}${friendsUpcoming.length ? ` · ${friendsUpcoming.length} de amigos` : ''}${past.length ? ` · ${past.length} passado${past.length === 1 ? '' : 's'}` : ''}${undated.length ? ` · ${undated.length} sem data` : ''}.`}
         </div>
       </div>
 
@@ -123,7 +146,7 @@ export default function MyRsvps() {
         </Section>
       )}
 
-      {entries.length === 0 && friendsUpcoming.length === 0 && (
+      {entries.length === 0 && friendsUpcoming.length === 0 && pending.length === 0 && (
         <div style={{ padding: '40px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
           <div style={{ fontSize: 14, color: 'var(--charcoal-mid)', marginBottom: 20 }}>
@@ -141,6 +164,18 @@ export default function MyRsvps() {
             Ver eventos →
           </button>
         </div>
+      )}
+
+      {pending.length > 0 && (
+        <Section title={`Pendentes · ${pending.length}`}>
+          {pending.map(ev => (
+            <PendingRow
+              key={ev.id}
+              event={ev}
+              onOpen={() => openEvent({ id: ev.id })}
+            />
+          ))}
+        </Section>
       )}
 
       {upcoming.length > 0 && (
@@ -303,6 +338,51 @@ function FriendEventRow({ event: ev, onOpen, onFriend }) {
     </div>
   )
 }
+
+function PendingRow({ event: ev, onOpen }) {
+  // Pending invite — surfaces personal plans + group events you haven't
+  // RSVP'd to yet. Distinct visual: warm peach left stripe + "Convite"
+  // pill so it reads as "needs your attention" vs the neutral upcoming
+  // RSVPs below it. Tapping opens the event detail; the user can RSVP
+  // there and the row will graduate to the Próximos section on next render.
+  const dateLabel = formatDate(ev.dateStart) || ''
+  const isPlan = ev.isPersonalPlan
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        background: 'white', borderRadius: 14, padding: '12px 14px',
+        border: '1px solid var(--border)',
+        boxShadow: 'inset 4px 0 0 var(--terra)',
+        display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700, color: 'var(--terra)',
+            background: 'var(--terra-pale)', padding: '2px 7px',
+            borderRadius: 4, letterSpacing: 0.4, textTransform: 'uppercase',
+            flexShrink: 0,
+          }}>
+            {isPlan ? '🎲 Convite' : '👥 Grupo'}
+          </span>
+          <div style={{
+            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {ev.name || `Evento ${ev.id}`}
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3 }}>
+          {dateLabel}{ev.venue ? ` · ${ev.venue}` : ''}
+        </div>
+      </div>
+      <span style={{ fontSize: 12, color: 'var(--charcoal-light)', flexShrink: 0 }}>›</span>
+    </div>
+  )
+}
+
 
 function RsvpRow({ entry, onOpen, onCancel, muted, undated }) {
   const dateLabel = formatDate(entry.dateStart) || (undated ? '— sem data' : '')
