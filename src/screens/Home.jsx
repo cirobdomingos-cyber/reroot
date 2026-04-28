@@ -5,7 +5,7 @@ import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { scheduleEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
-import { fetchEvents, fetchFriendsFeed, fetchGroups, syncRsvp } from '../services/api'
+import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 
@@ -70,19 +70,24 @@ export default function Home() {
     fetchFriendsFeed(googleId).then(events => {
       setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
     })
-    // Fetch group events — split into pending vs already RSVPd
-    fetchGroups(googleId).then(groups => {
+    // Fetch every private event the user can see (classic group events,
+    // personal plans where they're the creator or an invitee, plus
+    // group+extras events). Split into pending vs accepted by checking
+    // local RSVP state. Was previously only pulling one next_event per
+    // group via fetchGroups, which missed personal plans entirely.
+    const now = Date.now()
+    fetchUserGroupEvents(googleId).then(events => {
       const pending = []
       const accepted = []
-      for (const g of groups) {
-        if (g.next_event) {
-          const ev = { ...g.next_event, group_name: g.name, group_id: g.id }
-          if (state.rsvps[g.next_event.id]) {
-            accepted.push(ev)
-          } else {
-            pending.push(ev)
-          }
-        }
+      for (const ev of (events || [])) {
+        const t = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+        if (Number.isNaN(t) || t <= now) continue  // future-only on Home
+        // Normalize shape: groupEvents from /events/group already have
+        // groupName as a property; mirror it as group_name for the
+        // existing UpcomingPlans renderer that expects either.
+        const norm = { ...ev, group_name: ev.groupName || ev.group_name || '' }
+        if (state.rsvps[ev.id]) accepted.push(norm)
+        else pending.push(norm)
       }
       setGroupEventsPending(pending)
       setGroupEventsAccepted(accepted)
@@ -262,9 +267,13 @@ export default function Home() {
         rsvpEvents={[
           ...allEvents.filter(ev => state.rsvps[ev.id] && ev.dateStart),
           ...groupEventsAccepted.map(ev => ({
-            ...ev, dateStart: ev.date_start, icon: '👥',
+            ...ev,
+            // dateStart is already camelCase from /events/group; fall back
+            // to date_start in case any caller still hands us that shape.
+            dateStart: ev.dateStart || ev.date_start,
+            icon: ev.isPersonalPlan ? '🎲' : '👥',
             headerBg: 'linear-gradient(135deg, var(--sage-pale), #e8f0e9)',
-            venue: ev.group_name,
+            venue: ev.group_name || ev.venue || '',
             _isGroup: true,
           })),
         ]}

@@ -1175,7 +1175,11 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
         dt = None
     time_str = dt.strftime("%H:%M") if dt else ""
     date_label = dt.strftime("%a, %d %b") if dt else ""
-    venue = ge.get("venue") or "Evento de grupo"
+    # Empty venue stays empty — the frontend conditionally renders the
+    # venue line, so a missing field just collapses cleanly. (Earlier we
+    # fell back to "Evento de grupo" / "Plano" placeholders, but that
+    # showed up as fake-looking venue text in the card and detail view.)
+    venue = ge.get("venue") or ""
     # Catalog imports stash "Ver original: <url>" at the end of the
     # description. Pull it out so the frontend's existing "Ver no <source>"
     # button works, and remove from description so it doesn't duplicate
@@ -1190,13 +1194,11 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
     is_personal = not ge.get("group_id")
     return {
         "id": ge["id"],
-        "name": ge.get("name") or ("Plano" if is_personal else "Evento de grupo"),
+        "name": ge.get("name") or "",
         "category": "community",
         "categoryLabel": "Plano" if is_personal else "Grupo",
         "categoryEmoji": "🎲" if is_personal else "👥",
-        "venue": venue if venue != "Evento de grupo" else (
-            "Plano" if is_personal else "Evento de grupo"
-        ),
+        "venue": venue,
         "date": date_label,
         "time": time_str,
         "duration": "",
