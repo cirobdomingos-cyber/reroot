@@ -893,17 +893,18 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     : [ev.venue, null]
 
   // Group events get an inset left stripe (no layout shift) and a tinted
-  // background so they read instantly as "yours / private" — distinct from
-  // the public catalog without being loud. Recurring routines reuse the
-  // same pattern with a distinct lilac/purple stripe so they read as
-  // "this happens regularly, not a one-off" at a glance.
+  // background so they read instantly as "yours / private". Recurring
+  // routines go bolder — full lilac wash + matching border + stripe — so
+  // skim recognition is immediate; the user wanted the whole card to read
+  // as "this is a regular thing", not a subtle accent.
   const isGroupEvent = !!ev.isGroupEvent
   const isRecurring = !!ev.isRecurring && !isGroupEvent
   const cardBackground = isGroupEvent ? '#FFFAF3'
-                       : isRecurring ? '#F5F3FF'  // soft lilac
+                       : isRecurring ? '#EDE7F6'  // lavender wash, ~2× saturation of prior #F5F3FF
                        : 'white'
+  const cardBorder = isRecurring ? '1px solid #B39DDB' : '1px solid var(--border)'
   const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)'
-                   : isRecurring ? 'inset 4px 0 0 #7E57C2'  // purple — visually distinct from group sage
+                   : isRecurring ? 'inset 4px 0 0 #7E57C2'
                    : 'none'
 
   return (
@@ -912,7 +913,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
       style={{
         background: cardBackground, borderRadius: 16,
         margin: '0 16px 9px', padding: '12px 13px',
-        border: '1px solid var(--border)',
+        border: cardBorder,
         boxShadow: cardShadow,
         display: 'flex', gap: 12, alignItems: 'flex-start',
         cursor: 'pointer', transition: 'box-shadow 0.15s',
