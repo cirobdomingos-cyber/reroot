@@ -3322,6 +3322,42 @@ def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
     return {"ok": False, "lat": None, "lng": None}
 
 
+@app.post("/admin/venues/{name_normalized}/ai-lookup")
+def admin_ai_lookup_venue(name_normalized: str, requesting_email: str = ""):
+    """Ask Claude for the venue's address + coords. Doesn't write to the
+    venues table — returns the suggestion so the curator reviews it in
+    the editor sheet and clicks Save when satisfied. Cheaper than guessing
+    via Nominatim + addressed dictation; falls back to null when Claude
+    is uncertain (its training data covers most established Curitiba
+    venues but not every random handle a curator might add)."""
+    _require_curator(requesting_email)
+    from geocoding import ai_lookup_venue
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT name_original, address FROM venues WHERE name_normalized = ?",
+            (name_normalized,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Local não encontrado")
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY não configurada")
+    result = ai_lookup_venue(
+        row["name_original"], row["address"] or "",
+        anthropic_api_key=settings.anthropic_api_key,
+    )
+    if not result:
+        return {"ok": False, "address": None, "lat": None, "lng": None,
+                "confidence": "low", "notes": "IA não respondeu ou falhou ao parsear"}
+    return {
+        "ok": True,
+        "address": result.get("address"),
+        "lat": result.get("lat"),
+        "lng": result.get("lng"),
+        "confidence": result.get("confidence") or "low",
+        "notes": result.get("notes") or "",
+    }
+
+
 @app.delete("/admin/cleanup/dead-sources")
 def admin_cleanup_dead_sources(requesting_email: str = ""):
     """Purge events (and their RSVPs) from scrapers we no longer run.

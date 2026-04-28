@@ -19,6 +19,7 @@ with the same name. Coordinates outside ~25km of the city center are
 discarded as a sanity check.
 """
 
+import json
 import logging
 import time
 from typing import Optional
@@ -113,6 +114,93 @@ def geocode_one(name_original: str, address: str = "") -> Optional[tuple[float, 
         # gets rate-limited.
         time.sleep(1.1)
     return None
+
+
+def ai_lookup_venue(name: str, address: str = "", anthropic_api_key: str = "") -> Optional[dict]:
+    """Ask Claude for a venue's address + coordinates in Curitiba.
+
+    Why this exists: Nominatim (OSM) is great for addresses but weak for
+    venue *names* — "Bar do Sax" doesn't resolve, but Claude knows the
+    Curitiba live-music scene well enough to give a street + coords for
+    most established venues. Hallucination guard:
+      - Prompt instructs Claude to return null when uncertain.
+      - We re-validate the lat/lng against the Curitiba bounding box on
+        our side anyway (same check `_within_curitiba` enforces).
+      - Curator reviews the prefilled values before saving — IA doesn't
+        commit to the venues table directly.
+
+    Returns dict {address, lat, lng, confidence, notes} or None on
+    failure / when Claude declines."""
+    if not anthropic_api_key:
+        return None
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        log.warning("anthropic SDK not installed — IA venue lookup disabled")
+        return None
+
+    user_msg = (
+        f"Venue name: {name}\n"
+        f"Optional address hint: {address or '(none)'}\n\n"
+        "Return JSON with the venue's street address and coordinates IF "
+        "you have high confidence based on your training data. If you're "
+        "uncertain or don't recognize the venue, return null for those "
+        "fields — DO NOT GUESS.\n\n"
+        "Required JSON shape:\n"
+        "{\n"
+        '  "address": "Rua XV de Novembro, 123, Centro, Curitiba" | null,\n'
+        '  "lat": number (between -26.5 and -24.5) | null,\n'
+        '  "lng": number (between -50.5 and -48.0) | null,\n'
+        '  "confidence": "high" | "medium" | "low",\n'
+        '  "notes": "short note explaining why you\'re sure or unsure"\n'
+        "}\n\n"
+        "Rules:\n"
+        "- For famous venues (museums, theatres, parks, well-known bars/"
+        "cafés/livrarias), high confidence is fine.\n"
+        "- For generic names that could exist in many cities ('Café X', "
+        "'Bar Y') with no other signal — low confidence, null coords.\n"
+        "- Never invent a street number you don't know. If you only know "
+        "the street, set address to the street + 's/n' and still null "
+        "the lat/lng unless you're sure of the location.\n"
+        "- Coordinates must be within Curitiba metro.\n\n"
+        "Return ONLY valid JSON, no markdown fences, no prose around it."
+    )
+    try:
+        client = Anthropic(api_key=anthropic_api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            system=(
+                "You help locate venues in Curitiba, PR, Brazil for a city "
+                "events catalog. Honesty matters more than coverage — "
+                "returning null when uncertain is correct behavior."
+            ),
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        text = msg.content[0].text.strip() if msg.content else ""
+        # Strip code fences if Claude added them despite instructions.
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:]
+        data = json.loads(text)
+    except (json.JSONDecodeError, KeyError, IndexError, AttributeError) as exc:
+        log.warning("AI venue lookup parse failed for %r: %s", name, exc)
+        return None
+    except Exception as exc:
+        log.warning("AI venue lookup error for %r: %s", name, exc)
+        return None
+
+    # Defensive coordinate validation — Claude can ignore the bounding
+    # box even when prompted; we trust nothing.
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        if not _within_curitiba(float(lat), float(lng)):
+            data["lat"] = None
+            data["lng"] = None
+            data["notes"] = (data.get("notes") or "") + " [coords rejected: outside Curitiba bbox]"
+    return data
 
 
 def geocode_pending_venues(limit: int = 25) -> dict:
