@@ -384,6 +384,22 @@ _INSTALL_HTML = """<!DOCTYPE html>
   }
   .share button:active { transform: translateY(1px); }
   .share .copied { font-size: 12px; color: #5A7E5E; margin-top: 8px; min-height: 16px; }
+  .open-app {
+    display: block; width: 100%;
+    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
+    color: white !important; text-align: center; text-decoration: none;
+    padding: 14px 18px; border-radius: 14px; font-size: 15px; font-weight: 700;
+    box-shadow: 0 6px 18px rgba(232, 98, 63, 0.32);
+    margin-bottom: 8px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .open-app:active { transform: translateY(1px); }
+  .open-hint {
+    font-size: 11px; color: #B8761F;
+    background: #FFF4E5; border-radius: 8px;
+    padding: 8px 12px; margin-bottom: 16px;
+    line-height: 1.45;
+  }
   .footer {
     text-align: center; margin-top: 24px; font-size: 12px;
     color: #2C2C2C; opacity: 0.55; line-height: 1.7;
@@ -402,22 +418,26 @@ _INSTALL_HTML = """<!DOCTYPE html>
   <section id="ios-safari" hidden>
     <h1>Instalar no iPhone</h1>
     <p class="sub">Em 30 segundos você tem o auê na tela inicial, com ícone próprio e sem barra do navegador.</p>
+    <a href="/" class="open-app">1. Abrir o auê →</a>
+    <div class="open-hint">
+      ⚠️ Adicione o ícone <strong>enquanto estiver no auê</strong>, não nesta página — senão o ícone instalado abre as instruções, não o app.
+    </div>
     <div class="step">
-      <div class="num">1</div>
+      <div class="num">2</div>
       <div class="sc">
-        <div class="st">Toque o botão Compartilhar</div>
+        <div class="st">Lá no auê, toque o botão Compartilhar</div>
         <div class="sd">É o ícone <span class="ic"><svg width="14" height="18" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
       </div>
     </div>
     <div class="step">
-      <div class="num">2</div>
+      <div class="num">3</div>
       <div class="sc">
         <div class="st">Role e toque "Adicionar à Tela de Início"</div>
         <div class="sd">A opção fica perto do final da lista. Tem um ícone <span class="ic"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#2C2C2C" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
       </div>
     </div>
     <div class="step">
-      <div class="num">3</div>
+      <div class="num">4</div>
       <div class="sc">
         <div class="st">Toque "Adicionar" no canto superior direito</div>
         <div class="sd">Pronto. O ícone laranja do auê aparece na sua tela inicial.</div>
@@ -441,22 +461,26 @@ _INSTALL_HTML = """<!DOCTYPE html>
   <section id="android-chrome" hidden>
     <h1>Instalar no Android</h1>
     <p class="sub">O Chrome pode oferecer "Instalar app" automaticamente no rodapé. Se não aparecer:</p>
+    <a href="/" class="open-app">1. Abrir o auê →</a>
+    <div class="open-hint">
+      Faça os passos abaixo <strong>dentro do auê</strong>, não nesta página de instruções.
+    </div>
     <div class="step">
-      <div class="num">1</div>
+      <div class="num">2</div>
       <div class="sc">
         <div class="st">Toque o menu (3 pontinhos)</div>
         <div class="sd">No canto superior direito do navegador.</div>
       </div>
     </div>
     <div class="step">
-      <div class="num">2</div>
+      <div class="num">3</div>
       <div class="sc">
         <div class="st">Toque "Instalar app"</div>
         <div class="sd">Em alguns Androids aparece como "Adicionar à Tela inicial" — é a mesma coisa.</div>
       </div>
     </div>
     <div class="step">
-      <div class="num">3</div>
+      <div class="num">4</div>
       <div class="sc">
         <div class="st">Confirme "Instalar"</div>
         <div class="sd">O ícone do auê aparece junto dos outros apps. Da próxima vez, abre direto sem navegador.</div>
@@ -480,15 +504,19 @@ _INSTALL_HTML = """<!DOCTYPE html>
   <section id="desktop" hidden>
     <h1>Instalar no computador</h1>
     <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na tua área de trabalho.</p>
+    <a href="/" class="open-app">1. Abrir o auê →</a>
+    <div class="open-hint">
+      Os passos abaixo precisam ser feitos <strong>dentro do auê</strong>, não nesta página.
+    </div>
     <div class="step">
-      <div class="num">1</div>
+      <div class="num">2</div>
       <div class="sc">
         <div class="st">Procure o ícone de instalação na barra de endereço</div>
         <div class="sd">É um quadradinho com seta pra baixo, do lado direito da URL. Senão, abre o menu (3 pontos) → "Instalar auê".</div>
       </div>
     </div>
     <div class="step">
-      <div class="num">2</div>
+      <div class="num">3</div>
       <div class="sc">
         <div class="st">Confirme "Instalar"</div>
         <div class="sd">O auê abre numa janela própria, sem abas — comportamento de app.</div>
