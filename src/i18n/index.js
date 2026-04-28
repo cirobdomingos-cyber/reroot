@@ -537,6 +537,8 @@ export const T = {
     groups_event_save:      'Criar evento',
     groups_leave:           'Sair do grupo',
     groups_delete:          'Excluir grupo',
+    groups_delete_confirm:  'Excluir este grupo? Todos os membros vão perder acesso e todos os eventos serão removidos. Não dá pra desfazer.',
+    groups_delete_error:    'Falha ao excluir o grupo. Tenta de novo.',
     groups_admin:           'Admin',
     groups_join_title:      'Entrar no grupo',
     groups_join_success:    'Você entrou no grupo!',
@@ -615,6 +617,8 @@ T.en.groups_event_public = 'Public'
 T.en.groups_event_save = 'Create event'
 T.en.groups_leave = 'Leave group'
 T.en.groups_delete = 'Delete group'
+T.en.groups_delete_confirm = 'Delete this group? All members will lose access and every event will be removed. This cannot be undone.'
+T.en.groups_delete_error = 'Could not delete the group. Please try again.'
 T.en.groups_admin = 'Admin'
 T.en.groups_join_title = 'Join group'
 T.en.groups_join_success = 'You joined the group!'

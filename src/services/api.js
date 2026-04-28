@@ -632,6 +632,15 @@ export async function leaveGroup(groupId, googleId) {
   return res.json()
 }
 
+export async function deleteGroup(groupId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Delete group failed: ${res.status}`)
+  return res.json()
+}
+
 export async function createGroupEvent(groupId, googleId, eventData) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events`,

@@ -7,7 +7,7 @@ import Avatar from '../components/Avatar'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
-  leaveGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
+  leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -67,6 +67,16 @@ export default function GroupDetail() {
   async function handleLeave() {
     await leaveGroup(groupId, googleId)
     navigate('/groups')
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(t.groups_delete_confirm ?? 'Delete this group?')) return
+    try {
+      await deleteGroup(groupId, googleId)
+      navigate('/groups')
+    } catch {
+      alert(t.groups_delete_error ?? 'Could not delete the group.')
+    }
   }
 
   function handleRsvp(event) {
@@ -239,7 +249,7 @@ export default function GroupDetail() {
           {t.groups_leave}
         </button>
         {isAdmin && group.created_by === googleId && (
-          <button onClick={async () => { /* TODO: implement delete */ navigate('/groups') }} style={{ ...textBtnStyle, color: '#e74c3c', marginLeft: 16 }}>
+          <button onClick={handleDelete} style={{ ...textBtnStyle, color: '#e74c3c', marginLeft: 16 }}>
             {t.groups_delete}
           </button>
         )}
