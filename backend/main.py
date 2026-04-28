@@ -2661,7 +2661,7 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
 
 
 @app.post("/events/private")
-def create_personal_plan(req: PersonalPlanCreateRequest):
+def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: BackgroundTasks):
     """Create a 'personal plan' — an event tied to hand-picked invitees,
     no group attached. Side-effects:
       - Auto-RSVPs the creator (per product decision: making the plan
@@ -2669,6 +2669,11 @@ def create_personal_plan(req: PersonalPlanCreateRequest):
       - Pushes to every invitee with a friendly 'Ciro te convidou…'
         message; invitees see the event in their group-events feed even
         though it has no group_id.
+
+    Push fan-out runs in a BackgroundTask so the HTTP response doesn't
+    block on N serial webpush calls. With Railway cold-start, the
+    inline path easily exceeded the frontend's 5s fetch timeout and
+    surfaced as 'Failed to fetch' even though the event was created.
 
     The 'add a whole group's members' affordance is a frontend
     convenience — backend just receives the expanded invitee list.
@@ -2714,8 +2719,9 @@ def create_personal_plan(req: PersonalPlanCreateRequest):
     except Exception as e:
         log.warning(f"Personal plan {event['id']}: auto-RSVP failed: {e}")
 
-    # Push to invitees. Tag per (creator, event) so accidental double-creates
-    # collapse instead of stacking.
+    # Push fan-out in a background task. Tag per (creator, event) so accidental
+    # double-creates collapse instead of stacking. Body is computed here so the
+    # task closure has everything it needs.
     creator_name = _user_display_name(req.google_id)
     when_label = (req.date_start or "")[:10]
     venue_label = event.get("venue") or ""
@@ -2728,15 +2734,22 @@ def create_personal_plan(req: PersonalPlanCreateRequest):
         + (f", {when_label}" if when_label else "")
     )
     tag = f"personal-plan-{event['id']}"
-    for invitee in invitees:
-        _send_push_to_user(
-            invitee,
-            title=f"🎲 Convite",
-            body=body,
-            url=f"/#/events/{event['id']}",
-            tag=tag,
-        )
+    event_id = event["id"]
 
+    def _fanout_pushes():
+        for invitee in invitees:
+            try:
+                _send_push_to_user(
+                    invitee,
+                    title="🎲 Convite",
+                    body=body,
+                    url=f"/#/events/{event_id}",
+                    tag=tag,
+                )
+            except Exception as exc:
+                log.warning(f"Personal plan {event_id}: push to {invitee} failed: {exc}")
+
+    background_tasks.add_task(_fanout_pushes)
     return event
 
 

@@ -59,9 +59,9 @@ function setSyncStatus(update) {
   _syncListeners.forEach(fn => fn(_lastSyncStatus))
 }
 
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController()
-  const id = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const id = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, { ...options, signal: controller.signal })
     clearTimeout(id)
@@ -686,6 +686,9 @@ export async function deleteGroupEvent(groupId, eventId, googleId) {
 // Returns the created event row (not the frontend-shaped catalog event —
 // the next /events/group fetch will surface it shaped properly).
 export async function createPersonalPlan(googleId, { name, description = '', venue = '', date_start, date_end = null, note = '', invitee_google_ids = [] }) {
+  // 15s timeout (vs the 5s default) so cold-start + the brief synchronous
+  // DB writes have headroom. Push fan-out is BackgroundTask on the backend
+  // so the response itself is fast; this is just defense in depth.
   const res = await fetchWithTimeout(
     `${BASE_URL}/events/private`,
     {
@@ -697,6 +700,7 @@ export async function createPersonalPlan(googleId, { name, description = '', ven
         invitee_google_ids,
       }),
     },
+    15000,
   )
   if (!res.ok) {
     let detail = ''
