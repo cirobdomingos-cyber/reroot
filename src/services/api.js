@@ -224,8 +224,9 @@ export async function fetchEvents(mood = 'all', { curated = false } = {}) {
 export async function fetchEventDetail(eventId, googleId = '') {
   // Try backend first for richer data. Pass google_id when known so the
   // server can authorize personal-plan reads (creator + invitees only —
-  // catalog events ignore the param). Without it, personal plans 403 →
-  // frontend falls back to embedded data and shows "event doesn't exist".
+  // catalog events ignore the param). Returns a `forbidden` flag on 403
+  // so the caller can render a 'this is private' message instead of the
+  // silent-empty state that 'event doesn't exist' would imply.
   try {
     const url = googleId
       ? `${BASE_URL}/events/${eventId}?google_id=${encodeURIComponent(googleId)}`
@@ -234,6 +235,11 @@ export async function fetchEventDetail(eventId, googleId = '') {
     if (res.ok) {
       const data = await res.json()
       return { event: normalizeBackendEvent(data), source: 'live' }
+    }
+    if (res.status === 403) {
+      let msg = ''
+      try { msg = (await res.json()).detail || '' } catch {}
+      return { event: null, source: 'forbidden', forbidden: true, message: msg }
     }
   } catch {
     // Fall through to embedded data

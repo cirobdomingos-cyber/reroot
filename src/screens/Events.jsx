@@ -222,7 +222,15 @@ export default function Events() {
       return
     }
     setDetailLoading(true)
-    const { event } = await fetchEventDetail(eventId, state.googleUser?.id || '')
+    const { event, forbidden, message } = await fetchEventDetail(eventId, state.googleUser?.id || '')
+    if (forbidden) {
+      // Backend returned 403 (private plan / private group event). Render
+      // a friendly 'this is private' panel instead of the silent-empty
+      // state that masquerades as "link is broken".
+      setDetailEvent({ _forbidden: true, _message: message, id: eventId })
+      setDetailLoading(false)
+      return
+    }
     // Reconcile: if the backend doesn't know this event AND the user has
     // a stale RSVP for it (group event was deleted out from under them,
     // typically by the creator/admin), purge the local state.rsvps entry.
@@ -847,6 +855,34 @@ export default function Events() {
             {detailLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%' }}>
                 <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>{t.events_loading}</div>
+              </div>
+            ) : detailEvent?._forbidden ? (
+              // Backend returned 403 — show 'this is private' instead of
+              // the empty/silent state that masquerades as 'link broken'.
+              // Triggered for personal plans where the user isn't on the
+              // invitee list, or members-only group events the user
+              // isn't a member of.
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '70%', padding: 32 }}>
+                <div style={{ fontSize: 44, marginBottom: 12 }}>🔒</div>
+                <div style={{
+                  fontSize: 15, fontWeight: 700, color: 'var(--charcoal)',
+                  textAlign: 'center', marginBottom: 8,
+                }}>
+                  Evento privado
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 18, lineHeight: 1.5, maxWidth: 280 }}>
+                  {detailEvent._message || 'Só convidados podem ver os detalhes desse evento.'}
+                </div>
+                <button
+                  onClick={closeDetail}
+                  style={{
+                    padding: '10px 22px', borderRadius: 12, border: 'none',
+                    background: 'var(--sage)', color: 'white',
+                    fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Voltar
+                </button>
               </div>
             ) : !detailEvent ? (
               // Backend returned 404 — show a friendly fallback rather than

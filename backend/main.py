@@ -1289,12 +1289,30 @@ def get_event(event_id: str, google_id: str = ""):
     if event_id.startswith("grp_ev_"):
         ge = db.get_group_event(event_id)
         if ge:
-            if ge.get("group_id"):
-                group = db.get_group(ge["group_id"])
-                return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
-            # Personal plan: only creator + invitees may see it.
             invitees = ge.get("extra_invitee_ids") or []
-            if google_id and (google_id == ge["created_by"] or google_id in invitees):
+            creator_id = ge.get("created_by")
+            group_id = ge.get("group_id")
+            if group_id:
+                # Group event. Visibility decides who can read via the
+                # link: 'public' = anyone, 'members' = only the group's
+                # members + any extra invitees + the creator.
+                visibility = (ge.get("visibility") or "members").lower()
+                if visibility == "public":
+                    group = db.get_group(group_id)
+                    return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
+                # 'members' (default) — gate by membership / invitee / creator.
+                is_member = bool(google_id and db.get_group_member_role(group_id, google_id))
+                is_invitee = bool(google_id and google_id in invitees)
+                is_creator = bool(google_id and google_id == creator_id)
+                if is_member or is_invitee or is_creator:
+                    group = db.get_group(group_id)
+                    return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Evento privado de grupo — só membros do grupo podem ver",
+                )
+            # Personal plan (no group_id): only creator + invitees may see it.
+            if google_id and (google_id == creator_id or google_id in invitees):
                 return _group_event_to_frontend(ge)
             raise HTTPException(status_code=403, detail="Plano privado — só convidados podem ver")
 
