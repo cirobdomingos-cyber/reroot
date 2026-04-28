@@ -185,12 +185,27 @@ export default function Events() {
   }, [activeFilter, loadEvents])
 
   useEffect(() => {
-    const openId = location.state?.openEventId
+    // Two ways to deep-link into a specific event:
+    //   1. In-app navigation: navigate('/events', { state: { openEventId } })
+    //   2. Shareable link: /#/events?event=<id> (from share buttons)
+    // The URL form lets a recipient land here cold from a copied link;
+    // backend's GET /events/{id} handles both catalog and group_events
+    // (ids prefixed `grp_ev_`), so the same drawer renders either.
+    const stateId = location.state?.openEventId
+    const params = new URLSearchParams(location.search)
+    const queryId = params.get('event')
+    const openId = stateId || queryId
     if (openId && !loading) {
       openDetail(openId)
-      window.history.replaceState({}, '')
+      if (queryId) {
+        // Strip ?event= so the URL doesn't re-fire the effect on close
+        // and so the back button doesn't reopen the same drawer.
+        navigate('/events', { replace: true })
+      } else if (stateId) {
+        window.history.replaceState({}, '')
+      }
     }
-  }, [location.state?.openEventId, loading])
+  }, [location.state?.openEventId, location.search, loading, navigate])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
@@ -1133,12 +1148,13 @@ function DetailPanel({ event: ev, rsvped, friendsGoing = [], onClose, onRsvp, on
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
 
-  // Share message — works for both catalog and custom events. Custom events
-  // don't have a public URL, so we fall back to the app homepage; the text
-  // body carries the details (name, venue, date) so the recipient gets the
-  // gist even without a clickable preview.
+  // Share the in-app deep link (/#/events?event=<id>) for every event —
+  // catalog, group, custom — so recipients land in auê with the hero
+  // open, not on the original ticketing page. Backend's GET /events/{id}
+  // resolves catalog events and group events (ids prefixed grp_ev_); the
+  // Events screen reads `?event=` and opens the drawer on mount.
   async function handleShare() {
-    const url = ev.url && !ev.isCustom ? ev.url : appLink('/events')
+    const url = appLink(`/events?event=${encodeURIComponent(ev.id)}`)
     const dateStr = ev.date ? ` · ${ev.date}` : ''
     const venueStr = ev.venue ? ` no ${ev.venue}` : ''
     const text = `${ev.name}${venueStr}${dateStr}`

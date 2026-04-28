@@ -683,11 +683,12 @@ function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, on
 
   async function handleShare() {
     if (!event) return
-    // Catalog imports — share the original source URL so recipients can
-    // see ticketing/details. Otherwise fall back to the app /events page;
-    // the share text carries name + venue + date so it's useful even
-    // without a clickable link to the group (private to members).
-    const url = sourceUrl || appLink('/events')
+    // Always share the in-app deep link — keeps recipients in auê (and
+    // reachable even when they're not in the group). The Events tab
+    // reads `?event=<id>` and opens the hero drawer for both catalog
+    // events and group events (backend's /events/{id} handles both
+    // shapes; group ids are prefixed `grp_ev_`).
+    const url = appLink(`/events?event=${encodeURIComponent(event.id)}`)
     const venueStr = event.venue ? ` no ${event.venue}` : ''
     const dateStr = dateLabel ? ` · ${dateLabel}` : ''
     const text = `${event.name}${venueStr}${dateStr}`
