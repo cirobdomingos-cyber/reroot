@@ -25,6 +25,10 @@ export default function GroupDetail() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showCatalog, setShowCatalog]   = useState(false)
+  // Hero drawer for an individual group event. We hold the full event
+  // object (not just the id) so the drawer has everything it needs
+  // without a re-fetch — group payload already includes all events.
+  const [selectedEvent, setSelectedEvent] = useState(null)
   // Inline rename — admin-only. nameEdit = null when not editing,
   // otherwise the draft string.
   const [nameEdit, setNameEdit] = useState(null)
@@ -226,6 +230,7 @@ export default function GroupDetail() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           {upcomingEvents.map(ev => (
             <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]}
+              onOpen={() => setSelectedEvent(ev)}
               onRsvp={() => handleRsvp(ev)} onDelete={isAdmin || ev.created_by === googleId ? () => handleDeleteEvent(ev.id) : null}
               members={group.members} t={t} />
           ))}
@@ -238,7 +243,9 @@ export default function GroupDetail() {
           <h2 style={{ ...sectionTitleStyle, color: 'var(--charcoal-light)' }}>Past ({pastEvents.length})</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, opacity: 0.6 }}>
             {pastEvents.map(ev => (
-              <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]} past members={group.members} t={t} />
+              <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]} past
+                onOpen={() => setSelectedEvent(ev)}
+                members={group.members} t={t} />
             ))}
           </div>
         </>
@@ -261,37 +268,42 @@ export default function GroupDetail() {
       <CalendarSheet open={showCalendar} onClose={() => setShowCalendar(false)} group={group} feedUrl={feedUrl} t={t} />
       <AddEventSheet open={showAddEvent} onClose={() => setShowAddEvent(false)} onSave={handleAddEvent} t={t} />
       <CatalogPickerSheet open={showCatalog} onClose={() => setShowCatalog(false)} onPick={handleAddEvent} />
+      <GroupEventHero
+        event={selectedEvent}
+        group={group}
+        isRsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
+        canDelete={selectedEvent ? (isAdmin || selectedEvent.created_by === googleId) : false}
+        onClose={() => setSelectedEvent(null)}
+        onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
+        onDelete={async () => {
+          if (!selectedEvent) return
+          await handleDeleteEvent(selectedEvent.id)
+          setSelectedEvent(null)
+        }}
+        t={t}
+      />
     </div>
   )
 }
 
 
-function EventCard({ event, isRsvped, onRsvp, onDelete, past, t, members }) {
+function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members }) {
   // Find who added the event using the group's member list — the same
   // payload `created_by` that the backend stamps. Fallback: hide if we
   // can't resolve (member left the group, etc.).
   const creator = (members || []).find(m => m.google_id === event.created_by)
 
   // Catalog imports have "Ver original: <url>" appended to description.
-  // Pull it out as a clickable link, and clean it from the rendered text.
-  const urlMatch = (event.description || '').match(/Ver original:\s*(\S+)/)
-  const sourceUrl = urlMatch ? urlMatch[1] : null
-  const cleanDesc = sourceUrl
-    ? event.description.replace(/\n*Ver original:.*$/, '').trim()
-    : (event.description || '').trim()
-
-  function openSource(e) {
-    e.stopPropagation()
-    if (sourceUrl) window.open(sourceUrl, '_blank', 'noopener')
-  }
+  // Strip it for the card preview; the drawer surfaces the link properly.
+  const cleanDesc = (event.description || '').replace(/\n*Ver original:.*$/, '').trim()
 
   return (
     <div
-      onClick={sourceUrl ? openSource : undefined}
+      onClick={onOpen}
       style={{
         background: 'white', borderRadius: 14, padding: '12px 14px',
         border: '1px solid var(--border)',
-        cursor: sourceUrl ? 'pointer' : 'default',
+        cursor: onOpen ? 'pointer' : 'default',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -302,11 +314,6 @@ function EventCard({ event, isRsvped, onRsvp, onDelete, past, t, members }) {
             📅 {event.date_start?.slice(0, 10)} {event.date_start?.slice(11, 16)}
           </div>
           {cleanDesc && <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 4 }}>{cleanDesc}</div>}
-          {sourceUrl && (
-            <div style={{ fontSize: 11, color: 'var(--sage)', marginTop: 4, fontWeight: 600 }}>
-              🔗 Toque pra abrir o original
-            </div>
-          )}
           {creator && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
@@ -642,6 +649,209 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 
 
 // ── Shared components ──
+
+// Full-screen "Hero" drawer for an individual group event. Mirrors the
+// look of the catalog DetailPanel (Events tab) but reads directly from
+// the group_events shape — no shape conversion, no extra fetch (the
+// group payload already includes every event). Works the same whether
+// the event is a user-created one or a catalog import; the catalog
+// "Ver original" footer is parsed out of description and surfaced as
+// a button.
+function GroupEventHero({ event, group, isRsvped, canDelete, onClose, onRsvp, onDelete, t }) {
+  const open = !!event
+  const [shareStatus, setShareStatus] = useState(null)
+
+  // Hide the Companion FAB while the hero is up, same pattern as BottomSheet.
+  useEffect(() => {
+    if (!open) return
+    window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: 1 } }))
+    return () => window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: -1 } }))
+  }, [open])
+
+  if (typeof document === 'undefined') return null
+
+  // Pull "Ver original: <url>" out of description (catalog imports add it).
+  const urlMatch = (event?.description || '').match(/Ver original:\s*(\S+)/)
+  const sourceUrl = urlMatch ? urlMatch[1] : null
+  const cleanDesc = (event?.description || '').replace(/\n*Ver original:.*$/, '').trim()
+  const creator = event && (group?.members || []).find(m => m.google_id === event.created_by)
+
+  const dateLabel = event?.date_start
+    ? `${event.date_start.slice(0, 10)}${event.date_start.length > 10 ? ` · ${event.date_start.slice(11, 16)}` : ''}`
+    : ''
+  const isPublic = event?.visibility === 'public'
+
+  async function handleShare() {
+    if (!event) return
+    // Catalog imports — share the original source URL so recipients can
+    // see ticketing/details. Otherwise fall back to the app /events page;
+    // the share text carries name + venue + date so it's useful even
+    // without a clickable link to the group (private to members).
+    const url = sourceUrl || appLink('/events')
+    const venueStr = event.venue ? ` no ${event.venue}` : ''
+    const dateStr = dateLabel ? ` · ${dateLabel}` : ''
+    const text = `${event.name}${venueStr}${dateStr}`
+    const result = await shareLink({ url, title: event.name, text })
+    setShareStatus(result)
+    setTimeout(() => setShareStatus(null), 2200)
+  }
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="group-event-hero"
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'var(--cream)', zIndex: 1000,
+            overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {/* Hero band — sage gradient as default since group events have
+              no headerBg from the catalog enrichment pipeline. */}
+          <div style={{
+            height: 130,
+            background: sourceUrl
+              ? 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)'
+              : 'linear-gradient(135deg, var(--sage) 0%, #9ec0a0 100%)',
+            position: 'relative',
+          }}>
+            <button onClick={onClose} aria-label="Fechar" style={{
+              position: 'absolute', top: 12, left: 12,
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.92)', border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+            }}>←</button>
+            <div style={{ position: 'absolute', bottom: 12, left: 16, fontSize: 32 }}>
+              {sourceUrl ? '🌍' : '📅'}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 8 }}>
+              {event?.name}
+            </div>
+
+            {/* Pills row: visibility + source */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', borderRadius: 8,
+                background: isPublic ? 'var(--sage-pale)' : 'var(--terra-pale)',
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                color: isPublic ? 'var(--sage)' : 'var(--terra)',
+                textTransform: 'uppercase',
+              }}>
+                {isPublic ? '🌍 Público' : '🔒 Só membros'}
+              </span>
+              {sourceUrl && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px', borderRadius: 8,
+                  background: 'rgba(232, 98, 63, 0.10)',
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                  color: 'var(--terra)', textTransform: 'uppercase',
+                }}>
+                  🌐 Do catálogo
+                </span>
+              )}
+            </div>
+
+            {/* Date + venue */}
+            {dateLabel && (
+              <div style={{ fontSize: 14, color: 'var(--charcoal)', marginBottom: 4 }}>
+                📅 {dateLabel}
+              </div>
+            )}
+            {event?.venue && (
+              <div style={{ fontSize: 14, color: 'var(--charcoal)', marginBottom: 4 }}>
+                📍 {event.venue}
+              </div>
+            )}
+
+            {/* Description */}
+            {cleanDesc && (
+              <p style={{
+                fontSize: 14, color: 'var(--charcoal-mid)',
+                lineHeight: 1.5, marginTop: 12, whiteSpace: 'pre-wrap',
+              }}>
+                {cleanDesc}
+              </p>
+            )}
+
+            {/* Adicionado por */}
+            {creator && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
+                padding: '8px 12px', borderRadius: 12, background: 'white',
+                border: '1px solid var(--border)',
+              }}>
+                <Avatar name={creator.name} src={creator.picture} size={28} />
+                <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
+                  Adicionado por <strong style={{ color: 'var(--charcoal)' }}>{creator.name}</strong>
+                </span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
+              {onRsvp && (
+                <button onClick={onRsvp} style={{
+                  padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
+                  background: isRsvped ? 'var(--sage)' : 'var(--cream)',
+                  color: isRsvped ? 'white' : 'var(--charcoal)',
+                  fontSize: 14, fontWeight: 700,
+                }}>
+                  {isRsvped ? `✓ ${t.events_rsvped}` : t.events_rsvp}
+                </button>
+              )}
+
+              <button onClick={handleShare} style={{
+                padding: '13px', borderRadius: 14, border: '1.5px solid var(--border)',
+                background: 'white', color: 'var(--charcoal)',
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>
+                {shareStatus === 'shared' ? '✓ Compartilhado'
+                  : shareStatus === 'copied' ? '✓ Link copiado'
+                  : shareStatus === 'failed' ? '✕ Não consegui compartilhar'
+                  : '📤 Compartilhar'}
+              </button>
+
+              {sourceUrl && (
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{
+                  padding: '13px', borderRadius: 14,
+                  background: 'white', border: '1.5px solid var(--border)',
+                  fontSize: 14, fontWeight: 600,
+                  color: 'var(--terra)', textAlign: 'center',
+                  textDecoration: 'none',
+                }}>
+                  🔗 Ver original
+                </a>
+              )}
+
+              {canDelete && (
+                <button onClick={onDelete} style={{
+                  padding: '11px', borderRadius: 14, border: 'none',
+                  background: 'none', color: '#e74c3c',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}>
+                  Excluir evento
+                </button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  )
+}
 
 // Portaled to document.body so the sheet anchors to the real viewport
 // instead of being clipped by AnimatedPage's stacking context (framer-
