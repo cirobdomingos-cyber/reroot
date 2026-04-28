@@ -13,18 +13,20 @@ export default function BottomNav() {
   const t = useT()
   const a11y = state.accessibilityMode
 
-  // Curator status — fetched when the logged-in user changes. Cached in
-  // component state. The admin tab only renders for curators / founders.
-  const [isCurator, setIsCurator] = useState(false)
+  // Founder status — the Curar tab is now founder-only (full admin
+  // shell: handle CRUD, curators management, usage stats, feedback).
+  // Regular curators access handle ADD via the Sources page instead, so
+  // this tab is reserved for the deepest admin surface.
+  const [isFounder, setIsFounder] = useState(false)
   const email = state.googleUser?.email
 
   useEffect(() => {
-    if (!email) { setIsCurator(false); return }
+    if (!email) { setIsFounder(false); return }
     let cancelled = false
     fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled) setIsCurator(!!data?.is_curator) })
-      .catch(() => { if (!cancelled) setIsCurator(false) })
+      .then(data => { if (!cancelled) setIsFounder(!!data?.is_founder) })
+      .catch(() => { if (!cancelled) setIsFounder(false) })
     return () => { cancelled = true }
   }, [email])
 
@@ -81,9 +83,11 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    // Curator-only tab. Profile lives behind the Home avatar tap, so this
-    // is the rightmost slot when present.
-    isCurator && {
+    // Founder-only tab. Curators (non-founder) get a narrower 'add
+    // handle' affordance on the Sources page; this tab is the full admin
+    // shell. Rightmost slot when present (Profile lives behind the Home
+    // avatar tap, not in this nav).
+    isFounder && {
       path: '/admin/ig',
       label: 'Curar',
       icon: (active) => (
