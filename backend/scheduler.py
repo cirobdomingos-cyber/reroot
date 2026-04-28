@@ -24,14 +24,23 @@ scheduler = AsyncIOScheduler(timezone=SCHEDULER_TZ)
 async def run_refresh(settings):
     """
     Pipeline completo:
-      1. Busca eventos no Sympla + Eventbrite
+      1. Busca eventos nas fontes ativas (Eventbrite, Instagram via Apify,
+         SESC, Teatro Guaíra, MON, Turismo Curitiba)
       2. Enriquece com Claude
       3. Persiste no SQLite
+
+    Sources removidos em 2026-04 (não vale a pena consertar):
+      - Sympla: discovery feed `curitiba-pr` vaza 100% de eventos de SC/RS,
+        portanto nada passa pelo filtro de cidade. Sympla precisa arrumar
+        o backend deles antes de re-habilitar.
+      - Catraca Livre: WP API serve majoritariamente artigos editoriais,
+        não calendário. Claude filtra tudo (corretamente).
+      - Ingresso.com: descoberta migrou pra client-side rendering, página
+        não tem mais conteúdo SSR. Precisaria de browser headless.
+      - Meetup: densidade de eventos no Brasil é genuinamente baixa.
     """
     # Imports aqui para evitar circular imports
-    from scrapers.sympla import fetch_events as sympla_fetch
     from scrapers.eventbrite import fetch_events as eventbrite_fetch
-    from scrapers.meetup import fetch_events as meetup_fetch
     # Instagram scraping now goes through Apify, not the instaloader-based
     # scraper. The old module is kept for reference but no longer wired up.
     from scrapers.instagram_apify import fetch_events as instagram_fetch
@@ -55,17 +64,6 @@ async def run_refresh(settings):
     # that come from the persistence loop, not from raw fetch sizes.
     pending_log_ids: dict[str, int] = {}
 
-    # ── Sympla (no city filter — API returns few results, accept all) ──
-    log_id = db.log_refresh_start("sympla")
-    try:
-        sympla_events = await sympla_fetch(settings.sympla_token, city="")
-        all_raws.extend(sympla_events)
-        pending_log_ids["sympla"] = log_id
-        log.info(f"  Sympla: {len(sympla_events)} eventos brutos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Sympla falhou: {e}")
-
     # ── Eventbrite ──
     log_id = db.log_refresh_start("eventbrite")
     try:
@@ -76,17 +74,6 @@ async def run_refresh(settings):
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Eventbrite falhou: {e}")
-
-    # ── Meetup (public GraphQL API — no key needed) ──
-    log_id = db.log_refresh_start("meetup")
-    try:
-        meetup_events = await meetup_fetch(city=city)
-        all_raws.extend(meetup_events)
-        pending_log_ids["meetup"] = log_id
-        log.info(f"  Meetup: {len(meetup_events)} eventos brutos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Meetup falhou: {e}")
 
     # ── Instagram via Apify (Claude extracts events from public profile posts) ──
     log_id = db.log_refresh_start("instagram")
@@ -123,30 +110,6 @@ async def run_refresh(settings):
     except Exception as e:
         db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
         log.error(f"  Teatro Guaíra falhou: {e}")
-
-    # ── Catraca Livre (free/low-cost event aggregator — WordPress API) ──
-    from scrapers.catraca_livre import fetch_events as catraca_fetch
-    log_id = db.log_refresh_start("catraca_livre")
-    try:
-        cl_events = await catraca_fetch(anthropic_api_key=settings.anthropic_api_key, city=city)
-        all_raws.extend(cl_events)
-        pending_log_ids["catraca_livre"] = log_id
-        log.info(f"  Catraca Livre: {len(cl_events)} eventos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Catraca Livre falhou: {e}")
-
-    # ── Ingresso.com (Brazil's largest ticketing platform — JSON-LD extraction) ──
-    from scrapers.ingresso import fetch_events as ingresso_fetch
-    log_id = db.log_refresh_start("ingresso")
-    try:
-        ing_events = await ingresso_fetch(city=city)
-        all_raws.extend(ing_events)
-        pending_log_ids["ingresso"] = log_id
-        log.info(f"  Ingresso.com: {len(ing_events)} eventos")
-    except Exception as e:
-        db.log_refresh_finish(log_id, events_new=0, events_updated=0, error=str(e))
-        log.error(f"  Ingresso.com falhou: {e}")
 
     # ── MON (Museu Oscar Niemeyer — long-running exhibitions, perfect Reroot fit) ──
     from scrapers.mon import fetch_events as mon_fetch

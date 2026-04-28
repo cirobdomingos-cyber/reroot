@@ -26,7 +26,7 @@ if env_path.exists():
         k, _, v = line.partition("=")
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
-from scrapers import sympla, eventbrite, meetup, sesc, prefeitura  # noqa: E402
+from scrapers import eventbrite, sesc, prefeitura, mon, turismo_curitiba  # noqa: E402
 
 
 CITY = os.environ.get("CITY", "Curitiba")
@@ -55,21 +55,19 @@ async def run_one(name: str, coro):
 
 
 async def main():
-    sympla_token = os.environ.get("SYMPLA_TOKEN", "")
     eb_token = os.environ.get("EVENTBRITE_TOKEN", "")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
     print(f"city={CITY}  days_ahead={DAYS}")
-    print(f"sympla_token={'set' if sympla_token else 'MISSING'}  "
-          f"eventbrite_token={'set' if eb_token else 'MISSING'}  "
+    print(f"eventbrite_token={'set' if eb_token else 'MISSING'}  "
           f"anthropic_key={'set' if anthropic_key else 'MISSING'}")
 
     results = []
-    results.append(await run_one("sympla", sympla.fetch_events(token=sympla_token, city=CITY, days_ahead=DAYS)))
     results.append(await run_one("eventbrite", eventbrite.fetch_events(token=eb_token, city=CITY, days_ahead=DAYS)))
-    results.append(await run_one("meetup", meetup.fetch_events(city=CITY, days_ahead=DAYS)))
     results.append(await run_one("sesc", sesc.fetch_events(city=CITY, anthropic_api_key=anthropic_key, days_ahead=DAYS)))
-    results.append(await run_one("prefeitura", prefeitura.fetch_events(city=CITY, days_ahead=DAYS)))
+    results.append(await run_one("teatro_guaira", prefeitura.fetch_events(city=CITY, days_ahead=DAYS)))
+    results.append(await run_one("mon", mon.fetch_events(city=CITY, days_ahead=DAYS)))
+    results.append(await run_one("turismo_curitiba", turismo_curitiba.fetch_events(city=CITY, days_ahead=DAYS)))
 
     print("\n── summary " + "─" * 56)
     for name, count, status in results:

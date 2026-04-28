@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     anthropic_api_key: str = ""
-    sympla_token: str = ""
     eventbrite_token: str = ""
     instagram_user: str = ""
     instagram_pass: str = ""
@@ -245,8 +244,8 @@ por quê, e o que você pode pedir pra remover.</p>
 </ul>
 
 <h2>De onde vêm os eventos do catálogo</h2>
-<p>Os eventos exibidos vêm de fontes públicas: Sympla, Eventbrite, sites de instituições
-culturais (MON, SESC, Teatro Guaíra, Catraca Livre, Turismo Curitiba) e perfis públicos
+<p>Os eventos exibidos vêm de fontes públicas: Eventbrite, sites de instituições
+culturais (MON, SESC, Teatro Guaíra, Turismo Curitiba) e perfis públicos
 do Instagram que você pode ver na tela <em>Fontes monitoradas</em>. Pra extrair informações
 estruturadas das legendas do Instagram, a gente usa a API da <a href="https://www.anthropic.com/legal/privacy">Anthropic (Claude)</a>;
 nada de dados pessoais seus é enviado, só o conteúdo público dos posts.</p>
@@ -762,14 +761,11 @@ def health():
         "anthropic_configured": bool(_anthropic_key_status.get("valid")),
         "anthropic_error": _anthropic_key_status.get("error"),
         "anthropic_checked_at": _anthropic_key_status.get("checked_at"),
-        "sympla_configured": bool(settings.sympla_token),
         "eventbrite_configured": bool(settings.eventbrite_token),
         "instagram_configured": bool(settings.apify_api_token),
         "apify_configured": bool(settings.apify_api_token),
         "sesc_configured": True,
         "teatro_guaira_configured": True,
-        "catraca_livre_configured": True,
-        "ingresso_configured": True,
         "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
         "google_places_configured": bool(settings.google_places_api_key),
         # SMTP shows whether scrape-summary emails will fire. Both vars
@@ -798,7 +794,7 @@ _MOOD_KIND = {
 }
 _MOOD_SOURCES = {
     # Institutional curators — museums, theatres, public-cultural orgs
-    "cultural": {"mon", "sesc", "teatro_guaira", "ingresso", "catraca_livre"},
+    "cultural": {"mon", "sesc", "teatro_guaira"},
 }
 
 
@@ -1297,8 +1293,8 @@ def stats():
         "sources": {
             src: sum(1 for e in events if e.source == src)
             for src in [
-                "sympla", "eventbrite", "meetup", "instagram",
-                "sesc", "teatro_guaira", "catraca_livre", "ingresso",
+                "eventbrite", "instagram",
+                "sesc", "teatro_guaira",
                 "mon", "turismo_curitiba",
                 "ai_generated", "submitted", "aue_original",
             ]
@@ -1391,24 +1387,6 @@ _INSTITUTIONAL_SOURCES = {
         "icon": "🎭",
         "blurb": "Teatro estatal do Paraná: concertos, balé, ópera, peças.",
     },
-    "ingresso": {
-        "label": "Ingresso.com",
-        "url": "https://www.ingresso.com/",
-        "icon": "🎫",
-        "blurb": "Eventos com ingressos comerciais em Curitiba.",
-    },
-    "catraca_livre": {
-        "label": "Catraca Livre",
-        "url": "https://catracalivre.com.br/",
-        "icon": "🎟",
-        "blurb": "Eventos gratuitos e de baixo custo em Curitiba.",
-    },
-    "sympla": {
-        "label": "Sympla",
-        "url": "https://www.sympla.com.br/eventos/curitiba-pr",
-        "icon": "🎟",
-        "blurb": "Plataforma brasileira de venda de ingressos.",
-    },
     "eventbrite": {
         "label": "Eventbrite",
         "url": "https://www.eventbrite.com.br/d/brazil--curitiba/events/",
@@ -1426,12 +1404,6 @@ _INSTITUTIONAL_SOURCES = {
         "url": "",
         "icon": "⭐",
         "blurb": "Eventos curados pela equipe do auê.",
-    },
-    "meetup": {
-        "label": "Meetup",
-        "url": "https://www.meetup.com/find/?location=br--82--Curitiba",
-        "icon": "👥",
-        "blurb": "Encontros de comunidades e grupos de interesse.",
     },
 }
 
@@ -1489,7 +1461,7 @@ def list_sources():
 def source_detail(source_id: str):
     """
     Detail for a single source: metadata + upcoming events.
-    `source_id` can be an institutional key ("mon", "sympla", ...) or
+    `source_id` can be an institutional key ("mon", "eventbrite", ...) or
     "ig:<handle>" for an Instagram handle.
     """
     today = date.today().isoformat()

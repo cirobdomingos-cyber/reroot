@@ -277,7 +277,7 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, pri
           lineHeight: 1.6, marginTop: 22, textAlign: 'center',
           letterSpacing: 0.3,
         }}>
-          Sympla · Eventbrite · MON · SESC · Catraca Livre · Instagram<br/>
+          Eventbrite · MON · SESC · Teatro Guaíra · Turismo CWB · Instagram<br/>
           Atualizado todo dia.
         </div>
       </div>
