@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
@@ -642,17 +643,34 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 
 // ── Shared components ──
 
+// Portaled to document.body so the sheet anchors to the real viewport
+// instead of being clipped by AnimatedPage's stacking context (framer-
+// motion sets an inline transform, which makes it the containing block
+// for `position: fixed` descendants — that's what was hiding the
+// "Criar evento" button on smaller phones).
 function BottomSheet({ open, onClose, title, children }) {
-  return (
+  // Hide the Companion FAB while this sheet is up.
+  useEffect(() => {
+    if (!open) return
+    window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: 1 } }))
+    return () => window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: -1 } }))
+  }, [open])
+
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
           <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200 }} />
+            onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999 }} />
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
-              borderRadius: '20px 20px 0 0', padding: '8px 20px 28px', zIndex: 201, maxHeight: '80vh', overflowY: 'auto' }}>
+              borderRadius: '20px 20px 0 0',
+              padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
+              zIndex: 1000, maxHeight: '85vh', overflowY: 'auto',
+              overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
             </div>
@@ -665,7 +683,8 @@ function BottomSheet({ open, onClose, title, children }) {
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 
