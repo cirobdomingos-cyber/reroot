@@ -935,29 +935,100 @@ def get_venue_dashboard_stats(handle: str) -> dict:
         rsvps_30d = _rsvp_count(iso_30d)
         rsvps_all = _rsvp_count(None)
 
-        # ── Top-5 events by RSVPs (all-time, future + past). Renders
-        # as the "Eventos com mais tração" list in the dashboard. ──
-        top_rows = conn.execute(
-            f"""SELECT event_id, event_name, COUNT(*) AS rsvp_count
+        # ── Per-event breakdown ── every event from this venue with
+        # its individual view + RSVP counts. Drives the "Posts" list
+        # on the dashboard so the venue sees which specific shows
+        # converted. Capped at 100 (well above any real venue's
+        # backlog) just so the response stays bounded.
+        rsvp_counts: dict[str, int] = {}
+        rsvp_names: dict[str, str] = {}
+        for r in conn.execute(
+            f"""SELECT event_id, event_name, COUNT(*) AS c
                 FROM rsvps WHERE event_id IN ({placeholders})
-                GROUP BY event_id ORDER BY rsvp_count DESC LIMIT 5""",
+                GROUP BY event_id""",
             event_ids,
-        ).fetchall()
-        top_events = []
-        for r in top_rows:
-            ev_id = r["event_id"]
-            view_row = conn.execute(
-                """SELECT COUNT(*) AS c FROM analytics_events
-                   WHERE event_name = 'event_view'
-                     AND json_extract(properties_json, '$.event_id') = ?""",
-                (ev_id,),
-            ).fetchone()
-            view_count = int(view_row["c"]) if view_row else 0
-            top_events.append({
+        ).fetchall():
+            rsvp_counts[r["event_id"]] = int(r["c"])
+            rsvp_names[r["event_id"]] = r["event_name"]
+
+        view_counts: dict[str, int] = {}
+        for r in conn.execute(
+            """SELECT json_extract(properties_json, '$.event_id') AS ev_id,
+                      COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name = 'event_view'
+                 AND json_extract(properties_json, '$.ig_handle') = ?
+               GROUP BY ev_id""",
+            (handle,),
+        ).fetchall():
+            if r["ev_id"]:
+                view_counts[r["ev_id"]] = int(r["c"])
+
+        # Pull payload metadata for each event so the dashboard can
+        # show name + date alongside the counts.
+        ev_meta: dict[str, dict] = {}
+        for r in evs:
+            try:
+                payload = json.loads(r["payload"])
+                ev_meta[r["id"]] = {
+                    "name": payload.get("name") or rsvp_names.get(r["id"]) or r["id"],
+                    "date_start": payload.get("date_start") or "",
+                }
+            except Exception:
+                ev_meta[r["id"]] = {"name": rsvp_names.get(r["id"]) or r["id"], "date_start": ""}
+
+        events_breakdown = []
+        for ev_id in event_ids:
+            meta = ev_meta.get(ev_id, {})
+            events_breakdown.append({
                 "event_id": ev_id,
-                "name": r["event_name"],
-                "rsvps": int(r["rsvp_count"]),
-                "views": view_count,
+                "name": meta.get("name") or ev_id,
+                "date_start": meta.get("date_start") or "",
+                "rsvps": rsvp_counts.get(ev_id, 0),
+                "views": view_counts.get(ev_id, 0),
+            })
+        # Sort by views DESC then RSVPs DESC (clicks reflect interest;
+        # RSVPs are the secondary tiebreaker for popular silent events).
+        events_breakdown.sort(key=lambda e: (-e["views"], -e["rsvps"], e["name"]))
+        events_breakdown = events_breakdown[:100]
+        # Top-5 stays as a convenience copy for the "Eventos com mais
+        # tração" callout — same data, just sliced.
+        top_events = events_breakdown[:5]
+
+        # ── Daily activity series (last 30 days) — views + RSVPs per
+        # day. Powers the stacked bar chart on the dashboard. UTC-day
+        # buckets so the rendering math is straightforward; the venue
+        # reads it as roughly Curitiba-day (UTC-3). ──
+        daily_views: dict[str, int] = {}
+        for r in conn.execute(
+            """SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name = 'event_view'
+                 AND json_extract(properties_json, '$.ig_handle') = ?
+                 AND created_at >= ?
+               GROUP BY d""",
+            (handle, iso_30d),
+        ).fetchall():
+            daily_views[r["d"]] = int(r["c"])
+        daily_rsvps: dict[str, int] = {}
+        for r in conn.execute(
+            f"""SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS c
+                FROM rsvps
+                WHERE event_id IN ({placeholders})
+                  AND created_at >= ?
+                GROUP BY d""",
+            (*event_ids, iso_30d),
+        ).fetchall():
+            daily_rsvps[r["d"]] = int(r["c"])
+        # Fill the 30-day window so the chart has a continuous strip
+        # (no gaps in days with zero activity).
+        daily_breakdown = []
+        for i in range(29, -1, -1):
+            day = (now - timedelta(days=i)).date().isoformat()
+            daily_breakdown.append({
+                "date": day,
+                "views": daily_views.get(day, 0),
+                "rsvps": daily_rsvps.get(day, 0),
             })
 
         # ── Hour-of-day distribution of event views (24-bucket).
@@ -1006,6 +1077,8 @@ def get_venue_dashboard_stats(handle: str) -> dict:
         "conversion_rate": conv_rate,
         "friends_amplified": friends_amplified,
         "top_events":      top_events,
+        "events_breakdown": events_breakdown,
+        "daily_breakdown": daily_breakdown,
         "hour_distribution_local": hour_dist,
     }
 
@@ -1019,6 +1092,8 @@ def _empty_dashboard_stats() -> dict:
         "conversion_rate": 0.0,
         "friends_amplified": 0,
         "top_events":      [],
+        "events_breakdown": [],
+        "daily_breakdown": [],
         "hour_distribution_local": [0] * 24,
     }
 

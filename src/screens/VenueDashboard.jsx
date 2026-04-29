@@ -154,37 +154,20 @@ export default function VenueDashboard() {
             />
           </div>
 
-          {/* Top 5 events */}
-          {data.top_events.length > 0 && (
-            <div style={{ padding: '0 16px 14px' }}>
-              <h2 style={sectionTitle}>🏆 Eventos com mais tração</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {data.top_events.map((e, i) => (
-                  <div key={e.event_id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 12px', background: 'white',
-                    border: '1px solid var(--border)', borderRadius: 10,
-                  }}>
-                    <div style={{
-                      width: 24, height: 24, borderRadius: '50%',
-                      background: i === 0 ? 'var(--honey)' : 'var(--cream)',
-                      color: i === 0 ? 'white' : 'var(--charcoal-mid)',
-                      fontSize: 11, fontWeight: 800,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>{i + 1}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>{e.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
-                        {e.views} view{e.views === 1 ? '' : 's'} · {e.rsvps} RSVP{e.rsvps === 1 ? '' : 's'}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+
+          {/* Daily activity — stacked bar (views + RSVPs) for the
+              last 30 days. Reads as "how busy was each day" and lets
+              the venue spot post-event spikes vs steady state. */}
+          {data.daily_breakdown && data.daily_breakdown.length > 0 && (
+            <DailyActivity daily={data.daily_breakdown} />
+          )}
+
+          {/* Per-event breakdown — every post from this venue with its
+              individual click + RSVP counts. Default: top 8; "Ver
+              tudo" expands to the full list. The medal on rank 1
+              keeps the "tração" framing for the standout. */}
+          {(data.events_breakdown && data.events_breakdown.length > 0) && (
+            <EventsBreakdown events={data.events_breakdown} />
           )}
 
           {/* Hour of day distribution — when is your audience looking */}
@@ -234,6 +217,172 @@ export default function VenueDashboard() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+function DailyActivity({ daily }) {
+  // Stacked bar — views in terra-light blue at the bottom, RSVPs in
+  // sage on top. Day labels show every 5 days to keep the strip
+  // readable on a 360px screen. Hover/long-press shows "30 abr — 12
+  // views, 3 RSVPs" via title attr.
+  const max = Math.max(1, ...daily.map(d => d.views + d.rsvps))
+  const totalViews = daily.reduce((s, d) => s + d.views, 0)
+  const totalRsvps = daily.reduce((s, d) => s + d.rsvps, 0)
+  return (
+    <div style={{ padding: '0 16px 14px' }}>
+      <h2 style={sectionTitle}>📊 Atividade nos últimos 30 dias</h2>
+      <div style={{
+        background: 'white', border: '1px solid var(--border)',
+        borderRadius: 10, padding: '12px 14px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 110 }}>
+          {daily.map((d) => {
+            const total = d.views + d.rsvps
+            const totalH = (total / max) * 90
+            const viewH = total === 0 ? 0 : (d.views / total) * totalH
+            const rsvpH = total === 0 ? 0 : (d.rsvps / total) * totalH
+            const dateLabel = (() => {
+              try { return new Date(d.date + 'T12:00:00Z').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) }
+              catch { return d.date }
+            })()
+            return (
+              <div
+                key={d.date}
+                title={`${dateLabel} — ${d.views} views, ${d.rsvps} RSVPs`}
+                style={{
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'flex-end',
+                  minWidth: 0, height: 100,
+                }}
+              >
+                {total > 0 && (
+                  <span style={{
+                    fontSize: 7, fontWeight: 700, color: 'var(--charcoal-mid)',
+                    marginBottom: 1, fontVariantNumeric: 'tabular-nums',
+                  }}>{total}</span>
+                )}
+                <div style={{
+                  width: '100%', display: 'flex', flexDirection: 'column',
+                  justifyContent: 'flex-end', height: `${totalH}px`,
+                }}>
+                  <div style={{
+                    background: 'var(--sage)',
+                    height: `${rsvpH}px`,
+                    borderRadius: rsvpH > 0 ? '2px 2px 0 0' : 0,
+                  }}/>
+                  <div style={{
+                    background: 'var(--terra-light)',
+                    height: `${viewH}px`,
+                  }}/>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between',
+          fontSize: 9, color: 'var(--charcoal-light)', marginTop: 6,
+        }}>
+          <span>{daily[0] && new Date(daily[0].date + 'T12:00:00Z').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
+          <span>hoje</span>
+        </div>
+        <div style={{
+          display: 'flex', gap: 14, fontSize: 11, marginTop: 8,
+          color: 'var(--charcoal-mid)', fontWeight: 600,
+        }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--terra-light)', borderRadius: 2 }}/>
+            Views · {totalViews}
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--sage)', borderRadius: 2 }}/>
+            RSVPs · {totalRsvps}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EventsBreakdown({ events }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? events : events.slice(0, 8)
+  const hidden = events.length - visible.length
+  function fmtDate(iso) {
+    if (!iso) return ''
+    try {
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return ''
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+    } catch { return '' }
+  }
+  return (
+    <div style={{ padding: '0 16px 14px' }}>
+      <h2 style={sectionTitle}>📋 Posts &amp; performance · {events.length}</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {visible.map((e, i) => (
+          <div key={e.event_id} style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 12px', background: 'white',
+            border: '1px solid var(--border)', borderRadius: 10,
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: '50%',
+              background: i === 0 ? 'var(--honey)' : 'var(--cream)',
+              color: i === 0 ? 'white' : 'var(--charcoal-mid)',
+              fontSize: 10, fontWeight: 800, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{i + 1}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{e.name}</div>
+              <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
+                {fmtDate(e.date_start)}
+              </div>
+            </div>
+            <div style={{
+              display: 'flex', gap: 8, fontSize: 11, fontWeight: 700,
+              flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+            }}>
+              <span title={`${e.views} visualizações`} style={{ color: 'var(--terra-light)' }}>
+                👀 {e.views}
+              </span>
+              <span title={`${e.rsvps} confirmaram presença`} style={{ color: 'var(--sage)' }}>
+                🙌 {e.rsvps}
+              </span>
+            </div>
+          </div>
+        ))}
+        {hidden > 0 && !expanded && (
+          <button
+            onClick={() => setExpanded(true)}
+            style={{
+              padding: '8px 12px', borderRadius: 10,
+              border: '1px dashed var(--border)', background: 'transparent',
+              fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
+              cursor: 'pointer',
+            }}
+          >
+            + Ver todos os {events.length} posts
+          </button>
+        )}
+        {expanded && events.length > 8 && (
+          <button
+            onClick={() => setExpanded(false)}
+            style={{
+              padding: '8px 12px', borderRadius: 10,
+              border: '1px dashed var(--border)', background: 'transparent',
+              fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
+              cursor: 'pointer',
+            }}
+          >
+            − Mostrar menos
+          </button>
+        )}
+      </div>
     </div>
   )
 }

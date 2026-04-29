@@ -645,6 +645,18 @@ export async function fetchVenueDashboard(handle, requestingEmail) {
       try { detail = (await res.json()).detail || '' } catch {}
       return { error: detail || `HTTP ${res.status}`, status: res.status }
     }
+    // Defensive content-type check. When the backend hasn't deployed
+    // the /venue/{handle}/stats route yet, the SPA fallback at /
+    // returns index.html with a 200, and res.json() blows up with
+    // "Unexpected token '<', '<!DOCTYPE'…". Treat that as "endpoint
+    // not available yet" rather than a parse error.
+    const ct = (res.headers.get('content-type') || '').toLowerCase()
+    if (!ct.includes('application/json')) {
+      return {
+        error: 'O painel ainda não está disponível neste servidor. Aguarde o deploy ou recarregue.',
+        status: 503,
+      }
+    }
     const data = await res.json()
     if (data?.profile_pic_url) {
       data.profile_pic_url = absoluteImageUrl(data.profile_pic_url)
