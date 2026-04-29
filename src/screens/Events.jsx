@@ -967,14 +967,16 @@ export default function Events() {
           ].map(r => {
             const isAllChip = r.id === 'all'
             const dayPicked = !!selectedDay
-            // "Tudo" doubles as the reset for any date narrowing, including
-            // a per-day pick from the week strip. When a day is picked it
-            // re-labels as "✕ Todas as datas" and a tap clears both the
-            // range and the day pick. Active state requires both at default.
+            const dateActive = dayPicked || dateRange !== 'all'
+            // "Tudo" doubles as the reset for any date narrowing — a
+            // per-day pick from the week strip OR a non-default range
+            // (Hoje / Fim de semana / Próx 7 dias). Whenever ANY date
+            // filter is active, Tudo re-labels to "✕ Todas as datas"
+            // so the escape hatch is obvious. Tap clears both axes.
             const active = isAllChip
-              ? (dateRange === 'all' && !dayPicked)
+              ? !dateActive
               : dateRange === r.id
-            const label = isAllChip && dayPicked ? '✕ Todas as datas' : r.label
+            const label = isAllChip && dateActive ? '✕ Todas as datas' : r.label
             return (
               <button
                 key={r.id}
