@@ -3584,6 +3584,41 @@ def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
     return rehost_pending_avatars(limit=limit)
 
 
+@app.get("/admin/diag/rsvps")
+def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = ""):
+    """Founder-only: dump the rsvps table rows for a target user and
+    their friends list. One-off diagnostic — deletes the mystery of
+    'why doesn't X see Y in /friends/feed' without needing DB shell."""
+    _require_founder(requesting_email)
+    if not target_google_id:
+        raise HTTPException(status_code=400, detail="target_google_id required")
+    today = date.today().isoformat()
+    with db.get_conn() as conn:
+        own_rsvps = [dict(r) for r in conn.execute(
+            "SELECT event_id, event_name, event_date FROM rsvps WHERE google_id = ? ORDER BY event_date",
+            (target_google_id,),
+        ).fetchall()]
+        friends = db.get_friends(target_google_id)
+        friend_ids = [f["google_id"] for f in friends]
+        friend_rsvps_future = []
+        if friend_ids:
+            ph = ",".join("?" * len(friend_ids))
+            friend_rsvps_future = [dict(r) for r in conn.execute(
+                f"""SELECT google_id, event_id, event_name, event_date
+                    FROM rsvps WHERE google_id IN ({ph})
+                    AND (event_date = '' OR event_date >= ?)
+                    ORDER BY event_date""",
+                friend_ids + [today],
+            ).fetchall()]
+    return {
+        "target": target_google_id,
+        "today": today,
+        "own_rsvps": own_rsvps,
+        "friends": [{"google_id": f["google_id"], "name": f.get("name", "")} for f in friends],
+        "friends_future_rsvps": friend_rsvps_future,
+    }
+
+
 @app.post("/admin/avatars/clear-bot-blocked")
 def admin_clear_bot_blocked_avatars(requesting_email: str = ""):
     """Cleanup: when IG's bot detection fires on a profile-page fetch,
