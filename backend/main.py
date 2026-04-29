@@ -3570,6 +3570,41 @@ def admin_clear_bot_blocked_avatars(requesting_email: str = ""):
     return clear_bot_blocked_avatars()
 
 
+class AvatarRehostFromUrl(BaseModel):
+    requesting_email: str = ""
+    handle: str
+    source_url: str
+
+
+@app.post("/admin/avatars/rehost-url")
+def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
+    """Rehost a single avatar from a caller-provided IG CDN URL.
+
+    Why this exists: Railway IPs get bot-blocked when scraping
+    instagram.com for og:image, so the founder fetches the og:image
+    from their local machine (which works) and POSTs the URL here.
+    Server downloads the image bytes, stores under /event-images/avatars,
+    updates the DB row. Founder-only."""
+    _require_founder(req.requesting_email)
+    from image_store import rehost_avatar
+    handle = (req.handle or "").strip().lstrip("@").lower()
+    if not handle:
+        raise HTTPException(status_code=400, detail="handle required")
+    src = (req.source_url or "").strip()
+    if not src or "static.cdninstagram.com" in src or "/rsrc.php/" in src:
+        raise HTTPException(status_code=400, detail="invalid source_url")
+    local = rehost_avatar(handle, src)
+    if not local:
+        raise HTTPException(status_code=502, detail="rehost failed")
+    with db.get_conn() as conn:
+        conn.execute(
+            "UPDATE tracked_ig_accounts SET profile_pic_url = ? WHERE handle = ?",
+            (local, handle),
+        )
+        conn.commit()
+    return {"ok": True, "handle": handle, "stored_at": local}
+
+
 @app.post("/admin/images/rehost")
 def admin_rehost_images(requesting_email: str = "", limit: int = 50):
     """One-shot backfill: rehost IG-CDN-served event images that haven't
