@@ -1020,10 +1020,33 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
           )}
         </div>
         <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
-          @{v.handle} · 📅 {lastScrape} · {v.future_events} evt
+          @{v.handle} · 📅 {lastScrape}
           {v.category && <> · {v.category}</>}
         </div>
       </button>
+
+      {/* Events column — surfaces "how big is this venue's catalog
+          right now" before the engagement stats. A venue with 12
+          upcoming events is structurally different from one with 1,
+          so it deserves its own column instead of being buried in
+          the meta line. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        flexShrink: 0, minWidth: 38,
+      }}>
+        <span style={{
+          fontSize: 16, fontWeight: 800, color: 'var(--terra)',
+          fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+        }}>
+          {v.future_events}
+        </span>
+        <span style={{
+          fontSize: 8, fontWeight: 700, color: 'var(--charcoal-light)',
+          textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2,
+        }}>
+          eventos
+        </span>
+      </div>
 
       {/* Stats column — views / RSVPs / conversion. Tabular nums so
           the column aligns across rows. */}
