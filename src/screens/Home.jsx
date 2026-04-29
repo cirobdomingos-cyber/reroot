@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { scheduleEventReminder } from '../lib/notifications'
-import AddToCalendar from '../components/AddToCalendar'
 import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
@@ -441,7 +440,6 @@ export default function Home() {
                 featured={!!ev.featured}
                 isGroupEvent={!!ev.isGroupEvent}
                 onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
-                trailing={<AddToCalendar event={ev} />}
               />
             ))}
           </div>
