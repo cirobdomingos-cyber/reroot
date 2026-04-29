@@ -3556,6 +3556,20 @@ def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
     return rehost_pending_avatars(limit=limit)
 
 
+@app.post("/admin/avatars/clear-bot-blocked")
+def admin_clear_bot_blocked_avatars(requesting_email: str = ""):
+    """Cleanup: when IG's bot detection fires on a profile-page fetch,
+    the og:image we cached is the generic Instagram brand logo (a
+    .png from static.cdninstagram.com) instead of the real avatar.
+    Delete those files and reset profile_pic_url so the next backfill
+    pass re-fetches them. Real avatars are stored as .jpg from
+    scontent.cdninstagram.com — only `.png` files in the avatars dir
+    are candidates for cleanup. Founder-only."""
+    _require_founder(requesting_email)
+    from image_store import clear_bot_blocked_avatars
+    return clear_bot_blocked_avatars()
+
+
 @app.post("/admin/images/rehost")
 def admin_rehost_images(requesting_email: str = "", limit: int = 50):
     """One-shot backfill: rehost IG-CDN-served event images that haven't

@@ -175,10 +175,45 @@ def fetch_ig_avatar_url(handle: str) -> Optional[str]:
         m = _OG_IMAGE_RE.search(res.text)
         if not m:
             return None
-        return m.group(1) or None
+        og = m.group(1) or ""
+        # Bot-block tell: when IG's anti-scraper detection fires, the
+        # profile page comes back generic and og:image points at IG's
+        # static-asset CDN (the Instagram brand logo PNG) instead of
+        # the real avatar on scontent.cdninstagram.com. Reject so the
+        # caller treats it as a failure and we retry on the next pass.
+        if "static.cdninstagram.com" in og or "/rsrc.php/" in og:
+            return None
+        return og or None
     except Exception as exc:
         log.warning("ig-profile-page: failed for @%s: %s", handle, exc)
         return None
+
+
+def clear_bot_blocked_avatars() -> dict:
+    """Cleanup: any avatar stored as `.png` is the IG-brand-logo
+    fallback we got from a bot-blocked profile page (real avatars
+    come back as JPEG from scontent.cdninstagram.com). Delete the
+    file and reset `profile_pic_url` to empty so the next backfill
+    pass re-fetches with the now-filtered fetch logic."""
+    cleared = 0
+    handles: list[str] = []
+    for png in AVATARS_DIR.glob("*.png"):
+        handle = png.stem
+        try:
+            png.unlink()
+        except OSError:
+            continue
+        handles.append(handle)
+        cleared += 1
+    if handles:
+        with db.get_conn() as conn:
+            for h in handles:
+                conn.execute(
+                    "UPDATE tracked_ig_accounts SET profile_pic_url = '' WHERE handle = ?",
+                    (h,),
+                )
+            conn.commit()
+    return {"cleared": cleared, "handles": handles}
 
 
 def rehost_pending_avatars(limit: int = 50) -> dict:
