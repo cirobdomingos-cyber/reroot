@@ -880,6 +880,26 @@ def list_events(
     ))
     deduped = _dedupe_events(cleaned)[:limit]
 
+    # Featured-first re-sort: events from a Destaque handle (and the
+    # institutional aue_original source) lift to the top within their
+    # day bucket. Within the same featured/non-featured tier, chronology
+    # holds. The dedup pass already collapsed cross-source duplicates,
+    # so this sort doesn't have to worry about doubles.
+    featured = _featured_ig_handles_cached()
+    def _featured_rank(ev):
+        if ev.source == "aue_original":
+            return 0
+        if ev.source == "instagram":
+            handle = _handle_for_event(ev)
+            if handle in featured:
+                return 0
+        return 1
+    deduped.sort(key=lambda ev: (
+        (ev.date_start.date() if ev.date_start else date.max),
+        _featured_rank(ev),
+        ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
+    ))
+
     # Pull the venue→coords map once per request so every event's
     # _to_frontend lookup is O(1). Map is small (~150 venues) — fits
     # easily in memory and the geocoded subset is what we actually use.
@@ -1220,9 +1240,21 @@ def _curator_ig_handles_cached() -> frozenset[str]:
     )
 
 
+@functools.lru_cache(maxsize=1)
+def _featured_ig_handles_cached() -> frozenset[str]:
+    """Handles flagged as 'Destaque' (paid placement). Drives top-of-list
+    sorting on Sources + Events plus a star pill on the cards."""
+    return frozenset(
+        a["handle"].lower()
+        for a in db.list_ig_accounts()
+        if a.get("featured")
+    )
+
+
 def _bust_handle_cache() -> None:
     _enabled_ig_handles_cached.cache_clear()
     _curator_ig_handles_cached.cache_clear()
+    _featured_ig_handles_cached.cache_clear()
 
 
 def _handle_for_event(ev) -> str:
@@ -1582,8 +1614,16 @@ def list_sources():
             "last_scraped_at": acc.get("last_scraped_at"),
             "future_events": _deduped_count(evs),
             "profile_pic_url": acc.get("profile_pic_url") or "",
+            "featured": bool(acc.get("featured")),
         })
-    instagram.sort(key=lambda s: (-s["future_events"], s["label"]))
+    # Featured handles (Destaque) lift to the top regardless of event count;
+    # within each tier, busier handles first, then alphabetical. Same logic
+    # is shown on the Sources screen with a star pill.
+    instagram.sort(key=lambda s: (
+        not s["featured"],
+        -s["future_events"],
+        s["label"],
+    ))
 
     return {"institutional": institutional, "instagram": instagram}
 
@@ -2230,6 +2270,16 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     out["lat"] = coords["lat"] if coords else None
     out["lng"] = coords["lng"] if coords else None
     out["bairro"] = (coords or {}).get("bairro") or ""
+
+    # "Destaque" flag — events from a featured IG handle (paid placement)
+    # OR aue_originals get the star pill on the card and float to the
+    # top of the list. Frontend reads `featured` for both surfaces.
+    is_featured = ev.source == "aue_original"
+    if not is_featured and ev.source == "instagram":
+        handle = _handle_for_event(ev)
+        if handle and handle in _featured_ig_handles_cached():
+            is_featured = True
+    out["featured"] = is_featured
 
     # imageUrl ships on the list response too (not just detail) — the
     # hero drawer uses it as a banner background, and openDetail can
@@ -3124,6 +3174,25 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     _bust_handle_cache()
     return {"ok": True}
+
+
+class IgFeaturedToggle(BaseModel):
+    requesting_email: str
+    featured: bool
+
+
+@app.put("/admin/ig-accounts/{handle}/featured")
+def admin_set_ig_featured(handle: str, req: IgFeaturedToggle):
+    """Flip the Destaque flag on a tracked IG account. Founder-only:
+    Destaque is the paid-placement surface (R$/mo per venue), so the
+    set of featured handles is a business decision the founder owns —
+    curators can add/remove handles but can't grant placement."""
+    _require_founder(req.requesting_email)
+    ok = db.set_ig_featured(handle, req.featured)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    _bust_handle_cache()
+    return {"ok": True, "featured": req.featured}
 
 
 @app.post("/admin/ig-accounts/{handle}/scrape")

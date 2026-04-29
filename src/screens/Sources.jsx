@@ -97,6 +97,7 @@ export default function Sources() {
       url: s.url,
       future_events: s.future_events,
       category: categoryFor(s, true),
+      featured: !!s.featured,
       sortKey: s.label || s.handle,
     }))
     return [...inst, ...ig]
@@ -120,7 +121,10 @@ export default function Sources() {
     }
     for (const cat of Object.keys(out)) {
       out[cat].sort((a, b) => {
-        // Most-events first, then alphabetical
+        // Featured first, then most-events, then alphabetical.
+        const fa = (a.featured || a.id === 'aue_original') ? 0 : 1
+        const fb = (b.featured || b.id === 'aue_original') ? 0 : 1
+        if (fa !== fb) return fa - fb
         const yd = (b.future_events || 0) - (a.future_events || 0)
         if (yd !== 0) return yd
         return a.sortKey.localeCompare(b.sortKey)
@@ -485,12 +489,17 @@ function Section({ title, sub, children }) {
 
 function SourceRow({ source: s, onOpen }) {
   const isIg = s.kind === 'ig'
+  // Featured-handle treatment mirrors the EventCard: a honey 1.5px
+  // border instead of the default neutral, plus a star pill near the
+  // count. Tells the user "this venue is paying us to surface them"
+  // without screaming about it.
+  const isFeatured = !!s.featured || s.id === 'aue_original'
   return (
     <div
       onClick={onOpen}
       style={{
         background: 'white', borderRadius: 14,
-        border: '1px solid var(--border)',
+        border: isFeatured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
         padding: '12px 14px', cursor: 'pointer',
         display: 'flex', alignItems: 'center', gap: 12,
       }}
@@ -526,6 +535,16 @@ function SourceRow({ source: s, onOpen }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {isFeatured && (
+          <span title="Destaque auê" style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+            color: 'var(--honey)', background: 'var(--honey-pale)',
+            padding: '2px 6px', borderRadius: 999,
+            border: '1px solid var(--honey)',
+          }}>
+            ⭐
+          </span>
+        )}
         <span style={{
           fontSize: 11, fontWeight: 700,
           background: s.future_events > 0 ? 'var(--terra-pale)' : 'transparent',

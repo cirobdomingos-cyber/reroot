@@ -159,6 +159,31 @@ export default function AdminIgAccounts() {
     setBusy(false)
   }
 
+  async function toggleFeatured(acc) {
+    setBusy(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(acc.handle)}/featured`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requesting_email: email,
+            featured: !acc.featured,
+          }),
+        },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      await load()
+    } catch (e) {
+      setError(`Falha ao atualizar Destaque: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
   async function geocodeVenues() {
     setBusy(true)
     try {
@@ -370,9 +395,11 @@ export default function AdminIgAccounts() {
                   key={acc.handle}
                   acc={acc}
                   busy={busy}
+                  isFounder={isFounder}
                   onToggle={toggleEnabled}
                   onDelete={deleteAccount}
                   onScrape={scrapeOne}
+                  onToggleFeatured={toggleFeatured}
                   onOpenSource={(h) => navigate(`/sources/${encodeURIComponent('ig:' + h)}`)}
                 />
               ))}
@@ -776,7 +803,7 @@ function NotACuratorMessage({ email }) {
 }
 
 
-function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource }) {
+function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onToggleFeatured, isFounder }) {
   const futureCount = acc.future_events ?? 0
   const pic = acc.profile_pic_url
   return (
@@ -874,6 +901,29 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource }) {
         {futureCount} →
       </button>
 
+      {/* Founder-only Destaque toggle. Tapping flips the featured flag
+          and immediately bumps the handle to the top of /sources and
+          /events. Designed as a visual switch (filled star = active)
+          so the founder can scan a long list and see what's currently
+          paid placement. Curators see no toggle — they can't grant
+          featured. */}
+      {isFounder && onToggleFeatured && (
+        <button
+          onClick={() => onToggleFeatured(acc)}
+          disabled={busy}
+          title={acc.featured ? 'Tirar Destaque' : 'Marcar como Destaque'}
+          style={{
+            background: acc.featured ? 'var(--honey-pale)' : 'none',
+            border: acc.featured ? '1px solid var(--honey)' : '1px solid var(--border)',
+            borderRadius: 999,
+            cursor: busy ? 'default' : 'pointer',
+            fontSize: 13, color: acc.featured ? 'var(--honey)' : 'var(--charcoal-light)',
+            padding: '3px 8px', fontWeight: 700, letterSpacing: 0.3,
+          }}
+        >
+          ⭐
+        </button>
+      )}
       {onScrape && (
         <button
           onClick={() => onScrape(acc.handle)}

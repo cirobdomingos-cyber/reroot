@@ -166,6 +166,10 @@ function normalizeBackendEvent(ev) {
     // the legacy "Venue · Bairro" suffix split for the venue chip on
     // event cards. Empty string when the venue isn't geocoded yet.
     bairro: ev.bairro || '',
+    // Destaque flag — events from a featured (paid) IG handle or
+    // aue_originals. Drives a star pill on the card and top-of-list
+    // sorting on the Events tab.
+    featured: !!ev.featured,
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,

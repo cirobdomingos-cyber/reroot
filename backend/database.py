@@ -184,6 +184,11 @@ def init_db():
             # once per 24h per handle).
             "ADD COLUMN last_post_shortcode TEXT NOT NULL DEFAULT ''",
             "ADD COLUMN last_details_at TEXT",
+            # "Destaque" / featured-venue flag — paid placements that get
+            # the Original-auê treatment: a star pill on the source row
+            # and on every event card, plus first-position sorting in
+            # both the Sources screen and the events list.
+            "ADD COLUMN featured INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -719,6 +724,20 @@ def upsert_ig_account(handle: str, label: str = "", category: str = "",
             "SELECT * FROM tracked_ig_accounts WHERE handle = ?", (handle,)
         ).fetchone()
     return dict(row)
+
+
+def set_ig_featured(handle: str, featured: bool) -> bool:
+    """Flip the Destaque flag on a tracked IG account. Returns True if a
+    row updated. The flag drives "featured first" sorting + a star pill
+    on the Sources page and on every event card from this handle."""
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE tracked_ig_accounts SET featured = ? WHERE handle = ?",
+            (1 if featured else 0, handle),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def delete_ig_account(handle: str) -> bool:

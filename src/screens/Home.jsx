@@ -411,6 +411,7 @@ export default function Home() {
                 venue={ev.venue}
                 isRecurring={!!ev.isRecurring}
                 dateEnd={ev.dateEnd}
+                featured={!!ev.featured}
                 isGroupEvent={!!ev.isGroupEvent}
                 onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
                 trailing={<AddToCalendar event={ev} />}
@@ -605,6 +606,7 @@ function HomeEventRow({
   venue,          // pass already with " · bairro" if you have one
   isRecurring = false,
   isGroupEvent = false,
+  featured = false,
   trailing = null,
   onClick,
 }) {
@@ -614,15 +616,14 @@ function HomeEventRow({
   const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
   // "Ongoing" = recurring OR multi-day range. Mirrors EventCard.
   const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
-  // Mirrors EventCard: sage (orange) for group, purple for one-off,
-  // terra-light blue for ongoing. Honey/yellow is reserved for the
-  // Kids Welcome chip so card colors don't compete.
+  // Mirrors EventCard: sage (orange) for group, honey for one-off,
+  // terra-light blue for ongoing.
   const dayColor = isGroupEvent ? 'var(--sage)'
                  : isOngoing ? 'var(--terra-light)'
-                 : '#7E57C2'
+                 : 'var(--honey)'
   const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                : isOngoing ? 'none'
-               : 'inset 3px 0 0 #7E57C2'
+               : 'inset 3px 0 0 var(--honey)'
   return (
     <div
       onClick={onClick}
@@ -656,9 +657,20 @@ function HomeEventRow({
         <div style={{
           fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          {isGroupEvent && '🔒 '}
-          {name}
+          {featured && (
+            <span title="Destaque auê" style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, flexShrink: 0,
+              color: 'var(--honey)', background: 'var(--honey-pale)',
+              padding: '2px 6px', borderRadius: 999,
+              border: '1px solid var(--honey)',
+            }}>⭐</span>
+          )}
+          {isGroupEvent && <span style={{ flexShrink: 0 }}>🔒</span>}
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {name}
+          </span>
         </div>
         <div style={{
           fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2,

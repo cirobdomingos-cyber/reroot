@@ -941,8 +941,12 @@ export default function Events() {
             padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
             fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
             transition: 'all 0.15s',
+            // Pink accent — honey freed up for the EventCard one-off
+            // ribbon, so the Kids Welcome chip moved to pink. Distinct
+            // from sage (group), purple (Só únicos), and the date-range
+            // terra orange.
             border: kidsFilter ? 'none' : '1px solid var(--border)',
-            background: kidsFilter ? 'var(--honey)' : 'transparent',
+            background: kidsFilter ? '#EC407A' : 'transparent',
             color: kidsFilter ? 'white' : 'var(--charcoal-light)',
           }}
         >
@@ -1510,23 +1514,26 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     <div
       onClick={onOpen}
       style={{
-        // Three distinct hues, no collisions with filter chips:
+        // Card hues:
         //   - group (yours)                    → sage (orange #E8623F)
-        //   - one-off (time-sensitive)         → purple #7E57C2 (matches
-        //                                        the "Só únicos" toggle)
+        //   - one-off (time-sensitive)         → honey (amber #F4A623)
         //   - ongoing (recurring or multi-day) → terra-light blue,
         //                                        no stripe
-        // Yellow/honey is reserved for the Kids Welcome chip so the
-        // card colors don't compete with active filter chips.
+        // Kids Welcome chip moved off honey (now pink) so the EventCard
+        // can reclaim honey/yellow for the most visually loud row type.
+        // Featured ("Destaque") events get a star pill in the top-right
+        // of the card AND lift to the top of the list — that's the
+        // monetization surface, not a card color change.
         background: 'white',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
-        border: '1px solid var(--border)',
+        border: ev.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                   : isOngoing ? 'none'
-                  : 'inset 3px 0 0 #7E57C2',
+                  : 'inset 3px 0 0 var(--honey)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
+        position: 'relative',
       }}
     >
       {/* LEFT — day anchor. Color tracks the stripe so the kind reads
@@ -1539,12 +1546,11 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
       }}>
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
-          // Day color matches the stripe so the row reads as one
-          // chromatic block — sage for group, purple for one-off,
-          // terra-light blue for ongoing (recurring + multi-day range).
+          // Day color matches the stripe — sage for group, honey for
+          // one-off, terra-light blue for ongoing.
           color: isGroupEvent ? 'var(--sage)'
                : isOngoing ? 'var(--terra-light)'
-               : '#7E57C2',
+               : 'var(--honey)',
           letterSpacing: -0.5,
         }}>
           {day}
@@ -1609,13 +1615,27 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         )}
       </div>
 
-      {/* RIGHT — price / FREE / RSVP marker */}
+      {/* RIGHT — Destaque badge / price / RSVP marker */}
       <div style={{
         flexShrink: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'flex-end', justifyContent: 'flex-start',
         gap: 4,
       }}>
+        {ev.featured && (
+          <div
+            title="Destaque auê"
+            style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+              color: 'var(--honey)', background: 'var(--honey-pale)',
+              padding: '2px 7px', borderRadius: 999,
+              border: '1px solid var(--honey)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ⭐ DESTAQUE
+          </div>
+        )}
         {price && (
           <div style={{
             fontSize: 12, fontWeight: 800,
