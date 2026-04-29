@@ -11,7 +11,7 @@ import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
-  setGroupMemberRole, fetchGroupStats,
+  setGroupMemberRole, fetchGroupStats, fetchFriendsFeed,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -38,6 +38,11 @@ export default function GroupDetail() {
   // otherwise the draft string.
   const [nameEdit, setNameEdit] = useState(null)
   const [renaming, setRenaming] = useState(false)
+  // event_id → [{name, picture, google_id}] so each event card can show
+  // the same friends-going avatar stack as Home + RSVPs. Sourced from
+  // /friends/feed; the backend already gates group events behind
+  // membership so anything that comes back here is safe to render.
+  const [friendsByEventId, setFriendsByEventId] = useState({})
 
   useEffect(() => {
     if (!googleId || !groupId) return
@@ -45,6 +50,15 @@ export default function GroupDetail() {
       .then(data => { setGroup(data); setLoading(false) })
       .catch(() => { setError('Failed to load group'); setLoading(false) })
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
+    fetchFriendsFeed(googleId).then(events => {
+      const map = {}
+      for (const ev of (events || [])) {
+        if (ev.event_id && Array.isArray(ev.friends_going) && ev.friends_going.length) {
+          map[ev.event_id] = ev.friends_going
+        }
+      }
+      setFriendsByEventId(map)
+    })
   }, [groupId, googleId])
 
   async function handleAddEvent(eventData) {
@@ -302,6 +316,7 @@ export default function GroupDetail() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
           {upcomingEvents.map(ev => (
             <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]}
+              friends={friendsByEventId[ev.id] || []}
               onOpen={() => setSelectedEvent(ev)}
               onRsvp={() => handleRsvp(ev)} onDelete={isAdmin || ev.created_by === googleId ? () => handleDeleteEvent(ev.id) : null}
               members={group.members} t={t} />
@@ -316,6 +331,7 @@ export default function GroupDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, opacity: 0.6 }}>
             {pastEvents.map(ev => (
               <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]} past
+                friends={friendsByEventId[ev.id] || []}
                 onOpen={() => setSelectedEvent(ev)}
                 members={group.members} t={t} />
             ))}
@@ -373,7 +389,7 @@ export default function GroupDetail() {
 }
 
 
-function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members }) {
+function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members, friends = [] }) {
   // Find who added the event using the group's member list — the same
   // payload `created_by` that the backend stamps. Fallback: hide if we
   // can't resolve (member left the group, etc.).
@@ -385,7 +401,26 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
   // creator attribution + delete control sit below the row inside
   // the same outer container.
   const time = (event.date_start || '').slice(11, 16)
-  const trailing = past
+  const friendsStack = friends.length > 0 ? (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {friends.slice(0, 3).map((f, i) => (
+        <div
+          key={(f.google_id || f.name) + i}
+          style={{
+            marginLeft: i === 0 ? 0 : -8,
+            boxShadow: '0 0 0 2px white',
+            borderRadius: '50%',
+          }}
+        >
+          <Avatar name={f.name} src={f.picture} size={22} />
+        </div>
+      ))}
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 5 }}>
+        {friends.length}
+      </span>
+    </div>
+  ) : null
+  const statusOrAction = past
     ? (
       <span style={{
         fontSize: 10, fontWeight: 700, color: 'var(--charcoal-light)',
@@ -409,6 +444,12 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
       </button>
     )
     : null
+  const trailing = (friendsStack || statusOrAction) ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {friendsStack}
+      {statusOrAction}
+    </div>
+  ) : null
 
   // Group event rows always render with the group/plan accent (sage
   // ribbon + sage day number) — they're never catalog single events.
