@@ -236,6 +236,16 @@ export default function Home() {
       type: 'TOGGLE_RSVP',
       payload: { eventId: ev.id, dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
     })
+    // Persist to the backend rsvps table so /friends/feed sees this
+    // RSVP — without this sync, the row only lived in local state and
+    // friends never saw the user attending. Same pattern as
+    // handleAcceptInvite.
+    if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
+      syncRsvp(state.googleUser.id, {
+        id: ev.id, name: ev.name, venue: ev.venue || '',
+        dateStart: ev.dateStart || '', url: ev.url || '',
+      }, true)
+    }
     const ok = await scheduleEventReminder(ev)
     if (ok) {
       setNotifToast(ev.name)
