@@ -864,13 +864,38 @@ export default function Events() {
         </div>
       )}
 
-      {/* ── Filter chips: "Só únicos" + price + kids ── */}
+      {/* ── Filter chips: Todos + Só únicos + price + kids ──
+          Order: "Todos" leads as the reset-everything pill (clears
+          both price AND the oneOffOnly toggle so a single tap returns
+          the full catalog). "⚡ Só únicos" sits second as a sub-mode.
+          Then the price options. */}
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {/* "Só únicos" — first chip, drops residencies/ranges so the
-            list shows only one-day events. Default off; the day-by-day
-            expansion of routines is back, and this is the escape hatch
-            for users who don't want to see the same Thu/Fri/Sat
-            residency on three consecutive days. */}
+        {/* "Todos" — clears price + Só únicos in one tap. Active state
+            requires BOTH filters at default for the visual to read as
+            "no filtering active". */}
+        {(() => {
+          const isAllActive = priceFilter === 'all' && !oneOffOnly
+          return (
+            <button
+              onClick={() => { setPriceFilter('all'); setOneOffOnly(false) }}
+              style={{
+                padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+                transition: 'all 0.15s',
+                border: isAllActive ? 'none' : '1px solid var(--border)',
+                background: isAllActive ? 'var(--sage)' : 'transparent',
+                color: isAllActive ? 'white' : 'var(--charcoal-light)',
+              }}
+            >
+              {t.filter_all_prices}
+            </button>
+          )
+        })()}
+        {/* "Só únicos" — drops residencies/ranges so the list shows only
+            one-day events. Sits second, after Todos. Toggling on flips
+            the price filter back to 'all' if it was on free/paid? No —
+            keep these orthogonal: oneOffOnly stacks with price. Only
+            "Todos" resets everything. */}
         <button
           onClick={() => setOneOffOnly(v => !v)}
           style={{
@@ -885,7 +910,6 @@ export default function Events() {
           ⚡ Só únicos
         </button>
         {[
-          { id: 'all',  label: t.filter_all_prices },
           { id: 'free', label: `🆓 ${t.filter_free}` },
           { id: 'paid', label: `💰 ${t.filter_paid}` },
         ].map(pf => (
