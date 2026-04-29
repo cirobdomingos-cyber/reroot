@@ -1656,32 +1656,28 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         gap: 4,
       }}>
         {ev.featured && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <div
-              title="Destaque auê"
+              title="Seleção auê — destaque pago"
               style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                fontSize: 11, lineHeight: 1,
                 color: 'var(--honey)', background: 'var(--honey-pale)',
-                padding: '2px 7px', borderRadius: 999,
+                width: 18, height: 18, borderRadius: '50%',
                 border: '1px solid var(--honey)',
-                whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
-            >
-              ⭐ SELEÇÃO AUÊ
-            </div>
+            >⭐</div>
             {ev.promoCode && (
               <div
                 title={ev.promoPerk || 'Cupom no balcão — toca o evento pra ver o código'}
                 style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                  fontSize: 11, lineHeight: 1,
                   color: 'var(--sage)', background: 'var(--sage-pale)',
-                  padding: '2px 7px', borderRadius: 999,
+                  width: 18, height: 18, borderRadius: '50%',
                   border: '1px solid var(--sage)',
-                  whiteSpace: 'nowrap',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
-              >
-                🎁 DESCONTO
-              </div>
+              >🎁</div>
             )}
           </div>
         )}
