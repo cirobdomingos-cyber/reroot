@@ -186,6 +186,11 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], friend
                     const isGroup = ev._type === 'group'
                     const accentColor = isGroup ? 'var(--terra)' : 'var(--sage)'
                     const friends = friendsByEventId[ev.id] || []
+                    // Left-edge ribbon — same pattern as HomeEventRow so
+                    // confirmed/pending rows read consistently across all
+                    // Home sections. Sage for confirmed RSVPs, terra for
+                    // pending group invites.
+                    const stripeColor = isGroup ? 'var(--terra)' : 'var(--sage)'
                     return (
                       <div
                         key={ev.id}
@@ -194,6 +199,7 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], friend
                           display: 'flex', alignItems: 'center', gap: 10,
                           background: 'white', borderRadius: 12, padding: '10px 12px',
                           border: `1.5px solid ${isGroup ? 'var(--terra-pale)' : 'var(--sage-pale)'}`,
+                          boxShadow: `inset 3px 0 0 ${stripeColor}`,
                           cursor: 'pointer',
                         }}
                       >
