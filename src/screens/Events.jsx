@@ -317,7 +317,16 @@ export default function Events() {
         window.history.replaceState({}, '')
       }
     }
-  }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
+    // Tapping a date on the Home calendar lands here with state.openDay
+    // = 'YYYY-MM-DD'. Pre-select that day on the week strip so the
+    // user sees the filtered list immediately. Cleared from history
+    // afterwards so navigating away and back doesn't re-pin it.
+    const stateDay = location.state?.openDay
+    if (stateDay) {
+      setSelectedDay(stateDay)
+      window.history.replaceState({}, '')
+    }
+  }, [location.state?.openEventId, location.state?.openDay, location.search, loading, groupEventsReady, navigate])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
@@ -1107,6 +1116,17 @@ export default function Events() {
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
                     onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
+                    // For recurring events: when a specific day is
+                    // picked from the strip, the card should show THAT
+                    // day, not the rolled-forward "next occurrence"
+                    // dateStart on the event. Range events get the
+                    // same treatment when the picked day falls inside
+                    // their span.
+                    displayDate={
+                      selectedDay && (ev.isRecurring || (ev.dateEnd && ev.dateEnd.slice(0,10) > ev.dateStart.slice(0,10)))
+                        ? selectedDay
+                        : null
+                    }
                     t={t}
                   />
                 </motion.div>
@@ -1437,11 +1457,18 @@ function _formatPrice(ev, freeLabel) {
   return { text: stripped, accent: false }
 }
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
   const isGroupEvent = !!ev.isGroupEvent
   const isRecurring = !!ev.isRecurring && !isGroupEvent
 
-  const { day, weekday } = _parseDayLabels(ev.dateStart)
+  // For recurring events, the parent passes the strip-picked day so
+  // the card shows the specific occurrence the user is looking at,
+  // not the rolled-forward "next" date stored on the event. Same idea
+  // for multi-day ranges. Falls back to ev.dateStart for one-offs.
+  const sourceDate = displayDate
+    ? `${displayDate}T${(ev.dateStart || '').slice(11) || '00:00:00'}`
+    : ev.dateStart
+  const { day, weekday } = _parseDayLabels(sourceDate)
   const time = (ev.time || '').trim()
 
   // Venue + bairro: single inline " · " separated string. Bairro from
