@@ -1856,11 +1856,15 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
           zIndex: 1,
         }}>←</button>
-        <div style={{
-          position: 'absolute', bottom: 12, left: 14, fontSize: 30,
-          filter: showImage ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' : 'none',
-          zIndex: 1,
-        }}>{ev.icon}</div>
+        {/* Category emoji is the visual anchor only when there's no
+            image — when a photo is showing it's redundant noise on top
+            of the actual content of the event. */}
+        {!showImage && (
+          <div style={{
+            position: 'absolute', bottom: 12, left: 14, fontSize: 30,
+            zIndex: 1,
+          }}>{ev.icon}</div>
+        )}
         {/* Zoom hint only when the image actually loaded. Hidden when
             the URL expired and we fell back to the gradient. */}
         {showImage && (
