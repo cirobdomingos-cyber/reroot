@@ -3590,7 +3590,8 @@ def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
     handle = (req.handle or "").strip().lstrip("@").lower()
     if not handle:
         raise HTTPException(status_code=400, detail="handle required")
-    src = (req.source_url or "").strip()
+    import html as _html
+    src = _html.unescape((req.source_url or "").strip())
     if not src or "static.cdninstagram.com" in src or "/rsrc.php/" in src:
         raise HTTPException(status_code=400, detail="invalid source_url")
     local = rehost_avatar(handle, src)

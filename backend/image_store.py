@@ -17,6 +17,7 @@ Public URL: `/event-images/<filename>`. main.py mounts a StaticFiles
 handler on that path pointing at IMAGES_DIR.
 """
 
+import html
 import logging
 import os
 import re
@@ -176,6 +177,12 @@ def fetch_ig_avatar_url(handle: str) -> Optional[str]:
         if not m:
             return None
         og = m.group(1) or ""
+        # The page serves og:image with HTML-escaped query params
+        # (`&amp;` instead of `&`). Without unescape the IG CDN sees
+        # `?stp=...&amp;_nc_cat=110` as a single param and the signed
+        # URL fails validation → 403. The signed avatars at IG only
+        # validate with the exact unescaped query string.
+        og = html.unescape(og)
         # Bot-block tell: when IG's anti-scraper detection fires, the
         # profile page comes back generic and og:image points at IG's
         # static-asset CDN (the Instagram brand logo PNG) instead of
