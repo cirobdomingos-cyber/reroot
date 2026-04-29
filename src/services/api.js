@@ -661,6 +661,15 @@ export async function fetchVenueDashboard(handle, requestingEmail) {
     if (data?.profile_pic_url) {
       data.profile_pic_url = absoluteImageUrl(data.profile_pic_url)
     }
+    // events_breakdown rows carry rehosted IG post images. Apply the
+    // same dev-prefix so the thumbnails load against the Railway
+    // backend instead of Vite's :5173.
+    if (Array.isArray(data?.events_breakdown)) {
+      data.events_breakdown = data.events_breakdown.map(e => ({
+        ...e,
+        image_url: absoluteImageUrl(e.image_url),
+      }))
+    }
     return data
   } catch (e) {
     return { error: e?.message || 'fetch failed', status: 0 }

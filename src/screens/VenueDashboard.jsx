@@ -314,47 +314,20 @@ function EventsBreakdown({ events }) {
     try {
       const d = new Date(iso)
       if (Number.isNaN(d.getTime())) return ''
-      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
     } catch { return '' }
   }
   return (
     <div style={{ padding: '0 16px 14px' }}>
       <h2 style={sectionTitle}>📋 Posts &amp; performance · {events.length}</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginBottom: 8, lineHeight: 1.4 }}>
+        Cada post do Instagram que virou evento no auê, com a foto e
+        a descrição que aparece pra galera, mais quantos abriram (👀)
+        e quantos confirmaram (🙌).
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {visible.map((e, i) => (
-          <div key={e.event_id} style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 12px', background: 'white',
-            border: '1px solid var(--border)', borderRadius: 10,
-          }}>
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%',
-              background: i === 0 ? 'var(--honey)' : 'var(--cream)',
-              color: i === 0 ? 'white' : 'var(--charcoal-mid)',
-              fontSize: 10, fontWeight: 800, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{i + 1}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>{e.name}</div>
-              <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
-                {fmtDate(e.date_start)}
-              </div>
-            </div>
-            <div style={{
-              display: 'flex', gap: 8, fontSize: 11, fontWeight: 700,
-              flexShrink: 0, fontVariantNumeric: 'tabular-nums',
-            }}>
-              <span title={`${e.views} visualizações`} style={{ color: 'var(--terra-light)' }}>
-                👀 {e.views}
-              </span>
-              <span title={`${e.rsvps} confirmaram presença`} style={{ color: 'var(--sage)' }}>
-                🙌 {e.rsvps}
-              </span>
-            </div>
-          </div>
+          <PostBreakdownRow key={e.event_id} event={e} rank={i + 1} fmtDate={fmtDate} />
         ))}
         {hidden > 0 && !expanded && (
           <button
@@ -381,6 +354,104 @@ function EventsBreakdown({ events }) {
           >
             − Mostrar menos
           </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PostBreakdownRow({ event: e, rank, fmtDate }) {
+  // Per-post card: thumbnail (rehosted IG image) + event name + date +
+  // description preview + link to the original IG post + the venue-
+  // facing stats (views / RSVPs). Image fails-silent to a gradient
+  // placeholder when it 404s (rehost gap, not yet captured, etc.).
+  const [imgBroken, setImgBroken] = useState(false)
+  const showImage = !!e.image_url && !imgBroken
+  return (
+    <div style={{
+      background: 'white',
+      border: '1px solid var(--border)', borderRadius: 12,
+      padding: 10, display: 'flex', gap: 10, alignItems: 'flex-start',
+    }}>
+      {/* Thumbnail */}
+      <div style={{
+        flexShrink: 0, width: 64, height: 64, borderRadius: 10,
+        overflow: 'hidden', position: 'relative',
+        background: 'linear-gradient(135deg, #FFE0B2, #FFCC80)',
+      }}>
+        {showImage && (
+          <img
+            src={e.image_url}
+            alt=""
+            onError={() => setImgBroken(true)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+        {/* Rank medal — small overlay so the chart pops without
+            taking a whole column. Rank 1 honey, rest neutral. */}
+        <div style={{
+          position: 'absolute', top: 4, left: 4,
+          width: 18, height: 18, borderRadius: '50%',
+          background: rank === 1 ? 'var(--honey)' : 'rgba(255,255,255,0.92)',
+          color: rank === 1 ? 'white' : 'var(--charcoal-mid)',
+          fontSize: 9, fontWeight: 800,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }}>{rank}</div>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+              lineHeight: 1.3,
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}>{e.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 2 }}>
+              📅 {fmtDate(e.date_start) || '—'}
+            </div>
+          </div>
+          {/* Stats — kept compact, right-aligned. Hover/long-press
+              shows the full label via title. */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 2,
+            flexShrink: 0, fontSize: 11, fontWeight: 800,
+            fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+          }}>
+            <span title={`${e.views} visualizações`} style={{ color: 'var(--terra-light)' }}>
+              👀 {e.views}
+            </span>
+            <span title={`${e.rsvps} confirmaram presença`} style={{ color: 'var(--sage)' }}>
+              🙌 {e.rsvps}
+            </span>
+          </div>
+        </div>
+        {e.description && (
+          <div style={{
+            fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 4,
+            lineHeight: 1.4, fontStyle: 'italic',
+            display: '-webkit-box', WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {e.description}
+          </div>
+        )}
+        {e.url && (
+          <a
+            href={e.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-block', marginTop: 4,
+              fontSize: 10, fontWeight: 700,
+              color: 'var(--sage)', textDecoration: 'none',
+            }}
+          >
+            🔗 Ver post original →
+          </a>
         )}
       </div>
     </div>

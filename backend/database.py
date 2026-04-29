@@ -965,7 +965,11 @@ def get_venue_dashboard_stats(handle: str) -> dict:
                 view_counts[r["ev_id"]] = int(r["c"])
 
         # Pull payload metadata for each event so the dashboard can
-        # show name + date alongside the counts.
+        # show name + date + the actual post (image + caption + a link
+        # to the original IG post) alongside the counts. Description
+        # is the LLM-extracted summary, not the raw caption — we don't
+        # store the full caption — but it's enough to recognize the
+        # post visually next to its stats.
         ev_meta: dict[str, dict] = {}
         for r in evs:
             try:
@@ -973,9 +977,18 @@ def get_venue_dashboard_stats(handle: str) -> dict:
                 ev_meta[r["id"]] = {
                     "name": payload.get("name") or rsvp_names.get(r["id"]) or r["id"],
                     "date_start": payload.get("date_start") or "",
+                    "image_url": payload.get("image_url") or "",
+                    "description": payload.get("description") or "",
+                    "url": payload.get("url") or "",  # original IG post link
                 }
             except Exception:
-                ev_meta[r["id"]] = {"name": rsvp_names.get(r["id"]) or r["id"], "date_start": ""}
+                ev_meta[r["id"]] = {
+                    "name": rsvp_names.get(r["id"]) or r["id"],
+                    "date_start": "",
+                    "image_url": "",
+                    "description": "",
+                    "url": "",
+                }
 
         events_breakdown = []
         for ev_id in event_ids:
@@ -984,6 +997,9 @@ def get_venue_dashboard_stats(handle: str) -> dict:
                 "event_id": ev_id,
                 "name": meta.get("name") or ev_id,
                 "date_start": meta.get("date_start") or "",
+                "image_url": meta.get("image_url") or "",
+                "description": (meta.get("description") or "")[:280],
+                "url": meta.get("url") or "",
                 "rsvps": rsvp_counts.get(ev_id, 0),
                 "views": view_counts.get(ev_id, 0),
             })
