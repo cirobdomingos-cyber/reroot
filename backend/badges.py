@@ -134,6 +134,15 @@ BADGES: dict[str, dict] = {
         "desc": "Eventos rolando no seu grupo mais ativo. Quanto mais a galera bota plano, mais sobe.",
         "category": "social",
     },
+    # Sibling to crew_quente — counts RSVPs (engagement) instead of
+    # events (volume). A group with 5 events that everyone confirms
+    # outranks a group with 30 events that nobody attends.
+    "crew_confirmada": {
+        "label": "Crew confirmada",
+        "emoji": "🙌",
+        "desc": "RSVPs no seu grupo mais ativo. Galera que aparece, não só galera que bota plano.",
+        "category": "social",
+    },
 
     # ── Loyalty (the bridge to partner discounts in v2+) ──
     # "Lenda" was folded in as tier IV — same axis (loyalty per venue),
@@ -166,6 +175,7 @@ TIERS: dict[str, list[int]] = {
     "curador":       [1, 5, 15, 30],        # eventos adicionados a grupos (lifetime, mature)
     "organizador":   [1, 3, 10],            # planos pessoais criados (lifetime, mature)
     "crew_quente":   [5, 15, 50],           # eventos no grupo mais ativo do usuário
+    "crew_confirmada": [10, 30, 100],       # RSVPs no grupo mais ativo do usuário
     "local_da_casa": [3, 5, 10, 25],        # RSVPs no mesmo venue
 }
 
@@ -372,6 +382,32 @@ def _hottest_group_event_count(google_id: str) -> int:
                    SELECT ge.group_id, COUNT(*) AS c
                    FROM group_members gm
                    JOIN group_events ge ON ge.group_id = gm.group_id
+                   WHERE gm.google_id = ?
+                   GROUP BY ge.group_id
+               )""",
+            (google_id,),
+        ).fetchone()
+    return int(row["top"]) if row and row["top"] is not None else 0
+
+
+def _hottest_group_rsvp_count(google_id: str) -> int:
+    """For each group the user belongs to, count the total RSVPs across
+    all of that group's events; return the highest count. Drives the
+    `crew_confirmada` ladder — measures engagement (do members actually
+    show up?), the volume axis lives in crew_quente.
+
+    Anti-farming: the count requires real other-user RSVPs, so spamming
+    self-RSVPs across a quiet group can lift the floor but the ceiling
+    only comes from a group where multiple members regularly confirm."""
+    if not google_id:
+        return 0
+    with db.get_conn() as conn:
+        row = conn.execute(
+            """SELECT MAX(c) AS top FROM (
+                   SELECT ge.group_id, COUNT(*) AS c
+                   FROM group_members gm
+                   JOIN group_events ge ON ge.group_id = gm.group_id
+                   JOIN rsvps r ON r.event_id = ge.id
                    WHERE gm.google_id = ?
                    GROUP BY ge.group_id
                )""",
@@ -652,6 +688,14 @@ def evaluate(google_id: str) -> list[dict]:
     if hottest > 0:
         _award_or_upgrade(newly, google_id, "crew_quente", value=hottest,
                           metadata={"count": hottest})
+
+    # ── Crew confirmada (RSVPs in the user's most-active group) ──
+    # Companion to crew_quente: same shape, different axis. Engagement
+    # (people showing up) over volume (events being scheduled).
+    hottest_rsvps = _hottest_group_rsvp_count(google_id)
+    if hottest_rsvps > 0:
+        _award_or_upgrade(newly, google_id, "crew_confirmada", value=hottest_rsvps,
+                          metadata={"count": hottest_rsvps})
 
     # ── Loyalty: local_da_casa per venue (matured RSVPs, 4-tier) ──
     for venue, count in _venue_counts(mature).items():
