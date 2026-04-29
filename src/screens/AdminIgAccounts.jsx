@@ -1021,7 +1021,6 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
         </div>
         <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
           @{v.handle} · 📅 {lastScrape}
-          {v.category && <> · {v.category}</>}
         </div>
       </button>
 
