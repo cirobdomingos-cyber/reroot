@@ -428,7 +428,9 @@ export default function Home() {
         <>
           <div className="section-label">{t.home_upcoming_label ?? 'Seus próximos eventos'}</div>
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {upcomingRsvps.slice(0, 3).map(ev => (
+            {upcomingRsvps.slice(0, 3).map(ev => {
+              const friends = friendsByEventId[ev.id] || []
+              return (
               <HomeEventRow
                 key={ev.id}
                 name={ev.name}
@@ -440,8 +442,42 @@ export default function Home() {
                 featured={!!ev.featured}
                 isGroupEvent={!!ev.isGroupEvent}
                 onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
+                trailing={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {friends.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {friends.slice(0, 3).map((friend, i) => (
+                          <div
+                            key={(friend.google_id || friend.name) + i}
+                            style={{
+                              marginLeft: i === 0 ? 0 : -8,
+                              boxShadow: '0 0 0 2px white',
+                              borderRadius: '50%',
+                            }}
+                          >
+                            <Avatar name={friend.name} src={friend.picture} size={22} />
+                          </div>
+                        ))}
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+                          marginLeft: 5,
+                        }}>
+                          {friends.length}
+                        </span>
+                      </div>
+                    )}
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+                      background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
+                      flexShrink: 0,
+                    }}>
+                      {state.language === 'en' ? 'Confirmed' : 'Confirmado'}
+                    </span>
+                  </div>
+                }
               />
-            ))}
+              )
+            })}
           </div>
         </>
       )}
