@@ -43,54 +43,23 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Bucket all events by ISO day. We bucket *every* event regardless of
-  // week so future weeks still show counts when the user navigates forward.
-  //   - Range events (dateStart..dateEnd, e.g. "terça a domingo")
-  //     increment every day they cover.
-  //   - Recurring events (recurrenceDays = ISO 1..7) increment every
-  //     matching weekday in a forward window (today → +60 days), so
-  //     the strip lights up Thu + Fri + Sat for a "Qui/Sex/Sáb" set.
-  //   - One-offs increment exactly one day.
-  // 60-day cap protects against malformed multi-year ranges.
+  // Bucket events by ISO day for the strip's count badges. Each event
+  // counts ONCE on its dateStart so a "Tue→Sun" festival or a Thu/Fri/Sat
+  // residency don't inflate every day they cover — that was making the
+  // strip badges look much busier than the actual one-off catalog.
+  //
+  // The list view's per-day pick filter (eventCoversDay) still expands
+  // recurring + range events onto every day they cover, so picking
+  // Friday from this strip will still surface a Thu/Fri/Sat residency
+  // — discoverability stays intact, the strip count just goes back to
+  // "events scheduled today" rather than "events touching today".
   const countsByDay = useMemo(() => {
     const map = {}
-    const todayIso = new Date().toISOString().slice(0, 10)
-    const horizon = new Date()
-    horizon.setUTCDate(horizon.getUTCDate() + 60)
     for (const ev of events) {
-      // Recurring branch: walk forward 60 days, count every matching
-      // ISO weekday.
-      if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
-        const cursor = new Date(`${todayIso}T00:00:00Z`)
-        let n = 0
-        while (cursor <= horizon && n < 60) {
-          const isoDow = ((cursor.getUTCDay() + 6) % 7) + 1
-          if (ev.recurrenceDays.includes(isoDow)) {
-            const k = cursor.toISOString().slice(0, 10)
-            map[k] = (map[k] || 0) + 1
-          }
-          cursor.setUTCDate(cursor.getUTCDate() + 1)
-          n += 1
-        }
-        continue
-      }
-      const isoStart = ev.dateStart || ev.date_start || ''
-      if (!isoStart) continue
-      const startKey = isoStart.slice(0, 10)
-      const isoEnd = ev.dateEnd || ev.date_end || ''
-      const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
-      const start = new Date(`${startKey}T00:00:00Z`)
-      const end = new Date(`${endKey}T00:00:00Z`)
-      if (Number.isNaN(start.getTime())) continue
-      const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
-      const cursor = new Date(start)
-      let n = 0
-      while (cursor <= finalEnd && n < 60) {
-        const k = cursor.toISOString().slice(0, 10)
-        map[k] = (map[k] || 0) + 1
-        cursor.setUTCDate(cursor.getUTCDate() + 1)
-        n += 1
-      }
+      const iso = ev.dateStart || ev.date_start || ''
+      if (!iso) continue
+      const k = iso.slice(0, 10)
+      map[k] = (map[k] || 0) + 1
     }
     return map
   }, [events])

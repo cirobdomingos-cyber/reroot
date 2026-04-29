@@ -1342,195 +1342,176 @@ function SourceBadge({ ev, onSourceTap }) {
 }
 
 
+// ── EventCard — day-anchored row, auê palette ────────────────────────────────
+//
+// Layout borrowed from a tight terminal-style reference: day number
+// as visual anchor on the left, event name dominant in the middle,
+// metadata on a single line below, price pinned right. Friends-going
+// shows as a small line below when applicable.
+//
+// Colors stay in the auê palette — cream/white card on the page
+// background, terra (#E8623F) for the day anchor and accents, sage
+// (#5A7E5E) for friends-going, charcoal for text. PersonalChip /
+// SourceBadge / kidsWelcome / vibeSummary dropped from the card; they
+// all live in DetailPanel one tap deeper.
+
+const _PT_WEEKDAY = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
+
+function _parseDayLabels(iso) {
+  if (!iso) return { day: '—', weekday: '' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { day: '—', weekday: '' }
+  return {
+    day: String(d.getDate()).padStart(2, '0'),
+    weekday: _PT_WEEKDAY[d.getDay()] || '',
+  }
+}
+
+function _formatPrice(ev, freeLabel) {
+  if (ev.priceTier === 'free' || ev.price === 'Gratuito' || ev.price === 'Free') {
+    return { text: (freeLabel || 'FREE').toUpperCase(), accent: true }
+  }
+  if (!ev.price) return null
+  // Strip the R$ prefix for the compact terminal look — reference shows
+  // bare numbers ("80-160", "18"). Keep the raw string when stripping
+  // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
+  // consistency with the reference.
+  const stripped = ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()
+  return { text: stripped, accent: false }
+}
+
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, t }) {
-  // Prefer the geocoded bairro from venues.bairro (canonical, normalized
-  // by Nominatim/Claude) over the legacy `Venue · Bairro` suffix split.
-  // Falls back to the suffix when the venue isn't in the cache yet so
-  // newly-scraped events still show their bairro until the auto-pipeline
-  // catches up.
+  const isGroupEvent = !!ev.isGroupEvent
+  const isRecurring = !!ev.isRecurring && !isGroupEvent
+
+  const { day, weekday } = _parseDayLabels(ev.dateStart)
+  const time = (ev.time || '').trim()
+
+  // Venue + bairro: single inline " · " separated string. Bairro from
+  // the geocoded venues cache, falling back to the legacy suffix split
+  // for venues not in the cache yet.
   const [venueRaw, suffixBairro] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
     : [ev.venue, null]
   const venueName = (venueRaw || '').trim()
-  const venueNeighborhood = (ev.bairro && ev.bairro.trim()) || suffixBairro
+  const bairro = (ev.bairro && ev.bairro.trim()) || suffixBairro || ''
+  const venueLine = bairro ? `${venueName} · ${bairro}` : venueName
 
-  // Highlight model (inverted from a prior iteration that highlighted
-  // routines): the SCARCE thing is what catches the eye. Routines happen
-  // every week by definition, so they read as background; one-off events
-  // are time-sensitive ("if you miss it, it's gone") and get the warm
-  // peach wash + brand-tinted border. Group events keep their cream + sage
-  // stripe (different signal: "yours / private"). The date label still
-  // says "Toda quinta · próx. X" for routines, so the recurrence info is
-  // preserved in text without competing visually with one-offs.
-  const isGroupEvent = !!ev.isGroupEvent
-  const isRecurring = !!ev.isRecurring && !isGroupEvent
-  const isOneOff = !isGroupEvent && !isRecurring
-  const cardBackground = isGroupEvent ? '#FFFAF3'
-                       : isOneOff ? '#FFF4EC'   // warm peach — brand-aligned, soft
-                       : 'white'                  // routines = neutral default
-  const cardBorder = isOneOff ? '1px solid #FFCCB0' : '1px solid var(--border)'
-  const cardShadow = isGroupEvent ? 'inset 4px 0 0 var(--sage)' : 'none'
+  const price = _formatPrice(ev, t?.tag_free)
+  const friendCount = friendsGoing.length
 
   return (
     <div
       onClick={onOpen}
       style={{
-        background: cardBackground, borderRadius: 16,
-        margin: '0 16px 9px', padding: '12px 13px',
-        border: cardBorder,
-        boxShadow: cardShadow,
-        display: 'flex', gap: 12, alignItems: 'flex-start',
-        cursor: 'pointer', transition: 'box-shadow 0.15s',
+        background: 'white',
+        margin: '0 16px 6px', padding: '12px 14px',
+        borderRadius: 12,
+        border: '1px solid var(--border)',
+        // Sage stripe for group events preserves the "yours/private"
+        // signal from the previous design.
+        boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)' : 'none',
+        display: 'flex', alignItems: 'stretch', gap: 14,
+        cursor: 'pointer',
       }}
     >
-      {/* Category icon */}
+      {/* LEFT — day anchor. Day number in terra (auê primary) so it
+          reads as the visual hook; weekday in charcoal-mid below.
+          Width fixed at 42px so the center column starts on a
+          consistent x across rows. */}
       <div style={{
-        width: 48, height: 48, borderRadius: 13, flexShrink: 0,
-        background: ev.headerBg,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 22,
+        flexShrink: 0, width: 42, textAlign: 'left',
+        display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
       }}>
-        {ev.icon}
+        <div style={{
+          fontSize: 26, fontWeight: 800, lineHeight: 1,
+          color: 'var(--terra)',
+          letterSpacing: -0.5,
+        }}>
+          {day}
+        </div>
+        <div style={{
+          fontSize: 10, fontWeight: 700, marginTop: 2,
+          color: 'var(--charcoal-mid)', letterSpacing: 1,
+        }}>
+          {weekday}
+        </div>
       </div>
 
-      {/* Content */}
+      {/* CENTER — name + single metadata row */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Name row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{
-            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-            lineHeight: 1.3, flex: 1,
-          }}>
-            {ev.name}
-          </div>
-          {rsvped && (
-            <span style={{
-              fontSize: 10, fontWeight: 700, flexShrink: 0,
-              background: 'var(--sage-pale)', color: 'var(--sage)',
-              padding: '3px 7px', borderRadius: 6,
-            }}>
-              ✓ Vou
-            </span>
-          )}
-        </div>
-
-        {/* Venue */}
-        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 3 }}>
-          📍 {venueName}{venueNeighborhood && (
-            <span style={{ color: 'var(--charcoal-light)' }}> · {venueNeighborhood}</span>
-          )}
-        </div>
-
-        {/* Date + time. One-offs get the terra accent (matches the peach
-            card wash and signals "time-sensitive"); routines stay charcoal
-            so the row reads as ambient/regular. The date label itself
-            already includes "Toda quinta · próx. X" for routines, so the
-            recurrence info survives the visual de-emphasis. */}
         <div style={{
-          fontSize: 11, fontWeight: 600, marginTop: 2,
-          color: isOneOff ? 'var(--terra)' : 'var(--charcoal-mid)',
+          fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+          lineHeight: 1.3,
+          // Allow up to 2 lines, truncate after.
+          display: '-webkit-box', WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          marginBottom: 4,
         }}>
-          {isRecurring ? '🔁' : '🗓'} {ev.date} · {ev.time}
+          {isGroupEvent && '🔒 '}
+          {ev.name}
         </div>
 
-        {/* Friends going (live from friends_feed) */}
-        {friendsGoing.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-            <div style={{ display: 'flex' }}>
-              {friendsGoing.slice(0, 3).map((f, i) => (
-                <button
-                  key={f.google_id ?? i}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (f.google_id && onFriend) onFriend(f.google_id)
-                  }}
-                  disabled={!f.google_id}
-                  title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
-                  style={{
-                    background: 'none', border: 'none', padding: 0,
-                    marginLeft: i === 0 ? 0 : -6,
-                    cursor: f.google_id ? 'pointer' : 'default',
-                    borderRadius: '50%',
-                    boxShadow: '0 0 0 2px white',
-                  }}
-                >
-                  <Avatar name={f.name} src={f.picture} size={20} />
-                </button>
-              ))}
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 600, color: '#5B8DD9' }}>
-              {friendsGoing.length === 1
-                ? `${friendsGoing[0].name} vai`
-                : `${friendsGoing.length} amigos vão`}
-            </span>
-          </div>
-        )}
-
-        {/* Vibe summary */}
-        {ev.vibeSummary && ev.vibeSummary !== ev.name && (
-          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3, fontStyle: 'italic', lineHeight: 1.35 }}>
-            {ev.vibeSummary}
-          </div>
-        )}
-
-        {/* Bottom row: badges + RSVP button */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-            {personalChip && <PersonalChip chip={personalChip} />}
-            {isGroupEvent ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); if (ev.groupId) onOpenGroup?.(ev.groupId) }}
-                title={`Ver grupo: ${ev.groupName || ''}`}
-                style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-                  background: 'var(--sage-pale)', color: 'var(--sage)',
-                  padding: '2px 8px', borderRadius: 5,
-                  display: 'inline-flex', alignItems: 'center', gap: 3,
-                  border: '1px solid var(--sage)', cursor: 'pointer',
-                  maxWidth: 180, whiteSpace: 'nowrap',
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                }}
-              >
-                🔒 {ev.groupName || 'Grupo'}
-              </button>
-            ) : (
-              <SourceBadge ev={ev} onSourceTap={onSourceTap} />
-            )}
-            {ev.isCustom && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
-                background: '#FFF3E0', color: 'var(--terra)',
-                padding: '2px 8px', borderRadius: 5,
-              }}>
-                ★ {t.tag_private}
-              </span>
-            )}
-            {ev.priceTier === 'free' ? (
-              <span className="tag tag--sage" style={{ fontSize: 10, padding: '2px 7px' }}>
-                {t.tag_free}
-              </span>
-            ) : ev.price ? (
-              <span style={{
-                fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 400,
-              }}>
-                {ev.price}
-              </span>
-            ) : null}
-            {ev.kidsWelcome && (
-              <span className="tag" style={{
-                fontSize: 10, padding: '2px 7px',
-                background: '#FFF3E0', color: '#E65100',
-              }}>
-                {t.tag_kids}
-              </span>
-            )}
-          </div>
-          {/* Action buttons removed from the card. AddToCalendar / Add
-              to group / Confirmar all live in the DetailPanel instead —
-              tapping the card opens it. The card stays an info surface;
-              actions are one tap deeper, where they have room and don't
-              compete with the dozens of cards in the list. */}
+        {/* Single metadata row: emoji · time · venue · bairro. Truncates
+            with ellipsis on narrow screens — venue + bairro can be long. */}
+        <div style={{
+          fontSize: 11, color: 'var(--charcoal-mid)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {isRecurring ? '🔁' : ev.icon || '📅'}
+          {time && <> {time}</>}
+          {venueLine && <> · {venueLine}</>}
         </div>
+
+        {/* Friends going line. Sage (auê's friend color) with ▸ prefix.
+            Friend avatars dropped for visual density — the count +
+            names land harder when unaccompanied. Tap routes to the
+            first friend's profile. */}
+        {friendCount > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              const first = friendsGoing.find(f => f.google_id)
+              if (first?.google_id && onFriend) onFriend(first.google_id)
+            }}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              marginTop: 4, cursor: 'pointer',
+              fontSize: 11, color: 'var(--sage)',
+              fontWeight: 600,
+            }}
+          >
+            ▸ {friendCount === 1
+              ? `${friendsGoing[0].name} vai`
+              : `${friendCount} amigos vão`}
+          </button>
+        )}
+      </div>
+
+      {/* RIGHT — price / FREE / RSVP marker */}
+      <div style={{
+        flexShrink: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'flex-end', justifyContent: 'flex-start',
+        gap: 4,
+      }}>
+        {price && (
+          <div style={{
+            fontSize: 12, fontWeight: 800,
+            color: price.accent ? 'var(--sage)' : 'var(--charcoal)',
+            letterSpacing: 0.5, whiteSpace: 'nowrap',
+          }}>
+            {price.text}
+          </div>
+        )}
+        {rsvped && (
+          <div style={{
+            fontSize: 9, fontWeight: 700, color: 'var(--sage)',
+            letterSpacing: 0.5,
+          }}>
+            ✓ VOU
+          </div>
+        )}
       </div>
     </div>
   )
