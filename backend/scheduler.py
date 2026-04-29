@@ -84,12 +84,22 @@ async def run_refresh(settings):
     enriched = pipeline.enrich_batch(all_raws, max_events=50)
 
     # ── Persistência (com contagem real por fonte) ──
+    # Rehost the IG image bytes before upsert so the stored payload
+    # already references our /event-images path. IG CDN URLs expire
+    # in ~weeks; doing this once at scrape time means no cron and no
+    # broken-image fallbacks for users opening older events. Idempotent
+    # (image_store skips when the file already exists).
+    from image_store import rehost_image
     inserts_by_source: dict[str, int] = defaultdict(int)
     updates_by_source: dict[str, int] = defaultdict(int)
     new_event_ids: list[str] = []
     saved = 0
     for ev in enriched:
         try:
+            if ev.image_url and not ev.image_url.startswith("/event-images/"):
+                local_url = rehost_image(ev.id, ev.image_url)
+                if local_url:
+                    ev.image_url = local_url
             was_new = db.upsert_event(ev)
             if was_new:
                 inserts_by_source[ev.source] += 1

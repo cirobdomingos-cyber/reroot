@@ -3336,6 +3336,21 @@ def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
     return {"ok": False, "lat": None, "lng": None}
 
 
+@app.post("/admin/images/rehost")
+def admin_rehost_images(requesting_email: str = "", limit: int = 50):
+    """One-shot backfill: rehost IG-CDN-served event images that haven't
+    been saved locally yet. Bounded by `limit` so a single call doesn't
+    sit for minutes. Re-run until `remaining` returns 0.
+
+    New scrapes do this automatically — this endpoint is for the
+    transition period where existing rows still point at expiring
+    IG URLs. Founder-only because it touches a write path that mutates
+    every event payload."""
+    _require_founder(requesting_email)
+    from image_store import rehost_pending_events
+    return rehost_pending_events(limit=limit)
+
+
 @app.post("/admin/venues/backfill-bairros")
 def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
     """One-shot backfill: for venues that already have lat/lng but no
@@ -3792,6 +3807,13 @@ _ASSET_LINKS = [{
         ]
     }
 }]
+
+# Rehosted IG event images live on the persistent volume (IMAGES_DIR
+# in image_store.py — defaults to a sibling of DB_PATH so the same
+# Railway volume holds both). Mounted before the SPA fallback so the
+# path doesn't get swallowed by index.html for unknown routes.
+from image_store import IMAGES_DIR as _IMAGES_DIR
+app.mount("/event-images", StaticFiles(directory=_IMAGES_DIR), name="event-images")
 
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
