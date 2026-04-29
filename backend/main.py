@@ -3221,6 +3221,16 @@ def admin_set_ig_claim(handle: str, req: IgClaimUpdate):
     return {"ok": True, "claimed_by_email": (req.email or "").strip().lower()}
 
 
+@app.get("/admin/venues/leaderboard")
+def admin_venue_leaderboard(requesting_email: str = "", window_days: int = 30):
+    """Founder-only: every active IG handle ranked by aggregate views
+    + RSVPs over the last `window_days`. The sales tool — venues at
+    the top are the strongest candidates for paid placement (Destaque)
+    deals because they already have audience pull on the catalog."""
+    _require_founder(requesting_email)
+    return {"venues": db.get_venue_leaderboard(window_days=max(1, min(window_days, 90)))}
+
+
 @app.get("/venue/{handle}/stats")
 def venue_dashboard_stats(handle: str, requesting_email: str = ""):
     """Per-venue dashboard data. Two access tiers:

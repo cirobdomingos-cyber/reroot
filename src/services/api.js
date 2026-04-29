@@ -635,6 +635,26 @@ export async function fetchSources() {
   return { institutional: [], instagram: [] }
 }
 
+export async function fetchVenueLeaderboard(requestingEmail, windowDays = 30) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/admin/venues/leaderboard?requesting_email=${encodeURIComponent(requestingEmail || '')}&window_days=${windowDays}`,
+    )
+    if (!res.ok) return { venues: [] }
+    const ct = (res.headers.get('content-type') || '').toLowerCase()
+    if (!ct.includes('application/json')) return { venues: [] }
+    const data = await res.json()
+    return {
+      venues: (data.venues || []).map(v => ({
+        ...v,
+        profile_pic_url: absoluteImageUrl(v.profile_pic_url),
+      })),
+    }
+  } catch {
+    return { venues: [] }
+  }
+}
+
 export async function fetchVenueDashboard(handle, requestingEmail) {
   try {
     const res = await fetchWithTimeout(

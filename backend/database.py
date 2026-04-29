@@ -1114,6 +1114,100 @@ def _empty_dashboard_stats() -> dict:
     }
 
 
+def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
+    """Founder-only sales tool: every tracked IG handle with its
+    aggregate views + RSVPs over the last `window_days`. Sorted by
+    views DESC. Drives the "who do I approach for paid placement"
+    decision — venues at the top of the list have the most catalog
+    pull and are the strongest candidates for Destaque deals.
+
+    Cheap-ish to compute: one query for all view rows in the window,
+    one query for all rsvp rows in the window, then bucket in Python
+    by ig_handle. Quadratic in (rows × handles) avoided."""
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=window_days)).isoformat()
+
+    # Per-handle view counts.
+    views_by_handle: dict[str, int] = {}
+    with get_conn() as conn:
+        for r in conn.execute(
+            """SELECT json_extract(properties_json, '$.ig_handle') AS h,
+                      COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name = 'event_view'
+                 AND created_at >= ?
+               GROUP BY h""",
+            (since,),
+        ).fetchall():
+            handle = (r["h"] or "").lower()
+            if handle:
+                views_by_handle[handle] = int(r["c"])
+
+        # Per-handle source-page views (proxy for "people researching
+        # the venue itself", not just an event).
+        src_views_by_handle: dict[str, int] = {}
+        for r in conn.execute(
+            """SELECT json_extract(properties_json, '$.ig_handle') AS h,
+                      COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name = 'source_view'
+                 AND created_at >= ?
+               GROUP BY h""",
+            (since,),
+        ).fetchall():
+            handle = (r["h"] or "").lower()
+            if handle:
+                src_views_by_handle[handle] = int(r["c"])
+
+        # Per-handle RSVP counts. We bucket by parsing event_id
+        # (`instagram_ig_<handle>_<post>`) — same identifier shape the
+        # dashboard query uses. Filter to last `window_days` via
+        # rsvps.created_at.
+        rsvps_by_handle: dict[str, int] = {}
+        for r in conn.execute(
+            """SELECT event_id, COUNT(*) AS c FROM rsvps
+               WHERE event_id LIKE 'instagram_ig_%'
+                 AND created_at >= ?
+               GROUP BY event_id""",
+            (since,),
+        ).fetchall():
+            ev_id = r["event_id"]
+            # event_id format: "instagram_ig_<handle>_<post_id>"
+            rest = ev_id[len("instagram_ig_"):]
+            idx = rest.rfind("_")
+            if idx <= 0:
+                continue
+            handle = rest[:idx].lower()
+            rsvps_by_handle[handle] = rsvps_by_handle.get(handle, 0) + int(r["c"])
+
+        # Pull every active handle so the leaderboard includes
+        # zero-activity venues (they tell you who's underperforming).
+        accounts = conn.execute(
+            """SELECT handle, label, display_name, profile_pic_url,
+                      featured, claimed_by_email, enabled
+               FROM tracked_ig_accounts WHERE enabled = 1"""
+        ).fetchall()
+
+    out = []
+    for a in accounts:
+        h = a["handle"]
+        views = views_by_handle.get(h, 0)
+        rsvps = rsvps_by_handle.get(h, 0)
+        out.append({
+            "handle": h,
+            "label": a["display_name"] or a["label"] or f"@{h}",
+            "profile_pic_url": a["profile_pic_url"] or "",
+            "featured": bool(a["featured"]),
+            "claimed_by_email": (a["claimed_by_email"] or "").lower(),
+            "views": views,
+            "source_views": src_views_by_handle.get(h, 0),
+            "rsvps": rsvps,
+            "conversion_rate": (rsvps / views) if views > 0 else 0.0,
+        })
+    out.sort(key=lambda v: (-v["views"], -v["rsvps"], v["label"].lower()))
+    return out
+
+
 def insert_analytics_event(event_name: str, properties_json: str, session_id: str):
     with get_conn() as conn:
         conn.execute(

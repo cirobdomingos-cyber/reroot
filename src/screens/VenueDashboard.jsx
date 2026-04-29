@@ -365,13 +365,19 @@ function PostBreakdownRow({ event: e, rank, fmtDate }) {
   // description preview + link to the original IG post + the venue-
   // facing stats (views / RSVPs). Image fails-silent to a gradient
   // placeholder when it 404s (rehost gap, not yet captured, etc.).
+  // Tap the card body → opens the event's hero in the app (Events tab,
+  // detail drawer). The "Ver post original →" link still routes to IG.
+  const navigate = useNavigate()
   const [imgBroken, setImgBroken] = useState(false)
   const showImage = !!e.image_url && !imgBroken
   return (
-    <div style={{
+    <div
+      onClick={() => navigate('/events', { state: { openEventId: e.event_id } })}
+      style={{
       background: 'white',
       border: '1px solid var(--border)', borderRadius: 12,
       padding: 10, display: 'flex', gap: 10, alignItems: 'flex-start',
+      cursor: 'pointer',
     }}>
       {/* Thumbnail */}
       <div style={{
@@ -444,6 +450,7 @@ function PostBreakdownRow({ event: e, rank, fmtDate }) {
             href={e.url}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(ev) => ev.stopPropagation()}
             style={{
               display: 'inline-block', marginTop: 4,
               fontSize: 10, fontWeight: 700,

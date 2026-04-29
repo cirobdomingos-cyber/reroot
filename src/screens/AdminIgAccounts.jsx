@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { fetchVenueLeaderboard } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
 
@@ -286,6 +287,14 @@ export default function AdminIgAccounts() {
           busy={busy}
           setBusy={setBusy}
         />
+      )}
+
+      {/* Leaderboard — founder sales tool. Every active handle ranked
+          by views + RSVPs in the last 30d. Tap a row to open that
+          venue's Painel for the deep dive. Top of the list = strongest
+          candidate to pitch a Destaque deal to. */}
+      {isFounder && (
+        <VenueLeaderboard email={email} navigate={navigate} />
       )}
 
       {isCurator && (
@@ -780,6 +789,138 @@ function NotACuratorMessage({ email }) {
         📋 Copiar meu email ({email})
       </button>
     </div>
+  )
+}
+
+
+// Venue leaderboard (founder-only). Lazy-fetched on mount; collapses
+// to the top 8 by default with "Ver tudo" expanding the full ranked
+// list. Tap a row → venue Painel for the deep dive.
+function VenueLeaderboard({ email, navigate }) {
+  const [venues, setVenues] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    fetchVenueLeaderboard(email, 30).then(d => {
+      if (cancelled) return
+      setVenues(d.venues || [])
+      setLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [email])
+  const visible = expanded ? venues : venues.slice(0, 8)
+  const hidden = venues.length - visible.length
+  return (
+    <section style={{ marginTop: 24, marginBottom: 8 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
+        🎯 Negociação · top venues
+      </h2>
+      <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+        Atividade dos últimos 30 dias — quem está no topo é candidato a
+        Destaque pago. Toca pra abrir o Painel completo.
+      </div>
+      {loading ? (
+        <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>Carregando…</div>
+      ) : venues.length === 0 ? (
+        <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
+          Nenhuma atividade registrada ainda nessa janela.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {visible.map((v, i) => {
+            const conv = (v.conversion_rate * 100).toFixed(1)
+            return (
+              <button
+                key={v.handle}
+                onClick={() => navigate(`/venue/${encodeURIComponent(v.handle)}`)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 10px', background: 'white',
+                  border: v.featured
+                    ? '1.5px solid var(--honey)'
+                    : '1px solid var(--border)',
+                  borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+                }}
+              >
+                <div style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: i === 0 ? 'var(--honey)' : 'var(--cream)',
+                  color: i === 0 ? 'white' : 'var(--charcoal-mid)',
+                  fontSize: 10, fontWeight: 800, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>{i + 1}</div>
+                <Avatar src={v.profile_pic_url} name={v.label} size={28} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {v.label}
+                    {v.featured && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 8, fontWeight: 800,
+                        letterSpacing: 0.5, color: 'var(--honey)',
+                      }}>⭐</span>
+                    )}
+                    {v.claimed_by_email && (
+                      <span title={`Reivindicado por ${v.claimed_by_email}`} style={{
+                        marginLeft: 6, fontSize: 8, fontWeight: 800,
+                        color: 'var(--sage)', letterSpacing: 0.5,
+                      }}>✓</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
+                    @{v.handle}
+                  </div>
+                </div>
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 1,
+                  flexShrink: 0, fontSize: 11, fontWeight: 800,
+                  fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+                }}>
+                  <span title={`${v.views} visualizações 30d`} style={{ color: 'var(--terra-light)' }}>
+                    👀 {v.views}
+                  </span>
+                  <span title={`${v.rsvps} RSVPs 30d`} style={{ color: 'var(--sage)' }}>
+                    🙌 {v.rsvps}
+                  </span>
+                  <span title={`Conversão view→RSVP`} style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>
+                    {conv}%
+                  </span>
+                </div>
+              </button>
+            )
+          })}
+          {hidden > 0 && !expanded && (
+            <button
+              onClick={() => setExpanded(true)}
+              style={{
+                padding: '8px 12px', borderRadius: 10,
+                border: '1px dashed var(--border)', background: 'transparent',
+                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
+                cursor: 'pointer',
+              }}
+            >
+              + Ver todos os {venues.length} venues
+            </button>
+          )}
+          {expanded && venues.length > 8 && (
+            <button
+              onClick={() => setExpanded(false)}
+              style={{
+                padding: '8px 12px', borderRadius: 10,
+                border: '1px dashed var(--border)', background: 'transparent',
+                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
+                cursor: 'pointer',
+              }}
+            >
+              − Mostrar menos
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 
