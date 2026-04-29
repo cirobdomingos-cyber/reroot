@@ -531,7 +531,7 @@ function UsageSection({ usage }) {
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
           USUÁRIOS ATIVOS POR DIA
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 92 }}>
           {usage.daily.map(d => {
             const h = Math.max(2, (d.active / maxDaily) * 70)
             return (
@@ -539,11 +539,28 @@ function UsageSection({ usage }) {
                 key={d.date}
                 title={`${d.date}: ${d.active} ativo(s)`}
                 style={{
-                  flex: 1, background: 'var(--sage)',
+                  flex: 1, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'flex-end',
+                  minWidth: 0,
+                }}
+              >
+                {/* Count label above each bar — readable scan instead
+                    of having to hover/long-press for the tooltip. Hidden
+                    when 0 to keep the empty-day strip clean. */}
+                <span style={{
+                  fontSize: 8, fontWeight: 700,
+                  color: d.active > 0 ? 'var(--sage)' : 'transparent',
+                  marginBottom: 2,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {d.active > 0 ? d.active : ''}
+                </span>
+                <div style={{
+                  width: '100%', background: 'var(--sage)',
                   height: `${h}px`, borderRadius: '3px 3px 0 0',
                   transition: 'all 0.15s',
-                }}
-              />
+                }}/>
+              </div>
             )
           })}
         </div>
