@@ -3584,6 +3584,56 @@ def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
     return rehost_pending_avatars(limit=limit)
 
 
+@app.post("/admin/diag/rsvp-prune-orphans")
+def admin_rsvp_prune_orphans(requesting_email: str = "", dry_run: bool = True):
+    """Delete rsvps rows whose event_id no longer matches any row in the
+    events table OR group_events table — left over from sources we
+    dropped (Sympla, Catraca Livre, etc. in the April 2026 cleanup) or
+    catalog events that aged out. Default dry_run=true so callers can
+    inspect counts before committing."""
+    _require_founder(requesting_email)
+    with db.get_conn() as conn:
+        rsvp_ids = [r["event_id"] for r in conn.execute(
+            "SELECT DISTINCT event_id FROM rsvps"
+        ).fetchall()]
+        if not rsvp_ids:
+            return {"orphans": 0, "deleted": 0, "dry_run": dry_run, "sample": []}
+        ph = ",".join("?" * len(rsvp_ids))
+        live_catalog = {r["id"] for r in conn.execute(
+            f"SELECT id FROM events WHERE id IN ({ph})", rsvp_ids,
+        ).fetchall()}
+        live_group = {r["id"] for r in conn.execute(
+            f"SELECT id FROM group_events WHERE id IN ({ph})", rsvp_ids,
+        ).fetchall()}
+        live = live_catalog | live_group
+        orphans = [eid for eid in rsvp_ids if eid not in live]
+        sample_rows: list[dict] = []
+        for eid in orphans[:10]:
+            row = conn.execute(
+                "SELECT event_name, event_date FROM rsvps WHERE event_id = ? LIMIT 1",
+                (eid,),
+            ).fetchone()
+            sample_rows.append({
+                "event_id": eid,
+                "event_name": (row["event_name"] if row else "") or "",
+                "event_date": (row["event_date"] if row else "") or "",
+            })
+        deleted = 0
+        if not dry_run and orphans:
+            o_ph = ",".join("?" * len(orphans))
+            cur = conn.execute(
+                f"DELETE FROM rsvps WHERE event_id IN ({o_ph})", orphans,
+            )
+            deleted = cur.rowcount or 0
+            conn.commit()
+    return {
+        "orphans": len(orphans),
+        "deleted": deleted,
+        "dry_run": dry_run,
+        "sample": sample_rows,
+    }
+
+
 @app.post("/admin/diag/rsvp-backfill")
 def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False):
     """Founder-only one-shot: walk every user_states row, parse
