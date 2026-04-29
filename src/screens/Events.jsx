@@ -2210,6 +2210,23 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           </div>
         )}
 
+        {/* Adicionado por — group events / personal plans surface the
+            creator so the recipient knows who put this on the calendar.
+            Catalog (IG) events leave createdByName empty and skip this. */}
+        {ev.createdByName && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+            padding: '8px 12px', borderRadius: 12, background: 'white',
+            border: '1px solid var(--border)',
+          }}>
+            <Avatar name={ev.createdByName} src={ev.createdByPicture} size={28} />
+            <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
+              {ev.isPersonalPlan ? 'Convite de ' : 'Adicionado por '}
+              <strong style={{ color: 'var(--charcoal)' }}>{ev.createdByName}</strong>
+            </span>
+          </div>
+        )}
+
         {/* Quem vai — full RSVP roster (friends + strangers + viewer if
             confirmed). Replaces the older "Amigos vão" block: this row
             covers both populations in one expandable strip, with friends

@@ -1383,6 +1383,14 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
     # show "Convite de Ciro" instead of a group label, and to bypass any
     # group-membership UI affordances.
     is_personal = not ge.get("group_id")
+    creator_id = ge.get("created_by") or ""
+    creator_name = ""
+    creator_picture = ""
+    if creator_id:
+        cstate = db.get_user_state(creator_id) or {}
+        cgoogle = cstate.get("googleUser") or {}
+        creator_name = cstate.get("userName") or cgoogle.get("givenName") or cgoogle.get("name") or ""
+        creator_picture = cgoogle.get("picture") or ""
     return {
         "id": ge["id"],
         "name": ge.get("name") or "",
@@ -1422,6 +1430,8 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
         "groupId": ge.get("group_id"),
         "groupName": group_name,
         "createdBy": ge.get("created_by"),
+        "createdByName": creator_name,
+        "createdByPicture": creator_picture,
         "inviteeCount": len(ge.get("extra_invitee_ids", []) or []),
         "note": ge.get("note") or "",
         # Source venue handle when this row was forked from a public IG
