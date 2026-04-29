@@ -1383,10 +1383,6 @@ export default function Events() {
                 }
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
-                onAttended={() => {
-                  dispatch({ type: 'MARK_ATTENDED' })
-                  closeDetail()
-                }}
                 userNeighborhood={state.neighborhood}
                 t={t}
               />
@@ -1934,7 +1930,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
   const [imageZoomed, setImageZoomed] = useState(false)
@@ -2361,16 +2357,6 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           <div style={{ marginTop: 10 }}>
             <AddToCalendar event={ev} />
           </div>
-        )}
-
-        {rsvped && !isVenue && (
-          <button
-            className="btn"
-            style={{ marginTop: 10, background: 'var(--sage-pale)', color: 'var(--sage)', fontWeight: 600, fontSize: 14 }}
-            onClick={onAttended}
-          >
-            {t.events_attended_btn}
-          </button>
         )}
 
         {/* Venues keep the Google Maps link at the bottom; non-venue source link is shown above the description. */}
