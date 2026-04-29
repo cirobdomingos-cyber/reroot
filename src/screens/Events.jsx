@@ -1680,6 +1680,13 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
   const [imageZoomed, setImageZoomed] = useState(false)
+  // Track image load failure separately. IG CDN URLs are signed and
+  // expire after a few days, so by the time a user opens an older
+  // event the URL 403s. background-image has no error event, so we
+  // render via <img> and flip this flag from onError to fall back
+  // cleanly to the gradient (and hide the zoom affordance).
+  const [imageBroken, setImageBroken] = useState(false)
+  const showImage = !!ev.imageUrl && !imageBroken
 
   // Share the in-app deep link (/#/events?event=<id>) for every event —
   // catalog, group, custom — so recipients land in auê with the hero
@@ -1699,42 +1706,66 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
   return (
     <>
       {/* Hero — uses the existing 120px banner slot. IG post image when
-          available, gradient fallback otherwise. Tap an image hero to
-          open the lightbox (full-resolution view). Subtle dark overlay
-          so the back button and category emoji stay legible against
-          bright photos. */}
+          available + loadable, gradient fallback otherwise. Tap an
+          image hero to open the lightbox. Subtle dark overlay keeps
+          the back button + category emoji readable against bright
+          photos. */}
       <div
-        onClick={ev.imageUrl ? () => setImageZoomed(true) : undefined}
+        onClick={showImage ? () => setImageZoomed(true) : undefined}
         style={{
           height: 120,
-          background: ev.imageUrl
-            ? `linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.30) 100%), url(${ev.imageUrl}) center / cover no-repeat`
-            : ev.headerBg,
+          background: ev.headerBg,
           position: 'relative',
-          cursor: ev.imageUrl ? 'zoom-in' : 'default',
+          overflow: 'hidden',
+          cursor: showImage ? 'zoom-in' : 'default',
         }}
       >
+        {/* Image rendered via <img> so onError can flip imageBroken
+            and we degrade to the gradient cleanly when an IG CDN URL
+            has expired. Hidden image still loads — onError fires and
+            removes it from view. */}
+        {ev.imageUrl && !imageBroken && (
+          <>
+            <img
+              src={ev.imageUrl}
+              alt=""
+              onError={() => setImageBroken(true)}
+              style={{
+                position: 'absolute', inset: 0,
+                width: '100%', height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.30) 100%)',
+              pointerEvents: 'none',
+            }} />
+          </>
+        )}
         <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
           position: 'absolute', top: 12, left: 12,
           width: 32, height: 32, borderRadius: '50%',
           background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+          zIndex: 1,
         }}>←</button>
         <div style={{
           position: 'absolute', bottom: 12, left: 14, fontSize: 30,
-          filter: ev.imageUrl ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' : 'none',
+          filter: showImage ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' : 'none',
+          zIndex: 1,
         }}>{ev.icon}</div>
-        {/* Tiny zoom hint at top-right when there's an image — small
-            visual nudge that the banner is interactive. Hidden behind
-            an icon to avoid taking text space. */}
-        {ev.imageUrl && (
+        {/* Zoom hint only when the image actually loaded. Hidden when
+            the URL expired and we fell back to the gradient. */}
+        {showImage && (
           <div style={{
             position: 'absolute', top: 12, right: 12,
             padding: '5px 8px', borderRadius: 999,
             background: 'rgba(0,0,0,0.45)', color: 'white',
             fontSize: 11, fontWeight: 700,
             display: 'flex', alignItems: 'center', gap: 4,
+            zIndex: 1,
           }}>
             🔍 Ver
           </div>
@@ -1743,8 +1774,10 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
 
       {/* Lightbox — fullscreen overlay with the original-resolution image.
           Tap anywhere outside the image (or on it) to close. zIndex sits
-          above the drawer (drawer is 9999) so the lightbox fully covers. */}
-      {imageZoomed && ev.imageUrl && (
+          above the drawer (drawer is 9999) so the lightbox fully covers.
+          Only shown when the image actually loaded — protects against
+          a stale-URL banner trying to expand into a 403. */}
+      {imageZoomed && showImage && (
         <div
           onClick={() => setImageZoomed(false)}
           style={{
