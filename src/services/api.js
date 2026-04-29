@@ -6,6 +6,7 @@
  * e mescla com os dados locais.
  */
 import { EVENTS } from '../data/events'
+import { getAnchorToday } from '../lib/dateAnchor'
 
 // In production (single-service deploy), API is same-origin → empty string.
 // In local dev, frontend runs on :5173 and backend on :8000.
@@ -73,14 +74,13 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
 }
 
 // Drop events whose date is before today (in the user's local timezone).
-// We compare against start-of-today, not "now", so an event scheduled for this
-// morning still shows in the afternoon — losing same-day discovery would hurt
-// the prescription experience more than seeing one already-started event helps.
-// Evergreen entries (no dateStart, e.g. "Aberto toda semana", Google Places) are kept.
+// "Today" is 6am-anchored — see lib/dateAnchor. So an event from 22:00
+// yesterday is still in-window until 06:00 today, which is what users
+// expect for late shows that run past midnight. After 06:00 the cutoff
+// rolls forward to today and yesterday's late events drop off.
+// Evergreen entries (no dateStart) are kept.
 function dropPastEvents(events) {
-  const startOfToday = new Date()
-  startOfToday.setHours(0, 0, 0, 0)
-  const cutoff = startOfToday.getTime()
+  const cutoff = getAnchorToday().getTime()
   return events.filter(ev => {
     if (!ev.dateStart) return true
     const t = Date.parse(ev.dateStart)

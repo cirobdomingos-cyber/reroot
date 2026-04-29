@@ -1,21 +1,8 @@
 import { useState, useMemo } from 'react'
+import { getAnchorToday } from '../lib/dateAnchor'
 
 const DAY_LABELS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-
-function getAnchorToday() {
-  // The strip's "today" only advances at 06:00 local. Between 00:00
-  // and 05:59 we still treat the previous calendar day as today, so
-  // a show that runs to 02:00 stays on the column the user was
-  // looking at when they made the plan. After 06:00 the column
-  // rolls forward.
-  const now = new Date()
-  if (now.getHours() < 6) {
-    now.setDate(now.getDate() - 1)
-  }
-  now.setHours(0, 0, 0, 0)
-  return now
-}
 
 function getWeekDays(offset = 0) {
   // Rolling 7-day window anchored on the 6am-adjusted "today"

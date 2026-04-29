@@ -9,6 +9,7 @@ import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotificati
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
+import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
@@ -107,9 +108,9 @@ function eventCoversDay(ev, dayIso) {
     const isoDow = ((d.getUTCDay() + 6) % 7) + 1
     if (!ev.recurrenceDays.includes(isoDow)) return false
     // Hide past days even for recurring — we don't want Saturday to
-    // light up before the user's "today" gets there.
-    const todayIso = new Date().toISOString().slice(0, 10)
-    return dayIso >= todayIso
+    // light up before the user's "today" gets there. 6am-anchored so
+    // late-night sessions stay surfaced until morning.
+    return dayIso >= getAnchorTodayIso()
   }
   const start = (ev.dateStart || '').slice(0, 10)
   if (!start) return false
@@ -509,9 +510,7 @@ export default function Events() {
   // range filter — they're evergreen by definition and the next
   // occurrence is always rolled forward upstream.
   if (dateRange !== 'all') {
-    const now = new Date()
-    const startOfToday = new Date(now)
-    startOfToday.setHours(0, 0, 0, 0)
+    const startOfToday = getAnchorToday()
     let rangeEnd  // Date — events strictly before this survive
     if (dateRange === 'today') {
       rangeEnd = new Date(startOfToday)

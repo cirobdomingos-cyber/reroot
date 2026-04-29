@@ -1,25 +1,12 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useT } from '../i18n'
+import { getAnchorToday } from '../lib/dateAnchor'
 
 const DAY_LABELS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 const MONTH_LABELS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function getAnchorToday() {
-  // The strip's "today" only advances at 06:00 local. Between 00:00
-  // and 05:59 we still treat the previous calendar day as today, so
-  // late-night plans (a show that runs to 02:00) stay on the same
-  // column users were looking at when they made the plan. After
-  // 06:00 the column rolls forward.
-  const now = new Date()
-  if (now.getHours() < 6) {
-    now.setDate(now.getDate() - 1)
-  }
-  now.setHours(0, 0, 0, 0)
-  return now
-}
 
 function getWeekDays(offset = 0) {
   // Rolling 7-day window starting from the 6am-anchored "today"
