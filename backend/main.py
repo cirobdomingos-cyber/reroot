@@ -1563,7 +1563,7 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
 # tracked. aue_original stays as the curated-seed slot.
 _INSTITUTIONAL_SOURCES = {
     "aue_original": {
-        "label": "Original auê",
+        "label": "Seleção auê",
         "url": "",
         "icon": "⭐",
         "blurb": "Eventos curados pela equipe do auê.",
