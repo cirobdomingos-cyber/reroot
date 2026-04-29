@@ -187,7 +187,10 @@ export default function EventsMap({ events, onPinTap }) {
               key={c.key}
               position={[c.lat, c.lng]}
               icon={single ? singleIcon(ev.categoryEmoji || ev.icon) : clusterIcon(c.events.length)}
-              eventHandlers={single ? { click: () => onPinTap?.(ev) } : undefined}
+              // No eager click handler — let Leaflet open the Popup. The
+              // detail drawer only opens when the user taps "Ver detalhes"
+              // inside the popup. Previously a pin tap fired both at once,
+              // which loaded the drawer behind the map z-index.
             >
               <Popup>
                 {single ? (
