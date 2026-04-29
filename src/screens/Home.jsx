@@ -367,13 +367,6 @@ export default function Home() {
           }
         }}
         onGroupRsvp={handleAcceptInvite}
-        onDayClick={(dayIso) => {
-          // Tap a day in the calendar → jump to the Events tab with
-          // that day pre-selected on the week strip. Easier than
-          // scrolling the home calendar's events list, and keeps
-          // discovery in the surface that's built for it.
-          navigate('/events', { state: { openDay: dayIso } })
-        }}
       />
 
       {/* Post-event reconnect nudge */}

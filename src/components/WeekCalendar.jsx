@@ -8,12 +8,17 @@ const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago',
 const MONTH_LABELS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function getWeekDays(offset = 0) {
+  // Rolling 7-day window starting from today. offset=0 → today + 6
+  // upcoming days; offset=1 → 7 days after that; offset=-1 → 7 days
+  // before today (handy for re-checking past plans). Anchored on
+  // "today" rather than Monday so the user always sees what's
+  // immediately ahead first.
   const today = new Date()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + offset * 7)
+  const start = new Date(today)
+  start.setDate(today.getDate() + offset * 7)
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
     return d
   })
 }

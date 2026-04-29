@@ -317,16 +317,7 @@ export default function Events() {
         window.history.replaceState({}, '')
       }
     }
-    // Tapping a date on the Home calendar lands here with state.openDay
-    // = 'YYYY-MM-DD'. Pre-select that day on the week strip so the
-    // user sees the filtered list immediately. Cleared from history
-    // afterwards so navigating away and back doesn't re-pin it.
-    const stateDay = location.state?.openDay
-    if (stateDay) {
-      setSelectedDay(stateDay)
-      window.history.replaceState({}, '')
-    }
-  }, [location.state?.openEventId, location.state?.openDay, location.search, loading, groupEventsReady, navigate])
+  }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
