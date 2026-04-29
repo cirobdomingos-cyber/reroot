@@ -3584,6 +3584,87 @@ def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
     return rehost_pending_avatars(limit=limit)
 
 
+@app.post("/admin/diag/rsvp-backfill")
+def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False):
+    """Founder-only one-shot: walk every user_states row, parse
+    state_json.rsvps, and INSERT OR IGNORE missing entries into the
+    rsvps table. Catches every catalog RSVP made before today's
+    syncRsvp wiring landed — those rows lived only in the user's
+    state blob and never reached the rsvps table, so /friends/feed
+    couldn't surface them.
+
+    Idempotent: INSERT OR IGNORE skips rows already keyed by
+    (google_id, event_id). Pass dry_run=true to count without
+    inserting."""
+    _require_founder(requesting_email)
+    inserted = 0
+    skipped_no_data = 0
+    users_scanned = 0
+    sample_inserts: list[dict] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT google_id, state_json FROM user_states"
+        ).fetchall()
+        for r in rows:
+            users_scanned += 1
+            try:
+                state = json.loads(r["state_json"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            rsvps = state.get("rsvps") or {}
+            if not isinstance(rsvps, dict):
+                continue
+            for event_id, info in rsvps.items():
+                # Legacy boolean shape: skip — we don't have name/date/venue.
+                if not isinstance(info, dict):
+                    skipped_no_data += 1
+                    continue
+                date_start = (info.get("dateStart") or "").strip()
+                name = (info.get("name") or "").strip()
+                venue = (info.get("venue") or "").strip()
+                if not name and not date_start:
+                    skipped_no_data += 1
+                    continue
+                if dry_run:
+                    inserted += 1
+                    if len(sample_inserts) < 10:
+                        sample_inserts.append({
+                            "google_id": r["google_id"],
+                            "event_id": event_id,
+                            "event_name": name,
+                            "event_date": date_start,
+                        })
+                    continue
+                try:
+                    conn.execute(
+                        """INSERT OR IGNORE INTO rsvps
+                           (google_id, event_id, event_name, event_venue,
+                            event_date, event_url, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (r["google_id"], event_id, name, venue,
+                         date_start, "", now_iso),
+                    )
+                    if conn.total_changes:
+                        # total_changes is cumulative on the conn; use rowcount
+                        # via cursor instead. Simpler: just count attempts and
+                        # let INSERT OR IGNORE be a no-op for existing rows.
+                        pass
+                    inserted += 1
+                except sqlite3.Error as exc:
+                    log.warning("rsvp-backfill: insert failed for %s/%s: %s",
+                                r["google_id"], event_id, exc)
+        if not dry_run:
+            conn.commit()
+    return {
+        "users_scanned": users_scanned,
+        "inserted_or_existing": inserted,
+        "skipped_no_data": skipped_no_data,
+        "dry_run": dry_run,
+        "sample": sample_inserts if dry_run else None,
+    }
+
+
 @app.get("/admin/diag/rsvps")
 def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = ""):
     """Founder-only: dump the rsvps table rows for a target user and
