@@ -201,6 +201,7 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
                   </div>
                   {events.map(ev => {
                     const isGroup = ev._type === 'group'
+                    const accentColor = isGroup ? 'var(--terra)' : 'var(--sage)'
                     return (
                       <div
                         key={ev.id}
@@ -212,16 +213,28 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
                           cursor: 'pointer',
                         }}
                       >
-                        {/* Icon or group indicator */}
+                        {/* Date column — same shape as the catalog EventCard
+                            so group/personal-plan rows in the home calendar
+                            read consistently with the rest of the app. Color
+                            picks up the row's accent (terra for pending
+                            invites, sage for confirmed). */}
                         <div style={{
-                          width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 16,
-                          background: isGroup
-                            ? 'linear-gradient(135deg, var(--terra-pale), #f5ddd1)'
-                            : (ev.headerBg || 'var(--sage-pale)'),
+                          flexShrink: 0, width: 36,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center',
+                          lineHeight: 1,
                         }}>
-                          {isGroup ? '👥' : (ev.icon || '📅')}
+                          <div style={{
+                            fontSize: 18, fontWeight: 800, color: accentColor,
+                          }}>
+                            {day.getDate()}
+                          </div>
+                          <div style={{
+                            fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+                            color: 'var(--charcoal-light)',
+                            textTransform: 'uppercase', marginTop: 2,
+                          }}>
+                            {dayLabels[day.getDay()]}
+                          </div>
                         </div>
 
                         <div style={{ flex: 1, minWidth: 0 }}>
