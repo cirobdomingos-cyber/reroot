@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
 import AttendeesRow from '../components/AttendeesRow'
+import HomeEventRow from '../components/HomeEventRow'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -378,66 +379,80 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
   // can't resolve (member left the group, etc.).
   const creator = (members || []).find(m => m.google_id === event.created_by)
 
-  // Catalog imports have "Ver original: <url>" appended to description.
-  // Strip it for the card preview; the drawer surfaces the link properly.
-  const cleanDesc = (event.description || '').replace(/\n*Ver original:.*$/, '').trim()
+  // Date column + ribbon come from the shared HomeEventRow so groups
+  // read the same as Home and RSVPs. The trailing slot carries the
+  // RSVP toggle (or "Já foi" pill for past). The note callout +
+  // creator attribution + delete control sit below the row inside
+  // the same outer container.
+  const time = (event.date_start || '').slice(11, 16)
+  const trailing = past
+    ? (
+      <span style={{
+        fontSize: 10, fontWeight: 700, color: 'var(--charcoal-light)',
+        background: 'var(--cream)', padding: '4px 8px', borderRadius: 6,
+      }}>
+        Já foi
+      </span>
+    )
+    : onRsvp
+    ? (
+      <button
+        onClick={e => { e.stopPropagation(); onRsvp() }}
+        style={{
+          padding: '6px 12px', borderRadius: 10, border: 'none',
+          fontSize: 11, fontWeight: 700, cursor: 'pointer',
+          background: isRsvped ? 'var(--sage)' : 'var(--cream)',
+          color: isRsvped ? 'white' : 'var(--charcoal)',
+        }}
+      >
+        {isRsvped ? t.events_rsvped : t.events_rsvp}
+      </button>
+    )
+    : null
 
+  // Group event rows always render with the group/plan accent (sage
+  // ribbon + sage day number) — they're never catalog single events.
   return (
-    <div
-      onClick={onOpen}
-      style={{
-        background: 'white', borderRadius: 14, padding: '12px 14px',
-        border: '1px solid var(--border)',
-        cursor: onOpen ? 'pointer' : 'default',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)' }}>{event.name}</div>
-          {event.venue && <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>📍 {event.venue}</div>}
-          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-            📅 {event.date_start?.slice(0, 10)} {event.date_start?.slice(11, 16)}
-          </div>
-          {cleanDesc && <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 4 }}>{cleanDesc}</div>}
-          {event.note && (
-            <div style={{
-              marginTop: 8, padding: '8px 11px',
-              background: 'var(--cream)',
-              borderLeft: '3px solid var(--terra)',
-              borderRadius: 8,
-              fontSize: 12, color: 'var(--charcoal)',
-              lineHeight: 1.45,
-              fontStyle: 'italic',
-            }}>
-              💬 {event.note}
-            </div>
-          )}
-          {creator && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 6, marginTop: 8,
-              fontSize: 11, color: 'var(--charcoal-light)',
-            }}>
-              <Avatar name={creator.name} src={creator.picture} size={18} />
-              <span>Adicionado por <strong style={{ color: 'var(--charcoal-mid)' }}>{creator.name}</strong></span>
-            </div>
-          )}
+    <div>
+      <HomeEventRow
+        name={event.name}
+        dateStart={event.date_start}
+        time={time}
+        venue={event.venue}
+        isGroupEvent
+        onClick={onOpen}
+        muted={past}
+        trailing={trailing}
+      />
+      {event.note && (
+        <div style={{
+          margin: '6px 0 0 8px', padding: '8px 11px',
+          background: 'var(--cream)',
+          borderLeft: '3px solid var(--terra)',
+          borderRadius: 8,
+          fontSize: 12, color: 'var(--charcoal)',
+          lineHeight: 1.45, fontStyle: 'italic',
+        }}>
+          💬 {event.note}
         </div>
-        {!past && onRsvp && (
-          <button
-            onClick={e => { e.stopPropagation(); onRsvp() }}
-            style={{
-              padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              background: isRsvped ? 'var(--sage)' : 'var(--cream)', color: isRsvped ? 'white' : 'var(--charcoal)',
-            }}
-          >
-            {isRsvped ? t.events_rsvped : t.events_rsvp}
-          </button>
-        )}
-      </div>
+      )}
+      {creator && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          margin: '6px 0 0 8px',
+          fontSize: 11, color: 'var(--charcoal-light)',
+        }}>
+          <Avatar name={creator.name} src={creator.picture} size={18} />
+          <span>Adicionado por <strong style={{ color: 'var(--charcoal-mid)' }}>{creator.name}</strong></span>
+        </div>
+      )}
       {onDelete && (
         <button
           onClick={e => { e.stopPropagation(); onDelete() }}
-          style={{ fontSize: 11, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', marginTop: 6 }}
+          style={{
+            fontSize: 11, color: '#e74c3c', background: 'none',
+            border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 8,
+          }}
         >
           Delete
         </button>
