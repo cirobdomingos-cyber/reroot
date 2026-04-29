@@ -202,6 +202,11 @@ export default function Events() {
   const [notifToast, setNotifToast]         = useState(null)
   const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
+  // "Só únicos" — hide recurring residencies and multi-day ranges from
+  // the list and the per-day pick filter. Default OFF so the catalog
+  // shows everything; toggle ON when the user wants only the
+  // time-sensitive stuff. Off = inclusive. On = exclusive.
+  const [oneOffOnly, setOneOffOnly]         = useState(false)
   // Personal-plan creation sheet — invite friends to a hand-picked event.
   const [showPlanSheet, setShowPlanSheet]   = useState(false)
   // Recurring routines (e.g. "every Thursday MPB") show alongside one-off
@@ -436,6 +441,20 @@ export default function Events() {
   }
   if (isVenueMode && venueSubFilter !== 'all') {
     filteredEvents = filteredEvents.filter(ev => getSubtype(ev) === venueSubFilter)
+  }
+  // "Só únicos" — drop recurring residencies and multi-day ranges. The
+  // user reaches for this when the day-by-day expansion (which is back
+  // on, see below) makes the list feel like the same residency over
+  // and over. Off = full catalog with routines included.
+  if (oneOffOnly) {
+    filteredEvents = filteredEvents.filter(ev => {
+      if (ev.isRecurring) return false
+      const start = (ev.dateStart || '').slice(0, 10)
+      const end = (ev.dateEnd || '').slice(0, 10) || start
+      // Multi-day range = covers more than one day. Drop those too —
+      // user only wants strict one-day events here.
+      return !end || end === start
+    })
   }
   // Price filter — additive (AND logic)
   if (priceFilter === 'free') {
@@ -845,12 +864,26 @@ export default function Events() {
         </div>
       )}
 
-      {/* ── Price + Kids Welcome filter chips ── */}
+      {/* ── Filter chips: "Só únicos" + price + kids ── */}
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {/* "Todas as datas" pill removed — duplicated "Tudo" on the
-            date-range row, and the week strip already toggles a picked
-            day off when tapped a second time, so the path back to the
-            full catalog stayed accessible. */}
+        {/* "Só únicos" — first chip, drops residencies/ranges so the
+            list shows only one-day events. Default off; the day-by-day
+            expansion of routines is back, and this is the escape hatch
+            for users who don't want to see the same Thu/Fri/Sat
+            residency on three consecutive days. */}
+        <button
+          onClick={() => setOneOffOnly(v => !v)}
+          style={{
+            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+            transition: 'all 0.15s',
+            border: oneOffOnly ? 'none' : '1px solid var(--border)',
+            background: oneOffOnly ? '#7E57C2' : 'transparent',
+            color: oneOffOnly ? 'white' : 'var(--charcoal-light)',
+          }}
+        >
+          ⚡ Só únicos
+        </button>
         {[
           { id: 'all',  label: t.filter_all_prices },
           { id: 'free', label: `🆓 ${t.filter_free}` },

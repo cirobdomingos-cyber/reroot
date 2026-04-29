@@ -43,74 +43,58 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Two parallel signals per day:
+  // Bucket events by ISO day. Each day gets +1 for every event covering
+  // it: one-offs on their single day, multi-day ranges on every day in
+  // the run, recurring residencies on every matching weekday in a
+  // 60-day forward window.
   //
-  //  1. countsByDay — one-offs only, +1 on dateStart per event. This is
-  //     the BIG number on the day cell. Counts the time-sensitive
-  //     stuff: shows / openings / festivals / things you'll miss.
-  //  2. routineDays — Set of ISO days that have at least one recurring
-  //     or multi-day-range event covering them. Rendered as a small
-  //     🔁 dot on the day cell so the user knows "there's also a
-  //     Thu/Fri/Sat residency tonight" without inflating the count.
-  //
-  // The list's per-day pick filter (eventCoversDay) still expands
-  // routines + ranges onto every covered day, so tapping Friday surfaces
-  // the Thu/Fri/Sat residency along with any one-offs that day.
+  // Yes, this can make the strip badges look "busy" when residencies
+  // cover multiple weekdays — that's the discoverability tradeoff.
+  // Users who want only the time-sensitive stuff toggle the "Só únicos"
+  // filter on the price-row to drop residencies + ranges from both the
+  // strip events feed AND the list. 60-day cap protects against
+  // malformed multi-year ranges.
   const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), [])
-  const { countsByDay, routineDays } = useMemo(() => {
-    const counts = {}
-    const routines = new Set()
+  const countsByDay = useMemo(() => {
+    const map = {}
     const horizon = new Date()
     horizon.setUTCDate(horizon.getUTCDate() + 60)
     for (const ev of events) {
-      const isoStart = ev.dateStart || ev.date_start || ''
-      if (!isoStart) continue
-      const startKey = isoStart.slice(0, 10)
-      const isoEnd = ev.dateEnd || ev.date_end || ''
-      const endKey = isoEnd ? isoEnd.slice(0, 10) : ''
-      const isRecurring = !!ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length
-      const isRange = endKey && endKey > startKey
-
-      if (isRecurring) {
-        // Mark every matching weekday in the next 60 days as a
-        // routine-day. Doesn't touch counts.
+      // Recurring branch: walk forward 60 days, count every matching
+      // ISO weekday.
+      if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
         const cursor = new Date(`${todayIso}T00:00:00Z`)
         let n = 0
         while (cursor <= horizon && n < 60) {
           const isoDow = ((cursor.getUTCDay() + 6) % 7) + 1
           if (ev.recurrenceDays.includes(isoDow)) {
-            routines.add(cursor.toISOString().slice(0, 10))
+            const k = cursor.toISOString().slice(0, 10)
+            map[k] = (map[k] || 0) + 1
           }
           cursor.setUTCDate(cursor.getUTCDate() + 1)
           n += 1
         }
         continue
       }
-
-      if (isRange) {
-        // Multi-day range: count once on start (so the festival
-        // "happens" the day it opens), mark every covered day as a
-        // routine-day so the dot appears across the run.
-        counts[startKey] = (counts[startKey] || 0) + 1
-        const start = new Date(`${startKey}T00:00:00Z`)
-        const end = new Date(`${endKey}T00:00:00Z`)
-        if (Number.isNaN(start.getTime())) continue
-        const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
-        const cursor = new Date(start)
+      const isoStart = ev.dateStart || ev.date_start || ''
+      if (!isoStart) continue
+      const startKey = isoStart.slice(0, 10)
+      const isoEnd = ev.dateEnd || ev.date_end || ''
+      const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
+      const start = new Date(`${startKey}T00:00:00Z`)
+      const end = new Date(`${endKey}T00:00:00Z`)
+      if (Number.isNaN(start.getTime())) continue
+      const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
+      const cursor = new Date(start)
+      let n = 0
+      while (cursor <= finalEnd && n < 60) {
+        const k = cursor.toISOString().slice(0, 10)
+        map[k] = (map[k] || 0) + 1
         cursor.setUTCDate(cursor.getUTCDate() + 1)
-        let n = 0
-        while (cursor <= finalEnd && n < 60) {
-          routines.add(cursor.toISOString().slice(0, 10))
-          cursor.setUTCDate(cursor.getUTCDate() + 1)
-          n += 1
-        }
-        continue
+        n += 1
       }
-
-      // Plain one-off — bumps the count on its single day.
-      counts[startKey] = (counts[startKey] || 0) + 1
     }
-    return { countsByDay: counts, routineDays: routines }
+    return map
   }, [events, todayIso])
 
   const monthLabel = `${MONTH_LABELS_PT[days[0].getMonth()]} ${days[0].getFullYear()}`
@@ -156,7 +140,6 @@ export default function EventsWeekStrip({
           const hasEvents = count > 0
           const youGoing = rsvpDays?.has(key)
           const friendsGoing = friendDays?.has(key)
-          const hasRoutine = routineDays.has(key)
 
           return (
             <button
@@ -202,22 +185,14 @@ export default function EventsWeekStrip({
               }}>
                 {hasEvents ? count : ''}
               </div>
-              {/* Social/coverage dots — sage = you RSVPed, blue = friends
-                  going, terra = there's a routine/range covering this
-                  day (residencies, multi-day exhibitions). Reserve the
-                  row height even when empty so day cells stay aligned. */}
+              {/* Social dots — sage = you RSVPed, blue = friends going.
+                  Reserve the row height even when empty so cells stay
+                  aligned. The recurring-routine dot was dropped: the
+                  count badge now includes routines, and users who want
+                  to filter them out toggle "Só únicos" on the price row. */}
               <div style={{
                 display: 'flex', gap: 3, marginTop: 3, height: 6,
               }}>
-                {hasRoutine && (
-                  <div
-                    title="Tem rotina/rolê fixo nesse dia"
-                    style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: selected ? 'var(--terra-pale)' : 'var(--terra)',
-                    }}
-                  />
-                )}
                 {youGoing && (
                   <div
                     title="Você confirmou"
