@@ -216,7 +216,7 @@ _PRIVACY_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1>auê — Política de Privacidade</h1>
-<small>Última atualização: 26 de abril de 2026</small>
+<small>Última atualização: 28 de abril de 2026</small>
 
 <p>O <strong>auê</strong> é um catálogo social de eventos em Curitiba.
 Esta política descreve, de forma objetiva, quais dados a gente coleta,
@@ -248,6 +248,22 @@ na tela <em>Fontes monitoradas</em>, mais alguns eventos curados pela equipe.
 Pra extrair informações estruturadas das legendas do Instagram, a gente usa
 a API da <a href="https://www.anthropic.com/legal/privacy">Anthropic (Claude)</a>;
 nada de dados pessoais seus é enviado, só o conteúdo público dos posts.</p>
+<p>Cada evento exibido inclui um link <em>"Ver no Instagram"</em> que leva direto
+ao post original — o auê é um agregador, não uma cópia. As fontes (perfis
+do Instagram) continuam donas do conteúdo; nós apenas indexamos o que está
+público pra facilitar a descoberta de quem mora em Curitiba.</p>
+
+<h2>Sou dono de um perfil — quero sair do catálogo</h2>
+<p>Se você representa um dos perfis listados em <em>Fontes monitoradas</em> e
+quer que ele <strong>deixe de ser indexado</strong>, é só mandar e-mail pra
+<code>ciro.b.domingos@gmail.com</code> com assunto
+<em>"Remover @&lt;handle&gt; do auê"</em>, do email associado ao perfil ou de
+alguém que você indique. Removemos a conta da listagem e apagamos os eventos
++ imagens cacheadas do nosso catálogo em até <strong>24 horas</strong>, sem
+necessidade de justificativa.</p>
+<p>Se preferir, você também pode <strong>reivindicar</strong> o perfil pra
+controlar diretamente como ele aparece (em breve — escreva pro mesmo email
+e a gente conversa).</p>
 
 <h2>Quem mais vê seus dados</h2>
 <ul>

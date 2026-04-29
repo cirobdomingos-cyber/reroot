@@ -640,7 +640,14 @@ export async function fetchSourceDetail(sourceId) {
     const res = await fetchWithTimeout(
       `${BASE_URL}/sources/${encodeURIComponent(sourceId)}`
     )
-    if (res.ok) return res.json()
+    if (!res.ok) return null
+    const data = await res.json()
+    // Same dev-prefix logic as fetchSources — rehosted avatars come
+    // back as relative paths and 404 against Vite without the prefix.
+    if (data?.source?.profile_pic_url) {
+      data.source.profile_pic_url = absoluteImageUrl(data.source.profile_pic_url)
+    }
+    return data
   } catch {
     // Backend unavailable
   }

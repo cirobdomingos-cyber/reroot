@@ -129,22 +129,55 @@ export default function SourceDetail() {
           </div>
         ) : null}
 
-        {source.url && (
-          <a
-            href={source.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              marginTop: 12, padding: '8px 14px', borderRadius: 10,
-              background: 'var(--sage-pale)', color: 'var(--sage)',
-              fontSize: 12, fontWeight: 700, textDecoration: 'none',
-              border: '1px solid var(--sage)',
-            }}
-          >
-            🔗 Abrir site oficial →
-          </a>
-        )}
+        {/* Aggregator banner — explicit "we're not the source" framing,
+            so the page doesn't read like a parallel IG profile. Lives
+            above the events list with a clear backlink to the original
+            (Instagram for IG-tracked handles, the institutional URL
+            for aue_originals etc.). Also doubles as the public-facing
+            opt-out path: tap "Sair do catálogo" → mailto with a pre-
+            filled subject to ciro.b.domingos@gmail.com. */}
+        {source.url && (() => {
+          const isIg = source.id?.startsWith('ig:')
+          const handle = isIg ? source.id.slice(3) : null
+          const banner = isIg
+            ? <>Conteúdo agregado de <strong>@{handle}</strong> ·{' '}
+                <a href={source.url} target="_blank" rel="noopener noreferrer"
+                   style={{ color: 'var(--sage)', fontWeight: 700, textDecoration: 'underline' }}>
+                  ver no Instagram →
+                </a>
+              </>
+            : <>Conteúdo de <strong>{source.label}</strong> ·{' '}
+                <a href={source.url} target="_blank" rel="noopener noreferrer"
+                   style={{ color: 'var(--sage)', fontWeight: 700, textDecoration: 'underline' }}>
+                  ir pra fonte original →
+                </a>
+              </>
+          const optOutSubject = isIg
+            ? `Remover @${handle} do auê`
+            : `Remover ${source.label} do auê`
+          return (
+            <div style={{
+              marginTop: 12, padding: '10px 12px',
+              background: 'var(--cream)', borderRadius: 10,
+              border: '1px solid var(--border)',
+              fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5,
+            }}>
+              <div>📡 {banner}</div>
+              {isIg && (
+                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--charcoal-light)' }}>
+                  É seu perfil e quer sair do catálogo?{' '}
+                  <a
+                    href={`mailto:ciro.b.domingos@gmail.com?subject=${encodeURIComponent(optOutSubject)}`}
+                    style={{ color: 'var(--charcoal-mid)', textDecoration: 'underline' }}
+                  >
+                    Manda email
+                  </a>
+                  {' '}— removo em até 24h.
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {events.length === 0 ? (
