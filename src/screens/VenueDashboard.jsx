@@ -155,6 +155,23 @@ export default function VenueDashboard() {
             />
           </div>
 
+          {/* Promo code conversion — only meaningful for Seleção auê
+              venues with a code set. Shows up as "Y de X viewers
+              tocaram o código pra usar no balcão". When zero (no code
+              configured / nobody tapped) the card stays clean rather
+              than implying a problem. */}
+          {data.code_views && data.code_views.all > 0 && (
+            <div style={{ padding: '0 16px 12px' }}>
+              <Metric
+                emoji="🎁"
+                label="Códigos revelados (30d)"
+                value={data.code_views.d30}
+                sub={`${data.code_views.d7} esta semana · ${(data.code_view_rate * 100).toFixed(1)}% dos viewers tocaram pra ver`}
+                full
+              />
+            </div>
+          )}
+
           <div style={{ padding: '0 16px 12px' }}>
             <Metric
               emoji="📷"

@@ -1311,6 +1311,21 @@ def _handle_for_event(ev) -> str:
     return rest[:idx].lower()
 
 
+def _handle_from_event_id(event_id: str) -> str:
+    """Extract IG handle from a frontend-shaped catalog event id of the
+    form `instagram_ig_<handle>_<post>`. Returns '' for non-IG ids
+    (aue_original, group events, anything malformed). Used to attribute
+    forked group events back to their source venue's Painel."""
+    eid = (event_id or "").strip()
+    if not eid.startswith("instagram_ig_"):
+        return ""
+    rest = eid[len("instagram_ig_"):]
+    idx = rest.rfind("_")
+    if idx <= 0:
+        return ""
+    return rest[:idx].lower()
+
+
 def _is_curator_event(ev) -> bool:
     """True when the event came from a handle categorized as 'curador'.
     aue_original and venue handles return False — they're treated as
@@ -1409,6 +1424,11 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
         "createdBy": ge.get("created_by"),
         "inviteeCount": len(ge.get("extra_invitee_ids", []) or []),
         "note": ge.get("note") or "",
+        # Source venue handle when this row was forked from a public IG
+        # catalog event. Frontend uses it to fire `event_view` analytics
+        # against the source venue so the original Painel still gets
+        # credit for downstream attention.
+        "sourceIgHandle": ge.get("source_ig_handle") or "",
     }
 
 
@@ -2631,6 +2651,11 @@ class GroupEventCreateRequest(BaseModel):
     date_end: Optional[str] = None
     visibility: str = "members"  # 'public' | 'members'
     note: str = ""  # short free-text "que tal esse?" attached to the card
+    # Catalog event id when this row was forked from a public event
+    # (e.g., "instagram_ig_<handle>_<post>"). Backend parses out the
+    # IG handle so views/RSVPs on the group copy still attribute to
+    # the source venue's Painel. Empty for plans-from-scratch.
+    source_event_id: str = ""
 
 
 class PersonalPlanCreateRequest(BaseModel):
@@ -2645,6 +2670,7 @@ class PersonalPlanCreateRequest(BaseModel):
     date_end: Optional[str] = None
     note: str = ""
     invitee_google_ids: list[str] = []   # everyone invited (excluding creator)
+    source_event_id: str = ""            # see GroupEventCreateRequest
 
 
 @app.post("/groups")
@@ -2831,6 +2857,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         date_end=req.date_end,
         visibility=req.visibility,
         note=req.note.strip(),
+        source_ig_handle=_handle_from_event_id(req.source_event_id),
     )
     # Notify other group members. Tag per (group, event) so accidental
     # double-creates collapse instead of stacking. The note (if any) shows
@@ -2927,6 +2954,7 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
         visibility="members",  # not used when group_id is null, but keep the column happy
         note=(req.note or "").strip(),
         extra_invitee_ids=invitees,
+        source_ig_handle=_handle_from_event_id(req.source_event_id),
     )
 
     # Auto-RSVP the creator. Mirrors the contract from POST /rsvp so the

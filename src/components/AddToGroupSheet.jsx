@@ -50,6 +50,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
         note: note.trim().slice(0, 280),
+        // Pass through the catalog event id so the backend can parse the
+        // source IG handle. Drives venue-dashboard attribution: views/RSVPs
+        // on the group event still count toward the source venue's Painel.
+        source_event_id: event.id || '',
       })
       setDoneId(group.id)
       setTimeout(() => { onClose(); setDoneId(null) }, 900)

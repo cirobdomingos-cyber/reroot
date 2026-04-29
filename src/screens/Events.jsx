@@ -339,6 +339,18 @@ export default function Events() {
       const lastUnderscore = rest.lastIndexOf('_')
       const igHandle = lastUnderscore > 0 ? rest.slice(0, lastUnderscore) : ''
       trackEvent('event_view', { event_id: eventId, ig_handle: igHandle })
+    } else if (typeof eventId === 'string' && eventId.startsWith('grp_ev_')) {
+      // Group event opened — if the row was forked from a public IG
+      // catalog event, attribute the view to the source venue's Painel
+      // so group-context attention still credits the original venue.
+      // sourceIgHandle is set on the event by the backend serializer.
+      const groupMatch = groupEvents.find(e => e.id === eventId)
+      const sourceHandle = (groupMatch && groupMatch.sourceIgHandle) || ''
+      if (sourceHandle) {
+        trackEvent('event_view', { event_id: eventId, ig_handle: sourceHandle })
+      } else {
+        trackEvent('event_view', { event_id: eventId })
+      }
     } else {
       trackEvent('event_view', { event_id: eventId })
     }
@@ -1644,17 +1656,33 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         gap: 4,
       }}>
         {ev.featured && (
-          <div
-            title="Destaque auê"
-            style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
-              color: 'var(--honey)', background: 'var(--honey-pale)',
-              padding: '2px 7px', borderRadius: 999,
-              border: '1px solid var(--honey)',
-              whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
-          >
-            ⭐ SELEÇÃO AUÊ{ev.promoCode && <span title={ev.promoPerk || 'Cupom no balcão'}>🎁</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <div
+              title="Destaque auê"
+              style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                color: 'var(--honey)', background: 'var(--honey-pale)',
+                padding: '2px 7px', borderRadius: 999,
+                border: '1px solid var(--honey)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ⭐ SELEÇÃO AUÊ
+            </div>
+            {ev.promoCode && (
+              <div
+                title={ev.promoPerk || 'Cupom no balcão — toca o evento pra ver o código'}
+                style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: 0.5,
+                  color: 'var(--sage)', background: 'var(--sage-pale)',
+                  padding: '2px 7px', borderRadius: 999,
+                  border: '1px solid var(--sage)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                🎁 DESCONTO
+              </div>
+            )}
           </div>
         )}
         {price && (

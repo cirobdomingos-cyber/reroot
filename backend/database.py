@@ -284,6 +284,17 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `source_ig_handle` records the original IG venue when
+        # a public catalog event is added to a group. Drives venue-dashboard
+        # attribution — views/RSVPs from the group context still count
+        # toward the source venue's Painel. Empty string for plans created
+        # from scratch (no public-event source).
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN source_ig_handle TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
 
         # Migration: drop NOT NULL on group_id so personal plans (group_id
         # IS NULL + extra_invitee_ids non-empty) are insertable. SQLite has
@@ -297,27 +308,35 @@ def init_db():
             conn.execute("ALTER TABLE group_events RENAME TO group_events_old")
             conn.execute("""
                 CREATE TABLE group_events (
-                    id           TEXT PRIMARY KEY,
-                    group_id     TEXT,
-                    name         TEXT NOT NULL,
-                    description  TEXT NOT NULL DEFAULT '',
-                    venue        TEXT NOT NULL DEFAULT '',
-                    date_start   TEXT NOT NULL,
-                    date_end     TEXT,
-                    created_by   TEXT NOT NULL,
-                    visibility   TEXT NOT NULL DEFAULT 'members',
-                    note         TEXT NOT NULL DEFAULT '',
+                    id                TEXT PRIMARY KEY,
+                    group_id          TEXT,
+                    name              TEXT NOT NULL,
+                    description       TEXT NOT NULL DEFAULT '',
+                    venue             TEXT NOT NULL DEFAULT '',
+                    date_start        TEXT NOT NULL,
+                    date_end          TEXT,
+                    created_by        TEXT NOT NULL,
+                    visibility        TEXT NOT NULL DEFAULT 'members',
+                    note              TEXT NOT NULL DEFAULT '',
                     extra_invitee_ids TEXT NOT NULL DEFAULT '[]',
-                    created_at   TEXT NOT NULL
+                    source_ig_handle  TEXT NOT NULL DEFAULT '',
+                    created_at        TEXT NOT NULL
                 )
             """)
-            conn.execute("""
+            # source_ig_handle is new in this rebuild — older rows have
+            # no value, so we leave it as the column default ('').
+            old_cols = {c[1] for c in conn.execute("PRAGMA table_info(group_events_old)").fetchall()}
+            has_src = "source_ig_handle" in old_cols
+            select_src = "source_ig_handle" if has_src else "''"
+            conn.execute(f"""
                 INSERT INTO group_events
                   (id, group_id, name, description, venue, date_start, date_end,
-                   created_by, visibility, note, extra_invitee_ids, created_at)
+                   created_by, visibility, note, extra_invitee_ids,
+                   source_ig_handle, created_at)
                 SELECT
                   id, group_id, name, description, venue, date_start, date_end,
-                  created_by, visibility, note, extra_invitee_ids, created_at
+                  created_by, visibility, note, extra_invitee_ids,
+                  {select_src}, created_at
                 FROM group_events_old
             """)
             conn.execute("DROP TABLE group_events_old")
@@ -911,10 +930,26 @@ def get_venue_dashboard_stats(handle: str) -> dict:
             "SELECT id, payload FROM events WHERE id LIKE ?",
             (f"{venue_event_id_prefix}%",),
         ).fetchall()
+        # Group events forked from this venue's catalog events. Their
+        # RSVPs and views count toward the venue's Painel — when a user
+        # taps "add to group" on a public IG event, downstream activity
+        # in the group context still attributes back here.
+        group_event_ids = [
+            r["id"] for r in conn.execute(
+                "SELECT id FROM group_events WHERE source_ig_handle = ?",
+                (handle,),
+            ).fetchall()
+        ]
         event_ids = [r["id"] for r in evs]
-        if not event_ids:
+        if not event_ids and not group_event_ids:
             return _empty_dashboard_stats()
-        placeholders = ",".join("?" * len(event_ids))
+        # All RSVP-bearing ids — original catalog rows + their group forks.
+        # Used by every RSVP query below; the per-post breakdown stays
+        # scoped to catalog ids only (group forks roll up at the venue
+        # total but aren't a separate "post" row).
+        all_rsvp_ids = event_ids + group_event_ids
+        placeholders = ",".join("?" * len(event_ids)) if event_ids else "''"
+        rsvp_placeholders = ",".join("?" * len(all_rsvp_ids))
 
         # ── Views ── analytics_events 'event_view' rows tagged with
         # ig_handle so we can aggregate without joining JSON.
@@ -944,11 +979,29 @@ def get_venue_dashboard_stats(handle: str) -> dict:
         src_views_7d = _source_view_count(iso_7d)
         src_views_30d = _source_view_count(iso_30d)
 
-        # ── RSVPs ── join rsvps to the venue's event ids.
+        # ── Code-reveal views ── 'code_view' analytics fires when the
+        # user taps the "Mostrar código no balcão" pill on the event
+        # detail panel. Tighter conversion proxy than view→RSVP for
+        # paid Seleção auê venues — measures intent to use the discount,
+        # not just curiosity about the event.
+        def _code_view_count(since_iso: Optional[str]) -> int:
+            sql = ("SELECT COUNT(*) AS c FROM analytics_events "
+                   "WHERE event_name = 'code_view' "
+                   "AND json_extract(properties_json, '$.ig_handle') = ?")
+            params: list = [handle]
+            if since_iso:
+                sql += " AND created_at >= ?"
+                params.append(since_iso)
+            return int(conn.execute(sql, params).fetchone()["c"])
+        code_views_7d = _code_view_count(iso_7d)
+        code_views_30d = _code_view_count(iso_30d)
+        code_views_all = _code_view_count(None)
+
+        # ── RSVPs ── join rsvps to the venue's event ids (catalog + group forks).
         def _rsvp_count(since_iso: Optional[str]) -> int:
             sql = (f"SELECT COUNT(*) AS c FROM rsvps "
-                   f"WHERE event_id IN ({placeholders})")
-            params = list(event_ids)
+                   f"WHERE event_id IN ({rsvp_placeholders})")
+            params = list(all_rsvp_ids)
             if since_iso:
                 sql += " AND created_at >= ?"
                 params.append(since_iso)
@@ -962,16 +1015,20 @@ def get_venue_dashboard_stats(handle: str) -> dict:
         # on the dashboard so the venue sees which specific shows
         # converted. Capped at 100 (well above any real venue's
         # backlog) just so the response stays bounded.
+        # Per-post breakdown stays scoped to catalog ids only — group forks
+        # roll up into the venue totals above but don't get a separate
+        # "post" row (we don't know which catalog post the fork was for).
         rsvp_counts: dict[str, int] = {}
         rsvp_names: dict[str, str] = {}
-        for r in conn.execute(
-            f"""SELECT event_id, event_name, COUNT(*) AS c
-                FROM rsvps WHERE event_id IN ({placeholders})
-                GROUP BY event_id""",
-            event_ids,
-        ).fetchall():
-            rsvp_counts[r["event_id"]] = int(r["c"])
-            rsvp_names[r["event_id"]] = r["event_name"]
+        if event_ids:
+            for r in conn.execute(
+                f"""SELECT event_id, event_name, COUNT(*) AS c
+                    FROM rsvps WHERE event_id IN ({placeholders})
+                    GROUP BY event_id""",
+                event_ids,
+            ).fetchall():
+                rsvp_counts[r["event_id"]] = int(r["c"])
+                rsvp_names[r["event_id"]] = r["event_name"]
 
         view_counts: dict[str, int] = {}
         for r in conn.execute(
@@ -1052,10 +1109,10 @@ def get_venue_dashboard_stats(handle: str) -> dict:
         for r in conn.execute(
             f"""SELECT substr(created_at, 1, 10) AS d, COUNT(*) AS c
                 FROM rsvps
-                WHERE event_id IN ({placeholders})
+                WHERE event_id IN ({rsvp_placeholders})
                   AND created_at >= ?
                 GROUP BY d""",
-            (*event_ids, iso_30d),
+            (*all_rsvp_ids, iso_30d),
         ).fetchall():
             daily_rsvps[r["d"]] = int(r["c"])
         # Fill the 30-day window so the chart has a continuous strip
@@ -1099,20 +1156,26 @@ def get_venue_dashboard_stats(handle: str) -> dict:
                 JOIN friendships f ON
                     ((f.user_a = my.google_id AND f.user_b = theirs.google_id)
                   OR (f.user_b = my.google_id AND f.user_a = theirs.google_id))
-                WHERE my.event_id IN ({placeholders})
+                WHERE my.event_id IN ({rsvp_placeholders})
                   AND my.google_id != theirs.google_id
                   AND f.status IN ('accepted', 'pending')""",
-            event_ids,
+            all_rsvp_ids,
         ).fetchone()
         friends_amplified = int(amp_row["c"]) if amp_row else 0
 
     conv_rate = (rsvps_all / views_all) if views_all > 0 else 0.0
+    # code_view → view ratio. "Of N people who opened your event detail,
+    # M tapped to show the code." Only meaningful for venues with a
+    # promo code set; for non-Seleção venues this is always 0/0.
+    code_rate = (code_views_all / views_all) if views_all > 0 else 0.0
     return {
         "events_in_catalog": len(event_ids),
         "views":           {"d7": views_7d,  "d30": views_30d, "all": views_all},
         "rsvps":           {"d7": rsvps_7d,  "d30": rsvps_30d, "all": rsvps_all},
         "source_views":    {"d7": src_views_7d, "d30": src_views_30d},
+        "code_views":      {"d7": code_views_7d, "d30": code_views_30d, "all": code_views_all},
         "conversion_rate": conv_rate,
+        "code_view_rate":  code_rate,
         "friends_amplified": friends_amplified,
         "top_events":      top_events,
         "events_breakdown": events_breakdown,
@@ -1127,7 +1190,9 @@ def _empty_dashboard_stats() -> dict:
         "views":           {"d7": 0, "d30": 0, "all": 0},
         "rsvps":           {"d7": 0, "d30": 0, "all": 0},
         "source_views":    {"d7": 0, "d30": 0},
+        "code_views":      {"d7": 0, "d30": 0, "all": 0},
         "conversion_rate": 0.0,
+        "code_view_rate":  0.0,
         "friends_amplified": 0,
         "top_events":      [],
         "events_breakdown": [],
@@ -1207,7 +1272,7 @@ def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
         accounts = conn.execute(
             """SELECT handle, label, display_name, profile_pic_url,
                       featured, claimed_by_email, enabled, last_scraped_at,
-                      category
+                      category, promo_code, promo_perk
                FROM tracked_ig_accounts WHERE enabled = 1"""
         ).fetchall()
 
@@ -1243,6 +1308,8 @@ def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
             "source_views": src_views_by_handle.get(h, 0),
             "rsvps": rsvps,
             "conversion_rate": (rsvps / views) if views > 0 else 0.0,
+            "promo_code": a["promo_code"] or "",
+            "promo_perk": a["promo_perk"] or "",
         })
     out.sort(key=lambda v: (-v["views"], -v["rsvps"], v["label"].lower()))
     return out
@@ -2238,6 +2305,7 @@ def create_group_event(
     venue: str = "", date_start: str = "", date_end: Optional[str] = None,
     visibility: str = "members", note: str = "",
     extra_invitee_ids: Optional[list[str]] = None,
+    source_ig_handle: str = "",
 ) -> dict:
     """Create an event row. Two flavors:
       - Classic group event: group_id set, extra_invitee_ids empty/None.
@@ -2246,18 +2314,25 @@ def create_group_event(
 
     `note` is a short free-text message ("pessoal que tal esse?") attached
     when the user adds the event — surfaced on the event card so the crew
-    sees the reason without scrolling into a chat thread."""
+    sees the reason without scrolling into a chat thread.
+
+    `source_ig_handle` is set when this row was forked from a public catalog
+    event (parsed from `instagram_ig_<handle>_<post>`). Empty for plans
+    created from scratch. Drives venue-dashboard attribution: views/RSVPs
+    on the group event still count toward the source venue."""
     now = datetime.now(timezone.utc).isoformat()
     event_id = f"grp_ev_{secrets.token_hex(6)}"
     invitees_json = json.dumps([str(g) for g in (extra_invitee_ids or []) if g])
+    handle = (source_ig_handle or "").strip().lstrip("@").lower()
     with get_conn() as conn:
         conn.execute(
             """INSERT INTO group_events
                (id, group_id, name, description, venue, date_start, date_end,
-                created_by, visibility, note, extra_invitee_ids, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_by, visibility, note, extra_invitee_ids,
+                source_ig_handle, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (event_id, group_id, name, description, venue, date_start, date_end,
-             google_id, visibility, note, invitees_json, now),
+             google_id, visibility, note, invitees_json, handle, now),
         )
         conn.commit()
     return {
@@ -2267,6 +2342,7 @@ def create_group_event(
         "created_by": google_id, "visibility": visibility,
         "note": note,
         "extra_invitee_ids": json.loads(invitees_json),
+        "source_ig_handle": handle,
         "created_at": now,
     }
 

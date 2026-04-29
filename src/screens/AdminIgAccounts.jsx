@@ -899,6 +899,29 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
     setBusy?.(false)
   }
 
+  async function setPromo(handle, code, perk) {
+    setBusy?.(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/promo`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requesting_email: email, code, perk }),
+        },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      await reload()
+      onMutate?.()
+    } catch (e) {
+      setError(`Falha ao salvar código: ${e.message}`)
+    }
+    setBusy?.(false)
+  }
+
   const visible = expanded ? venues : venues.slice(0, 8)
   const hidden = venues.length - visible.length
 
@@ -938,6 +961,7 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
               onToggleFeatured={() => toggleFeatured(v)}
               onScrape={() => scrapeOne(v.handle)}
               onDelete={() => deleteOne(v.handle)}
+              onSetPromo={setPromo}
             />
           ))}
           {hidden > 0 && !expanded && (
@@ -973,7 +997,7 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
 }
 
 
-function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete }) {
+function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete, onSetPromo }) {
   const conv = (v.conversion_rate * 100).toFixed(1)
   const lastScrape = v.last_scraped_at
     ? new Date(v.last_scraped_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
@@ -982,10 +1006,43 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
   const pic = (rawPic && API_BASE && rawPic.startsWith('/event-images/'))
     ? `${API_BASE}${rawPic}`
     : rawPic
+  // Inline two-step delete: first tap arms the trash icon (turns red,
+  // shows "?" suffix). Second tap within 3s fires the actual delete.
+  // Replaces window.confirm() because PWA standalone mode (iOS) and
+  // some Android shells suppress native dialogs silently — the founder
+  // would tap delete and the action would either fire instantly or
+  // not at all, no visible warning either way.
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 3000)
+    return () => clearTimeout(t)
+  }, [armed])
+  function handleDeleteClick() {
+    if (!armed) {
+      setArmed(true)
+      return
+    }
+    setArmed(false)
+    onDelete?.()
+  }
+  // Promo code editor — collapsed by default; tap 🎁 to expand the
+  // inline form, save persists via PUT /admin/ig-accounts/<handle>/promo.
+  // Visible only for founders (parent gates the prop).
+  const [promoOpen, setPromoOpen] = useState(false)
+  const [promoCode, setPromoCode] = useState(v.promo_code || '')
+  const [promoPerk, setPromoPerk] = useState(v.promo_perk || '')
+  useEffect(() => {
+    setPromoCode(v.promo_code || '')
+    setPromoPerk(v.promo_perk || '')
+  }, [v.promo_code, v.promo_perk])
   return (
     <div style={{
       background: 'white', borderRadius: 10,
       border: v.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
+      overflow: 'hidden',
+    }}>
+    <div style={{
       padding: '8px 10px',
       display: 'flex', alignItems: 'center', gap: 8,
     }}>
@@ -1095,6 +1152,21 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
             padding: '2px 6px', lineHeight: 1,
           }}
         >⭐</button>
+        {onSetPromo && (
+          <button
+            onClick={() => setPromoOpen(o => !o)}
+            disabled={busy}
+            title={v.promo_code ? `Editar cupom (${v.promo_code})` : 'Adicionar cupom'}
+            style={{
+              background: v.promo_code ? 'var(--sage-pale)' : 'transparent',
+              border: v.promo_code ? '1px solid var(--sage)' : '1px solid var(--border)',
+              borderRadius: 999,
+              cursor: busy ? 'default' : 'pointer',
+              fontSize: 11, color: v.promo_code ? 'var(--sage)' : 'var(--charcoal-light)',
+              padding: '2px 6px', lineHeight: 1,
+            }}
+          >🎁</button>
+        )}
         <button
           onClick={onScrape}
           disabled={busy}
@@ -1106,16 +1178,99 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
           }}
         >🔄</button>
         <button
-          onClick={onDelete}
+          onClick={handleDeleteClick}
           disabled={busy}
-          title="Remover do tracking"
+          title={armed ? 'Toca de novo pra confirmar' : 'Remover do tracking'}
           style={{
-            background: 'none', border: 'none',
+            background: armed ? '#FFEBEE' : 'none',
+            border: armed ? '1px solid #B71C1C' : 'none',
+            borderRadius: armed ? 6 : 0,
             cursor: busy ? 'default' : 'pointer',
-            fontSize: 12, color: 'var(--charcoal-light)', padding: 1,
+            fontSize: 12,
+            color: armed ? '#B71C1C' : 'var(--charcoal-light)',
+            padding: armed ? '1px 4px' : 1,
+            fontWeight: armed ? 800 : 400,
           }}
-        >🗑</button>
+        >{armed ? '🗑 ?' : '🗑'}</button>
       </div>
+      </div>
+      {/* Promo editor row — only when expanded. Sits below the row so
+          the main leaderboard line stays single-row. */}
+      {onSetPromo && promoOpen && (
+        <div style={{
+          padding: '8px 10px', borderTop: '1px dashed var(--border)',
+          background: 'var(--cream)',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 700 }}>
+            🎁 Cupom Seleção auê para @{v.handle}
+          </div>
+          <input
+            value={promoCode}
+            onChange={e => setPromoCode(e.target.value.slice(0, 32))}
+            placeholder="Código (ex. AUE10)"
+            style={{
+              padding: '6px 8px', fontSize: 12, borderRadius: 6,
+              border: '1px solid var(--border)', outline: 'none',
+              fontFamily: 'monospace',
+            }}
+          />
+          <input
+            value={promoPerk}
+            onChange={e => setPromoPerk(e.target.value.slice(0, 120))}
+            placeholder="Vantagem (ex. 10% off no chopp)"
+            style={{
+              padding: '6px 8px', fontSize: 12, borderRadius: 6,
+              border: '1px solid var(--border)', outline: 'none',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => {
+                onSetPromo(v.handle, promoCode.trim(), promoPerk.trim())
+                setPromoOpen(false)
+              }}
+              disabled={busy}
+              style={{
+                padding: '6px 10px', borderRadius: 6, border: 'none',
+                background: 'var(--sage)', color: 'white',
+                fontSize: 11, fontWeight: 700,
+                cursor: busy ? 'default' : 'pointer',
+              }}
+            >Salvar</button>
+            {(v.promo_code || promoCode) && (
+              <button
+                onClick={() => {
+                  onSetPromo(v.handle, '', '')
+                  setPromoCode(''); setPromoPerk('')
+                  setPromoOpen(false)
+                }}
+                disabled={busy}
+                style={{
+                  padding: '6px 10px', borderRadius: 6,
+                  border: '1px solid var(--border)', background: 'white',
+                  fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
+                  cursor: busy ? 'default' : 'pointer',
+                }}
+              >Limpar</button>
+            )}
+            <button
+              onClick={() => setPromoOpen(false)}
+              style={{
+                padding: '6px 10px', borderRadius: 6,
+                border: 'none', background: 'transparent',
+                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-light)',
+                cursor: 'pointer', marginLeft: 'auto',
+              }}
+            >Cancelar</button>
+          </div>
+          {!v.featured && (
+            <div style={{ fontSize: 10, color: 'var(--charcoal-light)', fontStyle: 'italic' }}>
+              ⚠️ Esse local não é Seleção auê — o código fica salvo mas não aparece pros usuários até você ativar a estrela.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
