@@ -125,8 +125,9 @@ def match_and_enrich(sympla_events: list[dict]) -> dict:
     if not sympla_events:
         return {"sympla_events": 0, "matched": 0, "wrote": 0, "skipped_no_handle": 0}
 
-    # Pull the full handle list once — re-using across all sympla events.
-    accounts = db.list_ig_accounts(enabled_only=True)
+    # Pull enabled handles once — re-used across every Sympla event for
+    # the venue-candidate fuzzy match.
+    accounts = db.get_enabled_ig_accounts()
 
     # Cache per-handle event pulls so we don't re-query for repeat venues.
     by_handle_cache: dict[str, list[dict]] = {}
