@@ -4056,6 +4056,26 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
     return db.get_usage_stats(window_days=window_days)
 
 
+@app.get("/admin/weekly-summary")
+def admin_weekly_summary(requesting_email: str = ""):
+    """Founder-only: return the past-7-days vs prior-7-days activity
+    snapshot. Same payload the Monday 10am scheduler emails. Founders
+    can call this any time to peek at the current numbers."""
+    _require_founder(requesting_email)
+    return db.get_weekly_summary()
+
+
+@app.post("/admin/weekly-summary/send")
+async def admin_weekly_summary_send(requesting_email: str = ""):
+    """Founder-only: trigger the weekly summary email immediately
+    instead of waiting for the Monday 10am cron. Useful for proofing
+    template changes or sending an out-of-band digest."""
+    _require_founder(requesting_email)
+    from scheduler import run_weekly_summary
+    await run_weekly_summary(settings)
+    return {"ok": True, "to": settings.founder_email}
+
+
 @app.post("/admin/test-email")
 async def admin_test_email(requesting_email: str = ""):
     """Founder-only: smoke test the email transport. Routes through

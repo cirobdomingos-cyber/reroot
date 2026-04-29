@@ -1455,6 +1455,198 @@ def get_usage_stats(window_days: int = 30) -> dict:
     }
 
 
+def get_weekly_summary() -> dict:
+    """Founder's "what happened this week" report. Compares the last 7
+    days against the prior 7 days for every metric — week-over-week
+    delta + percent change. Drives the WeeklySummary tile in the admin
+    panel: scannable single block that captures movement without
+    reading the full usage dashboard.
+
+    Metrics covered:
+      - active_users           — distinct google_ids that synced state
+      - rsvps                  — rsvps.created_at in window
+      - friendships_accepted   — friendships.created_at + status='accepted'
+      - groups_created         — groups.created_at in window
+      - group_events_created   — group_events.created_at in window
+      - new_venues             — tracked_ig_accounts.added_at in window
+      - new_events             — events.fetched_at in window
+      - feedback               — feedback.created_at in window
+      - event_views            — analytics_events 'event_view' count
+      - source_views           — analytics_events 'source_view' count
+      - code_views             — analytics_events 'code_view' count
+    Plus top-5 events by views, top-5 venues by total activity
+    (event_view + source_view), and the list of new venues.
+    """
+    now = datetime.now(timezone.utc)
+    cur_start = (now - timedelta(days=7)).isoformat()
+    prev_start = (now - timedelta(days=14)).isoformat()
+
+    def _count(conn, sql: str, *params, current: bool) -> int:
+        win_start = cur_start if current else prev_start
+        win_end = now.isoformat() if current else cur_start
+        full_sql = sql.format(start_clause=" >= ?", end_clause=" < ?")
+        full_params = list(params) + [win_start, win_end]
+        return int(conn.execute(full_sql, full_params).fetchone()[0])
+
+    metrics: dict[str, dict] = {}
+
+    def _delta(this_week: int, last_week: int) -> dict:
+        delta = this_week - last_week
+        pct = ((this_week - last_week) / last_week * 100.0) if last_week else None
+        return {"this_week": this_week, "last_week": last_week,
+                "delta": delta, "pct": pct}
+
+    with get_conn() as conn:
+        # Active users — anyone who synced state in the window
+        au_this = int(conn.execute(
+            "SELECT COUNT(DISTINCT google_id) FROM user_states WHERE updated_at >= ?",
+            (cur_start,),
+        ).fetchone()[0])
+        au_prev = int(conn.execute(
+            "SELECT COUNT(DISTINCT google_id) FROM user_states "
+            "WHERE updated_at >= ? AND updated_at < ?",
+            (prev_start, cur_start),
+        ).fetchone()[0])
+        metrics["active_users"] = _delta(au_this, au_prev)
+
+        # RSVPs created
+        metrics["rsvps"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM rsvps WHERE created_at{start_clause} AND created_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM rsvps WHERE created_at{start_clause} AND created_at{end_clause}", current=False),
+        )
+
+        # Friendships accepted
+        metrics["friendships_accepted"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND created_at{start_clause} AND created_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND created_at{start_clause} AND created_at{end_clause}", current=False),
+        )
+
+        # Groups created
+        metrics["groups_created"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM groups WHERE created_at{start_clause} AND created_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM groups WHERE created_at{start_clause} AND created_at{end_clause}", current=False),
+        )
+
+        # Group events / personal plans created
+        metrics["group_events_created"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM group_events WHERE created_at{start_clause} AND created_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM group_events WHERE created_at{start_clause} AND created_at{end_clause}", current=False),
+        )
+
+        # New venues tracked
+        metrics["new_venues"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM tracked_ig_accounts WHERE added_at{start_clause} AND added_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM tracked_ig_accounts WHERE added_at{start_clause} AND added_at{end_clause}", current=False),
+        )
+
+        # New catalog events (first time seen by the scraper)
+        metrics["new_events"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM events WHERE fetched_at{start_clause} AND fetched_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM events WHERE fetched_at{start_clause} AND fetched_at{end_clause}", current=False),
+        )
+
+        # Feedback received
+        metrics["feedback"] = _delta(
+            _count(conn, "SELECT COUNT(*) FROM feedback WHERE created_at{start_clause} AND created_at{end_clause}", current=True),
+            _count(conn, "SELECT COUNT(*) FROM feedback WHERE created_at{start_clause} AND created_at{end_clause}", current=False),
+        )
+
+        # Analytics events by name — view types
+        for ev_name in ("event_view", "source_view", "code_view"):
+            metrics[ev_name + "s"] = _delta(
+                _count(conn, "SELECT COUNT(*) FROM analytics_events WHERE event_name = ? AND created_at{start_clause} AND created_at{end_clause}",
+                       ev_name, current=True),
+                _count(conn, "SELECT COUNT(*) FROM analytics_events WHERE event_name = ? AND created_at{start_clause} AND created_at{end_clause}",
+                       ev_name, current=False),
+            )
+
+        # Top-5 events by view count this week. We label them via the
+        # event_view properties_json (event_id) → events table lookup.
+        top_event_rows = conn.execute(
+            """SELECT json_extract(properties_json, '$.event_id') AS ev_id,
+                      COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name = 'event_view' AND created_at >= ?
+               GROUP BY ev_id
+               ORDER BY c DESC
+               LIMIT 5""",
+            (cur_start,),
+        ).fetchall()
+        top_events = []
+        for r in top_event_rows:
+            ev_id = r["ev_id"] or ""
+            if not ev_id:
+                continue
+            ev_row = conn.execute(
+                "SELECT payload FROM events WHERE id = ?", (ev_id,),
+            ).fetchone()
+            name = ev_id
+            venue = ""
+            if ev_row:
+                try:
+                    payload = json.loads(ev_row["payload"])
+                    name = payload.get("name") or ev_id
+                    venue = payload.get("venue") or ""
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            top_events.append({
+                "event_id": ev_id, "name": name, "venue": venue,
+                "views": int(r["c"]),
+            })
+
+        # Top-5 venues by total view activity (event_view + source_view).
+        venue_score: dict[str, int] = {}
+        for r in conn.execute(
+            """SELECT json_extract(properties_json, '$.ig_handle') AS h,
+                      COUNT(*) AS c
+               FROM analytics_events
+               WHERE event_name IN ('event_view', 'source_view')
+                 AND created_at >= ?
+               GROUP BY h""",
+            (cur_start,),
+        ).fetchall():
+            handle = (r["h"] or "").lower()
+            if handle:
+                venue_score[handle] = int(r["c"])
+        venue_label = {
+            r["handle"]: (r["display_name"] or r["label"] or f"@{r['handle']}")
+            for r in conn.execute(
+                "SELECT handle, label, display_name FROM tracked_ig_accounts"
+            ).fetchall()
+        }
+        top_venues = sorted(
+            [{"handle": h, "label": venue_label.get(h, f"@{h}"), "score": s}
+             for h, s in venue_score.items()],
+            key=lambda v: -v["score"],
+        )[:5]
+
+        # New venues this week with the email of the curator who added.
+        new_venues_list = [
+            {"handle": r["handle"],
+             "label": r["display_name"] or r["label"] or f"@{r['handle']}",
+             "added_at": r["added_at"] or "",
+             "added_by_email": r["added_by_email"] or ""}
+            for r in conn.execute(
+                """SELECT handle, label, display_name, added_at, added_by_email
+                   FROM tracked_ig_accounts
+                   WHERE added_at >= ?
+                   ORDER BY added_at DESC""",
+                (cur_start,),
+            ).fetchall()
+        ]
+
+    return {
+        "window_start": cur_start,
+        "window_end": now.isoformat(),
+        "previous_window_start": prev_start,
+        "previous_window_end": cur_start,
+        "metrics": metrics,
+        "top_events": top_events,
+        "top_venues": top_venues,
+        "new_venues_list": new_venues_list,
+    }
+
+
 def get_funnel_counts() -> list[dict]:
     """Return event counts grouped by event_name, ordered by total desc."""
     with get_conn() as conn:

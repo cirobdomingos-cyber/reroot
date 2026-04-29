@@ -181,6 +181,165 @@ async def run_refresh(settings):
         log.warning(f"Scrape summary email failed: {e}")
 
 
+async def run_weekly_summary(settings):
+    """Email the founder the past-7-days activity summary. Idempotent —
+    re-running on the same day just sends a second email; the snapshot
+    is computed fresh each call. Failures are logged but never raise
+    so a transport hiccup doesn't take down the scheduler."""
+    import database as db
+    from notifications import send_email
+    try:
+        summary = db.get_weekly_summary()
+    except Exception as exc:
+        log.warning(f"weekly_summary: get_weekly_summary failed: {exc}")
+        return
+    html, text = _render_weekly_summary_email(summary)
+    try:
+        ok = await send_email(
+            settings=settings,
+            to=settings.founder_email,
+            subject="[auê] Resumo semanal — últimos 7 dias",
+            html=html,
+            text=text,
+        )
+        log.info(f"weekly_summary: send_email ok={ok} to={settings.founder_email}")
+    except Exception as exc:
+        log.warning(f"weekly_summary: send_email failed: {exc}")
+
+
+def _render_weekly_summary_email(summary: dict) -> tuple[str, str]:
+    """Render the summary dict into (html, text) email bodies. Reads
+    summary keys produced by db.get_weekly_summary(). Plain styling so
+    Gmail/Outlook/iOS Mail all render it the same — no external CSS,
+    inline only, table-based layout for the metric grid."""
+    metrics = summary.get("metrics") or {}
+    top_events = summary.get("top_events") or []
+    top_venues = summary.get("top_venues") or []
+    new_venues = summary.get("new_venues_list") or []
+
+    METRIC_LABELS = [
+        ("active_users", "Usuários ativos"),
+        ("rsvps", "RSVPs"),
+        ("event_views", "Cliques em eventos"),
+        ("source_views", "Visitas a venues"),
+        ("code_views", "Cupons revelados"),
+        ("friendships_accepted", "Amizades novas"),
+        ("groups_created", "Grupos criados"),
+        ("group_events_created", "Planos/eventos privados"),
+        ("new_venues", "Venues adicionados"),
+        ("new_events", "Eventos novos no catálogo"),
+        ("feedback", "Feedback recebido"),
+    ]
+
+    def _arrow(d: dict) -> str:
+        v = d.get("delta", 0)
+        if v > 0: return f"▲ +{v}"
+        if v < 0: return f"▼ {v}"
+        return "—"
+
+    def _arrow_color(d: dict) -> str:
+        v = d.get("delta", 0)
+        if v > 0: return "#3D8B5F"
+        if v < 0: return "#C0392B"
+        return "#888"
+
+    rows = []
+    for key, label in METRIC_LABELS:
+        m = metrics.get(key) or {}
+        this_w = m.get("this_week", 0)
+        last_w = m.get("last_week", 0)
+        rows.append(
+            f"<tr>"
+            f"<td style='padding:8px 12px;border-bottom:1px solid #eee;'>{label}</td>"
+            f"<td style='padding:8px 12px;border-bottom:1px solid #eee;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;'>{this_w}</td>"
+            f"<td style='padding:8px 12px;border-bottom:1px solid #eee;color:#888;text-align:right;font-variant-numeric:tabular-nums;'>{last_w}</td>"
+            f"<td style='padding:8px 12px;border-bottom:1px solid #eee;color:{_arrow_color(m)};text-align:right;font-weight:700;'>{_arrow(m)}</td>"
+            f"</tr>"
+        )
+
+    top_events_html = "".join(
+        f"<li style='margin:4px 0;'>"
+        f"<b>{e.get('name','')}</b>"
+        f"{(' · ' + e['venue']) if e.get('venue') else ''}"
+        f" — <span style='color:#666;'>{e.get('views', 0)} cliques</span>"
+        f"</li>"
+        for e in top_events
+    ) or "<li><i>nenhum evento com cliques essa semana</i></li>"
+
+    top_venues_html = "".join(
+        f"<li style='margin:4px 0;'>"
+        f"<b>{v.get('label', '')}</b> "
+        f"<span style='color:#888;'>(@{v.get('handle','')})</span>"
+        f" — <span style='color:#666;'>{v.get('score', 0)} interações</span>"
+        f"</li>"
+        for v in top_venues
+    ) or "<li><i>nenhuma atividade de venue essa semana</i></li>"
+
+    new_venues_html = "".join(
+        f"<li style='margin:4px 0;'>"
+        f"<b>{v.get('label', '')}</b> "
+        f"<span style='color:#888;'>(@{v.get('handle', '')})</span>"
+        f"{(' · adicionado por ' + v['added_by_email']) if v.get('added_by_email') else ''}"
+        f"</li>"
+        for v in new_venues
+    ) or "<li><i>nenhum venue novo adicionado</i></li>"
+
+    html = f"""\
+<!DOCTYPE html>
+<html><body style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#222;max-width:640px;margin:24px auto;padding:0 16px;">
+  <h1 style="font-size:22px;margin:0 0 4px;color:#7A9E7E;">auê · resumo semanal</h1>
+  <p style="font-size:13px;color:#888;margin:0 0 18px;">Últimos 7 dias vs 7 dias anteriores</p>
+
+  <h2 style="font-size:14px;letter-spacing:0.5px;color:#666;text-transform:uppercase;margin:18px 0 8px;">Atividade</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="text-align:left;">
+        <th style="padding:8px 12px;color:#888;font-weight:600;border-bottom:1px solid #ccc;"></th>
+        <th style="padding:8px 12px;color:#888;font-weight:600;border-bottom:1px solid #ccc;text-align:right;">Esta semana</th>
+        <th style="padding:8px 12px;color:#888;font-weight:600;border-bottom:1px solid #ccc;text-align:right;">Semana anterior</th>
+        <th style="padding:8px 12px;color:#888;font-weight:600;border-bottom:1px solid #ccc;text-align:right;">Δ</th>
+      </tr>
+    </thead>
+    <tbody>{''.join(rows)}</tbody>
+  </table>
+
+  <h2 style="font-size:14px;letter-spacing:0.5px;color:#666;text-transform:uppercase;margin:24px 0 8px;">🔥 Top eventos por cliques</h2>
+  <ul style="padding-left:20px;font-size:13px;">{top_events_html}</ul>
+
+  <h2 style="font-size:14px;letter-spacing:0.5px;color:#666;text-transform:uppercase;margin:24px 0 8px;">🏆 Top venues</h2>
+  <ul style="padding-left:20px;font-size:13px;">{top_venues_html}</ul>
+
+  <h2 style="font-size:14px;letter-spacing:0.5px;color:#666;text-transform:uppercase;margin:24px 0 8px;">➕ Venues novos esta semana</h2>
+  <ul style="padding-left:20px;font-size:13px;">{new_venues_html}</ul>
+
+  <p style="font-size:11px;color:#aaa;margin-top:32px;border-top:1px solid #eee;padding-top:12px;">
+    Gerado automaticamente pelo scheduler — segundas-feiras às 10:00.
+  </p>
+</body></html>"""
+
+    text_lines = ["auê — resumo semanal (últimos 7 dias)", ""]
+    text_lines.append("ATIVIDADE")
+    for key, label in METRIC_LABELS:
+        m = metrics.get(key) or {}
+        text_lines.append(
+            f"  {label}: {m.get('this_week', 0)} (anterior {m.get('last_week', 0)}, Δ {m.get('delta', 0)})"
+        )
+    text_lines.append("")
+    text_lines.append("TOP EVENTOS")
+    for e in top_events or []:
+        text_lines.append(f"  - {e.get('name','')} — {e.get('views', 0)} cliques")
+    text_lines.append("")
+    text_lines.append("TOP VENUES")
+    for v in top_venues or []:
+        text_lines.append(f"  - {v.get('label','')} (@{v.get('handle','')}) — {v.get('score', 0)} interações")
+    text_lines.append("")
+    text_lines.append("VENUES NOVOS")
+    for v in new_venues or []:
+        text_lines.append(f"  - {v.get('label','')} (@{v.get('handle','')})")
+    text = "\n".join(text_lines)
+    return html, text
+
+
 def start_scheduler(settings, run_immediately: bool = True):
     """Daily refresh at 14:00 America/Sao_Paulo. The boot-time refresh fires
     only when the catalog hasn't been refreshed in the last 24h — protects
@@ -196,10 +355,24 @@ def start_scheduler(settings, run_immediately: bool = True):
         id="event_refresh",
         replace_existing=True,
     )
+    # Weekly summary email — Mondays at 10:00 America/Sao_Paulo. Pulls
+    # the past-7-days snapshot from get_weekly_summary() and emails the
+    # founder. Same transport as send_email (Resend → SMTP fallback).
+    scheduler.add_job(
+        run_weekly_summary,
+        trigger="cron",
+        day_of_week="mon",
+        hour=10,
+        minute=0,
+        args=[settings],
+        id="weekly_summary",
+        replace_existing=True,
+    )
     scheduler.start()
     log.info(
         f"Scheduler iniciado — refresh diário às "
-        f"{DAILY_REFRESH_HOUR:02d}:{DAILY_REFRESH_MINUTE:02d} ({SCHEDULER_TZ})"
+        f"{DAILY_REFRESH_HOUR:02d}:{DAILY_REFRESH_MINUTE:02d} ({SCHEDULER_TZ}); "
+        f"resumo semanal às segundas 10:00 ({SCHEDULER_TZ})"
     )
 
     if not run_immediately:
