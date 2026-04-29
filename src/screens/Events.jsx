@@ -1099,7 +1099,12 @@ export default function Events() {
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             style={{
               position: 'fixed', inset: 0,
-              background: 'var(--cream)', zIndex: 200,
+              background: 'var(--cream)',
+              // Above Leaflet's panes (popup pane is z-index 700 by
+              // default) AND any framer-motion page transform that
+              // re-localizes z-index. 9999 is the conventional max-
+              // window mark and stays under modals (10000+) elsewhere.
+              zIndex: 9999,
               overflowY: 'auto', scrollbarWidth: 'none',
             }}
           >
