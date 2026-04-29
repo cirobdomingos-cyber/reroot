@@ -918,25 +918,23 @@ export default function Events() {
         >
           ⚡ Só únicos
         </button>
-        {[
-          { id: 'free', label: `🆓 ${t.filter_free}` },
-          { id: 'paid', label: `💰 ${t.filter_paid}` },
-        ].map(pf => (
-          <button
-            key={pf.id}
-            onClick={() => setPriceFilter(pf.id)}
-            style={{
-              padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-              fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-              transition: 'all 0.15s',
-              border: priceFilter === pf.id ? 'none' : '1px solid var(--border)',
-              background: priceFilter === pf.id ? 'var(--sage)' : 'transparent',
-              color: priceFilter === pf.id ? 'white' : 'var(--charcoal-light)',
-            }}
-          >
-            {pf.label}
-          </button>
-        ))}
+        {/* Grátis is a toggle: tap to enable, tap again to disable.
+            Pago was dropped — most users reach for Grátis explicitly,
+            and the binary "any price" / "free only" pair covers the
+            two states people actually want. */}
+        <button
+          onClick={() => setPriceFilter(p => p === 'free' ? 'all' : 'free')}
+          style={{
+            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
+            transition: 'all 0.15s',
+            border: priceFilter === 'free' ? 'none' : '1px solid var(--border)',
+            background: priceFilter === 'free' ? 'var(--sage)' : 'transparent',
+            color: priceFilter === 'free' ? 'white' : 'var(--charcoal-light)',
+          }}
+        >
+          🆓 {t.filter_free}
+        </button>
         <button
           onClick={() => setKidsFilter(k => !k)}
           style={{

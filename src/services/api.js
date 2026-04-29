@@ -169,7 +169,15 @@ function normalizeBackendEvent(ev) {
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
-    imageUrl: ev.imageUrl,
+    // Rehosted-image URLs come back as a relative path (/event-images/<id>.jpg)
+    // because in production the FastAPI backend serves both static assets
+    // and the SPA from the same origin. In dev, Vite sits on :5173 while
+    // the backend is on Railway / :8000, so a bare relative path tries to
+    // load from :5173 and 404s. Prefix with BASE_URL when it's set so the
+    // hero banner works locally without a dev-time backend running.
+    imageUrl: (ev.imageUrl && ev.imageUrl.startsWith('/event-images/') && BASE_URL)
+      ? `${BASE_URL}${ev.imageUrl}`
+      : ev.imageUrl,
   }
 }
 
