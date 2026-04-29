@@ -367,6 +367,13 @@ export default function Home() {
           }
         }}
         onGroupRsvp={handleAcceptInvite}
+        onDayClick={(dayIso) => {
+          // Tap a day in the calendar → jump to the Events tab with
+          // that day pre-selected on the week strip. Easier than
+          // scrolling the home calendar's events list, and keeps
+          // discovery in the surface that's built for it.
+          navigate('/events', { state: { openDay: dayIso } })
+        }}
       />
 
       {/* Post-event reconnect nudge */}
@@ -396,22 +403,17 @@ export default function Home() {
           <div className="section-label">{t.home_upcoming_label ?? 'Seus próximos eventos'}</div>
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {upcomingRsvps.slice(0, 3).map(ev => (
-              <div key={ev.id} onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                background: 'white', borderRadius: 14, padding: '11px 14px',
-                cursor: 'pointer', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
-              }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18, background: ev.headerBg, flexShrink: 0,
-                }}>{ev.icon}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
-                </div>
-                <AddToCalendar event={ev} />
-              </div>
+              <HomeEventRow
+                key={ev.id}
+                name={ev.name}
+                dateStart={ev.dateStart}
+                time={ev.time}
+                venue={ev.venue}
+                isRecurring={!!ev.isRecurring}
+                isGroupEvent={!!ev.isGroupEvent}
+                onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
+                trailing={<AddToCalendar event={ev} />}
+              />
             ))}
           </div>
         </>
@@ -436,54 +438,48 @@ export default function Home() {
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {friendsFeed.slice(0, 3).map(ev => {
               const userIsGoing = !!state.rsvps[ev.event_id]
+              const time = (ev.event_date || '').slice(11, 16)  // "HH:MM" if present
               return (
-                <div
+                <HomeEventRow
                   key={ev.event_id}
+                  name={ev.event_name}
+                  dateStart={ev.event_date}
+                  time={time}
+                  venue={ev.event_venue || ''}
                   onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
-                  style={{
-                    background: 'white', borderRadius: 14, border: '1px solid var(--border)',
-                    padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {ev.event_name}
+                  trailing={
+                    <>
                       {userIsGoing && (
                         <span style={{
-                          marginLeft: 8, fontSize: 9, fontWeight: 700,
+                          fontSize: 9, fontWeight: 700,
                           padding: '2px 6px', borderRadius: 5,
                           background: 'var(--sage-pale)', color: 'var(--sage)',
-                          letterSpacing: 0.3,
+                          letterSpacing: 0.3, marginRight: 8,
+                          whiteSpace: 'nowrap',
                         }}>
                           VOCÊ TAMBÉM
                         </span>
                       )}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-                      {formatFriendsFeedDate(ev.event_date)}
-                      {ev.event_venue ? ` · ${ev.event_venue}` : ''}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    {ev.friends_going.slice(0, 3).map((friend, i) => (
-                      <div
-                        key={friend.name + i}
-                        style={{
-                          marginLeft: i === 0 ? 0 : -8,
-                          // White ring around overlapping stacked avatars
-                          boxShadow: '0 0 0 2px white',
-                          borderRadius: '50%',
-                        }}
-                      >
-                        <Avatar name={friend.name} src={friend.picture} size={26} />
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {ev.friends_going.slice(0, 3).map((friend, i) => (
+                          <div
+                            key={friend.name + i}
+                            style={{
+                              marginLeft: i === 0 ? 0 : -8,
+                              boxShadow: '0 0 0 2px white',
+                              borderRadius: '50%',
+                            }}
+                          >
+                            <Avatar name={friend.name} src={friend.picture} size={24} />
+                          </div>
+                        ))}
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
+                          {ev.friends_going.length}
+                        </span>
                       </div>
-                    ))}
-                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
-                      {ev.friends_going.length} {t.friends_feed_going ?? 'vão'}
-                    </span>
-                  </div>
-                </div>
+                    </>
+                  }
+                />
               )
             })}
           </div>
@@ -494,35 +490,28 @@ export default function Home() {
       <div className="section-label">{t.home_suggested_label ?? 'Eventos para você'}</div>
       <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {suggestedEvents.map(ev => (
-          <div key={ev.id} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'white', borderRadius: 14, padding: '11px 14px',
-            boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
-          }}>
-            <div onClick={() => navigate('/events', { state: { openEventId: ev.id } })} style={{
-              display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer',
-            }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 12,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, background: ev.headerBg, flexShrink: 0,
-              }}>{ev.icon}</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>{ev.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>{ev.date} · {ev.time}</div>
-              </div>
-            </div>
-            <button
-              onClick={() => handleQuickRsvp(ev)}
-              style={{
-                padding: '6px 12px', borderRadius: 10, fontSize: 11,
-                fontWeight: 700, cursor: 'pointer', border: 'none',
-                background: 'var(--sage)', color: 'white', flexShrink: 0,
-              }}
-            >
-              {t.home_rsvp ?? 'Vou!'}
-            </button>
-          </div>
+          <HomeEventRow
+            key={ev.id}
+            name={ev.name}
+            dateStart={ev.dateStart}
+            time={ev.time}
+            venue={ev.venue}
+            isRecurring={!!ev.isRecurring}
+            isGroupEvent={!!ev.isGroupEvent}
+            onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
+            trailing={
+              <button
+                onClick={(e) => { e.stopPropagation(); handleQuickRsvp(ev) }}
+                style={{
+                  padding: '6px 12px', borderRadius: 10, fontSize: 11,
+                  fontWeight: 700, cursor: 'pointer', border: 'none',
+                  background: 'var(--sage)', color: 'white',
+                }}
+              >
+                {t.home_rsvp ?? 'Vou!'}
+              </button>
+            }
+          />
         ))}
         <button
           onClick={() => navigate('/events')}
@@ -583,6 +572,103 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+
+// ── HomeEventRow — shared row layout for Home sections ─────────────────────
+//
+// Mirrors the Events tab EventCard: day number on the left (color-coded
+// by kind), event name + single metadata row in the middle, optional
+// trailing slot on the right (AddToCalendar, friend avatars, Vou button).
+// Slimmer than EventCard since Home shows several sections side by side.
+
+const _HOME_PT_WEEKDAY = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB']
+
+function _homeDayLabels(iso) {
+  if (!iso) return { day: '—', weekday: '' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { day: '—', weekday: '' }
+  return {
+    day: String(d.getDate()).padStart(2, '0'),
+    weekday: _HOME_PT_WEEKDAY[d.getDay()] || '',
+  }
+}
+
+function HomeEventRow({
+  name,
+  dateStart,
+  time,           // optional, "HH:MM"
+  venue,          // pass already with " · bairro" if you have one
+  isRecurring = false,
+  isGroupEvent = false,
+  trailing = null,
+  onClick,
+}) {
+  const { day, weekday } = _homeDayLabels(dateStart)
+  // Hierarchy mirrors EventCard: one-offs and group events get the eye,
+  // recurring events fade back. Color, background, and opacity all
+  // signal the rank.
+  const dayColor = isGroupEvent ? 'var(--sage)'
+                 : isRecurring ? 'var(--charcoal-mid)'
+                 : 'var(--terra)'
+  const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)' : 'none'
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: isRecurring ? '#FAFAFA'
+                  : isGroupEvent ? 'white'
+                  : '#FFF8F2',
+        borderRadius: 12,
+        border: isRecurring ? '1px solid #EAEAEA' : '1px solid var(--border)',
+        boxShadow: stripe,
+        opacity: isRecurring ? 0.85 : 1,
+        padding: '10px 13px',
+        display: 'flex', alignItems: 'center', gap: 12,
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+    >
+      <div style={{
+        flexShrink: 0, width: 38, textAlign: 'left',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <div style={{
+          fontSize: 22, fontWeight: 800, lineHeight: 1,
+          color: dayColor, letterSpacing: -0.5,
+        }}>
+          {day}
+        </div>
+        <div style={{
+          fontSize: 9, fontWeight: 700, marginTop: 2,
+          color: 'var(--charcoal-mid)', letterSpacing: 1,
+        }}>
+          {weekday}
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 600, color: 'var(--charcoal)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {isGroupEvent && '🔒 '}
+          {name}
+        </div>
+        <div style={{
+          fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {time}
+          {time && venue && <> · </>}
+          {venue}
+        </div>
+      </div>
+      {trailing && (
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+          {trailing}
+        </div>
+      )}
     </div>
   )
 }

@@ -1461,28 +1461,41 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     <div
       onClick={onOpen}
       style={{
-        background: 'white',
+        // Visual hierarchy (loudest → quietest):
+        //   - one-off (time-sensitive)  → terra-tinted card, full color
+        //   - group (yours)             → white card + sage stripe + sage day
+        //   - recurring (every week)    → faded gray card, no stripe, dim day
+        // Routines happen on a loop — they don't need to grab attention.
+        // Scarce / personal events get the eye.
+        background: isRecurring ? '#FAFAFA'
+                  : isGroupEvent ? 'white'
+                  : '#FFF8F2',  // soft warm peach for one-offs
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
-        border: '1px solid var(--border)',
-        // Sage stripe for group events preserves the "yours/private"
-        // signal from the previous design.
+        border: isRecurring ? '1px solid #EAEAEA'
+              : '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)' : 'none',
+        opacity: isRecurring ? 0.85 : 1,
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
       }}
     >
-      {/* LEFT — day anchor. Day number in terra (auê primary) so it
-          reads as the visual hook; weekday in charcoal-mid below.
-          Width fixed at 42px so the center column starts on a
-          consistent x across rows. */}
+      {/* LEFT — day anchor. Color tracks the stripe so the kind reads
+          from the day number too: terra for one-off, purple for
+          recurring, sage for group. Width fixed at 42px so the
+          center column starts on a consistent x across rows. */}
       <div style={{
         flexShrink: 0, width: 42, textAlign: 'left',
         display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
       }}>
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
-          color: 'var(--terra)',
+          // Day number color tracks the kind: terra for time-sensitive,
+          // sage for group (yours), charcoal-mid for recurring (so the
+          // routine doesn't compete with scarce events on the same screen).
+          color: isGroupEvent ? 'var(--sage)'
+               : isRecurring ? 'var(--charcoal-mid)'
+               : 'var(--terra)',
           letterSpacing: -0.5,
         }}>
           {day}
@@ -1509,16 +1522,33 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {ev.name}
         </div>
 
-        {/* Single metadata row: emoji · time · venue · bairro. Truncates
-            with ellipsis on narrow screens — venue + bairro can be long. */}
+        {/* Single metadata row: time · venue · bairro. Truncates with
+            ellipsis on narrow screens — venue + bairro can be long.
+            The leading category emoji was dropped since the day-number
+            color + left stripe already convey the event kind. */}
         <div style={{
           fontSize: 11, color: 'var(--charcoal-mid)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-          {isRecurring ? '🔁' : ev.icon || '📅'}
-          {time && <> {time}</>}
-          {venueLine && <> · {venueLine}</>}
+          {time}
+          {time && venueLine && <> · </>}
+          {venueLine}
         </div>
+
+        {/* Vibe summary — short LLM-extracted sentence about the event.
+            Brought back per user feedback after the cleanup pass; keeps
+            the card scannable as a "what is this" glance. Hidden when
+            the LLM echoed the event name, since that's just noise. */}
+        {ev.vibeSummary && ev.vibeSummary !== ev.name && (
+          <div style={{
+            fontSize: 11, color: 'var(--charcoal-light)',
+            fontStyle: 'italic', lineHeight: 1.35, marginTop: 4,
+            display: '-webkit-box', WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {ev.vibeSummary}
+          </div>
+        )}
 
         {/* Friends going line. Sage (auê's friend color) with ▸ prefix.
             Friend avatars dropped for visual density — the count +
@@ -2042,18 +2072,11 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           )
         })()}
 
-        {ev.pitch && (
-          <div style={{
-            background: 'var(--sage-pale)', borderRadius: 12,
-            padding: '10px 12px', marginBottom: 12,
-            borderLeft: '3px solid var(--sage)',
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: 'var(--sage)', marginBottom: 4 }}>
-              {t.events_why_good}
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--charcoal)', lineHeight: 1.5 }}>{ev.pitch}</div>
-          </div>
-        )}
+        {/* "Bora?" pitch block removed — copy was prescriptive ("Não
+            recomendado…") which clashes with auê's voice (descriptive,
+            not judgmental). The vibe summary on the EventCard plus the
+            event description below cover the same ground without the
+            "should you go" framing. */}
 
         {/* Post-event attendees — "People you met" */}
         {!isVenue && (

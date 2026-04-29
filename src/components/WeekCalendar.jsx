@@ -37,7 +37,7 @@ function isToday(d) {
  *   onEventTap:  (event, type) => void  — type is 'rsvp' or 'group'
  *   onGroupRsvp: (event) => void
  */
-export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp }) {
+export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp, onDayClick }) {
   const t = useT()
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDate, setSelectedDate] = useState(dateKey(new Date()))
@@ -119,7 +119,13 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
           return (
             <div
               key={key}
-              onClick={() => setSelectedDate(key)}
+              onClick={() => {
+                setSelectedDate(key)
+                // When the parent wires onDayClick, route through to it
+                // so the click can also filter another screen (e.g. Home
+                // → Events tab filtered to that day).
+                onDayClick?.(key)
+              }}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 padding: '6px 0 4px', borderRadius: 12, cursor: 'pointer',
