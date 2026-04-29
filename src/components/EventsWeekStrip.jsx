@@ -43,26 +43,75 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Bucket events by ISO day for the strip's count badges. Each event
-  // counts ONCE on its dateStart so a "Tue→Sun" festival or a Thu/Fri/Sat
-  // residency don't inflate every day they cover — that was making the
-  // strip badges look much busier than the actual one-off catalog.
+  // Two parallel signals per day:
   //
-  // The list view's per-day pick filter (eventCoversDay) still expands
-  // recurring + range events onto every day they cover, so picking
-  // Friday from this strip will still surface a Thu/Fri/Sat residency
-  // — discoverability stays intact, the strip count just goes back to
-  // "events scheduled today" rather than "events touching today".
-  const countsByDay = useMemo(() => {
-    const map = {}
+  //  1. countsByDay — one-offs only, +1 on dateStart per event. This is
+  //     the BIG number on the day cell. Counts the time-sensitive
+  //     stuff: shows / openings / festivals / things you'll miss.
+  //  2. routineDays — Set of ISO days that have at least one recurring
+  //     or multi-day-range event covering them. Rendered as a small
+  //     🔁 dot on the day cell so the user knows "there's also a
+  //     Thu/Fri/Sat residency tonight" without inflating the count.
+  //
+  // The list's per-day pick filter (eventCoversDay) still expands
+  // routines + ranges onto every covered day, so tapping Friday surfaces
+  // the Thu/Fri/Sat residency along with any one-offs that day.
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const { countsByDay, routineDays } = useMemo(() => {
+    const counts = {}
+    const routines = new Set()
+    const horizon = new Date()
+    horizon.setUTCDate(horizon.getUTCDate() + 60)
     for (const ev of events) {
-      const iso = ev.dateStart || ev.date_start || ''
-      if (!iso) continue
-      const k = iso.slice(0, 10)
-      map[k] = (map[k] || 0) + 1
+      const isoStart = ev.dateStart || ev.date_start || ''
+      if (!isoStart) continue
+      const startKey = isoStart.slice(0, 10)
+      const isoEnd = ev.dateEnd || ev.date_end || ''
+      const endKey = isoEnd ? isoEnd.slice(0, 10) : ''
+      const isRecurring = !!ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length
+      const isRange = endKey && endKey > startKey
+
+      if (isRecurring) {
+        // Mark every matching weekday in the next 60 days as a
+        // routine-day. Doesn't touch counts.
+        const cursor = new Date(`${todayIso}T00:00:00Z`)
+        let n = 0
+        while (cursor <= horizon && n < 60) {
+          const isoDow = ((cursor.getUTCDay() + 6) % 7) + 1
+          if (ev.recurrenceDays.includes(isoDow)) {
+            routines.add(cursor.toISOString().slice(0, 10))
+          }
+          cursor.setUTCDate(cursor.getUTCDate() + 1)
+          n += 1
+        }
+        continue
+      }
+
+      if (isRange) {
+        // Multi-day range: count once on start (so the festival
+        // "happens" the day it opens), mark every covered day as a
+        // routine-day so the dot appears across the run.
+        counts[startKey] = (counts[startKey] || 0) + 1
+        const start = new Date(`${startKey}T00:00:00Z`)
+        const end = new Date(`${endKey}T00:00:00Z`)
+        if (Number.isNaN(start.getTime())) continue
+        const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
+        const cursor = new Date(start)
+        cursor.setUTCDate(cursor.getUTCDate() + 1)
+        let n = 0
+        while (cursor <= finalEnd && n < 60) {
+          routines.add(cursor.toISOString().slice(0, 10))
+          cursor.setUTCDate(cursor.getUTCDate() + 1)
+          n += 1
+        }
+        continue
+      }
+
+      // Plain one-off — bumps the count on its single day.
+      counts[startKey] = (counts[startKey] || 0) + 1
     }
-    return map
-  }, [events])
+    return { countsByDay: counts, routineDays: routines }
+  }, [events, todayIso])
 
   const monthLabel = `${MONTH_LABELS_PT[days[0].getMonth()]} ${days[0].getFullYear()}`
 
@@ -107,6 +156,7 @@ export default function EventsWeekStrip({
           const hasEvents = count > 0
           const youGoing = rsvpDays?.has(key)
           const friendsGoing = friendDays?.has(key)
+          const hasRoutine = routineDays.has(key)
 
           return (
             <button
@@ -152,11 +202,22 @@ export default function EventsWeekStrip({
               }}>
                 {hasEvents ? count : ''}
               </div>
-              {/* Social dots — sage = you, blue = friends. Reserve the row
-                  even when empty so day cells stay vertically aligned. */}
+              {/* Social/coverage dots — sage = you RSVPed, blue = friends
+                  going, terra = there's a routine/range covering this
+                  day (residencies, multi-day exhibitions). Reserve the
+                  row height even when empty so day cells stay aligned. */}
               <div style={{
                 display: 'flex', gap: 3, marginTop: 3, height: 6,
               }}>
+                {hasRoutine && (
+                  <div
+                    title="Tem rotina/rolê fixo nesse dia"
+                    style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: selected ? 'var(--terra-pale)' : 'var(--terra)',
+                    }}
+                  />
+                )}
                 {youGoing && (
                   <div
                     title="Você confirmou"
