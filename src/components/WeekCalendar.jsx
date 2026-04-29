@@ -7,15 +7,27 @@ const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 const MONTH_LABELS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+function getAnchorToday() {
+  // The strip's "today" only advances at 06:00 local. Between 00:00
+  // and 05:59 we still treat the previous calendar day as today, so
+  // late-night plans (a show that runs to 02:00) stay on the same
+  // column users were looking at when they made the plan. After
+  // 06:00 the column rolls forward.
+  const now = new Date()
+  if (now.getHours() < 6) {
+    now.setDate(now.getDate() - 1)
+  }
+  now.setHours(0, 0, 0, 0)
+  return now
+}
+
 function getWeekDays(offset = 0) {
-  // Rolling 7-day window starting from today. offset=0 → today + 6
-  // upcoming days; offset=1 → 7 days after that; offset=-1 → 7 days
-  // before today (handy for re-checking past plans). Anchored on
-  // "today" rather than Monday so the user always sees what's
-  // immediately ahead first.
-  const today = new Date()
-  const start = new Date(today)
-  start.setDate(today.getDate() + offset * 7)
+  // Rolling 7-day window starting from the 6am-anchored "today"
+  // (see getAnchorToday). offset=0 → today + 6 upcoming days;
+  // offset=1 → 7 days after that; offset=-1 → 7 days before today
+  // (handy for re-checking past plans).
+  const start = getAnchorToday()
+  start.setDate(start.getDate() + offset * 7)
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start)
     d.setDate(start.getDate() + i)
@@ -28,7 +40,9 @@ function dateKey(d) {
 }
 
 function isToday(d) {
-  const t = new Date()
+  // Compare against the 6am-anchored "today" so the highlighted column
+  // matches the strip's rolling logic.
+  const t = getAnchorToday()
   return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear()
 }
 
@@ -45,7 +59,7 @@ function isToday(d) {
 export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp, onDayClick }) {
   const t = useT()
   const [weekOffset, setWeekOffset] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(dateKey(new Date()))
+  const [selectedDate, setSelectedDate] = useState(dateKey(getAnchorToday()))
 
   const days = getWeekDays(weekOffset)
   const dayLabels = language === 'pt' ? DAY_LABELS_PT : DAY_LABELS_EN
