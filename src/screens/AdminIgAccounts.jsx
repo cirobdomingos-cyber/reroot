@@ -265,6 +265,15 @@ export default function AdminIgAccounts() {
              handles lives on the Sources page now (no duplicate form). */}
       {isFounder && usage && <UsageSection usage={usage} />}
 
+      {/* Leaderboard — founder sales tool. Sits right under "Uso do
+          app" since both panels are the founder's "where do I focus
+          next" surface (usage = product, leaderboard = monetization).
+          Every active handle ranked by views + RSVPs in the last 30d.
+          Tap a row to open that venue's Painel for the deep dive. */}
+      {isFounder && (
+        <VenueLeaderboard email={email} navigate={navigate} />
+      )}
+
       {isFounder && (
         <CuratorsSection
           curators={curators}
@@ -287,14 +296,6 @@ export default function AdminIgAccounts() {
           busy={busy}
           setBusy={setBusy}
         />
-      )}
-
-      {/* Leaderboard — founder sales tool. Every active handle ranked
-          by views + RSVPs in the last 30d. Tap a row to open that
-          venue's Painel for the deep dive. Top of the list = strongest
-          candidate to pitch a Destaque deal to. */}
-      {isFounder && (
-        <VenueLeaderboard email={email} navigate={navigate} />
       )}
 
       {isCurator && (
