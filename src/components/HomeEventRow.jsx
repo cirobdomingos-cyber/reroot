@@ -36,14 +36,15 @@ export default function HomeEventRow({
   const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
   // "Ongoing" = recurring OR multi-day range. Mirrors EventCard.
   const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
-  // Mirrors EventCard: sage for group, honey for one-off,
-  // terra-light blue for ongoing.
+  // Mirrors EventCard: sage for group, purple for one-off (matches
+  // the "Só únicos" filter chip on the Events tab), terra-light blue
+  // for ongoing.
   const dayColor = isGroupEvent ? 'var(--sage)'
                  : isOngoing ? 'var(--terra-light)'
-                 : 'var(--honey)'
+                 : '#7E57C2'
   const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                : isOngoing ? 'none'
-               : 'inset 3px 0 0 var(--honey)'
+               : 'inset 3px 0 0 #7E57C2'
   return (
     <div
       onClick={onClick}

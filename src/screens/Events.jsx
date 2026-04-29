@@ -1549,7 +1549,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         border: ev.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                   : isOngoing ? 'none'
-                  : 'inset 3px 0 0 var(--honey)',
+                  : 'inset 3px 0 0 #7E57C2',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
         position: 'relative',
@@ -1565,11 +1565,12 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
       }}>
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
-          // Day color matches the stripe — sage for group, honey for
-          // one-off, terra-light blue for ongoing.
+          // Day color matches the stripe — sage for group, purple for
+          // one-off (mirrors the "Só únicos" filter chip), terra-light
+          // blue for ongoing.
           color: isGroupEvent ? 'var(--sage)'
                : isOngoing ? 'var(--terra-light)'
-               : 'var(--honey)',
+               : '#7E57C2',
           letterSpacing: -0.5,
         }}>
           {day}
