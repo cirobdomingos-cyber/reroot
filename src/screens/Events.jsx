@@ -965,11 +965,23 @@ export default function Events() {
             { id: 'weekend', label: '🎉 Fim de semana' },
             { id: 'week',    label: '🗓 Próx 7 dias' },
           ].map(r => {
-            const active = dateRange === r.id
+            const isAllChip = r.id === 'all'
+            const dayPicked = !!selectedDay
+            // "Tudo" doubles as the reset for any date narrowing, including
+            // a per-day pick from the week strip. When a day is picked it
+            // re-labels as "✕ Todas as datas" and a tap clears both the
+            // range and the day pick. Active state requires both at default.
+            const active = isAllChip
+              ? (dateRange === 'all' && !dayPicked)
+              : dateRange === r.id
+            const label = isAllChip && dayPicked ? '✕ Todas as datas' : r.label
             return (
               <button
                 key={r.id}
-                onClick={() => setDateRange(r.id)}
+                onClick={() => {
+                  setDateRange(r.id)
+                  if (isAllChip) setSelectedDay(null)
+                }}
                 style={{
                   padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
                   fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
@@ -979,7 +991,7 @@ export default function Events() {
                   color: active ? 'white' : 'var(--charcoal-light)',
                 }}
               >
-                {r.label}
+                {label}
               </button>
             )
           })}
