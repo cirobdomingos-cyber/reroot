@@ -607,24 +607,23 @@ function HomeEventRow({
   onClick,
 }) {
   const { day, weekday } = _homeDayLabels(dateStart)
-  // Hierarchy mirrors EventCard: one-offs and group events get the eye,
-  // recurring events fade back. Color, background, and opacity all
-  // signal the rank.
+  // Mirrors EventCard: one-off + group both get a colored left stripe
+  // (terra / sage); recurring stays plain white with no stripe and a
+  // neutral charcoal day number — present in the list, just not
+  // claiming the highlight.
   const dayColor = isGroupEvent ? 'var(--sage)'
-                 : isRecurring ? 'var(--charcoal-mid)'
+                 : isRecurring ? 'var(--charcoal)'
                  : 'var(--terra)'
-  const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)' : 'none'
+  const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)'
+               : isRecurring ? 'none'
+               : 'inset 3px 0 0 var(--terra)'
   return (
     <div
       onClick={onClick}
       style={{
-        background: isRecurring ? '#FAFAFA'
-                  : isGroupEvent ? 'white'
-                  : '#FFF8F2',
-        borderRadius: 12,
-        border: isRecurring ? '1px solid #EAEAEA' : '1px solid var(--border)',
+        background: 'white', borderRadius: 12,
+        border: '1px solid var(--border)',
         boxShadow: stripe,
-        opacity: isRecurring ? 0.85 : 1,
         padding: '10px 13px',
         display: 'flex', alignItems: 'center', gap: 12,
         cursor: onClick ? 'pointer' : 'default',

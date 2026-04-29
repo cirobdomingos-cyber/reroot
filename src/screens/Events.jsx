@@ -1488,21 +1488,20 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     <div
       onClick={onOpen}
       style={{
-        // Visual hierarchy (loudest → quietest):
-        //   - one-off (time-sensitive)  → terra-tinted card, full color
-        //   - group (yours)             → white card + sage stripe + sage day
-        //   - recurring (every week)    → faded gray card, no stripe, dim day
-        // Routines happen on a loop — they don't need to grab attention.
-        // Scarce / personal events get the eye.
-        background: isRecurring ? '#FAFAFA'
-                  : isGroupEvent ? 'white'
-                  : '#FFF8F2',  // soft warm peach for one-offs
+        // Visual hierarchy:
+        //   - one-off (time-sensitive)  → white + terra stripe + terra day
+        //   - group (yours)             → white + sage stripe + sage day
+        //   - recurring (every week)    → white card, no stripe, neutral
+        //                                  charcoal day. Same color family
+        //                                  as the others, just doesn't claim
+        //                                  the highlight.
+        background: 'white',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
-        border: isRecurring ? '1px solid #EAEAEA'
-              : '1px solid var(--border)',
-        boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)' : 'none',
-        opacity: isRecurring ? 0.85 : 1,
+        border: '1px solid var(--border)',
+        boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
+                  : isRecurring ? 'none'
+                  : 'inset 3px 0 0 var(--terra)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
       }}
@@ -1517,11 +1516,10 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
       }}>
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
-          // Day number color tracks the kind: terra for time-sensitive,
-          // sage for group (yours), charcoal-mid for recurring (so the
-          // routine doesn't compete with scarce events on the same screen).
+          // Day color matches the stripe (terra one-off, sage group)
+          // or stays charcoal for recurring (no stripe → no accent).
           color: isGroupEvent ? 'var(--sage)'
-               : isRecurring ? 'var(--charcoal-mid)'
+               : isRecurring ? 'var(--charcoal)'
                : 'var(--terra)',
           letterSpacing: -0.5,
         }}>
