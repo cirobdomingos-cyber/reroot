@@ -87,12 +87,30 @@ function getPersonalChip(ev, rsvps) {
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
-// True when `dayIso` (YYYY-MM-DD) falls within the event's date range
-// (inclusive on both ends). One-off events (no dateEnd) collapse to a
-// strict equality on dateStart's day. Used by both the per-day filter
-// and the week-strip count so a "terça a domingo" festival shows up
-// every day it covers.
+// True when `dayIso` (YYYY-MM-DD) falls within an event's coverage:
+//   - One-off: strict equality on dateStart's day.
+//   - Range:   dateStart ≤ dayIso ≤ dateEnd (inclusive both ends).
+//   - Recurring: dayIso's weekday matches one of recurrenceDays
+//     (ISO 1=Mon..7=Sun) AND dayIso isn't before the next occurrence.
+//
+// Used by both the per-day pick filter and the week-strip count so a
+// "Quinta, sexta e sábado" residency shows up on each Thu/Fri/Sat in
+// view, not just the next single occurrence the backend computed.
 function eventCoversDay(ev, dayIso) {
+  if (!dayIso) return false
+  // Recurring branch — week-strip should highlight every covered weekday
+  // from today onward, not just the rolled-forward "next occurrence".
+  if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
+    const d = new Date(`${dayIso}T00:00:00Z`)
+    if (Number.isNaN(d.getTime())) return false
+    // JS getUTCDay: 0=Sun..6=Sat. Convert to ISO 1=Mon..7=Sun.
+    const isoDow = ((d.getUTCDay() + 6) % 7) + 1
+    if (!ev.recurrenceDays.includes(isoDow)) return false
+    // Hide past days even for recurring — we don't want Saturday to
+    // light up before the user's "today" gets there.
+    const todayIso = new Date().toISOString().slice(0, 10)
+    return dayIso >= todayIso
+  }
   const start = (ev.dateStart || '').slice(0, 10)
   if (!start) return false
   const end = (ev.dateEnd || '').slice(0, 10) || start

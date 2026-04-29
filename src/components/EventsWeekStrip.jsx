@@ -45,19 +45,40 @@ export default function EventsWeekStrip({
 
   // Bucket all events by ISO day. We bucket *every* event regardless of
   // week so future weeks still show counts when the user navigates forward.
-  // Range events (dateStart..dateEnd, e.g. "terça a domingo") increment
-  // every day they cover so the week strip shows the right "you can go
-  // any day" intuition. Capped at 60 days defensively to avoid blowing
-  // up the map for malformed multi-year ranges.
+  //   - Range events (dateStart..dateEnd, e.g. "terça a domingo")
+  //     increment every day they cover.
+  //   - Recurring events (recurrenceDays = ISO 1..7) increment every
+  //     matching weekday in a forward window (today → +60 days), so
+  //     the strip lights up Thu + Fri + Sat for a "Qui/Sex/Sáb" set.
+  //   - One-offs increment exactly one day.
+  // 60-day cap protects against malformed multi-year ranges.
   const countsByDay = useMemo(() => {
     const map = {}
+    const todayIso = new Date().toISOString().slice(0, 10)
+    const horizon = new Date()
+    horizon.setUTCDate(horizon.getUTCDate() + 60)
     for (const ev of events) {
+      // Recurring branch: walk forward 60 days, count every matching
+      // ISO weekday.
+      if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
+        const cursor = new Date(`${todayIso}T00:00:00Z`)
+        let n = 0
+        while (cursor <= horizon && n < 60) {
+          const isoDow = ((cursor.getUTCDay() + 6) % 7) + 1
+          if (ev.recurrenceDays.includes(isoDow)) {
+            const k = cursor.toISOString().slice(0, 10)
+            map[k] = (map[k] || 0) + 1
+          }
+          cursor.setUTCDate(cursor.getUTCDate() + 1)
+          n += 1
+        }
+        continue
+      }
       const isoStart = ev.dateStart || ev.date_start || ''
       if (!isoStart) continue
       const startKey = isoStart.slice(0, 10)
       const isoEnd = ev.dateEnd || ev.date_end || ''
       const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
-      // Iterate one day at a time. UTC math avoids DST edge cases.
       const start = new Date(`${startKey}T00:00:00Z`)
       const end = new Date(`${endKey}T00:00:00Z`)
       if (Number.isNaN(start.getTime())) continue
