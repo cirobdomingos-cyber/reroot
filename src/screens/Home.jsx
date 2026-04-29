@@ -231,28 +231,6 @@ export default function Home() {
     state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() <= now
   )
 
-  async function handleQuickRsvp(ev) {
-    dispatch({
-      type: 'TOGGLE_RSVP',
-      payload: { eventId: ev.id, dateStart: ev.dateStart, name: ev.name, venue: ev.venue },
-    })
-    // Persist to the backend rsvps table so /friends/feed sees this
-    // RSVP — without this sync, the row only lived in local state and
-    // friends never saw the user attending. Same pattern as
-    // handleAcceptInvite.
-    if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
-      syncRsvp(state.googleUser.id, {
-        id: ev.id, name: ev.name, venue: ev.venue || '',
-        dateStart: ev.dateStart || '', url: ev.url || '',
-      }, true)
-    }
-    const ok = await scheduleEventReminder(ev)
-    if (ok) {
-      setNotifToast(ev.name)
-      setTimeout(() => setNotifToast(null), 3000)
-    }
-  }
-
   return (
     <div>
       {/* Brand + avatar. Home is the anchor screen, so we lead with the
@@ -547,7 +525,12 @@ export default function Home() {
         )
       })()}
 
-      {/* Suggested events */}
+      {/* Suggested events — tap a row to open the full hero on the
+          Events tab; RSVP happens there. The previous inline
+          "Confirmar" button skipped the event-detail context and
+          lived in a code path that didn't sync to the backend rsvps
+          table either, so removing it also cleans up an out-of-band
+          RSVP source. */}
       <div className="section-label">{t.home_suggested_label ?? 'Eventos para você'}</div>
       <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {suggestedEvents.map(ev => (
@@ -560,18 +543,7 @@ export default function Home() {
             isRecurring={!!ev.isRecurring}
             isGroupEvent={!!ev.isGroupEvent}
             onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
-            trailing={
-              <button
-                onClick={(e) => { e.stopPropagation(); handleQuickRsvp(ev) }}
-                style={{
-                  padding: '6px 12px', borderRadius: 10, fontSize: 11,
-                  fontWeight: 700, cursor: 'pointer', border: 'none',
-                  background: 'var(--sage)', color: 'white',
-                }}
-              >
-                {t.home_rsvp ?? 'Vou!'}
-              </button>
-            }
+            trailing={null}
           />
         ))}
         <button
