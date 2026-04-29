@@ -883,10 +883,10 @@ export default function Events() {
             requires BOTH filters at default for the visual to read as
             "no filtering active". */}
         {(() => {
-          const isAllActive = priceFilter === 'all' && !oneOffOnly
+          const isAllActive = priceFilter === 'all' && !oneOffOnly && !kidsFilter
           return (
             <button
-              onClick={() => { setPriceFilter('all'); setOneOffOnly(false) }}
+              onClick={() => { setPriceFilter('all'); setOneOffOnly(false); setKidsFilter(false) }}
               style={{
                 padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
                 fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
