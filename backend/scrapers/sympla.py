@@ -83,7 +83,12 @@ HEADERS = {
 }
 
 EVENT_URL_PATTERN = re.compile(
-    r'href="(https://www\.sympla\.com\.br/evento/[^"]+)"'
+    # Sympla's listing HTML went from <a href="..."> with double-quoted
+    # attributes to a mix of escaped JSON-embedded URLs in Next.js
+    # hydration scripts. Broader: anywhere we see the canonical event
+    # path, capture it. Strip trailing slashes/quotes/backslashes the
+    # regex pulls in from JSON escaping.
+    r'(https://www\.sympla\.com\.br/evento/[a-zA-Z0-9\-_/]+)'
 )
 
 _NEXT_DATA_RE = re.compile(
