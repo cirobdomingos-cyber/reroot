@@ -635,6 +635,26 @@ export async function fetchSources() {
   return { institutional: [], instagram: [] }
 }
 
+export async function fetchVenueDashboard(handle, requestingEmail) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/venue/${encodeURIComponent(handle)}/stats?requesting_email=${encodeURIComponent(requestingEmail || '')}`,
+    )
+    if (!res.ok) {
+      let detail = ''
+      try { detail = (await res.json()).detail || '' } catch {}
+      return { error: detail || `HTTP ${res.status}`, status: res.status }
+    }
+    const data = await res.json()
+    if (data?.profile_pic_url) {
+      data.profile_pic_url = absoluteImageUrl(data.profile_pic_url)
+    }
+    return data
+  } catch (e) {
+    return { error: e?.message || 'fetch failed', status: 0 }
+  }
+}
+
 export async function fetchSourceDetail(sourceId) {
   try {
     const res = await fetchWithTimeout(

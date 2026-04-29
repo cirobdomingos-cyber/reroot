@@ -26,6 +26,7 @@ import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
 import Sources         from './screens/Sources'
 import SourceDetail    from './screens/SourceDetail'
+import VenueDashboard  from './screens/VenueDashboard'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -155,6 +156,7 @@ export default function App() {
             <Route path="/my-rsvps" element={<AnimatedPage><MyRsvps /></AnimatedPage>} />
             <Route path="/sources" element={<AnimatedPage><Sources /></AnimatedPage>} />
             <Route path="/sources/:sourceId" element={<AnimatedPage><SourceDetail /></AnimatedPage>} />
+            <Route path="/venue/:handle" element={<AnimatedPage><VenueDashboard /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

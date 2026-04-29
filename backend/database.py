@@ -189,6 +189,11 @@ def init_db():
             # and on every event card, plus first-position sorting in
             # both the Sources screen and the events list.
             "ADD COLUMN featured INTEGER NOT NULL DEFAULT 0",
+            # Venue dashboard — when set, the email is the venue's
+            # claim. They can view /venue/<handle>/stats from their
+            # logged-in app session (we match against state.googleUser
+            # .email server-side). One handle, one claimant.
+            "ADD COLUMN claimed_by_email TEXT NOT NULL DEFAULT ''",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -726,6 +731,36 @@ def upsert_ig_account(handle: str, label: str = "", category: str = "",
     return dict(row)
 
 
+def set_ig_claim(handle: str, email: str) -> bool:
+    """Assign the venue dashboard claim to `email` (or clear it with '').
+    The claimed email can view /venue/{handle}/stats from their session.
+    Returns True if a row updated."""
+    handle = handle.strip().lstrip("@").lower()
+    cleaned = (email or "").strip().lower()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE tracked_ig_accounts SET claimed_by_email = ? WHERE handle = ?",
+            (cleaned, handle),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_ig_claim_handle_for_email(email: str) -> Optional[str]:
+    """Reverse lookup — which handle (if any) belongs to this email's
+    venue claim. Used by the bottom nav to show a "Painel" entry only
+    for claimed venues."""
+    cleaned = (email or "").strip().lower()
+    if not cleaned:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT handle FROM tracked_ig_accounts WHERE claimed_by_email = ? LIMIT 1",
+            (cleaned,),
+        ).fetchone()
+    return row["handle"] if row else None
+
+
 def set_ig_featured(handle: str, featured: bool) -> bool:
     """Flip the Destaque flag on a tracked IG account. Returns True if a
     row updated. The flag drives "featured first" sorting + a star pill
@@ -830,6 +865,162 @@ def set_ig_account_last_event_count(handle: str, count: int) -> None:
             (count, handle),
         )
         conn.commit()
+
+
+def get_venue_dashboard_stats(handle: str) -> dict:
+    """Aggregate the per-venue metrics that drive the dashboard. All
+    counts are scoped to events whose external_id has the `ig_<handle>_`
+    prefix — that's how we identify "this venue's events" in the
+    catalog. Same identification the source page uses.
+
+    Returns metric tuples (last_7d, last_30d, all_time) for each axis,
+    plus a top-5 events list and the venue's view→RSVP conversion."""
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        return _empty_dashboard_stats()
+    now = datetime.now(timezone.utc)
+    iso_7d = (now - timedelta(days=7)).isoformat()
+    iso_30d = (now - timedelta(days=30)).isoformat()
+    venue_event_id_prefix = f"instagram_ig_{handle}_"
+
+    with get_conn() as conn:
+        # Universe of events for this venue.
+        evs = conn.execute(
+            "SELECT id, payload FROM events WHERE id LIKE ?",
+            (f"{venue_event_id_prefix}%",),
+        ).fetchall()
+        event_ids = [r["id"] for r in evs]
+        if not event_ids:
+            return _empty_dashboard_stats()
+        placeholders = ",".join("?" * len(event_ids))
+
+        # ── Views ── analytics_events 'event_view' rows tagged with
+        # ig_handle so we can aggregate without joining JSON.
+        def _view_count(since_iso: Optional[str]) -> int:
+            sql = ("SELECT COUNT(*) AS c FROM analytics_events "
+                   "WHERE event_name = 'event_view' "
+                   "AND json_extract(properties_json, '$.ig_handle') = ?")
+            params: list = [handle]
+            if since_iso:
+                sql += " AND created_at >= ?"
+                params.append(since_iso)
+            return int(conn.execute(sql, params).fetchone()["c"])
+        views_7d = _view_count(iso_7d)
+        views_30d = _view_count(iso_30d)
+        views_all = _view_count(None)
+
+        # ── Source-page views (visitors to /sources/ig:<handle>) ──
+        def _source_view_count(since_iso: Optional[str]) -> int:
+            sql = ("SELECT COUNT(*) AS c FROM analytics_events "
+                   "WHERE event_name = 'source_view' "
+                   "AND json_extract(properties_json, '$.ig_handle') = ?")
+            params: list = [handle]
+            if since_iso:
+                sql += " AND created_at >= ?"
+                params.append(since_iso)
+            return int(conn.execute(sql, params).fetchone()["c"])
+        src_views_7d = _source_view_count(iso_7d)
+        src_views_30d = _source_view_count(iso_30d)
+
+        # ── RSVPs ── join rsvps to the venue's event ids.
+        def _rsvp_count(since_iso: Optional[str]) -> int:
+            sql = (f"SELECT COUNT(*) AS c FROM rsvps "
+                   f"WHERE event_id IN ({placeholders})")
+            params = list(event_ids)
+            if since_iso:
+                sql += " AND created_at >= ?"
+                params.append(since_iso)
+            return int(conn.execute(sql, params).fetchone()["c"])
+        rsvps_7d = _rsvp_count(iso_7d)
+        rsvps_30d = _rsvp_count(iso_30d)
+        rsvps_all = _rsvp_count(None)
+
+        # ── Top-5 events by RSVPs (all-time, future + past). Renders
+        # as the "Eventos com mais tração" list in the dashboard. ──
+        top_rows = conn.execute(
+            f"""SELECT event_id, event_name, COUNT(*) AS rsvp_count
+                FROM rsvps WHERE event_id IN ({placeholders})
+                GROUP BY event_id ORDER BY rsvp_count DESC LIMIT 5""",
+            event_ids,
+        ).fetchall()
+        top_events = []
+        for r in top_rows:
+            ev_id = r["event_id"]
+            view_row = conn.execute(
+                """SELECT COUNT(*) AS c FROM analytics_events
+                   WHERE event_name = 'event_view'
+                     AND json_extract(properties_json, '$.event_id') = ?""",
+                (ev_id,),
+            ).fetchone()
+            view_count = int(view_row["c"]) if view_row else 0
+            top_events.append({
+                "event_id": ev_id,
+                "name": r["event_name"],
+                "rsvps": int(r["rsvp_count"]),
+                "views": view_count,
+            })
+
+        # ── Hour-of-day distribution of event views (24-bucket).
+        # Useful for the venue to see when their audience is browsing,
+        # not the same as event start time. ──
+        rows = conn.execute(
+            """SELECT created_at FROM analytics_events
+               WHERE event_name = 'event_view'
+                 AND json_extract(properties_json, '$.ig_handle') = ?
+                 AND created_at >= ?""",
+            (handle, iso_30d),
+        ).fetchall()
+        hour_dist = [0] * 24
+        for r in rows:
+            try:
+                dt = datetime.fromisoformat(r["created_at"])
+                # Convert UTC → America/Sao_Paulo (UTC-3, no DST in BR).
+                local_hour = (dt.hour - 3) % 24
+                hour_dist[local_hour] += 1
+            except Exception:
+                continue
+
+        # ── Friends amplification ── RSVPs where the user has at least
+        # one accepted-friend who ALSO RSVPed to the same event. Tracks
+        # the "friend-going pull" effect — a key signal for venue value.
+        amp_row = conn.execute(
+            f"""SELECT COUNT(DISTINCT my.google_id || '|' || my.event_id) AS c
+                FROM rsvps my
+                JOIN rsvps theirs ON theirs.event_id = my.event_id
+                JOIN friendships f ON
+                    ((f.user_a = my.google_id AND f.user_b = theirs.google_id)
+                  OR (f.user_b = my.google_id AND f.user_a = theirs.google_id))
+                WHERE my.event_id IN ({placeholders})
+                  AND my.google_id != theirs.google_id
+                  AND f.status IN ('accepted', 'pending')""",
+            event_ids,
+        ).fetchone()
+        friends_amplified = int(amp_row["c"]) if amp_row else 0
+
+    conv_rate = (rsvps_all / views_all) if views_all > 0 else 0.0
+    return {
+        "events_in_catalog": len(event_ids),
+        "views":           {"d7": views_7d,  "d30": views_30d, "all": views_all},
+        "rsvps":           {"d7": rsvps_7d,  "d30": rsvps_30d, "all": rsvps_all},
+        "source_views":    {"d7": src_views_7d, "d30": src_views_30d},
+        "conversion_rate": conv_rate,
+        "friends_amplified": friends_amplified,
+        "top_events":      top_events,
+        "hour_distribution_local": hour_dist,
+    }
+
+
+def _empty_dashboard_stats() -> dict:
+    return {
+        "events_in_catalog": 0,
+        "views":           {"d7": 0, "d30": 0, "all": 0},
+        "rsvps":           {"d7": 0, "d30": 0, "all": 0},
+        "source_views":    {"d7": 0, "d30": 0},
+        "conversion_rate": 0.0,
+        "friends_amplified": 0,
+        "top_events":      [],
+        "hour_distribution_local": [0] * 24,
+    }
 
 
 def insert_analytics_event(event_name: str, properties_json: str, session_id: str):

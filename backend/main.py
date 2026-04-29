@@ -3203,6 +3203,58 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     return {"ok": True}
 
 
+class IgClaimUpdate(BaseModel):
+    requesting_email: str
+    email: str  # empty string clears the claim
+
+
+@app.put("/admin/ig-accounts/{handle}/claim")
+def admin_set_ig_claim(handle: str, req: IgClaimUpdate):
+    """Assign (or clear) the venue dashboard claim for a handle.
+    Founder-only — claims map a venue to a Google-login email; the
+    dashboard endpoint /venue/{handle}/stats checks that the
+    requesting user matches the claim before returning data."""
+    _require_founder(req.requesting_email)
+    ok = db.set_ig_claim(handle, req.email)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    return {"ok": True, "claimed_by_email": (req.email or "").strip().lower()}
+
+
+@app.get("/venue/{handle}/stats")
+def venue_dashboard_stats(handle: str, requesting_email: str = ""):
+    """Per-venue dashboard data. Two access tiers:
+       1. The founder always has read access (admin oversight).
+       2. The email matching the venue's claim has read access
+          (the venue's own dashboard).
+    Anyone else gets 403, even when authenticated — these are paid-
+    placement metrics, not catalog data."""
+    handle = handle.strip().lstrip("@").lower()
+    cleaned_email = (requesting_email or "").strip().lower()
+    is_founder = bool(cleaned_email and db.is_founder(cleaned_email))
+    if not is_founder:
+        # Non-founder: must match the venue's claim. db.get_ig_account
+        # returns the row (or None) for the handle.
+        acc = db.get_ig_account(handle)
+        if not acc:
+            raise HTTPException(status_code=404, detail="Conta não encontrada")
+        claimed = (acc.get("claimed_by_email") or "").strip().lower()
+        if not claimed or claimed != cleaned_email:
+            raise HTTPException(status_code=403, detail="Sem acesso ao painel deste local")
+    stats = db.get_venue_dashboard_stats(handle)
+    # Surface the venue's display info so the dashboard header has the
+    # name + avatar without a second round-trip.
+    acc = db.get_ig_account(handle) or {}
+    return {
+        "handle": handle,
+        "label": acc.get("display_name") or acc.get("label") or f"@{handle}",
+        "profile_pic_url": acc.get("profile_pic_url") or "",
+        "featured": bool(acc.get("featured")),
+        "claimed_by_email": (acc.get("claimed_by_email") or "").lower(),
+        **stats,
+    }
+
+
 class IgFeaturedToggle(BaseModel):
     requesting_email: str
     featured: bool

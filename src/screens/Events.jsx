@@ -330,6 +330,18 @@ export default function Events() {
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
+    // Track the open as an analytics event so the venue dashboard can
+    // count "how many people viewed this event". Fire-and-forget; the
+    // ig_handle is parsed from the event id (`instagram_ig_<handle>_<post>`)
+    // so the per-venue rollup can group without a join.
+    if (typeof eventId === 'string' && eventId.startsWith('instagram_ig_')) {
+      const rest = eventId.slice('instagram_ig_'.length)
+      const lastUnderscore = rest.lastIndexOf('_')
+      const igHandle = lastUnderscore > 0 ? rest.slice(0, lastUnderscore) : ''
+      trackEvent('event_view', { event_id: eventId, ig_handle: igHandle })
+    } else {
+      trackEvent('event_view', { event_id: eventId })
+    }
     // Check custom events first — they don't exist in the backend
     const customMatch = (state.customEvents || []).find(e => e.id === eventId)
     if (customMatch) {

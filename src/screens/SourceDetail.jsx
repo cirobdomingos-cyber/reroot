@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { fetchSourceDetail } from '../services/api'
+import { fetchSourceDetail, trackEvent } from '../services/api'
 import Avatar from '../components/Avatar'
 
 // Per-source detail: header (label, blurb, link to official), then a list
@@ -21,6 +21,13 @@ export default function SourceDetail() {
       setData(d)
       setLoading(false)
     })
+    // Track the source-page view for the venue dashboard. ig_handle
+    // is the part after "ig:"; institutional sources fire with the
+    // raw source id (aue_original etc.) for consistency.
+    if (sourceId) {
+      const igHandle = sourceId.startsWith('ig:') ? sourceId.slice(3) : ''
+      trackEvent('source_view', { source_id: sourceId, ig_handle: igHandle })
+    }
     return () => { cancelled = true }
   }, [sourceId])
 

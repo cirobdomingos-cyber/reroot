@@ -360,7 +360,11 @@ export default function AdminIgAccounts() {
                   onDelete={deleteAccount}
                   onScrape={scrapeOne}
                   onToggleFeatured={toggleFeatured}
-                  onOpenSource={(h) => navigate(`/sources/${encodeURIComponent('ig:' + h)}`)}
+                  // Admin tap on the handle row routes to the venue
+                  // dashboard (founder-only metrics) instead of the
+                  // public source page. The arrow icon on the right
+                  // still opens the external IG profile when needed.
+                  onOpenSource={(h) => navigate(`/venue/${encodeURIComponent(h)}`)}
                 />
               ))}
             </div>
