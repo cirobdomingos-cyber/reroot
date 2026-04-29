@@ -1460,6 +1460,16 @@ function _formatPrice(ev, freeLabel) {
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
   const isGroupEvent = !!ev.isGroupEvent
   const isRecurring = !!ev.isRecurring && !isGroupEvent
+  // "Ongoing" = recurring OR multi-day range. Both are conceptually
+  // the same for the purpose of visual emphasis: not a one-night-only
+  // commitment, you can drop in any day in the run. A 12-day theatre
+  // residency, a weekly bar set, and a 3-night festival all read
+  // similarly to the user — none of them are scarce in the
+  // "miss-it-and-it's-gone" sense that one-offs carry.
+  const dsKey = (ev.dateStart || '').slice(0, 10)
+  const deKey = (ev.dateEnd || '').slice(0, 10)
+  const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
+  const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
 
   // For recurring events, the parent passes the strip-picked day so
   // the card shows the specific occurrence the user is looking at,
@@ -1491,17 +1501,15 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         // Three distinct hues at a glance — the palette tokens are
         // counter-named (`--terra` is actually navy, `--sage` is the
         // orange) so we pick by computed color rather than name:
-        //   - group (yours, orange)         → sage stripe + sage day
-        //   - one-off (time-sensitive, amber) → honey stripe + honey day
-        //   - recurring (every week, blue)  → no stripe, terra-light day
-        //                                      (visible cool blue, doesn't
-        //                                      claim the highlight)
+        //   - group (yours, orange)             → sage stripe + sage day
+        //   - one-off (time-sensitive, amber)   → honey stripe + honey day
+        //   - ongoing (recurring or multi-day) → no stripe, terra-light day
         background: 'white',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
-                  : isRecurring ? 'none'
+                  : isOngoing ? 'none'
                   : 'inset 3px 0 0 var(--honey)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
@@ -1519,10 +1527,9 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           fontSize: 26, fontWeight: 800, lineHeight: 1,
           // Day color matches the stripe so the row reads as one
           // chromatic block — sage for group, honey for one-off,
-          // terra-light blue for recurring (no stripe but the
-          // color still telegraphs the kind).
+          // terra-light blue for ongoing (recurring + multi-day range).
           color: isGroupEvent ? 'var(--sage)'
-               : isRecurring ? 'var(--terra-light)'
+               : isOngoing ? 'var(--terra-light)'
                : 'var(--honey)',
           letterSpacing: -0.5,
         }}>

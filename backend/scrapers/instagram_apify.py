@@ -97,11 +97,24 @@ Legenda:
 Sua tarefa: classificar o post em UMA das três categorias:
 
 (A) EVENTO ÚNICO — anuncia algo com data específica em Curitiba/RMC. Ex: \
-"Show da Banda X no sábado 26/04 às 21h".
+"Show da Banda X no sábado 26/04 às 21h". Inclui rolês de janela curta \
+amarrados a feriado/festival ("Sábado a Quarta, durante o Carnaval", \
+"Programação especial de Páscoa quinta a domingo"): use date_start = \
+primeiro dia, date_end = último dia, is_recurring=false.
 
-(B) ROTINA RECORRENTE — descreve uma programação que se repete \
-semanalmente/diariamente. Ex: "Toda quinta tem MPB ao vivo", "Happy hour \
-de quinta a domingo das 17h às 21h", "Feijoada todo sábado".
+(B) ROTINA RECORRENTE — programação semanal/diária PERPÉTUA, sem fim \
+declarado. Só marque como recorrente quando a legenda traz um marcador \
+EXPLÍCITO de repetição contínua: "TODA quinta", "TODO sábado", \
+"TODAS as quartas", "SEMPRE às sextas", "SEMANALMENTE", "DIARIAMENTE", \
+"horário fixo de…". Ex: "Toda quinta tem MPB ao vivo", "Feijoada todo \
+sábado", "Happy hour de quinta a domingo das 17h às 21h" (sem janela \
+amarrada a um evento específico).
+
+⚠️ EM CASO DE DÚVIDA, PREFIRA (A). Lista de dias da semana SEM marcador \
+explícito de repetição contínua (sem "toda/todo/sempre/semanalmente"), \
+OU amarrada a um período específico (Carnaval, Páscoa, feriado, recesso, \
+"próxima semana", "essa semana"), NÃO é rotina — é janela de evento \
+único, use date_start..date_end.
 
 (C) NÃO É EVENTO — foto pessoal, propaganda genérica, recap, lista de dicas.
 

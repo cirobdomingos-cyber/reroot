@@ -410,6 +410,7 @@ export default function Home() {
                 time={ev.time}
                 venue={ev.venue}
                 isRecurring={!!ev.isRecurring}
+                dateEnd={ev.dateEnd}
                 isGroupEvent={!!ev.isGroupEvent}
                 onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
                 trailing={<AddToCalendar event={ev} />}
@@ -599,6 +600,7 @@ function _homeDayLabels(iso) {
 function HomeEventRow({
   name,
   dateStart,
+  dateEnd,        // optional ISO; used to detect multi-day-range events
   time,           // optional, "HH:MM"
   venue,          // pass already with " · bairro" if you have one
   isRecurring = false,
@@ -607,15 +609,16 @@ function HomeEventRow({
   onClick,
 }) {
   const { day, weekday } = _homeDayLabels(dateStart)
-  // Three distinct hues mirror EventCard:
-  //   group → sage (orange in this palette)
-  //   one-off → honey (amber)
-  //   recurring → terra-light (medium blue, no stripe)
+  const dsKey = (dateStart || '').slice(0, 10)
+  const deKey = (dateEnd || '').slice(0, 10)
+  const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
+  // "Ongoing" = recurring OR multi-day range. Mirrors EventCard.
+  const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
   const dayColor = isGroupEvent ? 'var(--sage)'
-                 : isRecurring ? 'var(--terra-light)'
+                 : isOngoing ? 'var(--terra-light)'
                  : 'var(--honey)'
   const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)'
-               : isRecurring ? 'none'
+               : isOngoing ? 'none'
                : 'inset 3px 0 0 var(--honey)'
   return (
     <div
