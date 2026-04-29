@@ -8,6 +8,7 @@ import AddToCalendar from '../components/AddToCalendar'
 import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
+import { getAnchorToday } from '../lib/dateAnchor'
 
 function getGreetingKey() {
   const h = new Date().getHours()
@@ -151,11 +152,41 @@ export default function Home() {
     .map(([id]) => id)
   const rsvpCount = upcomingRsvpIds.length
 
-  // upcomingRsvps below is used for the "Seus próximos eventos" card —
-  // there we DO need full event metadata, so we fall back to allEvents.
-  const upcomingRsvps = allEvents.filter(ev =>
-    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
-  )
+  // upcomingRsvps drives "Seus próximos eventos" — every planned event
+  // beyond the calendar's next-7-day window. Catalog RSVPs + accepted
+  // group/personal-plan invites; events within the next 7 days already
+  // show under "Seus eventos essa semana" so we drop those from this
+  // section to avoid the same row appearing in both places.
+  const calendarHorizon = (() => {
+    const d = getAnchorToday()
+    d.setDate(d.getDate() + 7)
+    return d.getTime()
+  })()
+  const upcomingRsvps = (() => {
+    const catalog = allEvents.filter(ev =>
+      state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() > now
+    )
+    const groupAccepted = groupEventsAccepted.filter(ev => {
+      const ds = ev.dateStart || ev.date_start
+      if (!ds) return false
+      const t = Date.parse(ds)
+      return !Number.isNaN(t) && t > now
+    })
+    const merged = [...catalog, ...groupAccepted]
+    // Drop the events that already render in the calendar's 7-day strip.
+    const beyondHorizon = merged.filter(ev => {
+      const ds = ev.dateStart || ev.date_start
+      if (!ds) return false
+      return Date.parse(ds) >= calendarHorizon
+    })
+    // De-dup by id in case a row exists in both lists.
+    const seen = new Set()
+    return beyondHorizon.filter(ev => {
+      if (seen.has(ev.id)) return false
+      seen.add(ev.id)
+      return true
+    }).sort((a, b) => Date.parse(a.dateStart || a.date_start || '') - Date.parse(b.dateStart || b.date_start || ''))
+  })()
 
   // Accept a pending invite — local RSVP + backend sync + move from
   // pending to accepted bucket. Used by both the WeekCalendar's invite
