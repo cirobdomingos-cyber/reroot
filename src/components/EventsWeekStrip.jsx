@@ -4,12 +4,15 @@ const DAY_LABELS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 function getWeekDays(offset = 0) {
+  // Rolling 7-day window anchored on today (today + 6). offset slides
+  // by full weeks. Matches Home's WeekCalendar so the user sees a
+  // consistent "next 7 days first" frame across both screens.
   const today = new Date()
-  const monday = new Date(today)
-  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + offset * 7)
+  const start = new Date(today)
+  start.setDate(today.getDate() + offset * 7)
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
+    const d = new Date(start)
+    d.setDate(start.getDate() + i)
     return d
   })
 }
