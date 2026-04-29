@@ -120,6 +120,20 @@ export default function Home() {
     return seen.size
   })()
 
+  // event_id → [{ name, picture, google_id }, ...] for the WeekCalendar
+  // rows to render the same avatar stack the "Amigos vão" section
+  // already shows below. Same source data, just keyed for O(1) lookup
+  // per row instead of scanning friendsFeed for each event.
+  const friendsByEventId = (() => {
+    const map = {}
+    for (const ev of friendsFeed) {
+      if (ev.event_id && Array.isArray(ev.friends_going) && ev.friends_going.length) {
+        map[ev.event_id] = ev.friends_going
+      }
+    }
+    return map
+  })()
+
   // Upcoming RSVPd events (future only) — drives the "Confirmados" count.
   // Computed directly from state.rsvps (which stores dateStart per RSVP)
   // so the count is accurate even if the live `allEvents` catalog doesn't
@@ -358,6 +372,7 @@ export default function Home() {
           })),
         ]}
         groupEvents={groupEventsPending}
+        friendsByEventId={friendsByEventId}
         language={state.language || 'pt'}
         onEventTap={(ev, type) => {
           if ((type === 'group' || ev._isGroup) && ev.group_id) {
@@ -416,9 +431,18 @@ export default function Home() {
 
       {/* Friends activity feed — events friends are going to. Includes
           events the user hasn't RSVPd to yet, so it works as discovery
-          ("oh, the gang is going to that"). Tap a row to open the event;
-          tap the section header to see the full list in Community. */}
-      {friendsFeed.length > 0 && state.privacy?.showInFriendSuggestions !== false && (
+          ("oh, the gang is going to that"). Events the user is already
+          attending are filtered out — those already show under "Seus
+          eventos essa semana" with the same friends avatar stack, so
+          surfacing them twice would just be noise. Tap a row to open
+          the event; tap the section header to see the full list in
+          Community. */}
+      {(() => {
+        const friendsFeedFiltered = friendsFeed.filter(ev => !state.rsvps[ev.event_id])
+        if (friendsFeedFiltered.length === 0 || state.privacy?.showInFriendSuggestions === false) {
+          return null
+        }
+        return (
         <>
           <div
             className="section-label"
@@ -431,7 +455,7 @@ export default function Home() {
             </span>
           </div>
           <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {friendsFeed.slice(0, 3).map(ev => {
+            {friendsFeedFiltered.slice(0, 3).map(ev => {
               const userIsGoing = !!state.rsvps[ev.event_id]
               const time = (ev.event_date || '').slice(11, 16)  // "HH:MM" if present
               return (
@@ -479,7 +503,8 @@ export default function Home() {
             })}
           </div>
         </>
-      )}
+        )
+      })()}
 
       {/* Suggested events */}
       <div className="section-label">{t.home_suggested_label ?? 'Eventos para você'}</div>

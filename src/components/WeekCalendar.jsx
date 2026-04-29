@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useT } from '../i18n'
 import { getAnchorToday } from '../lib/dateAnchor'
+import Avatar from './Avatar'
 
 const DAY_LABELS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DAY_LABELS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -43,7 +44,7 @@ function isToday(d) {
  *   onEventTap:  (event, type) => void  — type is 'rsvp' or 'group'
  *   onGroupRsvp: (event) => void
  */
-export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp }) {
+export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], friendsByEventId = {}, language = 'pt', onEventTap, onGroupRsvp }) {
   const t = useT()
   const [weekOffset, setWeekOffset] = useState(0)
 
@@ -184,6 +185,7 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
                   {events.map(ev => {
                     const isGroup = ev._type === 'group'
                     const accentColor = isGroup ? 'var(--terra)' : 'var(--sage)'
+                    const friends = friendsByEventId[ev.id] || []
                     return (
                       <div
                         key={ev.id}
@@ -232,6 +234,33 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
                             {!isGroup && ev.venue && ` · ${ev.venue}`}
                           </div>
                         </div>
+
+                        {/* Friends-going avatar stack — same shape as the
+                            "Amigos vão" rows below so this section reads
+                            consistently. Capped at 3 avatars + total
+                            count chip. Hidden when no friends overlap. */}
+                        {friends.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginRight: 4 }}>
+                            {friends.slice(0, 3).map((friend, i) => (
+                              <div
+                                key={(friend.google_id || friend.name) + i}
+                                style={{
+                                  marginLeft: i === 0 ? 0 : -8,
+                                  boxShadow: '0 0 0 2px white',
+                                  borderRadius: '50%',
+                                }}
+                              >
+                                <Avatar name={friend.name} src={friend.picture} size={22} />
+                              </div>
+                            ))}
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+                              marginLeft: 5,
+                            }}>
+                              {friends.length}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Status badge */}
                         {isGroup ? (
