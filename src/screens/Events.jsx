@@ -1651,10 +1651,10 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
               color: 'var(--honey)', background: 'var(--honey-pale)',
               padding: '2px 7px', borderRadius: 999,
               border: '1px solid var(--honey)',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4,
             }}
           >
-            ⭐ SELEÇÃO AUÊ
+            ⭐ SELEÇÃO AUÊ{ev.promoCode && <span title={ev.promoPerk || 'Cupom no balcão'}>🎁</span>}
           </div>
         )}
         {price && (
@@ -1683,6 +1683,97 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
 // Pure presentational. Truncates the conflicting/echoed event name so the
 // chip doesn't blow out the row on small screens. Full name lives in the
 // title attribute (long-press on mobile, hover on desktop).
+function PromoCodeBlock({ ev }) {
+  // Two-state pill: collapsed "🎁 Mostrar código no balcão" → tap →
+  // expanded card with the code monospaced + perk copy + a "copiar"
+  // button. Tracks `code_view` on first reveal so the venue Painel
+  // can count tighter conversions than view→RSVP.
+  const [revealed, setRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  function reveal() {
+    if (revealed) return
+    setRevealed(true)
+    const igHandle = (ev.id || '').startsWith('instagram_ig_')
+      ? (() => {
+          const rest = ev.id.slice('instagram_ig_'.length)
+          const i = rest.lastIndexOf('_')
+          return i > 0 ? rest.slice(0, i) : ''
+        })()
+      : ''
+    trackEvent('code_view', { event_id: ev.id, ig_handle: igHandle })
+  }
+
+  function copyCode() {
+    try {
+      navigator.clipboard.writeText(ev.promoCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2200)
+    } catch { /* swallow — copy is best-effort */ }
+  }
+
+  if (!revealed) {
+    return (
+      <button
+        onClick={reveal}
+        style={{
+          width: '100%', marginBottom: 10,
+          padding: '12px', borderRadius: 12,
+          background: 'var(--honey-pale)',
+          border: '1.5px solid var(--honey)',
+          color: '#8D6E10', fontSize: 13, fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        🎁 Mostrar código no balcão
+      </button>
+    )
+  }
+  return (
+    <div style={{
+      marginBottom: 10, padding: '12px 14px',
+      background: 'var(--honey-pale)',
+      border: '1.5px solid var(--honey)', borderRadius: 12,
+    }}>
+      <div style={{
+        fontSize: 10, fontWeight: 700, color: '#8D6E10',
+        textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4,
+      }}>
+        🎁 Cupom Seleção auê
+      </div>
+      <div style={{
+        fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+        fontSize: 18, fontWeight: 800, color: 'var(--charcoal)',
+        letterSpacing: 0.6, marginBottom: 6, wordBreak: 'break-all',
+      }}>
+        {ev.promoCode}
+      </div>
+      {ev.promoPerk && (
+        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4, marginBottom: 8 }}>
+          {ev.promoPerk}
+        </div>
+      )}
+      <button
+        onClick={copyCode}
+        style={{
+          padding: '7px 14px', borderRadius: 10,
+          background: 'white', border: '1px solid var(--honey)',
+          color: '#8D6E10', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        }}
+      >
+        {copied ? '✓ Copiado' : '📋 Copiar código'}
+      </button>
+      <div style={{
+        fontSize: 10, color: 'var(--charcoal-light)',
+        marginTop: 8, lineHeight: 1.4,
+      }}>
+        Mostre esse código no balcão pra resgatar. Cupom oferecido pelo
+        local — auê só conecta.
+      </div>
+    </div>
+  )
+}
+
 function PersonalChip({ chip }) {
   const [icon, label, bg, color] = chip.kind === 'conflict'
     ? ['⚠', 'Mesma noite', '#FFF4E5', '#B8761F']
@@ -2177,6 +2268,13 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             eventDate={ev.dateStart || ev.date}
           />
         )}
+
+        {/* Promo code reveal — only on featured (paid) venues that
+            set a code. Tap to expand, copy-able pill, perk copy
+            below. Logs `code_view` so the venue Painel can track
+            "of N viewers, M tapped the code" as a tighter
+            conversion signal than RSVP alone. */}
+        {ev.promoCode && <PromoCodeBlock ev={ev} />}
 
         <button className="btn btn--primary" onClick={onRsvp}>
           {rsvped

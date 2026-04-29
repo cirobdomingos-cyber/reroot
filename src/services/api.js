@@ -170,6 +170,12 @@ function normalizeBackendEvent(ev) {
     // aue_originals. Drives a star pill on the card and top-of-list
     // sorting on the Events tab.
     featured: !!ev.featured,
+    // Promo code — set only for paid Seleção auê venues. The card
+    // reveals "🎁 Mostrar código no balcão" when promoCode is non-
+    // empty; perk is the short user-facing copy ("primeiro chopp
+    // grátis").
+    promoCode: ev.promoCode || '',
+    promoPerk: ev.promoPerk || '',
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,

@@ -1268,10 +1268,32 @@ def _featured_ig_handles_cached() -> frozenset[str]:
     )
 
 
+@functools.lru_cache(maxsize=1)
+def _venue_promo_cached() -> dict[str, dict]:
+    """{handle: {code, perk}} for every featured handle that has a
+    non-empty promo_code set. Non-featured handles are excluded — promo
+    codes ride with the paid Seleção auê placement, not with the free
+    listing. Bust the cache when admin edits the code or toggles
+    featured."""
+    out = {}
+    for a in db.list_ig_accounts():
+        if not a.get("featured"):
+            continue
+        code = (a.get("promo_code") or "").strip()
+        if not code:
+            continue
+        out[a["handle"].lower()] = {
+            "code": code,
+            "perk": (a.get("promo_perk") or "").strip(),
+        }
+    return out
+
+
 def _bust_handle_cache() -> None:
     _enabled_ig_handles_cached.cache_clear()
     _curator_ig_handles_cached.cache_clear()
     _featured_ig_handles_cached.cache_clear()
+    _venue_promo_cached.cache_clear()
 
 
 def _handle_for_event(ev) -> str:
@@ -2292,11 +2314,20 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     # OR aue_originals get the star pill on the card and float to the
     # top of the list. Frontend reads `featured` for both surfaces.
     is_featured = ev.source == "aue_original"
-    if not is_featured and ev.source == "instagram":
-        handle = _handle_for_event(ev)
-        if handle and handle in _featured_ig_handles_cached():
+    venue_handle = ""
+    if ev.source == "instagram":
+        venue_handle = _handle_for_event(ev)
+        if venue_handle and venue_handle in _featured_ig_handles_cached():
             is_featured = True
     out["featured"] = is_featured
+
+    # Static promo code for paid-placement venues. Surfaced on the
+    # event card as a "🎁 Mostrar código no balcão" affordance; the
+    # venue self-honors the code at the door. Code only ships for
+    # featured Instagram venues — the cache is pre-filtered.
+    promo = _venue_promo_cached().get(venue_handle) if venue_handle else None
+    out["promoCode"] = (promo or {}).get("code") or ""
+    out["promoPerk"] = (promo or {}).get("perk") or ""
 
     # imageUrl ships on the list response too (not just detail) — the
     # hero drawer uses it as a banner background, and openDetail can
@@ -3268,6 +3299,26 @@ def venue_dashboard_stats(handle: str, requesting_email: str = ""):
 class IgFeaturedToggle(BaseModel):
     requesting_email: str
     featured: bool
+
+
+class IgPromoUpdate(BaseModel):
+    requesting_email: str
+    code: str = ""  # empty clears
+    perk: str = ""  # short user-facing description of the perk
+
+
+@app.put("/admin/ig-accounts/{handle}/promo")
+def admin_set_ig_promo(handle: str, req: IgPromoUpdate):
+    """Set/clear the static promo code for a venue. Founder-only.
+    The code only renders on event cards when the venue is also
+    featured (paid Seleção auê) — promo is part of the paid bundle,
+    not a free perk."""
+    _require_founder(req.requesting_email)
+    ok = db.set_ig_promo(handle, req.code or "", req.perk or "")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    _bust_handle_cache()
+    return {"ok": True, "code": req.code.strip(), "perk": req.perk.strip()}
 
 
 @app.put("/admin/ig-accounts/{handle}/featured")

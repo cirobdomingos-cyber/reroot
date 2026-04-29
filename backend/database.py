@@ -194,6 +194,14 @@ def init_db():
             # logged-in app session (we match against state.googleUser
             # .email server-side). One handle, one claimant.
             "ADD COLUMN claimed_by_email TEXT NOT NULL DEFAULT ''",
+            # Static venue promo code shown to users on every event
+            # card / detail. Bundled with paid Seleção auê placement —
+            # only emitted on the /events response when featured = 1.
+            # `promo_code` is the code itself ("AUE-PEDREIRA"); the
+            # `promo_perk` line is the user-facing copy ("primeiro
+            # chopp grátis", "10% off na entrada").
+            "ADD COLUMN promo_code TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN promo_perk TEXT NOT NULL DEFAULT ''",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -729,6 +737,20 @@ def upsert_ig_account(handle: str, label: str = "", category: str = "",
             "SELECT * FROM tracked_ig_accounts WHERE handle = ?", (handle,)
         ).fetchone()
     return dict(row)
+
+
+def set_ig_promo(handle: str, code: str, perk: str) -> bool:
+    """Set/clear the static promo code displayed on the venue's event
+    cards. Emitted only when the venue is also featured (paid Seleção
+    auê) — see _to_frontend in main.py for the gate."""
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE tracked_ig_accounts SET promo_code = ?, promo_perk = ? WHERE handle = ?",
+            (code.strip()[:60], perk.strip()[:200], handle),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def set_ig_claim(handle: str, email: str) -> bool:
