@@ -2359,6 +2359,14 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     out["promoCode"] = (promo or {}).get("code") or ""
     out["promoPerk"] = (promo or {}).get("perk") or ""
 
+    # Sympla buy-link — set by the matching pipeline (sympla_match.py)
+    # when a CWB Sympla event aligns with this catalog event by venue +
+    # date + name fuzzy. Frontend renders a "🎟️ Comprar ingresso" CTA
+    # and appends utm tagging at click time so we can show venues
+    # "auê drove X clicks to your Sympla" until per-event affiliate
+    # invites get us a real take rate.
+    out["symplaUrl"] = (getattr(ev, "sympla_url", None) or "")
+
     # imageUrl ships on the list response too (not just detail) — the
     # hero drawer uses it as a banner background, and openDetail can
     # render from local state without forcing a round-trip to fetch
@@ -3758,6 +3766,19 @@ def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = ""):
         "friends": [{"google_id": f["google_id"], "name": f.get("name", "")} for f in friends],
         "friends_future_rsvps": friend_rsvps_future,
     }
+
+
+@app.post("/admin/sympla/enrich")
+def admin_sympla_enrich(requesting_email: str = "", max_pages: int = 60):
+    """Founder-only: walk Sympla's CWB discovery feed, parse each event
+    page, and attach matching catalog events with a `sympla_url` for the
+    "🎟️ Comprar ingresso" CTA. Idempotent — already-matched events stay
+    as-is unless the Sympla URL changes. Cap `max_pages` to bound runtime."""
+    _require_founder(requesting_email)
+    from scrapers.sympla import fetch_curitiba_events
+    from sympla_match import match_and_enrich
+    sympla_events = fetch_curitiba_events(max_pages=max_pages)
+    return match_and_enrich(sympla_events)
 
 
 @app.post("/admin/avatars/clear-bot-blocked")

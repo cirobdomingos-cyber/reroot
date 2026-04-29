@@ -174,6 +174,26 @@ async def run_refresh(settings):
     except Exception as e:
         log.warning(f"  auto-geocode pipeline falhou: {e}")
 
+    # ── Sympla enrichment — attach buy-links to matched IG events ──
+    # Walks Sympla's CWB discovery feed, fuzzy-matches by venue + date +
+    # name against the catalog. Adds nothing new to the catalog; only
+    # writes a sympla_url onto matched event payloads. Failures are
+    # logged but don't break the refresh — Sympla can rate-limit or
+    # change HTML at any time.
+    try:
+        from scrapers.sympla import fetch_curitiba_events
+        from sympla_match import match_and_enrich
+        sympla_events = fetch_curitiba_events()
+        result = match_and_enrich(sympla_events)
+        log.info(
+            "  Sympla enrich: %d events scraped, %d matched, %d wrote",
+            result.get("sympla_events", 0),
+            result.get("matched", 0),
+            result.get("wrote", 0),
+        )
+    except Exception as e:
+        log.warning(f"  sympla enrich pipeline falhou: {e}")
+
     # Best-effort summary email (silent if RESEND_API_KEY isn't set).
     try:
         await send_scrape_summary(settings, run_started_iso, new_event_ids)

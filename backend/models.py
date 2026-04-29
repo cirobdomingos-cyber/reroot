@@ -80,3 +80,9 @@ class EnrichedEvent(BaseModel):
     is_recurring: bool = False
     recurrence_label: Optional[str] = None
     recurrence_days: list[int] = []
+
+    # Sympla buy-link — set out-of-band by the enrichment matcher
+    # (sympla_match.py), not by the LLM enrichment pass. Empty string
+    # when no Sympla match exists. Frontend uses presence to render the
+    # "🎟️ Comprar ingresso" CTA.
+    sympla_url: str = ""

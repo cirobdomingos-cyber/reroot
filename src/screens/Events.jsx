@@ -1694,6 +1694,58 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
 // Pure presentational. Truncates the conflicting/echoed event name so the
 // chip doesn't blow out the row on small screens. Full name lives in the
 // title attribute (long-press on mobile, hover on desktop).
+// Sympla buy-link CTA — appears in DetailPanel when the matching
+// pipeline has attached a sympla_url to the event. Click handler
+// fires sympla_click analytics with the IG handle for venue Painel
+// rollup, then appends utm_source=aue&utm_campaign=event_<id> to
+// the outbound URL so we can show "auê drove X visits" later when
+// pitching per-event affiliate invites.
+function SymplaBuyButton({ ev }) {
+  const igHandle = (ev.id || '').startsWith('instagram_ig_')
+    ? (() => {
+        const rest = ev.id.slice('instagram_ig_'.length)
+        const i = rest.lastIndexOf('_')
+        return i > 0 ? rest.slice(0, i) : ''
+      })()
+    : ''
+  function buildUrl() {
+    try {
+      const u = new URL(ev.symplaUrl)
+      u.searchParams.set('utm_source', 'aue')
+      u.searchParams.set('utm_medium', 'referral')
+      u.searchParams.set('utm_campaign', `event_${ev.id}`)
+      return u.toString()
+    } catch {
+      return ev.symplaUrl
+    }
+  }
+  function handleClick(e) {
+    trackEvent('sympla_click', {
+      event_id: ev.id,
+      ig_handle: igHandle,
+      sympla_url: ev.symplaUrl,
+    })
+  }
+  return (
+    <a
+      href={buildUrl()}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleClick}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 8, marginTop: 12, padding: '12px 16px',
+        borderRadius: 12, textDecoration: 'none',
+        background: 'var(--terra)', color: 'white',
+        fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
+      }}
+    >
+      🎟️ Comprar ingresso na Sympla →
+    </a>
+  )
+}
+
+
 function PromoCodeBlock({ ev }) {
   // Two-state pill: collapsed "🎁 Mostrar código no balcão" → tap →
   // expanded card with the code monospaced + perk copy + a "copiar"
@@ -2303,6 +2355,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             "of N viewers, M tapped the code" as a tighter
             conversion signal than RSVP alone. */}
         {ev.promoCode && <PromoCodeBlock ev={ev} />}
+
+        {/* Sympla buy-link — set by the matching pipeline when the
+            catalog event aligns with a CWB Sympla event. Tracks
+            sympla_click + appends utm_source=aue so we can show
+            venues we drove X visits to their event. */}
+        {ev.symplaUrl && <SymplaBuyButton ev={ev} />}
 
         <button className="btn btn--primary" onClick={onRsvp}>
           {rsvped

@@ -177,6 +177,11 @@ function normalizeBackendEvent(ev) {
     // grátis").
     promoCode: ev.promoCode || '',
     promoPerk: ev.promoPerk || '',
+    // Sympla buy-link — empty when this event has no matched Sympla
+    // page. Frontend renders the 🎟️ CTA only when set, and appends
+    // utm_source=aue at click time so we can show venues "auê drove
+    // X clicks to your Sympla event last month."
+    symplaUrl: ev.symplaUrl || '',
     // Detail-only fields — present when fetched via /events/{id}
     venueAddress: ev.venueAddress,
     city: ev.city,
