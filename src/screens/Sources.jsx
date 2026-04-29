@@ -110,28 +110,43 @@ export default function Sources() {
     return fields.some(f => (f || '').toLowerCase().includes(q))
   }
 
-  // Bucket all sources by category so we can both: (1) show counts in
-  // the chip strip, (2) render the grouped sections below.
+  // Featured-bucket first: every source flagged as Destaque OR the
+  // institutional Seleção auê. These pin to the very top of the page,
+  // above every category, so the paid placements + editorial line are
+  // always the first thing the user sees.
+  const featuredSources = useMemo(() =>
+    allSources.filter(s => s.featured || s.id === 'aue_original')
+      .sort((a, b) => {
+        // aue_original first (editorial), then most-events, then alpha.
+        if (a.id === 'aue_original') return -1
+        if (b.id === 'aue_original') return 1
+        const yd = (b.future_events || 0) - (a.future_events || 0)
+        if (yd !== 0) return yd
+        return a.sortKey.localeCompare(b.sortKey)
+      }),
+    [allSources],
+  )
+  const featuredIds = useMemo(() => new Set(featuredSources.map(s => s.id)), [featuredSources])
+
+  // Bucket all sources by category — minus the featured set, which
+  // renders in its own section above (no double-listing).
   const buckets = useMemo(() => {
     const out = {}
     for (const s of allSources) {
+      if (featuredIds.has(s.id)) continue
       const cat = s.category in CATEGORY_META ? s.category : 'outro'
       if (!out[cat]) out[cat] = []
       out[cat].push(s)
     }
     for (const cat of Object.keys(out)) {
       out[cat].sort((a, b) => {
-        // Featured first, then most-events, then alphabetical.
-        const fa = (a.featured || a.id === 'aue_original') ? 0 : 1
-        const fb = (b.featured || b.id === 'aue_original') ? 0 : 1
-        if (fa !== fb) return fa - fb
         const yd = (b.future_events || 0) - (a.future_events || 0)
         if (yd !== 0) return yd
         return a.sortKey.localeCompare(b.sortKey)
       })
     }
     return out
-  }, [allSources])
+  }, [allSources, featuredIds])
 
   // Visible categories — order from CATEGORY_ORDER, plus any unknown
   // categories pushed to the end. Only categories with ≥1 source show.
@@ -263,7 +278,7 @@ export default function Sources() {
         }}>
           Nada com "{query}". Tenta uma palavra mais curta.
         </div>
-      ) : renderedBuckets.length === 0 ? (
+      ) : renderedBuckets.length === 0 && featuredSources.length === 0 ? (
         <div style={{
           margin: '0 16px', padding: '24px 16px', textAlign: 'center',
           background: 'white', borderRadius: 12, border: '1px dashed var(--border)',
@@ -272,7 +287,31 @@ export default function Sources() {
           Nenhuma fonte ainda nesta categoria.
         </div>
       ) : (
-        renderedBuckets.map(({ cat, items }) => {
+        <>
+          {/* Featured section pinned above every category. Holds the
+              editorial Seleção auê + any paid Destaque handles. Hidden
+              when the user has narrowed by category chip OR by search
+              and none of the featured sources match. */}
+          {activeCategory === 'all' && (() => {
+            const visibleFeatured = featuredSources.filter(passesSearch)
+            if (visibleFeatured.length === 0) return null
+            const eventCount = visibleFeatured.reduce((sum, s) => sum + (s.future_events || 0), 0)
+            return (
+              <Section
+                title={`⭐ Destaque · ${visibleFeatured.length}`}
+                sub={eventCount > 0 ? `${eventCount} evento${eventCount === 1 ? '' : 's'} próximo${eventCount === 1 ? '' : 's'}` : ''}
+              >
+                {visibleFeatured.map(s => (
+                  <SourceRow
+                    key={s.id}
+                    source={s}
+                    onOpen={() => navigate(`/sources/${encodeURIComponent(s.id)}`)}
+                  />
+                ))}
+              </Section>
+            )
+          })()}
+          {renderedBuckets.map(({ cat, items }) => {
           const meta = CATEGORY_META[cat] || CATEGORY_META.outro
           const eventCount = items.reduce((sum, s) => sum + (s.future_events || 0), 0)
           return (
@@ -290,7 +329,8 @@ export default function Sources() {
               ))}
             </Section>
           )
-        })
+        })}
+        </>
       )}
     </div>
   )

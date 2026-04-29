@@ -146,19 +146,6 @@ export default function AdminIgAccounts() {
     setBusy(false)
   }
 
-  async function seedVenues() {
-    setBusy(true)
-    try {
-      const r = await fetch(withEmail(`${API_BASE}/admin/venues/seed`, email), { method: 'POST' })
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      const data = await r.json()
-      alert(`${data.new_venues} novos locais cadastrados pra geocoding.`)
-    } catch (e) {
-      setError(`Falha ao popular locais: ${e.message}`)
-    }
-    setBusy(false)
-  }
-
   async function toggleFeatured(acc) {
     setBusy(true)
     try {
@@ -180,22 +167,6 @@ export default function AdminIgAccounts() {
       await load()
     } catch (e) {
       setError(`Falha ao atualizar Destaque: ${e.message}`)
-    }
-    setBusy(false)
-  }
-
-  async function geocodeVenues() {
-    setBusy(true)
-    try {
-      const r = await fetch(
-        withEmail(`${API_BASE}/admin/venues/geocode?limit=25`, email),
-        { method: 'POST' },
-      )
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      const data = await r.json()
-      alert(`Geocode: ${data.ok} ok / ${data.failed} falharam (de ${data.processed}). Roda de novo pra processar mais.`)
-    } catch (e) {
-      setError(`Falha ao geocodificar: ${e.message}`)
     }
     setBusy(false)
   }
@@ -326,7 +297,12 @@ export default function AdminIgAccounts() {
             Adicionar novas contas é na aba <b>Fontes</b>.
           </div>
 
-          {/* Quick actions */}
+          {/* Quick actions. Atualizar locais / Buscar coordenadas
+              moved off this UI — seed_venues_from_events runs at every
+              scrape and the geocoding pipeline (Nominatim + Claude
+              web_search fallback) auto-fills coordinates without
+              human intervention, so the manual buttons just added
+              clutter. */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button
               onClick={triggerRefresh}
@@ -334,22 +310,6 @@ export default function AdminIgAccounts() {
               style={ghostBtn('var(--sage)')}
             >
               ▶ Disparar refresh agora
-            </button>
-            <button
-              onClick={seedVenues}
-              disabled={busy}
-              style={ghostBtn('var(--terra)')}
-              title="Cadastra todos os locais únicos do catálogo na tabela de geocoding"
-            >
-              📍 Atualizar locais
-            </button>
-            <button
-              onClick={geocodeVenues}
-              disabled={busy}
-              style={ghostBtn('var(--terra)')}
-              title="Busca coordenadas dos próximos 25 locais pendentes (Nominatim, ~30s)"
-            >
-              🗺️ Buscar coordenadas (25)
             </button>
           </div>
 
