@@ -19,6 +19,7 @@ handler on that path pointing at IMAGES_DIR.
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -131,11 +132,69 @@ def rehost_avatar(handle: str, source_url: str) -> Optional[str]:
         return None
 
 
+_OG_IMAGE_RE = re.compile(
+    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']'
+)
+
+
+def fetch_ig_avatar_url(handle: str) -> Optional[str]:
+    """Fetch the current IG profile picture URL for `handle` by scraping
+    the public profile page's og:image meta tag. Returns the avatar
+    URL on success, None if the page is unreachable / the response
+    shape changed.
+
+    Why this path: most of our 80+ tracked handles never had a
+    `profile_pic_url` populated (older Apify scrapes didn't extract
+    owner metadata reliably). Re-running a full Apify scrape costs
+    money per call. The public profile page (`instagram.com/<handle>/`)
+    serves an og:image with the avatar — same image Instagram serves
+    when you share the profile link in iMessage/Slack — no login
+    required. We rehost it to our /event-images/avatars path so the
+    signed CDN URL doesn't rot a few weeks later."""
+    handle = (handle or "").strip().lstrip("@").lower()
+    if not handle:
+        return None
+    url = f"https://www.instagram.com/{handle}/"
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True) as client:
+            res = client.get(url, headers={
+                # Real-browser UA — IG returns a stripped login wall
+                # for clearly-bot UAs but still includes og:image for
+                # public profiles when the UA looks like Safari/Chrome.
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                    "Version/17.0 Safari/605.1.15"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+                "Accept-Language": "en-US,en;q=0.9",
+            })
+        if res.status_code != 200:
+            log.info("ig-profile-page: HTTP %s for %s", res.status_code, handle)
+            return None
+        m = _OG_IMAGE_RE.search(res.text)
+        if not m:
+            return None
+        return m.group(1) or None
+    except Exception as exc:
+        log.warning("ig-profile-page: failed for @%s: %s", handle, exc)
+        return None
+
+
 def rehost_pending_avatars(limit: int = 50) -> dict:
     """Backfill: walk every tracked IG account whose profile_pic_url is
     still an external URL and rehost each. Bounded by `limit`. Re-run
-    until 'remaining' returns 0."""
+    until 'remaining' returns 0.
+
+    Two passes:
+      1. Handles with a stored external URL — rehost that URL.
+      2. Handles with empty `profile_pic_url` — fetch the current avatar
+         from Instagram's web_profile_info endpoint, then rehost.
+
+    Pass 2 is what fills in the long tail of venues that never had a
+    profile pic captured (older Apify scrapes were unreliable)."""
     candidates: list[tuple[str, str]] = []
+    missing: list[str] = []
     with db.get_conn() as conn:
         rows = conn.execute(
             """SELECT handle, profile_pic_url FROM tracked_ig_accounts
@@ -143,13 +202,24 @@ def rehost_pending_avatars(limit: int = 50) -> dict:
                  AND profile_pic_url NOT LIKE ?""",
             (f"{_AVATAR_PUBLIC_PREFIX}%",),
         ).fetchall()
+        empty_rows = conn.execute(
+            """SELECT handle FROM tracked_ig_accounts
+               WHERE enabled = 1
+                 AND (profile_pic_url IS NULL OR profile_pic_url = '')"""
+        ).fetchall()
     for r in rows:
         candidates.append((r["handle"], r["profile_pic_url"]))
         if len(candidates) >= limit:
             break
+    if len(candidates) < limit:
+        for r in empty_rows:
+            missing.append(r["handle"])
+            if len(candidates) + len(missing) >= limit:
+                break
 
     ok = 0
     failed = 0
+    fetched = 0
     for handle, source_url in candidates:
         local = rehost_avatar(handle, source_url)
         if local:
@@ -163,14 +233,45 @@ def rehost_pending_avatars(limit: int = 50) -> dict:
         else:
             failed += 1
 
+    # Pass 2 — handles with no stored URL at all. Pull the avatar URL
+    # from the public IG endpoint, then rehost it.
+    for handle in missing:
+        ig_url = fetch_ig_avatar_url(handle)
+        if not ig_url:
+            failed += 1
+            continue
+        fetched += 1
+        local = rehost_avatar(handle, ig_url)
+        if local:
+            with db.get_conn() as conn:
+                conn.execute(
+                    "UPDATE tracked_ig_accounts SET profile_pic_url = ? WHERE handle = ?",
+                    (local, handle),
+                )
+                conn.commit()
+            ok += 1
+        else:
+            failed += 1
+
     with db.get_conn() as conn:
-        remaining = conn.execute(
+        remaining_external = conn.execute(
             """SELECT COUNT(*) AS c FROM tracked_ig_accounts
                WHERE profile_pic_url != ''
                  AND profile_pic_url NOT LIKE ?""",
             (f"{_AVATAR_PUBLIC_PREFIX}%",),
         ).fetchone()["c"]
-    return {"processed": len(candidates), "ok": ok, "failed": failed, "remaining": int(remaining)}
+        remaining_empty = conn.execute(
+            """SELECT COUNT(*) AS c FROM tracked_ig_accounts
+               WHERE enabled = 1
+                 AND (profile_pic_url IS NULL OR profile_pic_url = '')"""
+        ).fetchone()["c"]
+    return {
+        "processed": len(candidates) + len(missing),
+        "fetched_from_ig": fetched,
+        "ok": ok,
+        "failed": failed,
+        "remaining": int(remaining_external) + int(remaining_empty),
+    }
 
 
 def existing_path(event_id: str) -> Optional[Path]:

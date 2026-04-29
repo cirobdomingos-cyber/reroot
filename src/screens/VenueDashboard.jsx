@@ -82,7 +82,18 @@ export default function VenueDashboard() {
               📊 Painel · {data.label}
             </h1>
             <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3 }}>
-              @{data.handle}
+              <a
+                href={`https://instagram.com/${data.handle}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Abrir no Instagram"
+                style={{
+                  color: 'var(--charcoal-mid)', fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                @{data.handle}
+              </a>
               {data.featured && (
                 <span style={{
                   marginLeft: 8, fontSize: 9, fontWeight: 800,
