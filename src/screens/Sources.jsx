@@ -288,17 +288,23 @@ export default function Sources() {
         </div>
       ) : (
         <>
-          {/* Featured section pinned above every category. Holds the
-              editorial Seleção auê + any paid Destaque handles. Hidden
-              when the user has narrowed by category chip OR by search
-              and none of the featured sources match. */}
+          {/* Seleção auê section pinned above every category. Holds the
+              paid Destaque IG handles. The institutional aue_original
+              source IS the section's brand/identity now (it's the
+              header label itself), so we don't render its placeholder
+              card — that would just be "Seleção auê" inside "Seleção
+              auê", weird. aue_original is still excluded from the
+              category buckets via featuredIds, and its events still
+              get the Destaque pill + top-of-list sorting on Events. */}
           {activeCategory === 'all' && (() => {
-            const visibleFeatured = featuredSources.filter(passesSearch)
+            const visibleFeatured = featuredSources
+              .filter(s => s.id !== 'aue_original')
+              .filter(passesSearch)
             if (visibleFeatured.length === 0) return null
             const eventCount = visibleFeatured.reduce((sum, s) => sum + (s.future_events || 0), 0)
             return (
               <Section
-                title={`⭐ Destaque · ${visibleFeatured.length}`}
+                title={`⭐ Seleção auê · ${visibleFeatured.length}`}
                 sub={eventCount > 0 ? `${eventCount} evento${eventCount === 1 ? '' : 's'} próximo${eventCount === 1 ? '' : 's'}` : ''}
               >
                 {visibleFeatured.map(s => (
