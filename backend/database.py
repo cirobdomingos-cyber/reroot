@@ -786,16 +786,28 @@ def update_ig_account_profile(handle: str, display_name: str = "",
     Update the profile-level metadata for a tracked IG account. Called
     after a scrape with the first post's owner data so the admin UI can
     show real profile pictures and display names.
+
+    The IG-CDN profile_pic_url is rehosted to our /event-images/avatars
+    path before being stored — IG signed URLs expire in ~weeks, same as
+    event images, and we want the avatar to keep working between scrapes.
+    Failure to rehost falls back to the original URL (works until it rots,
+    next scrape retries).
     """
     handle = handle.strip().lstrip("@").lower()
     if not handle:
         return
+    final_pic_url = profile_pic_url[:500]
+    if final_pic_url and not final_pic_url.startswith("/event-images/"):
+        from image_store import rehost_avatar
+        local = rehost_avatar(handle, final_pic_url)
+        if local:
+            final_pic_url = local
     with get_conn() as conn:
         conn.execute(
             """UPDATE tracked_ig_accounts
                SET display_name = ?, profile_pic_url = ?, bio_snippet = ?
                WHERE handle = ?""",
-            (display_name[:200], profile_pic_url[:500], bio_snippet[:500], handle),
+            (display_name[:200], final_pic_url, bio_snippet[:500], handle),
         )
         conn.commit()
 

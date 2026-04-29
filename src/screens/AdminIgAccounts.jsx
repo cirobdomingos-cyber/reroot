@@ -765,7 +765,13 @@ function NotACuratorMessage({ email }) {
 
 function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onToggleFeatured, isFounder }) {
   const futureCount = acc.future_events ?? 0
-  const pic = acc.profile_pic_url
+  // Prefix BASE_URL for our rehosted-avatar paths in dev — without
+  // this, the <Avatar> tries to load /event-images/avatars/... from
+  // Vite :5173 and 404s. Same logic as fetchSources's absoluteImageUrl.
+  const rawPic = acc.profile_pic_url
+  const pic = (rawPic && API_BASE && rawPic.startsWith('/event-images/'))
+    ? `${API_BASE}${rawPic}`
+    : rawPic
   return (
     <div style={{
       background: 'white', border: '1px solid var(--border)',
@@ -800,13 +806,22 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <a
-            href={`https://www.instagram.com/${acc.handle}/`}
-            target="_blank" rel="noopener noreferrer"
-            style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', textDecoration: 'none' }}
+          {/* Tap the @handle to open the in-app Source hero (catalog
+              of this venue's events), not the external IG profile —
+              the admin is typically asking "what's our catalog showing
+              for this venue?", not "let me read their IG". For the
+              external IG profile there's the count-button → arrow
+              affordance to the right that still opens IG. */}
+          <button
+            onClick={() => onOpenSource?.(acc.handle)}
+            style={{
+              fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 0, textDecoration: 'none',
+            }}
           >
             @{acc.handle}
-          </a>
+          </button>
           {acc.category && (
             <span style={{
               fontSize: 10, fontWeight: 700, padding: '2px 7px',

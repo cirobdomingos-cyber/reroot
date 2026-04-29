@@ -61,6 +61,118 @@ def public_url(filename: str) -> str:
     return f"{_PUBLIC_PREFIX}/{filename}"
 
 
+# IG avatars get their own subdirectory under IMAGES_DIR. Same Railway
+# volume, segregated namespace so we can wipe/inspect avatars without
+# touching event images.
+AVATARS_DIR = IMAGES_DIR / "avatars"
+AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+_AVATAR_PUBLIC_PREFIX = f"{_PUBLIC_PREFIX}/avatars"
+
+
+def avatar_public_url(filename: str) -> str:
+    return f"{_AVATAR_PUBLIC_PREFIX}/{filename}"
+
+
+def existing_avatar_path(handle: str) -> Optional[Path]:
+    handle = handle.strip().lstrip("@").lower()
+    for ext in _EXTS:
+        candidate = AVATARS_DIR / f"{handle}.{ext}"
+        if candidate.exists() and candidate.stat().st_size > 0:
+            return candidate
+    return None
+
+
+def rehost_avatar(handle: str, source_url: str) -> Optional[str]:
+    """Download the IG profile picture for `handle` and store it locally.
+    Returns our public path on success; None on failure (caller keeps
+    the IG CDN URL, which works until it rots).
+
+    Same anti-hot-link rationale as event images: IG CDN URLs are signed
+    and expire in ~weeks, so the avatar in /sources goes blank a few
+    days after the scrape if we don't rehost. Idempotent — skip when
+    an avatar file already exists for this handle (last rehost wins
+    on subsequent scrapes via overwrite, see scrape pipeline)."""
+    if not handle or not source_url:
+        return None
+    handle = handle.strip().lstrip("@").lower()
+    if not handle:
+        return None
+    # If we already have an avatar AND the caller didn't pass a fresh
+    # IG URL (i.e., the stored URL is already our local path), no-op.
+    if source_url.startswith(_AVATAR_PUBLIC_PREFIX):
+        return source_url
+    try:
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            res = client.get(
+                source_url,
+                headers={"User-Agent": "Mozilla/5.0 aue-curitiba-events/1.0"},
+            )
+        if res.status_code != 200:
+            log.info("rehost-avatar: HTTP %s for %s", res.status_code, handle)
+            return None
+        if len(res.content) > _MAX_BYTES:
+            log.warning("rehost-avatar: image too large for %s (%d bytes)", handle, len(res.content))
+            return None
+        ct = (res.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+        ext = _CT_TO_EXT.get(ct, "jpg")
+        # Wipe any older extension for this handle so we don't leave
+        # stale .jpg behind when the new one comes back .webp.
+        for old_ext in _EXTS:
+            old = AVATARS_DIR / f"{handle}.{old_ext}"
+            if old.exists() and old_ext != ext:
+                try: old.unlink()
+                except OSError: pass
+        target = AVATARS_DIR / f"{handle}.{ext}"
+        target.write_bytes(res.content)
+        log.info("rehost-avatar: saved @%s (%d bytes, ct=%s)", handle, len(res.content), ct)
+        return avatar_public_url(target.name)
+    except Exception as exc:
+        log.warning("rehost-avatar: failed for @%s: %s", handle, exc)
+        return None
+
+
+def rehost_pending_avatars(limit: int = 50) -> dict:
+    """Backfill: walk every tracked IG account whose profile_pic_url is
+    still an external URL and rehost each. Bounded by `limit`. Re-run
+    until 'remaining' returns 0."""
+    candidates: list[tuple[str, str]] = []
+    with db.get_conn() as conn:
+        rows = conn.execute(
+            """SELECT handle, profile_pic_url FROM tracked_ig_accounts
+               WHERE profile_pic_url != ''
+                 AND profile_pic_url NOT LIKE ?""",
+            (f"{_AVATAR_PUBLIC_PREFIX}%",),
+        ).fetchall()
+    for r in rows:
+        candidates.append((r["handle"], r["profile_pic_url"]))
+        if len(candidates) >= limit:
+            break
+
+    ok = 0
+    failed = 0
+    for handle, source_url in candidates:
+        local = rehost_avatar(handle, source_url)
+        if local:
+            with db.get_conn() as conn:
+                conn.execute(
+                    "UPDATE tracked_ig_accounts SET profile_pic_url = ? WHERE handle = ?",
+                    (local, handle),
+                )
+                conn.commit()
+            ok += 1
+        else:
+            failed += 1
+
+    with db.get_conn() as conn:
+        remaining = conn.execute(
+            """SELECT COUNT(*) AS c FROM tracked_ig_accounts
+               WHERE profile_pic_url != ''
+                 AND profile_pic_url NOT LIKE ?""",
+            (f"{_AVATAR_PUBLIC_PREFIX}%",),
+        ).fetchone()["c"]
+    return {"processed": len(candidates), "ok": ok, "failed": failed, "remaining": int(remaining)}
+
+
 def existing_path(event_id: str) -> Optional[Path]:
     """Return the on-disk path for an event's rehosted image, if any.
     Skips the network call when re-scraping a known event."""

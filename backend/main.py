@@ -3145,6 +3145,16 @@ def admin_list_ig_accounts(requesting_email: str = ""):
         ]
         deduped_count = len(_dedupe_events(cleaned))
         enriched.append({**a, "future_events": deduped_count})
+    # Sort: featured first (Destaque + curators want their paid placements
+    # at the top of the admin list too), then by detected event count DESC
+    # so the highest-yield handles are visually obvious. Disabled accounts
+    # land at the bottom.
+    enriched.sort(key=lambda a: (
+        not a.get("enabled"),
+        not a.get("featured"),
+        -(a.get("future_events") or 0),
+        (a.get("label") or a.get("handle") or "").lower(),
+    ))
     return {
         "accounts": enriched,
         "is_curator": db.is_curator(requesting_email),
@@ -3404,6 +3414,17 @@ def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
         return {"ok": True, "lat": lat, "lng": lng, "bairro": bairro}
     db.record_geocode_result(name_normalized, None, None)
     return {"ok": False, "lat": None, "lng": None}
+
+
+@app.post("/admin/avatars/rehost")
+def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
+    """Backfill: rehost IG profile pictures whose stored URL is still
+    pointing at IG's CDN (signed → expires in weeks). New scrapes do
+    this automatically — this endpoint is for the existing rows. Re-run
+    until `remaining` returns 0. Founder-only."""
+    _require_founder(requesting_email)
+    from image_store import rehost_pending_avatars
+    return rehost_pending_avatars(limit=limit)
 
 
 @app.post("/admin/images/rehost")

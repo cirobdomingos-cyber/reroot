@@ -600,10 +600,35 @@ export async function getFriends(googleId) {
 
 // ── Sources catalog (transparency surface) ───────────────
 
+// Prefix BASE_URL when a path is one of our rehosted-image routes.
+// Same dev-vs-prod logic as the event imageUrl normalizer: in prod
+// BASE_URL is empty (same-origin SPA + backend) so this is a no-op;
+// in dev Vite is on :5173 and the static images live on Railway, so
+// without the prefix the <img> tries to fetch from :5173 and 404s.
+export function absoluteImageUrl(url) {
+  if (!url) return url
+  if (BASE_URL && url.startsWith('/event-images/')) {
+    return `${BASE_URL}${url}`
+  }
+  return url
+}
+
 export async function fetchSources() {
   try {
     const res = await fetchWithTimeout(`${BASE_URL}/sources`)
-    if (res.ok) return res.json()
+    if (!res.ok) return { institutional: [], instagram: [] }
+    const data = await res.json()
+    // Rehosted IG avatars come back as a relative /event-images/avatars
+    // path. Normalize them to absolute in dev so the <img> doesn't 404
+    // against Vite. Production keeps the relative path (same origin).
+    const fix = (rows) => (rows || []).map(r => ({
+      ...r,
+      profile_pic_url: absoluteImageUrl(r.profile_pic_url),
+    }))
+    return {
+      institutional: fix(data.institutional),
+      instagram: fix(data.instagram),
+    }
   } catch {
     // Backend unavailable — silently return empty buckets
   }
