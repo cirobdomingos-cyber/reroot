@@ -410,6 +410,15 @@ export default function Events() {
   // of truth for chip counts (so "Tudo" doesn't fluctuate as the user
   // filters) and as the input list to filter for the actual rendering.
   const allDisplayEvents = [...(state.customEvents || []), ...groupEvents, ...events].sort((a, b) => {
+    // Tier 1 — featured (Seleção auê) ABOVE everything else regardless
+    // of date. That's the paid-placement guarantee the venue is paying
+    // for. The backend already ships them sorted; the merge with
+    // group/custom events would otherwise mix them back into the
+    // chronological pile, so we re-pin here.
+    const fa = a.featured ? 0 : 1
+    const fb = b.featured ? 0 : 1
+    if (fa !== fb) return fa - fb
+
     const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
     const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
     if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
@@ -1633,7 +1642,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
               whiteSpace: 'nowrap',
             }}
           >
-            ⭐ DESTAQUE
+            ⭐ SELEÇÃO AUÊ
           </div>
         )}
         {price && (

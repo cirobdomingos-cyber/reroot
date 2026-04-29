@@ -881,10 +881,11 @@ def list_events(
     deduped = _dedupe_events(cleaned)[:limit]
 
     # Featured-first re-sort: events from a Destaque handle (and the
-    # institutional aue_original source) lift to the top within their
-    # day bucket. Within the same featured/non-featured tier, chronology
-    # holds. The dedup pass already collapsed cross-source duplicates,
-    # so this sort doesn't have to worry about doubles.
+    # institutional aue_original source) lift to the very top of the
+    # list — not just within their day bucket. This is the paid-
+    # placement guarantee the venue is paying for: "your events show
+    # above everything else, regardless of date". Chronology holds
+    # within the featured tier and within the non-featured tier.
     featured = _featured_ig_handles_cached()
     def _featured_rank(ev):
         if ev.source == "aue_original":
@@ -895,8 +896,8 @@ def list_events(
                 return 0
         return 1
     deduped.sort(key=lambda ev: (
-        (ev.date_start.date() if ev.date_start else date.max),
         _featured_rank(ev),
+        (ev.date_start.date() if ev.date_start else date.max),
         ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
     ))
 
