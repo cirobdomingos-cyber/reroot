@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents } from '../services/api'
 import Avatar from '../components/Avatar'
+import HomeEventRow from '../components/HomeEventRow'
 
 // All RSVPs in one place — yours + your friends'.
 //
@@ -53,6 +54,15 @@ export default function MyRsvps() {
   // invite vs classic group event). The /events/group fetch above
   // already returns the user's invitations + member-of-group events.
   const groupEventsById = Object.fromEntries(groupEvents.map(ev => [ev.id, ev]))
+
+  // event_id → [{ name, picture, google_id }, ...] so each RsvpRow can
+  // render the same friends-going avatar stack the Home calendar uses.
+  // Same source data (friendsFeed) keyed for O(1) lookup per row.
+  const friendsByEventId = Object.fromEntries(
+    friendsFeed
+      .filter(ev => ev.event_id && Array.isArray(ev.friends_going) && ev.friends_going.length)
+      .map(ev => [ev.event_id, ev.friends_going])
+  )
 
   function classify(id) {
     const ge = groupEventsById[id]
@@ -202,7 +212,13 @@ export default function MyRsvps() {
       {upcoming.length > 0 && (
         <Section title={`Confirmados · ${upcoming.length}`}>
           {upcoming.map(e => (
-            <RsvpRow key={e.id} entry={e} onOpen={openEvent} onCancel={unRsvp} />
+            <RsvpRow
+              key={e.id}
+              entry={e}
+              friends={friendsByEventId[e.id] || []}
+              onOpen={openEvent}
+              onCancel={unRsvp}
+            />
           ))}
         </Section>
       )}
@@ -306,208 +322,138 @@ function Section({ title, children, muted = false, help }) {
 }
 
 function FriendEventRow({ event: ev, kind = 'public', onOpen, onFriend }) {
-  // Mirrors RsvpRow's Confirmados pattern: kind badge + name on top,
-  // date · venue below, then the social signal (friend avatars + "N
-  // vão") on its own line. Same padding, same stripe-by-kind, same
-  // typography, so Amigos vão and Confirmados read as siblings.
-  const dateLabel = formatDate(ev.event_date) || ''
+  // Same HomeEventRow shape as Confirmados / Home — friend stack on the
+  // right reads consistently across surfaces. Tapping a friend avatar
+  // opens that friend's profile; tapping the row body opens the event.
+  const time = (ev.event_date || '').slice(11, 16)
   const friends = ev.friends_going || []
-  const stripeColor = kind === 'plan' ? 'var(--terra)'
-                    : kind === 'group' ? 'var(--sage)'
-                    : 'transparent'
-  return (
-    <div
-      onClick={onOpen}
-      style={{
-        background: 'white', borderRadius: 14, padding: '12px 14px',
-        border: '1px solid var(--border)',
-        boxShadow: stripeColor !== 'transparent' ? `inset 4px 0 0 ${stripeColor}` : 'none',
-        cursor: 'pointer',
-        display: 'flex', flexDirection: 'column', gap: 6,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <KindBadge kind={kind} />
-        <div style={{
-          fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          flex: 1, minWidth: 0,
-        }}>
-          {ev.event_name}
-        </div>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
-        {dateLabel}{ev.event_venue ? ` · ${ev.event_venue}` : ''}
-      </div>
-      {friends.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-          <div style={{ display: 'flex' }}>
-            {friends.slice(0, 4).map((f, i) => (
-              <button
-                key={f.google_id ?? i}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (f.google_id && onFriend) onFriend(f.google_id)
-                }}
-                disabled={!f.google_id}
-                title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  marginLeft: i === 0 ? 0 : -8,
-                  cursor: f.google_id ? 'pointer' : 'default',
-                  borderRadius: '50%',
-                }}
-              >
-                <Avatar name={f.name} src={f.picture} size={24} />
-              </button>
-            ))}
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)' }}>
-            {friends.length === 1
-              ? `${friends[0].name} vai`
-              : `${friends.length} amigos vão`}
-          </div>
-        </div>
-      )}
+  const trailing = friends.length > 0 ? (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {friends.slice(0, 3).map((f, i) => (
+        <button
+          key={f.google_id ?? i}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (f.google_id && onFriend) onFriend(f.google_id)
+          }}
+          disabled={!f.google_id}
+          title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
+          style={{
+            background: 'none', border: 'none', padding: 0,
+            marginLeft: i === 0 ? 0 : -8,
+            cursor: f.google_id ? 'pointer' : 'default',
+            borderRadius: '50%', boxShadow: '0 0 0 2px white',
+          }}
+        >
+          <Avatar name={f.name} src={f.picture} size={22} />
+        </button>
+      ))}
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 5 }}>
+        {friends.length}
+      </span>
     </div>
+  ) : null
+  return (
+    <HomeEventRow
+      name={ev.event_name}
+      dateStart={ev.event_date}
+      time={time}
+      venue={ev.event_venue}
+      isGroupEvent={kind === 'group' || kind === 'plan'}
+      onClick={onOpen}
+      trailing={trailing}
+    />
   )
 }
 
 function PendingRow({ event: ev, onOpen }) {
-  // Pending invite — surfaces personal plans + group events you haven't
-  // RSVP'd to yet. Distinct visual: warm peach left stripe + "Convite"
-  // pill so it reads as "needs your attention" vs the neutral upcoming
-  // RSVPs below it. Tapping opens the event detail; the user can RSVP
-  // there and the row will graduate to the Próximos section on next render.
-  const dateLabel = formatDate(ev.dateStart) || ''
+  // Pending invite — distinct from confirmed RSVPs by the terra
+  // "Convite" pill in the trailing slot. Tap to open the event detail
+  // and confirm; the row will graduate to Confirmados on next render.
+  const time = (ev.dateStart || '').slice(11, 16)
   const isPlan = ev.isPersonalPlan
-  return (
-    <div
-      onClick={onOpen}
-      style={{
-        background: 'white', borderRadius: 14, padding: '12px 14px',
-        border: '1px solid var(--border)',
-        boxShadow: 'inset 4px 0 0 var(--terra)',
-        display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{
-            fontSize: 9, fontWeight: 700, color: 'var(--terra)',
-            background: 'var(--terra-pale)', padding: '2px 7px',
-            borderRadius: 4, letterSpacing: 0.4, textTransform: 'uppercase',
-            flexShrink: 0,
-          }}>
-            {isPlan ? '🎲 Convite' : '👥 Grupo'}
-          </span>
-          <div style={{
-            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {ev.name || `Evento ${ev.id}`}
-          </div>
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 3 }}>
-          {dateLabel}{ev.venue ? ` · ${ev.venue}` : ''}
-        </div>
-      </div>
-      <span style={{ fontSize: 12, color: 'var(--charcoal-light)', flexShrink: 0 }}>›</span>
-    </div>
-  )
-}
-
-
-// Small kind badges — let the user tell at a glance what kind of event
-// they confirmed: catalog (public), invited plan, or group event. Color
-// matches the source elsewhere in the app: terra=plan/invite (warm
-// scarcity), sage=group (calm/private), neutral=public.
-const KIND_META = {
-  plan:   { label: 'Convite',  icon: '🎲', bg: 'var(--terra-pale)',         color: 'var(--terra)' },
-  group:  { label: 'Grupo',    icon: '👥', bg: 'var(--sage-pale)',          color: 'var(--sage)' },
-  public: { label: 'Público',  icon: '🌍', bg: 'rgba(44,44,44,0.06)',       color: 'var(--charcoal-mid)' },
-}
-
-function KindBadge({ kind }) {
-  const meta = KIND_META[kind] || KIND_META.public
-  return (
+  const trailing = (
     <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3,
-      fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
-      color: meta.color, background: meta.bg,
-      padding: '2px 7px', borderRadius: 5,
-      textTransform: 'uppercase', flexShrink: 0,
+      fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+      background: 'var(--terra-pale)', padding: '4px 8px', borderRadius: 6,
+      letterSpacing: 0.3,
     }}>
-      <span style={{ fontSize: 10 }}>{meta.icon}</span>
-      {meta.label}
+      {isPlan ? '🎲 Convite' : '👥 Grupo'}
     </span>
   )
+  return (
+    <HomeEventRow
+      name={ev.name || `Evento ${ev.id}`}
+      dateStart={ev.dateStart}
+      time={time}
+      venue={ev.venue}
+      isGroupEvent
+      onClick={onOpen}
+      trailing={trailing}
+    />
+  )
 }
 
-function RsvpRow({ entry, onOpen, onCancel, muted, undated }) {
-  const dateLabel = formatDate(entry.dateStart) || (undated ? '— sem data' : '')
-  // Highlight kind via a subtle inset stripe matching the badge color.
-  // Picks up the same visual language as group events / personal plans
-  // elsewhere in the app, so the row's origin reads at a glance.
-  const stripeColor = entry.kind === 'plan' ? 'var(--terra)'
-                    : entry.kind === 'group' ? 'var(--sage)'
-                    : 'transparent'
-  return (
-    <div
-      onClick={() => onOpen(entry)}
-      style={{
-        background: 'white', borderRadius: 14, padding: '12px 14px',
-        border: '1px solid var(--border)',
-        boxShadow: stripeColor !== 'transparent' ? `inset 4px 0 0 ${stripeColor}` : 'none',
-        display: 'flex', alignItems: 'center', gap: 12,
-        opacity: muted ? 0.7 : 1, cursor: 'pointer',
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          marginBottom: 2,
-        }}>
-          {entry.kind && <KindBadge kind={entry.kind} />}
-          <div style={{
-            fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            flex: 1, minWidth: 0,
+
+function RsvpRow({ entry, friends = [], onOpen, onCancel, muted, undated }) {
+  // Extract the time-of-day off the ISO so HomeEventRow's meta line
+  // shows it. The day number / weekday come from dateStart.
+  const time = (entry.dateStart || '').slice(11, 16)
+  const trailing = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {friends.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {friends.slice(0, 3).map((friend, i) => (
+            <div
+              key={(friend.google_id || friend.name) + i}
+              style={{
+                marginLeft: i === 0 ? 0 : -8,
+                boxShadow: '0 0 0 2px white',
+                borderRadius: '50%',
+              }}
+            >
+              <Avatar name={friend.name} src={friend.picture} size={22} />
+            </div>
+          ))}
+          <span style={{
+            fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+            marginLeft: 5,
           }}>
-            {entry.name || `Evento ${entry.id}`}
-          </div>
+            {friends.length}
+          </span>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
-          {dateLabel}{entry.venue ? ` · ${entry.venue}` : ''}
-        </div>
-      </div>
+      )}
+      {!undated && (
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: 'var(--sage)',
+          background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
+        }}>
+          Confirmado
+        </span>
+      )}
       <button
         onClick={(e) => { e.stopPropagation(); onCancel(entry) }}
         title={undated ? 'Limpar RSVP antigo' : 'Cancelar RSVP'}
         style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          fontSize: 16, color: 'var(--charcoal-light)', padding: 6,
+          fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
         }}
       >
         🗑
       </button>
     </div>
   )
+  return (
+    <HomeEventRow
+      name={entry.name || `Evento ${entry.id}`}
+      dateStart={entry.dateStart}
+      time={time}
+      venue={entry.venue}
+      isGroupEvent={entry.kind === 'group' || entry.kind === 'plan'}
+      onClick={() => onOpen(entry)}
+      muted={muted}
+      trailing={trailing}
+    />
+  )
 }
 
-const _PT_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const _PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-
-function formatDate(isoStr) {
-  if (!isoStr) return ''
-  const d = new Date(isoStr)
-  if (Number.isNaN(d.getTime())) return ''
-  const wd = _PT_WEEKDAYS[d.getDay()]
-  const mo = _PT_MONTHS[d.getMonth()]
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  const yearSuffix = sameYear ? '' : ` ${d.getFullYear()}`
-  const time = d.getHours() || d.getMinutes()
-    ? ` · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    : ''
-  return `${wd}, ${d.getDate()} ${mo}${yearSuffix}${time}`
-}
