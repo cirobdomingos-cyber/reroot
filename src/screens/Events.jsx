@@ -1510,19 +1510,21 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     <div
       onClick={onOpen}
       style={{
-        // Three distinct hues at a glance — the palette tokens are
-        // counter-named (`--terra` is actually navy, `--sage` is the
-        // orange) so we pick by computed color rather than name:
-        //   - group (yours, orange)             → sage stripe + sage day
-        //   - one-off (time-sensitive, amber)   → honey stripe + honey day
-        //   - ongoing (recurring or multi-day) → no stripe, terra-light day
+        // Three distinct hues, no collisions with filter chips:
+        //   - group (yours)                    → sage (orange #E8623F)
+        //   - one-off (time-sensitive)         → purple #7E57C2 (matches
+        //                                        the "Só únicos" toggle)
+        //   - ongoing (recurring or multi-day) → terra-light blue,
+        //                                        no stripe
+        // Yellow/honey is reserved for the Kids Welcome chip so the
+        // card colors don't compete with active filter chips.
         background: 'white',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                   : isOngoing ? 'none'
-                  : 'inset 3px 0 0 var(--honey)',
+                  : 'inset 3px 0 0 #7E57C2',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
       }}
@@ -1538,11 +1540,11 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
           // Day color matches the stripe so the row reads as one
-          // chromatic block — sage for group, honey for one-off,
+          // chromatic block — sage for group, purple for one-off,
           // terra-light blue for ongoing (recurring + multi-day range).
           color: isGroupEvent ? 'var(--sage)'
                : isOngoing ? 'var(--terra-light)'
-               : 'var(--honey)',
+               : '#7E57C2',
           letterSpacing: -0.5,
         }}>
           {day}
