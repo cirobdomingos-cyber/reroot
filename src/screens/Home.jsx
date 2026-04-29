@@ -108,18 +108,15 @@ export default function Home() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [state.googleUser?.id])
 
-  // "Amigos vão" tile — counts UNIQUE friends across all upcoming events
-  // (not the number of events). User-facing label says "amigos", so the
-  // count should match the noun: 2 friends going to 5 events = "2", not "5".
-  const uniqueFriendsCount = (() => {
-    const seen = new Set()
-    for (const ev of friendsFeed) {
-      for (const f of (ev.friends_going || [])) {
-        if (f.google_id) seen.add(f.google_id)
-      }
-    }
-    return seen.size
-  })()
+  // "Amigos vão" tile — counts (friend, event) pairs across all
+  // upcoming events. One friend going to three different events = 3.
+  // Reads as "friend-confirmations you might want to join" rather
+  // than "distinct friends with any plans". Total social activity
+  // signal beats unique-person count for surfacing FOMO.
+  const friendGoingCount = friendsFeed.reduce(
+    (sum, ev) => sum + (ev.friends_going?.length || 0),
+    0,
+  )
 
   // event_id → [{ name, picture, google_id }, ...] for the WeekCalendar
   // rows to render the same avatar stack the "Amigos vão" section
@@ -295,8 +292,8 @@ export default function Home() {
             onTap: rsvpCount > 0 ? () => navigate('/my-rsvps') : null,
           },
           {
-            val: uniqueFriendsCount, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9',
-            onTap: uniqueFriendsCount > 0 ? () => navigate('/my-rsvps') : null,
+            val: friendGoingCount, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9',
+            onTap: friendGoingCount > 0 ? () => navigate('/my-rsvps') : null,
           },
         ].map(({ val, lbl, color, onTap }) => (
           <div
