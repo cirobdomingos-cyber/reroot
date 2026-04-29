@@ -43,10 +43,9 @@ function isToday(d) {
  *   onEventTap:  (event, type) => void  — type is 'rsvp' or 'group'
  *   onGroupRsvp: (event) => void
  */
-export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp, onDayClick }) {
+export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], language = 'pt', onEventTap, onGroupRsvp }) {
   const t = useT()
   const [weekOffset, setWeekOffset] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(dateKey(getAnchorToday()))
 
   const days = getWeekDays(weekOffset)
   const dayLabels = language === 'pt' ? DAY_LABELS_PT : DAY_LABELS_EN
@@ -114,10 +113,9 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
 
       {/* Day cells */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-        {days.map((day, i) => {
+        {days.map((day) => {
           const key = dateKey(day)
           const today = isToday(day)
-          const selected = key === selectedDate
           const eventsOnDay = eventsByDate[key] || []
           const hasRsvp = eventsOnDay.some(e => e._type === 'rsvp')
           const hasGroup = eventsOnDay.some(e => e._type === 'group')
@@ -125,38 +123,29 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
           return (
             <div
               key={key}
-              onClick={() => {
-                setSelectedDate(key)
-                // When the parent wires onDayClick, route through to it
-                // so the click can also filter another screen (e.g. Home
-                // → Events tab filtered to that day).
-                onDayClick?.(key)
-              }}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
-                padding: '6px 0 4px', borderRadius: 12, cursor: 'pointer',
-                background: selected ? 'var(--charcoal)' : today ? 'var(--cream)' : 'transparent',
-                border: today && !selected ? '1.5px solid var(--terra)' : '1.5px solid transparent',
-                transition: 'all 0.15s',
+                padding: '6px 0 4px', borderRadius: 12,
+                background: today ? 'var(--cream)' : 'transparent',
+                border: today ? '1.5px solid var(--terra)' : '1.5px solid transparent',
               }}
             >
               <div style={{
                 fontSize: 10, fontWeight: 600,
-                color: selected ? 'rgba(255,255,255,0.6)' : 'var(--charcoal-light)',
-                marginBottom: 2,
+                color: 'var(--charcoal-light)', marginBottom: 2,
               }}>
                 {dayLabels[day.getDay()]}
               </div>
               <div style={{
                 fontSize: 16, fontWeight: 700,
-                color: selected ? 'white' : today ? 'var(--terra)' : 'var(--charcoal)',
+                color: today ? 'var(--terra)' : 'var(--charcoal)',
               }}>
                 {day.getDate()}
               </div>
               {/* Dots */}
               <div style={{ display: 'flex', gap: 3, marginTop: 3, height: 6 }}>
-                {hasRsvp && <div style={{ width: 6, height: 6, borderRadius: '50%', background: selected ? 'var(--sage-light)' : 'var(--sage)' }} />}
-                {hasGroup && <div style={{ width: 6, height: 6, borderRadius: '50%', background: selected ? '#F0C27A' : 'var(--terra)' }} />}
+                {hasRsvp && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage)' }} />}
+                {hasGroup && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--terra)' }} />}
               </div>
             </div>
           )
@@ -184,21 +173,14 @@ export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], langua
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+                color: 'var(--charcoal-light)', textTransform: 'uppercase',
+              }}>
+                {language === 'pt' ? 'Seus eventos essa semana' : 'Your events this week'}
+              </div>
               {dayBuckets.map(({ day, key, events }) => (
                 <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
-                    color: 'var(--charcoal-light)', textTransform: 'uppercase',
-                  }}>
-                    {dayLabels[day.getDay()]}, {day.getDate()} {monthLabels[day.getMonth()]}
-                    {isToday(day) && (
-                      <span style={{
-                        marginLeft: 6, color: 'var(--terra)', letterSpacing: 0,
-                      }}>
-                        · {language === 'pt' ? 'hoje' : 'today'}
-                      </span>
-                    )}
-                  </div>
                   {events.map(ev => {
                     const isGroup = ev._type === 'group'
                     const accentColor = isGroup ? 'var(--terra)' : 'var(--sage)'
