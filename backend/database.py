@@ -1184,9 +1184,24 @@ def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
         # zero-activity venues (they tell you who's underperforming).
         accounts = conn.execute(
             """SELECT handle, label, display_name, profile_pic_url,
-                      featured, claimed_by_email, enabled
+                      featured, claimed_by_email, enabled, last_scraped_at,
+                      category
                FROM tracked_ig_accounts WHERE enabled = 1"""
         ).fetchall()
+
+    # Per-handle future-event count, deduplicated, matching the same
+    # filters /events applies — so the number on the leaderboard agrees
+    # with what users actually see in the catalog.
+    from main import _passes_content_filter, _is_in_curitiba, _dedupe_events
+    future_events_by_handle: dict[str, int] = {}
+    for a in accounts:
+        h = a["handle"]
+        evs = get_future_events_by_source("instagram", ig_handle=h, limit=200)
+        cleaned = [
+            ev for ev in evs
+            if _passes_content_filter(ev, curated=False) and _is_in_curitiba(ev)
+        ]
+        future_events_by_handle[h] = len(_dedupe_events(cleaned))
 
     out = []
     for a in accounts:
@@ -1196,9 +1211,12 @@ def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
         out.append({
             "handle": h,
             "label": a["display_name"] or a["label"] or f"@{h}",
+            "category": a["category"] or "",
             "profile_pic_url": a["profile_pic_url"] or "",
             "featured": bool(a["featured"]),
             "claimed_by_email": (a["claimed_by_email"] or "").lower(),
+            "last_scraped_at": a["last_scraped_at"] or "",
+            "future_events": future_events_by_handle.get(h, 0),
             "views": views,
             "source_views": src_views_by_handle.get(h, 0),
             "rsvps": rsvps,

@@ -271,7 +271,13 @@ export default function AdminIgAccounts() {
           Every active handle ranked by views + RSVPs in the last 30d.
           Tap a row to open that venue's Painel for the deep dive. */}
       {isFounder && (
-        <VenueLeaderboard email={email} navigate={navigate} />
+        <VenueLeaderboard
+          email={email}
+          navigate={navigate}
+          busy={busy}
+          setBusy={setBusy}
+          onMutate={load}
+        />
       )}
 
       {isFounder && (
@@ -298,7 +304,12 @@ export default function AdminIgAccounts() {
         />
       )}
 
-      {isCurator && (
+      {/* "Contas ativas" merged into the leaderboard above for
+          founders — the leaderboard now carries star toggle / scrape
+          / delete + activity stats + event count. Curators who aren't
+          founders still see the legacy section below (no leaderboard
+          access since views/RSVPs are paid-placement metrics). */}
+      {isCurator && !isFounder && (
         <section style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
             📷 Contas ativas
@@ -307,12 +318,6 @@ export default function AdminIgAccounts() {
             Adicionar novas contas é na aba <b>Fontes</b>.
           </div>
 
-          {/* Quick actions. Atualizar locais / Buscar coordenadas
-              moved off this UI — seed_venues_from_events runs at every
-              scrape and the geocoding pipeline (Nominatim + Claude
-              web_search fallback) auto-fills coordinates without
-              human intervention, so the manual buttons just added
-              clutter. */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button
               onClick={triggerRefresh}
@@ -381,6 +386,21 @@ export default function AdminIgAccounts() {
             )
           })()}
         </section>
+      )}
+
+      {/* Founder always has access to the manual refresh trigger —
+          slim row now that "Contas ativas" is merged into the
+          leaderboard. */}
+      {isFounder && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          <button
+            onClick={triggerRefresh}
+            disabled={busy}
+            style={ghostBtn('var(--sage)')}
+          >
+            ▶ Disparar refresh agora
+          </button>
+        </div>
       )}
     </div>
   )
@@ -794,13 +814,24 @@ function NotACuratorMessage({ email }) {
 }
 
 
-// Venue leaderboard (founder-only). Lazy-fetched on mount; collapses
-// to the top 8 by default with "Ver tudo" expanding the full ranked
-// list. Tap a row → venue Painel for the deep dive.
-function VenueLeaderboard({ email, navigate }) {
+// Venue leaderboard — single founder surface that merges the old
+// "Negociação" sales table with the operational "Contas ativas" list.
+// Each row carries: rank, avatar, name + handle + last scrape, the
+// venue's catalog event count, monthly view/RSVP/conversion stats,
+// plus action affordances (⭐ Seleção auê toggle, manual scrape,
+// delete). Tap the row body → opens the venue's Painel.
+function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
   const [venues, setVenues] = useState([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  const [error, setError] = useState(null)
+
+  const reload = useCallback(async () => {
+    const d = await fetchVenueLeaderboard(email, 30)
+    setVenues(d.venues || [])
+    setLoading(false)
+  }, [email])
+
   useEffect(() => {
     let cancelled = false
     fetchVenueLeaderboard(email, 30).then(d => {
@@ -810,89 +841,105 @@ function VenueLeaderboard({ email, navigate }) {
     })
     return () => { cancelled = true }
   }, [email])
+
+  async function toggleFeatured(v) {
+    setBusy?.(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(v.handle)}/featured`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requesting_email: email, featured: !v.featured }),
+        },
+      )
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      await reload()
+      onMutate?.()
+    } catch (e) {
+      setError(`Falha ao atualizar Destaque: ${e.message}`)
+    }
+    setBusy?.(false)
+  }
+
+  async function scrapeOne(handle) {
+    setBusy?.(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/scrape?requesting_email=${encodeURIComponent(email)}`,
+        { method: 'POST' },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      const result = await r.json()
+      alert(`@${handle}: ${result.events_extracted ?? 0} evento(s) extraído(s).`)
+      await reload()
+      onMutate?.()
+    } catch (e) {
+      setError(`Falha ao scrapear: ${e.message}`)
+    }
+    setBusy?.(false)
+  }
+
+  async function deleteOne(handle) {
+    if (!confirm(`Remover @${handle}? Os eventos cadastrados continuam, mas a conta sai do tracking.`)) return
+    setBusy?.(true)
+    try {
+      await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}?requesting_email=${encodeURIComponent(email)}`,
+        { method: 'DELETE' },
+      )
+      await reload()
+      onMutate?.()
+    } catch (e) {
+      setError(`Falha ao remover: ${e.message}`)
+    }
+    setBusy?.(false)
+  }
+
   const visible = expanded ? venues : venues.slice(0, 8)
   const hidden = venues.length - visible.length
+
   return (
     <section style={{ marginTop: 24, marginBottom: 8 }}>
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
         🎯 Negociação · top venues
       </h2>
       <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
-        Atividade dos últimos 30 dias — quem está no topo é candidato a
-        Destaque pago. Toca pra abrir o Painel completo.
+        Atividade dos últimos 30 dias — topo da lista = melhor candidato
+        a Seleção auê pago. Toca o card pro Painel completo, ou usa os
+        botões à direita pra ações rápidas.
       </div>
+      {error && (
+        <div style={{
+          background: '#FFEBEE', color: '#B71C1C', padding: '8px 12px',
+          borderRadius: 8, fontSize: 12, marginBottom: 8,
+        }}>
+          {error}
+        </div>
+      )}
       {loading ? (
         <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>Carregando…</div>
       ) : venues.length === 0 ? (
         <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
-          Nenhuma atividade registrada ainda nessa janela.
+          Nenhuma conta ativa.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {visible.map((v, i) => {
-            const conv = (v.conversion_rate * 100).toFixed(1)
-            return (
-              <button
-                key={v.handle}
-                onClick={() => navigate(`/venue/${encodeURIComponent(v.handle)}`)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', background: 'white',
-                  border: v.featured
-                    ? '1.5px solid var(--honey)'
-                    : '1px solid var(--border)',
-                  borderRadius: 10, cursor: 'pointer', textAlign: 'left',
-                }}
-              >
-                <div style={{
-                  width: 22, height: 22, borderRadius: '50%',
-                  background: i === 0 ? 'var(--honey)' : 'var(--cream)',
-                  color: i === 0 ? 'white' : 'var(--charcoal-mid)',
-                  fontSize: 10, fontWeight: 800, flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>{i + 1}</div>
-                <Avatar src={v.profile_pic_url} name={v.label} size={28} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {v.label}
-                    {v.featured && (
-                      <span style={{
-                        marginLeft: 6, fontSize: 8, fontWeight: 800,
-                        letterSpacing: 0.5, color: 'var(--honey)',
-                      }}>⭐</span>
-                    )}
-                    {v.claimed_by_email && (
-                      <span title={`Reivindicado por ${v.claimed_by_email}`} style={{
-                        marginLeft: 6, fontSize: 8, fontWeight: 800,
-                        color: 'var(--sage)', letterSpacing: 0.5,
-                      }}>✓</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
-                    @{v.handle}
-                  </div>
-                </div>
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 1,
-                  flexShrink: 0, fontSize: 11, fontWeight: 800,
-                  fontVariantNumeric: 'tabular-nums', textAlign: 'right',
-                }}>
-                  <span title={`${v.views} visualizações 30d`} style={{ color: 'var(--terra-light)' }}>
-                    👀 {v.views}
-                  </span>
-                  <span title={`${v.rsvps} RSVPs 30d`} style={{ color: 'var(--sage)' }}>
-                    🙌 {v.rsvps}
-                  </span>
-                  <span title={`Conversão view→RSVP`} style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>
-                    {conv}%
-                  </span>
-                </div>
-              </button>
-            )
-          })}
+          {visible.map((v, i) => (
+            <LeaderboardRow
+              key={v.handle}
+              venue={v}
+              rank={i + 1}
+              busy={busy}
+              navigate={navigate}
+              onToggleFeatured={() => toggleFeatured(v)}
+              onScrape={() => scrapeOne(v.handle)}
+              onDelete={() => deleteOne(v.handle)}
+            />
+          ))}
           {hidden > 0 && !expanded && (
             <button
               onClick={() => setExpanded(true)}
@@ -922,6 +969,123 @@ function VenueLeaderboard({ email, navigate }) {
         </div>
       )}
     </section>
+  )
+}
+
+
+function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete }) {
+  const conv = (v.conversion_rate * 100).toFixed(1)
+  const lastScrape = v.last_scraped_at
+    ? new Date(v.last_scraped_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    : '—'
+  const rawPic = v.profile_pic_url
+  const pic = (rawPic && API_BASE && rawPic.startsWith('/event-images/'))
+    ? `${API_BASE}${rawPic}`
+    : rawPic
+  return (
+    <div style={{
+      background: 'white', borderRadius: 10,
+      border: v.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
+      padding: '8px 10px',
+      display: 'flex', alignItems: 'center', gap: 8,
+    }}>
+      {/* Rank medal — #1 honey, rest neutral */}
+      <div style={{
+        width: 22, height: 22, borderRadius: '50%',
+        background: rank === 1 ? 'var(--honey)' : 'var(--cream)',
+        color: rank === 1 ? 'white' : 'var(--charcoal-mid)',
+        fontSize: 10, fontWeight: 800, flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{rank}</div>
+      <Avatar src={pic} name={v.label} size={32} />
+
+      {/* Body — name + meta. Tap to open the venue Painel. */}
+      <button
+        onClick={() => navigate(`/venue/${encodeURIComponent(v.handle)}`)}
+        style={{
+          flex: 1, minWidth: 0, background: 'none', border: 'none',
+          padding: 0, cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {v.label}
+          {v.claimed_by_email && (
+            <span title={`Reivindicado por ${v.claimed_by_email}`} style={{
+              marginLeft: 6, fontSize: 9, fontWeight: 800,
+              color: 'var(--sage)', letterSpacing: 0.5,
+            }}>✓</span>
+          )}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
+          @{v.handle} · 📅 {lastScrape} · {v.future_events} evt
+          {v.category && <> · {v.category}</>}
+        </div>
+      </button>
+
+      {/* Stats column — views / RSVPs / conversion. Tabular nums so
+          the column aligns across rows. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 1,
+        flexShrink: 0, fontSize: 11, fontWeight: 800,
+        fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+        minWidth: 56,
+      }}>
+        <span title={`${v.views} visualizações 30d`} style={{ color: 'var(--terra-light)' }}>
+          👀 {v.views}
+        </span>
+        <span title={`${v.rsvps} RSVPs 30d`} style={{ color: 'var(--sage)' }}>
+          🙌 {v.rsvps}
+        </span>
+        <span title="Conversão view→RSVP" style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>
+          {conv}%
+        </span>
+      </div>
+
+      {/* Action column — star toggle (Seleção auê), manual scrape,
+          delete. Compact icons so the row stays single-line on
+          narrow viewports. */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 2,
+        flexShrink: 0, alignItems: 'center',
+      }}>
+        <button
+          onClick={onToggleFeatured}
+          disabled={busy}
+          title={v.featured ? 'Tirar Seleção auê' : 'Marcar como Seleção auê'}
+          style={{
+            background: v.featured ? 'var(--honey-pale)' : 'transparent',
+            border: v.featured ? '1px solid var(--honey)' : '1px solid var(--border)',
+            borderRadius: 999,
+            cursor: busy ? 'default' : 'pointer',
+            fontSize: 11, color: v.featured ? 'var(--honey)' : 'var(--charcoal-light)',
+            padding: '2px 6px', lineHeight: 1,
+          }}
+        >⭐</button>
+        <button
+          onClick={onScrape}
+          disabled={busy}
+          title="Scrapear esta conta agora"
+          style={{
+            background: 'none', border: 'none',
+            cursor: busy ? 'default' : 'pointer',
+            fontSize: 12, color: 'var(--charcoal-light)', padding: 1,
+          }}
+        >🔄</button>
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          title="Remover do tracking"
+          style={{
+            background: 'none', border: 'none',
+            cursor: busy ? 'default' : 'pointer',
+            fontSize: 12, color: 'var(--charcoal-light)', padding: 1,
+          }}
+        >🗑</button>
+      </div>
+    </div>
   )
 }
 
