@@ -1488,20 +1488,21 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
     <div
       onClick={onOpen}
       style={{
-        // Visual hierarchy:
-        //   - one-off (time-sensitive)  → white + terra stripe + terra day
-        //   - group (yours)             → white + sage stripe + sage day
-        //   - recurring (every week)    → white card, no stripe, neutral
-        //                                  charcoal day. Same color family
-        //                                  as the others, just doesn't claim
-        //                                  the highlight.
+        // Three distinct hues at a glance — the palette tokens are
+        // counter-named (`--terra` is actually navy, `--sage` is the
+        // orange) so we pick by computed color rather than name:
+        //   - group (yours, orange)         → sage stripe + sage day
+        //   - one-off (time-sensitive, amber) → honey stripe + honey day
+        //   - recurring (every week, blue)  → no stripe, terra-light day
+        //                                      (visible cool blue, doesn't
+        //                                      claim the highlight)
         background: 'white',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: '1px solid var(--border)',
         boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                   : isRecurring ? 'none'
-                  : 'inset 3px 0 0 var(--terra)',
+                  : 'inset 3px 0 0 var(--honey)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         cursor: 'pointer',
       }}
@@ -1516,11 +1517,13 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
       }}>
         <div style={{
           fontSize: 26, fontWeight: 800, lineHeight: 1,
-          // Day color matches the stripe (terra one-off, sage group)
-          // or stays charcoal for recurring (no stripe → no accent).
+          // Day color matches the stripe so the row reads as one
+          // chromatic block — sage for group, honey for one-off,
+          // terra-light blue for recurring (no stripe but the
+          // color still telegraphs the kind).
           color: isGroupEvent ? 'var(--sage)'
-               : isRecurring ? 'var(--charcoal)'
-               : 'var(--terra)',
+               : isRecurring ? 'var(--terra-light)'
+               : 'var(--honey)',
           letterSpacing: -0.5,
         }}>
           {day}
@@ -1559,21 +1562,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {time && venueLine && <> · </>}
           {venueLine}
         </div>
-
-        {/* Vibe summary — short LLM-extracted sentence about the event.
-            Brought back per user feedback after the cleanup pass; keeps
-            the card scannable as a "what is this" glance. Hidden when
-            the LLM echoed the event name, since that's just noise. */}
-        {ev.vibeSummary && ev.vibeSummary !== ev.name && (
-          <div style={{
-            fontSize: 11, color: 'var(--charcoal-light)',
-            fontStyle: 'italic', lineHeight: 1.35, marginTop: 4,
-            display: '-webkit-box', WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical', overflow: 'hidden',
-          }}>
-            {ev.vibeSummary}
-          </div>
-        )}
 
         {/* Friends going line. Sage (auê's friend color) with ▸ prefix.
             Friend avatars dropped for visual density — the count +
@@ -1912,6 +1900,19 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
           {ev.name}
         </div>
+
+        {/* Vibe summary — short LLM-extracted sentence about the event.
+            Sits right under the title as the "what is this in one line"
+            glance before the user scrolls into the metadata + actions.
+            Hidden when the LLM echoed the event name (noise filter). */}
+        {ev.vibeSummary && ev.vibeSummary !== ev.name && (
+          <div style={{
+            fontSize: 13, color: 'var(--charcoal-mid)',
+            fontStyle: 'italic', lineHeight: 1.4, marginBottom: 10,
+          }}>
+            {ev.vibeSummary}
+          </div>
+        )}
 
         {/* Source badge — clickable, opens the source's page on /sources.
             For Instagram events, surfaces the actual handle (@<handle>) so

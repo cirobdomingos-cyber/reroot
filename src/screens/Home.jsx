@@ -607,16 +607,16 @@ function HomeEventRow({
   onClick,
 }) {
   const { day, weekday } = _homeDayLabels(dateStart)
-  // Mirrors EventCard: one-off + group both get a colored left stripe
-  // (terra / sage); recurring stays plain white with no stripe and a
-  // neutral charcoal day number — present in the list, just not
-  // claiming the highlight.
+  // Three distinct hues mirror EventCard:
+  //   group → sage (orange in this palette)
+  //   one-off → honey (amber)
+  //   recurring → terra-light (medium blue, no stripe)
   const dayColor = isGroupEvent ? 'var(--sage)'
-                 : isRecurring ? 'var(--charcoal)'
-                 : 'var(--terra)'
+                 : isRecurring ? 'var(--terra-light)'
+                 : 'var(--honey)'
   const stripe = isGroupEvent ? 'inset 3px 0 0 var(--sage)'
                : isRecurring ? 'none'
-               : 'inset 3px 0 0 var(--terra)'
+               : 'inset 3px 0 0 var(--honey)'
   return (
     <div
       onClick={onClick}
