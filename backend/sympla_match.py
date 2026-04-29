@@ -136,11 +136,21 @@ def match_and_enrich(sympla_events: list[dict]) -> dict:
     wrote = 0
     skipped_no_handle = 0
     samples: list[dict] = []
+    # Capture unmatched venues so the admin endpoint can surface what
+    # Sympla is sending that we're not tracking. Drives "should we add
+    # this IG handle?" decisions instead of guessing why yield is low.
+    unmatched_venues: list[dict] = []
     for sym in sympla_events:
         venue_text = sym.get("venue_name") or ""
         cands = _venue_candidates(venue_text, accounts)
         if not cands:
             skipped_no_handle += 1
+            if len(unmatched_venues) < 25:
+                unmatched_venues.append({
+                    "venue": venue_text,
+                    "name": (sym.get("name") or "")[:60],
+                    "url": sym.get("url") or "",
+                })
             continue
 
         sym_dt = sym["date_start"]
@@ -182,6 +192,7 @@ def match_and_enrich(sympla_events: list[dict]) -> dict:
         "sympla_events": len(sympla_events),
         "matched": matched,
         "wrote": wrote,
+        "unmatched_venues": unmatched_venues,
         "skipped_no_handle": skipped_no_handle,
         "samples": samples,
     }
