@@ -1019,8 +1019,17 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
             }}>✓</span>
           )}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1 }}>
-          @{v.handle} · 📅 {lastScrape}
+        <div style={{
+          fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          @{v.handle}
+        </div>
+        <div style={{
+          fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          📅 {lastScrape}
         </div>
       </button>
 
