@@ -2231,11 +2231,16 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     out["lng"] = coords["lng"] if coords else None
     out["bairro"] = (coords or {}).get("bairro") or ""
 
+    # imageUrl ships on the list response too (not just detail) — the
+    # hero drawer uses it as a banner background, and openDetail can
+    # render from local state without forcing a round-trip to fetch
+    # the image alone. Adds ~150 chars per event, fine for the catalog.
+    out["imageUrl"] = ev.image_url
+
     if detail:
         out["description"] = ev.description
         out["venueAddress"] = ev.venue_address
         out["city"] = ev.city
-        out["imageUrl"] = ev.image_url
 
     return out
 

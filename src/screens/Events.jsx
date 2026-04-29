@@ -1679,6 +1679,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onAttended, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
+  const [imageZoomed, setImageZoomed] = useState(false)
 
   // Share the in-app deep link (/#/events?event=<id>) for every event —
   // catalog, group, custom — so recipients land in auê with the hero
@@ -1697,17 +1698,85 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
 
   return (
     <>
-      {/* Hero */}
-      <div style={{ height: 120, background: ev.headerBg, position: 'relative' }}>
-        <button onClick={onClose} style={{
+      {/* Hero — uses the existing 120px banner slot. IG post image when
+          available, gradient fallback otherwise. Tap an image hero to
+          open the lightbox (full-resolution view). Subtle dark overlay
+          so the back button and category emoji stay legible against
+          bright photos. */}
+      <div
+        onClick={ev.imageUrl ? () => setImageZoomed(true) : undefined}
+        style={{
+          height: 120,
+          background: ev.imageUrl
+            ? `linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.30) 100%), url(${ev.imageUrl}) center / cover no-repeat`
+            : ev.headerBg,
+          position: 'relative',
+          cursor: ev.imageUrl ? 'zoom-in' : 'default',
+        }}
+      >
+        <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
           position: 'absolute', top: 12, left: 12,
           width: 32, height: 32, borderRadius: '50%',
           background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         }}>←</button>
-        <div style={{ position: 'absolute', bottom: 12, left: 14, fontSize: 30 }}>{ev.icon}</div>
+        <div style={{
+          position: 'absolute', bottom: 12, left: 14, fontSize: 30,
+          filter: ev.imageUrl ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.4))' : 'none',
+        }}>{ev.icon}</div>
+        {/* Tiny zoom hint at top-right when there's an image — small
+            visual nudge that the banner is interactive. Hidden behind
+            an icon to avoid taking text space. */}
+        {ev.imageUrl && (
+          <div style={{
+            position: 'absolute', top: 12, right: 12,
+            padding: '5px 8px', borderRadius: 999,
+            background: 'rgba(0,0,0,0.45)', color: 'white',
+            fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            🔍 Ver
+          </div>
+        )}
       </div>
+
+      {/* Lightbox — fullscreen overlay with the original-resolution image.
+          Tap anywhere outside the image (or on it) to close. zIndex sits
+          above the drawer (drawer is 9999) so the lightbox fully covers. */}
+      {imageZoomed && ev.imageUrl && (
+        <div
+          onClick={() => setImageZoomed(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16, cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={ev.imageUrl}
+            alt={ev.name}
+            style={{
+              maxWidth: '100%', maxHeight: '100%',
+              objectFit: 'contain', borderRadius: 8,
+              boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+            }}
+          />
+          <button
+            onClick={(e) => { e.stopPropagation(); setImageZoomed(false) }}
+            aria-label="Fechar"
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.9)', border: 'none',
+              fontSize: 18, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+            }}
+          >✕</button>
+        </div>
+      )}
 
       {/* Content */}
       <div style={{ padding: '14px 20px 28px' }}>
