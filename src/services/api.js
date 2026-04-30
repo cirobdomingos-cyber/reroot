@@ -520,12 +520,18 @@ export async function fetchEventAttendees(eventId, googleId) {
     )
     if (res.ok) {
       const data = await res.json()
-      return data.attendees ?? []
+      // Backend now returns { attendees, pending }. Older shape ({ attendees })
+      // still works because pending defaults to []. Callers that only need
+      // RSVPed people can read .attendees and ignore .pending.
+      return {
+        attendees: data.attendees ?? [],
+        pending: data.pending ?? [],
+      }
     }
   } catch {
     // Backend unavailable — silently return empty
   }
-  return []
+  return { attendees: [], pending: [] }
 }
 
 // ── Friends API ────────────────────────────────────────────

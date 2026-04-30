@@ -7,6 +7,11 @@ import { fetchEventAttendees } from '../services/api'
 // Tapping the row expands an inline list of attendees; friends in the
 // expanded list are tappable (navigate to their profile via onFriend).
 //
+// Pending invitees (named-invite-but-not-yet-RSVPed) render below the
+// "vão" block when the event is private and the invitee list is non-
+// empty. They use muted styling so the difference reads as "still
+// deciding" without dragging eye-weight away from confirmed.
+//
 // The backend `/events/{id}/attendees` endpoint excludes the requester
 // from its result, so we stitch the viewer back in when they've RSVPed —
 // otherwise the hero would say "2 vão" while the user is staring at their
@@ -26,19 +31,23 @@ export default function AttendeesRow({
   viewerName, viewerPicture, onFriend,
 }) {
   const [attendees, setAttendees] = useState([])
+  const [pending, setPending] = useState([])
   const [expanded, setExpanded] = useState(false)
   useEffect(() => {
-    if (!eventId || !googleId) { setAttendees([]); return }
+    if (!eventId || !googleId) { setAttendees([]); setPending([]); return }
     let cancelled = false
-    fetchEventAttendees(eventId, googleId).then(list => {
-      if (!cancelled) setAttendees(list || [])
+    fetchEventAttendees(eventId, googleId).then(({ attendees: a, pending: p }) => {
+      if (!cancelled) { setAttendees(a || []); setPending(p || []) }
     })
     return () => { cancelled = true }
   }, [eventId, googleId, refreshKey])
 
   const others = attendees
   const total = others.length + (isRsvped ? 1 : 0)
-  if (total === 0) return null
+  // Hide the row entirely only when there's nothing to say — no RSVPs
+  // and no pending invitees either. Otherwise we still surface the
+  // pending list, which is the host's main planning signal.
+  if (total === 0 && pending.length === 0) return null
 
   // First 5 avatars in the stack — beyond that we render a "+N" pill.
   const stack = []
@@ -120,7 +129,20 @@ export default function AttendeesRow({
           ))}
         </div>
         <span style={{ flex: 1, fontSize: 12, color: 'var(--charcoal-mid)' }}>
-          <strong style={{ color: 'var(--charcoal)' }}>{summary}</strong> — quem vai
+          {total > 0 ? (
+            <>
+              <strong style={{ color: 'var(--charcoal)' }}>{summary}</strong> — quem vai
+              {pending.length > 0 && (
+                <span style={{ color: 'var(--charcoal-light)' }}>
+                  {' '}· {pending.length} aguardando
+                </span>
+              )}
+            </>
+          ) : (
+            <strong style={{ color: 'var(--charcoal)' }}>
+              {pending.length} {pending.length === 1 ? 'pessoa convidada' : 'pessoas convidadas'} — ninguém confirmou ainda
+            </strong>
+          )}
         </span>
         <span style={{
           fontSize: 12, color: 'var(--charcoal-light)',
@@ -177,6 +199,40 @@ export default function AttendeesRow({
               </div>
             </div>
           ))}
+          {/* Pending invitees — named-but-haven't-responded. Muted
+              styling so the difference reads at a glance. Keep below the
+              "vão" group so confirmed attendees stay top-of-mind. */}
+          {pending.length > 0 && (
+            <>
+              {(others.length > 0 || isRsvped) && (
+                <div style={{
+                  marginTop: 6, paddingTop: 6,
+                  borderTop: '1px dashed var(--border)',
+                  fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                  color: 'var(--charcoal-light)', textTransform: 'uppercase',
+                }}>
+                  Aguardando
+                </div>
+              )}
+              {pending.map(a => (
+                <div key={`pending-${a.google_id}`} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: 4,
+                  opacity: 0.7,
+                }}>
+                  <Avatar name={a.name} src={a.picture} size={28} />
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
+                    {a.name}
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                    color: 'var(--charcoal-light)', textTransform: 'uppercase',
+                  }}>
+                    convidado
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

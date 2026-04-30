@@ -2012,25 +2012,20 @@ def get_rsvps_for_users(google_ids: list[str]) -> list[dict]:
 
 # ── Event attendees ────────────────────────────────────────
 
-def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
-    """
-    Return all users who RSVPed to an event, excluding the requester.
-    Each attendee includes name, picture (from user_states), and is_friend flag.
-    Respects privacy: users with showProfileToStrangers=false who are not friends
-    of the requester are excluded.
-    """
-    with get_conn() as conn:
-        # Get all RSVPs for this event, excluding the requester
-        rsvp_rows = conn.execute(
-            "SELECT google_id FROM rsvps WHERE event_id = ? AND google_id != ?",
-            (event_id, requesting_google_id),
-        ).fetchall()
+def _resolve_attendee_users(google_ids: list[str], requesting_google_id: str) -> list[dict]:
+    """Turn a flat list of google_ids into attendee dicts (name,
+    picture, is_friend) with privacy filtering. Shared by the RSVPed
+    list and the pending-invitee list so both honor the same privacy
+    rules without diverging.
 
-    if not rsvp_rows:
+    Privacy: users with showInFriendSuggestions=false are hidden from
+    non-friends entirely. Users with showProfileToStrangers=false stay
+    in the list (they RSVPed/were invited to a shared event) but the
+    name resolution still picks up their actual userName."""
+    if not google_ids:
         return []
-
     # Get friendships for the requester (accepted + legacy pending rows)
-    friend_ids = set()
+    friend_ids: set[str] = set()
     with get_conn() as conn:
         friend_rows = conn.execute(
             """
@@ -2044,43 +2039,83 @@ def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
         friend_id = row["user_b"] if row["user_a"] == requesting_google_id else row["user_a"]
         friend_ids.add(friend_id)
 
-    attendees = []
+    out: list[dict] = []
     with get_conn() as conn:
-        for rsvp in rsvp_rows:
-            gid = rsvp["google_id"]
+        for gid in google_ids:
             state_row = conn.execute(
                 "SELECT state_json FROM user_states WHERE google_id = ?",
                 (gid,),
             ).fetchone()
-
             name = gid
             picture = ""
             if state_row:
                 try:
                     state = json.loads(state_row["state_json"])
-                    # Privacy check: skip users who hide from non-friends
                     privacy = state.get("privacy", {})
                     is_friend = gid in friend_ids
                     if not is_friend and not privacy.get("showProfileToStrangers", False):
-                        # Still show them — they RSVPed to a shared event.
-                        # But respect showInFriendSuggestions if False: hide them entirely.
+                        # Hide entirely if they opted out of friend suggestions.
                         if not privacy.get("showInFriendSuggestions", True):
                             continue
                     name = state.get("userName") or gid
                     picture = (state.get("googleUser") or {}).get("picture", "")
                 except Exception:
                     pass
-            else:
-                is_friend = gid in friend_ids
-
-            attendees.append({
+            out.append({
                 "google_id": gid,
                 "name": name,
                 "picture": picture,
                 "is_friend": gid in friend_ids,
             })
+    return out
 
-    return attendees
+
+def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
+    """Return users who RSVPed to an event, excluding the requester.
+    Privacy filtering via _resolve_attendee_users."""
+    with get_conn() as conn:
+        rsvp_rows = conn.execute(
+            "SELECT google_id FROM rsvps WHERE event_id = ? AND google_id != ?",
+            (event_id, requesting_google_id),
+        ).fetchall()
+    rsvp_ids = [r["google_id"] for r in rsvp_rows]
+    return _resolve_attendee_users(rsvp_ids, requesting_google_id)
+
+
+def get_event_invitees_pending(event_id: str, requesting_google_id: str) -> list[dict]:
+    """For private events (rows in group_events), return the named
+    invitees who haven't RSVPed yet — the "convidados aguardando" list
+    next to RSVPed attendees in the hero. Excludes the requester and
+    anyone who already RSVPed.
+
+    Catalog events have no invitee list, so this returns []. Group
+    events that pre-date the May 2026 unification migration may have
+    empty extra_invitee_ids if they had no group_id either (i.e.
+    nothing to backfill); those return [] too.
+
+    The creator is also surfaced as pending if they haven't RSVPed —
+    on group-tagged events the creator isn't auto-RSVPed, so this is a
+    real case.
+
+    Privacy: same _resolve_attendee_users rules as RSVPed attendees."""
+    ge = get_group_event(event_id)
+    if not ge:
+        return []
+    invitee_ids = list(ge.get("extra_invitee_ids") or [])
+    creator_id = ge.get("created_by")
+    if creator_id and creator_id not in invitee_ids:
+        invitee_ids.append(creator_id)
+    if not invitee_ids:
+        return []
+    with get_conn() as conn:
+        rsvped = {r["google_id"] for r in conn.execute(
+            "SELECT google_id FROM rsvps WHERE event_id = ?", (event_id,),
+        ).fetchall()}
+    pending_ids = [
+        gid for gid in invitee_ids
+        if gid and gid not in rsvped and gid != requesting_google_id
+    ]
+    return _resolve_attendee_users(pending_ids, requesting_google_id)
 
 
 # ── Friends ────────────────────────────────────────────────

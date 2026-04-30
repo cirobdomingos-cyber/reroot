@@ -38,7 +38,8 @@ export default function PostEventAttendees({ eventId, eventDate }) {
     setLoading(true)
     fetchEventAttendees(eventId, googleId).then(data => {
       if (!cancelled) {
-        setAttendees(data)
+        // Post-event roster is RSVPed-only; pending is irrelevant here.
+        setAttendees(data.attendees || [])
         setLoading(false)
       }
     })

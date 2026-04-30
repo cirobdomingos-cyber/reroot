@@ -1919,15 +1919,19 @@ def user_stats(google_id: str):
 
 @app.get("/events/{event_id}/attendees")
 def event_attendees(event_id: str, google_id: str):
-    """
-    Return list of users who RSVPed to this event, excluding the requester.
-    Each attendee has google_id, name, picture, is_friend, and friend_code.
+    """Return RSVPed attendees + named invitees still pending, both
+    excluding the requester. Each user dict has google_id, name,
+    picture, is_friend, friend_code. Pending applies only to private
+    events (group_events table); for catalog events `pending` is empty.
     """
     attendees = db.get_event_attendees(event_id, google_id)
+    pending = db.get_event_invitees_pending(event_id, google_id)
     # Attach friend_code so the frontend can call addFriend directly
     for a in attendees:
         a["friend_code"] = db.get_friend_code(a["google_id"])
-    return {"attendees": attendees}
+    for p in pending:
+        p["friend_code"] = db.get_friend_code(p["google_id"])
+    return {"attendees": attendees, "pending": pending}
 
 
 # ── Friends ────────────────────────────────────────────────
