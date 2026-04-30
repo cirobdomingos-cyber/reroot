@@ -157,6 +157,7 @@ function normalizeBackendEvent(ev) {
     groupName: ev.groupName ?? '',
     createdBy: ev.createdBy ?? null,
     inviteeCount: ev.inviteeCount ?? 0,
+    extraInviteeIds: ev.extraInviteeIds ?? [],
     note: ev.note ?? '',
     sourceIgHandle: ev.sourceIgHandle ?? '',
     // Pin coordinates — populated when the venue's been geocoded. Map
@@ -871,6 +872,23 @@ export async function deleteGroupEvent(groupId, eventId, googleId) {
     { method: 'DELETE' },
   )
   if (!res.ok) throw new Error(`Delete group event failed: ${res.status}`)
+  return res.json()
+}
+
+// Add invitees to an existing event post-creation. Creator-only on
+// the backend; works for both group-tagged events and standalone plans.
+// Returns { invitee_google_ids, added } so the caller can refresh the
+// attendees row without a full event re-fetch.
+export async function addEventInvitees(eventId, googleId, inviteeGoogleIds) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/invitees`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, invitee_google_ids: inviteeGoogleIds }),
+    },
+  )
+  if (!res.ok) throw new Error(`Add invitees failed: ${res.status}`)
   return res.json()
 }
 

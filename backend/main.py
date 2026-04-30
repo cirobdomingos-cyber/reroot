@@ -1453,6 +1453,12 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         "createdByName": creator_name,
         "createdByPicture": creator_picture,
         "inviteeCount": len(ge.get("extra_invitee_ids", []) or []),
+        # Full invitee list — needed by the post-creation invite picker
+        # so it can filter out already-invited friends. Anyone who can
+        # see the event already sees these google_ids via the
+        # /events/{id}/attendees endpoint, so this isn't a fresh
+        # privacy surface.
+        "extraInviteeIds": list(ge.get("extra_invitee_ids", []) or []),
         "note": ge.get("note") or "",
         # Source venue handle when this row was forked from a public IG
         # catalog event. Frontend uses it to fire `event_view` analytics
@@ -2978,6 +2984,73 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
         raise HTTPException(status_code=403, detail="Only admins or the event creator can delete")
     db.delete_group_event(event_id)
     return {"ok": True}
+
+
+class AddInviteesRequest(BaseModel):
+    google_id: str                       # the requester (must be creator)
+    invitee_google_ids: list[str] = []   # google_ids to add to the invitee list
+
+
+@app.post("/events/{event_id}/invitees")
+def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks: BackgroundTasks):
+    """Append google_ids to an event's invitee list post-creation.
+    Restricted to the event's creator — adding people to someone else's
+    plan changes the social shape of the event, which the framer of the
+    plan should control.
+
+    Works for both group-tagged events and standalone plans (same row
+    schema after the May 2026 unification). Dedupes against the
+    existing invitee list. Fires a "Ciro te convidou pra…" push to
+    just-added invitees in a background task — mirrors the create-time
+    flow so an invite always feels the same regardless of when it
+    happened."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event["created_by"] != req.google_id:
+        raise HTTPException(status_code=403, detail="Só quem criou o evento pode convidar mais gente")
+    incoming = sorted({
+        str(g) for g in req.invitee_google_ids
+        if g and str(g) != req.google_id  # creator is implicit
+    })
+    if not incoming:
+        return {
+            "ok": True,
+            "invitee_google_ids": event.get("extra_invitee_ids") or [],
+            "added": [],
+        }
+    full_list, added = db.add_invitees_to_event(event_id, incoming)
+    if added:
+        creator_name = _user_display_name(req.google_id)
+        name = event.get("name") or "um plano"
+        venue_label = event.get("venue") or ""
+        when_label = (event.get("date_start") or "")[:10]
+        body = (
+            f"{creator_name} te convidou pra {name}"
+            + (f" no {venue_label}" if venue_label else "")
+            + (f", {when_label}" if when_label else "")
+        )
+        tag = f"event-invite-{event_id}"
+
+        def _fanout_pushes():
+            for invitee in added:
+                try:
+                    _send_push_to_user(
+                        invitee,
+                        title="🎲 Convite",
+                        body=body,
+                        url=f"/#/events/{event_id}",
+                        tag=tag,
+                    )
+                except Exception as exc:
+                    log.warning(f"Event {event_id}: invite push to {invitee} failed: {exc}")
+
+        background_tasks.add_task(_fanout_pushes)
+    return {
+        "ok": True,
+        "invitee_google_ids": full_list,
+        "added": added,
+    }
 
 
 @app.post("/events/private")

@@ -2668,6 +2668,39 @@ def get_group_event(event_id: str) -> Optional[dict]:
     return _hydrate_invitees(dict(row)) if row else None
 
 
+def add_invitees_to_event(event_id: str, new_invitee_ids: list[str]) -> tuple[list[str], list[str]]:
+    """Append google_ids to an event's extra_invitee_ids JSON list.
+    Dedupes against the existing list. Returns (full_invitee_list,
+    actually_added) — `actually_added` is the slice that was new, used
+    by the endpoint to push notifications only to people who weren't
+    already on the list. Endpoint layer enforces creator-only auth."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT extra_invitee_ids FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+        if row is None:
+            return ([], [])
+        try:
+            current = json.loads(row["extra_invitee_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            current = []
+        current_set = {str(g) for g in current if g}
+        added: list[str] = []
+        for g in new_invitee_ids:
+            gid = str(g) if g else ""
+            if gid and gid not in current_set:
+                current_set.add(gid)
+                current.append(gid)
+                added.append(gid)
+        if added:
+            conn.execute(
+                "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
+                (json.dumps(current), event_id),
+            )
+            conn.commit()
+        return (current, added)
+
+
 def delete_group_event(event_id: str) -> bool:
     """Delete a group event (or personal plan) and cascade RSVPs.
     Without the cascade, friends_feed kept showing 'Mayra vai' for an

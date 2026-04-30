@@ -14,6 +14,7 @@ import Avatar from '../components/Avatar'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
+import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import EventsMap from '../components/EventsMap'
 import { shareLink, appLink } from '../lib/share'
 
@@ -1371,6 +1372,25 @@ export default function Events() {
                       }
                     : null
                 }
+                canInvite={
+                  // Creator-only, and only on private events. Catalog
+                  // events have no invitee list to add to.
+                  state.googleUser?.id &&
+                  detailEvent.isGroupEvent &&
+                  detailEvent.createdBy === state.googleUser.id
+                }
+                onInvited={({ invitee_google_ids }) => {
+                  // Mirror the new list into local state so the next
+                  // open of the picker filters out everyone we already
+                  // added. AttendeesRow refresh is handled inside.
+                  setDetailEvent(prev => prev && prev.id === detailEvent.id
+                    ? { ...prev, extraInviteeIds: invitee_google_ids }
+                    : prev)
+                  // Refresh the user's group-events feed so the row
+                  // reflects the new pending count on Home + Events.
+                  const gid = state.googleUser?.id
+                  if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+                }}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 userNeighborhood={state.neighborhood}
@@ -1973,9 +1993,14 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
+  // Post-creation invite sheet — only opens for the creator of a
+  // private event. Bumped invitedTick refetches AttendeesRow so the
+  // newly added pending invitees show up immediately.
+  const [showInvite, setShowInvite] = useState(false)
+  const [invitedTick, setInvitedTick] = useState(0)
   const [imageZoomed, setImageZoomed] = useState(false)
   // Track image load failure separately. IG CDN URLs are signed and
   // expire after a few days, so by the time a user opens an older
@@ -2290,7 +2315,7 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
               eventId={ev.id}
               googleId={googleId}
               isRsvped={rsvped}
-              refreshKey={rsvped ? 'rsvp-on' : 'rsvp-off'}
+              refreshKey={`${rsvped ? 'rsvp-on' : 'rsvp-off'}-${invitedTick}`}
               viewerName={viewerName}
               viewerPicture={viewerPicture}
               onFriend={onFriend}
@@ -2384,6 +2409,21 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           </button>
         )}
 
+        {canInvite && (
+          <button
+            onClick={() => setShowInvite(true)}
+            style={{
+              width: '100%', marginTop: 10,
+              padding: '12px', borderRadius: 12,
+              background: 'transparent', border: '1.5px solid var(--border)',
+              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            👥 Convidar mais gente
+          </button>
+        )}
+
         <button
           onClick={handleShare}
           style={{
@@ -2437,6 +2477,18 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           </a>
         )}
       </div>
+      <InvitePeopleSheet
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        eventId={ev.id}
+        googleId={googleId}
+        eventName={ev.name}
+        existingInviteeIds={ev.extraInviteeIds || []}
+        onInvited={(result) => {
+          setInvitedTick(t => t + 1)
+          onInvited?.(result)
+        }}
+      />
     </>
   )
 }

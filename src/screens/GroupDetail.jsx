@@ -7,6 +7,7 @@ import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
 import AttendeesRow from '../components/AttendeesRow'
 import HomeEventRow from '../components/HomeEventRow'
+import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -375,12 +376,30 @@ export default function GroupDetail() {
         googleId={googleId}
         isRsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
         canDelete={selectedEvent ? (isAdmin || selectedEvent.created_by === googleId) : false}
+        canInvite={selectedEvent ? selectedEvent.created_by === googleId : false}
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
         onDelete={async () => {
           if (!selectedEvent) return
           await handleDeleteEvent(selectedEvent.id)
           setSelectedEvent(null)
+        }}
+        onInvited={({ invitee_google_ids }) => {
+          // Mirror the new invitee list into the group's events array so
+          // the next time the hero opens (or the user re-renders), the
+          // "already invited" set is current and the picker filters
+          // them out. AttendeesRow refresh is handled inside the hero.
+          setGroup(prev => prev ? {
+            ...prev,
+            events: prev.events.map(e =>
+              e.id === selectedEvent?.id
+                ? { ...e, extra_invitee_ids: invitee_google_ids }
+                : e
+            ),
+          } : prev)
+          setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
+            ? { ...prev, extra_invitee_ids: invitee_google_ids }
+            : prev)
         }}
         t={t}
       />
@@ -1044,10 +1063,14 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, onRsvp, onDelete, t }) {
+function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, onClose, onRsvp, onDelete, onInvited, t }) {
   const { state } = useApp()
   const open = !!event
   const [shareStatus, setShareStatus] = useState(null)
+  const [showInvite, setShowInvite] = useState(false)
+  // Bumped after a successful add-invitees so the AttendeesRow re-fetches
+  // and the new pending entries surface immediately.
+  const [invitedTick, setInvitedTick] = useState(0)
 
   // Hide the Companion FAB while the hero is up, same pattern as BottomSheet.
   useEffect(() => {
@@ -1202,7 +1225,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
               eventId={event?.id}
               googleId={googleId}
               isRsvped={isRsvped}
-              refreshKey={isRsvped ? 'rsvp-on' : 'rsvp-off'}
+              refreshKey={`${isRsvped ? 'rsvp-on' : 'rsvp-off'}-${invitedTick}`}
               viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
               viewerPicture={state.googleUser?.picture}
               onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
@@ -1218,6 +1241,20 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
                   fontSize: 14, fontWeight: 700,
                 }}>
                   {isRsvped ? `✓ ${t.events_rsvped}` : t.events_rsvp}
+                </button>
+              )}
+
+              {canInvite && (
+                <button
+                  onClick={() => setShowInvite(true)}
+                  style={{
+                    padding: '13px', borderRadius: 14,
+                    border: '1.5px solid var(--border)',
+                    background: 'white', color: 'var(--charcoal)',
+                    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  👥 Convidar mais gente
                 </button>
               )}
 
@@ -1255,6 +1292,18 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
               )}
             </div>
           </div>
+          <InvitePeopleSheet
+            open={showInvite}
+            onClose={() => setShowInvite(false)}
+            eventId={event?.id}
+            googleId={googleId}
+            eventName={event?.name}
+            existingInviteeIds={event?.extra_invitee_ids || []}
+            onInvited={(result) => {
+              setInvitedTick(t => t + 1)
+              onInvited?.(result)
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>,
