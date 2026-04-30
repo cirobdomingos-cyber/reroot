@@ -341,6 +341,36 @@ def init_db():
             """)
             conn.execute("DROP TABLE group_events_old")
             conn.commit()
+        # One-time backfill: April 2026 product call — group events are
+        # always members-only now. Any 'public' rows from before that
+        # decision get flipped so the backend's visibility checks have
+        # nothing to leak. Idempotent (next boot is a no-op).
+        conn.execute("UPDATE group_events SET visibility = 'members' WHERE visibility != 'members'")
+        conn.commit()
+        # Invitee-list snapshot backfill: May 2026 model unification.
+        # The new rule is "you can see an event iff you're its creator or
+        # in extra_invitee_ids" — group membership no longer implies
+        # event visibility. For existing group events created before this
+        # change, we snapshot the group's current members (minus the
+        # creator, who's tracked via created_by) into extra_invitee_ids.
+        # Idempotent: rows that already have a non-empty invitee list are
+        # skipped, so re-running is a no-op for converged data.
+        legacy_rows = conn.execute("""
+            SELECT id, group_id, created_by FROM group_events
+             WHERE group_id IS NOT NULL AND extra_invitee_ids = '[]'
+        """).fetchall()
+        for row in legacy_rows:
+            members = conn.execute(
+                "SELECT google_id FROM group_members WHERE group_id = ? AND google_id != ?",
+                (row["group_id"], row["created_by"]),
+            ).fetchall()
+            invitees = [m["google_id"] for m in members]
+            if invitees:
+                conn.execute(
+                    "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
+                    (json.dumps(invitees), row["id"]),
+                )
+        conn.commit()
         # Achievements/badges. One row per (user, badge) once earned —
         # categorical, never revoked. Metadata column captures context like
         # which venue triggered a "Local da casa" badge. Tier captures
@@ -2549,56 +2579,49 @@ def _hydrate_invitees(row: dict) -> dict:
     return row
 
 
-def get_group_events(group_id: str, is_member: bool = True) -> list[dict]:
-    """Return events for a group. Non-members only see public events.
-    Personal plans (group_id IS NULL) are not returned here — see
-    get_events_for_user for the per-user feed that combines both."""
-    query = "SELECT * FROM group_events WHERE group_id = ?"
-    params = [group_id]
-    if not is_member:
-        query += " AND visibility = 'public'"
-    query += " ORDER BY date_start ASC"
+def get_group_events(group_id: str, viewer_google_id: Optional[str] = None) -> list[dict]:
+    """Return events tagged with this group.
+
+    When `viewer_google_id` is set, filters to events the viewer is
+    invited to (creator OR in extra_invitee_ids). This is the model's
+    primary visibility rule post-May-2026 unification — group
+    membership alone no longer grants access to events; the creation
+    flow snapshots members into the invitee list, and the migration
+    backfilled legacy rows.
+
+    When `viewer_google_id` is None, returns every event tagged to the
+    group with no per-user gate. Used by the iCal feed (anonymous,
+    bearer-token-authed) — the token grants "this whole group's
+    calendar," which is how subscribers expect feeds to work."""
+    if viewer_google_id:
+        query = (
+            "SELECT * FROM group_events "
+            "WHERE group_id = ? AND (created_by = ? OR extra_invitee_ids LIKE ?) "
+            "ORDER BY date_start ASC"
+        )
+        params = (group_id, viewer_google_id, f'%"{viewer_google_id}"%')
+    else:
+        query = "SELECT * FROM group_events WHERE group_id = ? ORDER BY date_start ASC"
+        params = (group_id,)
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_hydrate_invitees(dict(r)) for r in rows]
 
 
-def get_personal_plans_for_user(google_id: str) -> list[dict]:
-    """Return personal plans (group_id IS NULL) where `google_id` is either
-    the creator or appears in extra_invitee_ids. JSON-array LIKE matching
-    is fine here — google_ids are numeric strings, no false positives.
-    Caller is responsible for any date filtering."""
+def get_events_visible_to_user(google_id: str) -> list[dict]:
+    """Return every private event the user can see — group-tagged or
+    not — in one shot. Single rule: creator OR in extra_invitee_ids.
+    Caller is responsible for any date filtering. JSON-array LIKE
+    matching is safe here because google_ids are numeric strings (no
+    substring collisions)."""
     if not google_id:
         return []
     with get_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT * FROM group_events
-            WHERE group_id IS NULL
-              AND (created_by = ? OR extra_invitee_ids LIKE ?)
-            ORDER BY date_start ASC
-            """,
+            "SELECT * FROM group_events "
+            "WHERE created_by = ? OR extra_invitee_ids LIKE ? "
+            "ORDER BY date_start ASC",
             (google_id, f'%"{google_id}"%'),
-        ).fetchall()
-    return [_hydrate_invitees(dict(r)) for r in rows]
-
-
-def get_group_events_with_extras_for_user(google_id: str) -> list[dict]:
-    """Return events that have a group_id AND list `google_id` as an
-    extra invitee (so non-members of the group still see it). Used to
-    surface 'group + extras' events for invited friends who aren't in
-    the group itself."""
-    if not google_id:
-        return []
-    with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM group_events
-            WHERE group_id IS NOT NULL
-              AND extra_invitee_ids LIKE ?
-            ORDER BY date_start ASC
-            """,
-            (f'%"{google_id}"%',),
         ).fetchall()
     return [_hydrate_invitees(dict(r)) for r in rows]
 

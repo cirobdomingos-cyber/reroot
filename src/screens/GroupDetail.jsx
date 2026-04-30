@@ -691,16 +691,18 @@ function AddEventSheet({ open, onClose, onSave, t }) {
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
   const [description, setDescription] = useState('')
-  const [visibility, setVisibility] = useState('members')
   const [saving, setSaving] = useState(false)
 
+  // Visibility is intentionally not user-selectable. auê group events
+  // are members-only, full stop — see backend create endpoint, which
+  // hardcodes 'members' regardless of what the client sends.
   async function handleSubmit(e) {
     e.preventDefault()
     if (!name.trim() || !dateStart) return
     setSaving(true)
     try {
-      await onSave({ name: name.trim(), venue: venue.trim(), date_start: dateStart, date_end: dateEnd || null, description: description.trim(), visibility })
-      setName(''); setVenue(''); setDateStart(''); setDateEnd(''); setDescription(''); setVisibility('members')
+      await onSave({ name: name.trim(), venue: venue.trim(), date_start: dateStart, date_end: dateEnd || null, description: description.trim() })
+      setName(''); setVenue(''); setDateStart(''); setDateEnd(''); setDescription('')
     } finally {
       setSaving(false)
     }
@@ -723,19 +725,6 @@ function AddEventSheet({ open, onClose, onSave, t }) {
 
         <label style={labelStyle}>{t.groups_event_desc}</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'none' }} />
-
-        <label style={labelStyle}>{t.groups_event_visibility}</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {['members', 'public'].map(v => (
-            <button key={v} type="button" onClick={() => setVisibility(v)} style={{
-              flex: 1, padding: '9px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: visibility === v ? 'var(--sage)' : 'var(--cream)',
-              color: visibility === v ? 'white' : 'var(--charcoal)', fontWeight: 600, fontSize: 12,
-            }}>
-              {v === 'members' ? `🔒 ${t.groups_event_members}` : `🌍 ${t.groups_event_public}`}
-            </button>
-          ))}
-        </div>
 
         <button type="submit" disabled={saving || !name.trim() || !dateStart} style={{
           padding: '13px 0', borderRadius: 14, border: 'none',
@@ -798,7 +787,6 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
         date_start: ev.dateStart,
         date_end: null,
         description: (desc + urlSuffix).slice(0, 1000),
-        visibility: 'members',
       })
       onClose()
     } finally {
@@ -908,7 +896,6 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
   const dateLabel = event?.date_start
     ? `${event.date_start.slice(0, 10)}${event.date_start.length > 10 ? ` · ${event.date_start.slice(11, 16)}` : ''}`
     : ''
-  const isPublic = event?.visibility === 'public'
 
   async function handleShare() {
     if (!event) return
@@ -968,19 +955,10 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
               {event?.name}
             </div>
 
-            {/* Pills row: visibility + source */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '4px 10px', borderRadius: 8,
-                background: isPublic ? 'var(--sage-pale)' : 'var(--terra-pale)',
-                fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-                color: isPublic ? 'var(--sage)' : 'var(--terra)',
-                textTransform: 'uppercase',
-              }}>
-                {isPublic ? '🌍 Público' : '🔒 Só membros'}
-              </span>
-              {sourceUrl && (
+            {/* Source pill — auê group events are always members-only,
+                so we no longer show a visibility pill here. */}
+            {sourceUrl && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '4px 10px', borderRadius: 8,
@@ -990,8 +968,8 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, onClose, 
                 }}>
                   🌐 Do catálogo
                 </span>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Date + venue */}
             {dateLabel && (

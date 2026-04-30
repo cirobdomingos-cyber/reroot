@@ -531,9 +531,6 @@ export const T = {
     groups_event_date:      'Data e hora',
     groups_event_end:       'Fim (opcional)',
     groups_event_desc:      'Descrição (opcional)',
-    groups_event_visibility:'Visibilidade do evento',
-    groups_event_members:   'Só membros',
-    groups_event_public:    'Público',
     groups_event_save:      'Criar evento',
     groups_leave:           'Sair do grupo',
     groups_delete:          'Excluir grupo',
@@ -611,9 +608,6 @@ T.en.groups_event_venue = 'Location'
 T.en.groups_event_date = 'Date and time'
 T.en.groups_event_end = 'End (optional)'
 T.en.groups_event_desc = 'Description (optional)'
-T.en.groups_event_visibility = 'Event visibility'
-T.en.groups_event_members = 'Members only'
-T.en.groups_event_public = 'Public'
 T.en.groups_event_save = 'Create event'
 T.en.groups_leave = 'Leave group'
 T.en.groups_delete = 'Delete group'

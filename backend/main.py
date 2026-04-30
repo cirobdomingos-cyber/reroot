@@ -1354,10 +1354,19 @@ def _is_in_curitiba(ev) -> bool:
     return True
 
 
-def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
+def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "") -> dict:
     """Shape a `group_events` row into the EnrichedEvent dict the frontend
     consumes. Used by GET /events/{id} and GET /events/group so both paths
-    return identical shapes."""
+    return identical shapes.
+
+    Viewer-awareness: the group tag (groupId/groupName) is only exposed
+    to viewers who are *also* in that group. An outsider invitee — added
+    to extra_invitee_ids without joining the group — sees the event as a
+    plain personal event with no source-group label. This is how we
+    honor "invite an outsider to a group event without revealing the
+    group" without diverging the event into two rows. When viewer is
+    unknown (empty string), we default to hiding the group context — a
+    safe-by-default for any unauthenticated read paths."""
     from datetime import datetime as _dt
     ds = ge.get("date_start") or ""
     try:
@@ -1379,10 +1388,21 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
     url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
     event_url = url_match.group(1).rstrip(".,;") if url_match else ""
     cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
-    # Personal plans (no group_id) flagged separately so the frontend can
-    # show "Convite de Ciro" instead of a group label, and to bypass any
-    # group-membership UI affordances.
-    is_personal = not ge.get("group_id")
+    # Group tag is exposed to the viewer only if they're a member of the
+    # tagged group. Non-members on the invitee list (outsiders) see the
+    # event as if it were ungrouped — drives "invite outsider without
+    # leaking the group" semantics.
+    tagged_group_id = ge.get("group_id")
+    show_group = False
+    if tagged_group_id and viewer_google_id:
+        show_group = bool(db.get_group_member_role(tagged_group_id, viewer_google_id))
+    visible_group_id = tagged_group_id if show_group else None
+    visible_group_name = group_name if show_group else ""
+    # Personal-event mode (frontend uses this to pick "Convite de Ciro"
+    # over a group label, and to bypass group-membership UI affordances).
+    # Now defined per-viewer: an outsider on a group-tagged event sees
+    # the event in its personal flavor — no source group leaks through.
+    is_personal = not show_group
     creator_id = ge.get("created_by") or ""
     creator_name = ""
     creator_picture = ""
@@ -1427,8 +1447,8 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
         # so the existing "private/yours" sage stripe is reused.
         "isGroupEvent": True,
         "isPersonalPlan": is_personal,
-        "groupId": ge.get("group_id"),
-        "groupName": group_name,
+        "groupId": visible_group_id,
+        "groupName": visible_group_name,
         "createdBy": ge.get("created_by"),
         "createdByName": creator_name,
         "createdByPicture": creator_picture,
@@ -1444,41 +1464,36 @@ def _group_event_to_frontend(ge: dict, group_name: str = "") -> dict:
 
 @app.get("/events/group")
 def list_user_group_events(google_id: str):
-    """Return all upcoming private events the user can see:
-      - Group events from groups they're a member of (classic case)
-      - Personal plans where they're creator OR in extra_invitee_ids
-      - Group + extras events where they're an invited friend even
-        though they're not in the group
-    Shaped like catalog events. Server-side gated by membership /
-    invitee status."""
+    """Return all upcoming private events the user can see — single rule:
+    they're the creator or appear in extra_invitee_ids. After the May
+    2026 unification this collapses what used to be three separate
+    queries (group events / personal plans / hybrid) into one.
+    Shaped like catalog events."""
     if not google_id:
         return {"events": []}
     today = date.today().isoformat()
-    out: list[dict] = []
-    seen_ids: set[str] = set()
+    # Cache group lookups so we don't hit the DB once per event when
+    # several events share a tagged group.
+    group_name_cache: dict[str, str] = {}
 
-    def _push(ge: dict, group_name: str = "") -> None:
+    def _resolve_group_name(group_id: Optional[str]) -> str:
+        if not group_id:
+            return ""
+        if group_id not in group_name_cache:
+            group = db.get_group(group_id)
+            group_name_cache[group_id] = (group or {}).get("name") or ""
+        return group_name_cache[group_id]
+
+    out: list[dict] = []
+    for ge in db.get_events_visible_to_user(google_id):
         ds = ge.get("date_start") or ""
         if ds and ds[:10] < today:
-            return
-        if ge["id"] in seen_ids:
-            return
-        seen_ids.add(ge["id"])
-        out.append(_group_event_to_frontend(ge, group_name=group_name))
-
-    # Group events you're a member of
-    for g in db.get_groups_for_user(google_id):
-        for ge in db.get_group_events(g["id"], is_member=True):
-            _push(ge, group_name=g.get("name") or "")
-
-    # Personal plans — creator OR extra invitee
-    for ge in db.get_personal_plans_for_user(google_id):
-        _push(ge)
-
-    # Group + extras events where you're an extra invitee but not a member
-    for ge in db.get_group_events_with_extras_for_user(google_id):
-        # Skip if already seen via group membership
-        _push(ge)
+            continue
+        out.append(_group_event_to_frontend(
+            ge,
+            group_name=_resolve_group_name(ge.get("group_id")),
+            viewer_google_id=google_id,
+        ))
 
     out.sort(key=lambda e: e.get("dateStart") or "9999-99-99")
     return {"events": out}
@@ -1491,39 +1506,30 @@ def get_event(event_id: str, google_id: str = ""):
     if ev:
         return _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
 
-    # Fallback: group events (ids start with "grp_ev_") so a friend's
-    # public-group RSVP can be opened from the catalog detail panel.
-    # Personal plans live in the same table; visibility is creator-or-
-    # invitee. We require google_id for personal plans (no public reads).
+    # Fallback: private events (ids start with "grp_ev_"). After the May
+    # 2026 model unification, every private event — group-tagged or not
+    # — uses the same visibility rule: the viewer must be the creator or
+    # in extra_invitee_ids. Group membership alone no longer grants
+    # access; the creation flow snapshots members into the invitee list,
+    # and the migration in database.py backfilled legacy rows. The
+    # group_id stays as a metadata tag (drives the group calendar feed
+    # and the in-card group label, but not access).
     if event_id.startswith("grp_ev_"):
         ge = db.get_group_event(event_id)
         if ge:
             invitees = ge.get("extra_invitee_ids") or []
             creator_id = ge.get("created_by")
-            group_id = ge.get("group_id")
-            if group_id:
-                # Group event. Visibility decides who can read via the
-                # link: 'public' = anyone, 'members' = only the group's
-                # members + any extra invitees + the creator.
-                visibility = (ge.get("visibility") or "members").lower()
-                if visibility == "public":
-                    group = db.get_group(group_id)
-                    return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
-                # 'members' (default) — gate by membership / invitee / creator.
-                is_member = bool(google_id and db.get_group_member_role(group_id, google_id))
-                is_invitee = bool(google_id and google_id in invitees)
-                is_creator = bool(google_id and google_id == creator_id)
-                if is_member or is_invitee or is_creator:
-                    group = db.get_group(group_id)
-                    return _group_event_to_frontend(ge, group_name=(group or {}).get("name") or "")
-                raise HTTPException(
-                    status_code=403,
-                    detail="Evento privado de grupo — só membros do grupo podem ver",
+            is_invitee = bool(google_id and google_id in invitees)
+            is_creator = bool(google_id and google_id == creator_id)
+            if is_creator or is_invitee:
+                group_name = ""
+                if ge.get("group_id"):
+                    group = db.get_group(ge["group_id"])
+                    group_name = (group or {}).get("name") or ""
+                return _group_event_to_frontend(
+                    ge, group_name=group_name, viewer_google_id=google_id,
                 )
-            # Personal plan (no group_id): only creator + invitees may see it.
-            if google_id and (google_id == creator_id or google_id in invitees):
-                return _group_event_to_frontend(ge)
-            raise HTTPException(status_code=403, detail="Plano privado — só convidados podem ver")
+            raise HTTPException(status_code=403, detail="Evento privado — só convidados podem ver")
 
     raise HTTPException(status_code=404, detail="Evento não encontrado")
 
@@ -2667,8 +2673,14 @@ class GroupEventCreateRequest(BaseModel):
     venue: str = ""
     date_start: str
     date_end: Optional[str] = None
-    visibility: str = "members"  # 'public' | 'members'
     note: str = ""  # short free-text "que tal esse?" attached to the card
+    # Explicit invitee list. When None, the endpoint defaults to "all
+    # current group members minus the creator" — preserves the legacy
+    # "create from inside the group, everyone gets it" behavior for any
+    # client that doesn't yet send the field. New clients (post-commit-2)
+    # will always send a curated list, including extras outside the
+    # group. Empty list is allowed (event for the creator only).
+    invitee_google_ids: Optional[list[str]] = None
     # Catalog event id when this row was forked from a public event
     # (e.g., "instagram_ig_<handle>_<post>"). Backend parses out the
     # IG handle so views/RSVPs on the group copy still attribute to
@@ -2710,9 +2722,11 @@ def create_group(req: GroupCreateRequest):
 def list_groups(google_id: str):
     """List all groups a user belongs to."""
     groups = db.get_groups_for_user(google_id)
-    # Attach next upcoming event for each group
+    # Attach next upcoming event for each group — gated by the viewer's
+    # invitee status, so a group member who wasn't invited to a specific
+    # event won't see it surface as "next_event" for the group card.
     for g in groups:
-        events = db.get_group_events(g["id"], is_member=True)
+        events = db.get_group_events(g["id"], viewer_google_id=google_id)
         now = datetime.now(timezone.utc).isoformat()
         upcoming = [e for e in events if e["date_start"] >= now[:10]]
         g["next_event"] = upcoming[0] if upcoming else None
@@ -2734,7 +2748,11 @@ def get_group(group_id: str, google_id: str):
         raise HTTPException(status_code=403, detail="This is a private group")
 
     members = db.get_group_members(group_id) if is_member else []
-    events = db.get_group_events(group_id, is_member=is_member)
+    # Events tagged to this group AND the viewer is invited. Members who
+    # weren't on a specific event's invite list (e.g. excluded for a
+    # subset event before the create flow auto-disconnects the group)
+    # won't see it here. Non-members see no events.
+    events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
 
     return {
         **group,
@@ -2859,12 +2877,35 @@ def group_stats(group_id: str, google_id: str):
 
 @app.post("/groups/{group_id}/events")
 def create_group_event(group_id: str, req: GroupEventCreateRequest):
-    """Create an event within a group. Any member can create events.
-    Side-effect: pushes a notification to all OTHER group members so the
-    crew finds out without having to open the app."""
+    """Create an event tagged to a group. Any member can create.
+
+    Visibility is the unified rule (creator OR in invitee list); the
+    `group_id` is metadata that drives the calendar feed and the
+    in-card group label for viewers who are also members.
+
+    Invitee list resolution:
+      - Caller sends `invitee_google_ids` → use it verbatim (already
+        curated; new client knows what it's doing).
+      - Caller omits it (legacy clients) → expand to all current group
+        members minus the creator. Preserves today's behavior.
+
+    Pushes go to everyone in the resolved invitee list — outsiders
+    included — so an invite always surfaces as a notification."""
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")
+    if req.invitee_google_ids is None:
+        invitees = [
+            m["google_id"]
+            for m in db.get_group_members(group_id)
+            if m.get("google_id") and m["google_id"] != req.google_id
+        ]
+    else:
+        # De-dup, drop creator (tracked via created_by), drop empties.
+        invitees = sorted({
+            str(g) for g in req.invitee_google_ids
+            if g and str(g) != req.google_id
+        })
     event = db.create_group_event(
         group_id=group_id,
         google_id=req.google_id,
@@ -2873,13 +2914,18 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         venue=req.venue.strip(),
         date_start=req.date_start,
         date_end=req.date_end,
-        visibility=req.visibility,
+        # Visibility is intentionally hardcoded — auê group events are
+        # members-only by design. The column stays for backward compat
+        # but the values are no longer user-controllable.
+        visibility="members",
         note=req.note.strip(),
+        extra_invitee_ids=invitees,
         source_ig_handle=_handle_from_event_id(req.source_event_id),
     )
-    # Notify other group members. Tag per (group, event) so accidental
-    # double-creates collapse instead of stacking. The note (if any) shows
-    # in the push body — gives instant context without opening the app.
+    # Notify everyone on the invitee list (group members + outsiders).
+    # Tag per (group, event) so accidental double-creates collapse
+    # instead of stacking. The note (if any) shows in the push body —
+    # instant context without opening the app.
     group = db.get_group(group_id)
     group_name = (group or {}).get("name") or "no grupo"
     creator_name = _user_display_name(req.google_id)
@@ -2890,11 +2936,9 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         if note else
         f"{creator_name} adicionou: {req.name.strip()}"
     )
-    for member in db.get_group_members(group_id):
-        if member.get("google_id") == req.google_id:
-            continue  # skip the creator
+    for invitee_id in invitees:
         _send_push_to_user(
-            member["google_id"],
+            invitee_id,
             title=f"🎲 {group_name}",
             body=body,
             url=f"/#/groups/{group_id}",
@@ -2910,9 +2954,12 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
 
 @app.get("/groups/{group_id}/events")
 def list_group_events(group_id: str, google_id: str = ""):
-    """List events for a group. Non-members see only public events."""
-    is_member = bool(google_id and db.get_group_member_role(group_id, google_id))
-    events = db.get_group_events(group_id, is_member=is_member)
+    """List events tagged with this group that the viewer is invited
+    to. Non-authenticated callers get an empty list (no public-event
+    surface anymore — event publicness was removed in April 2026)."""
+    if not google_id:
+        return {"events": []}
+    events = db.get_group_events(group_id, viewer_google_id=google_id)
     return {"events": events}
 
 
@@ -3065,7 +3112,12 @@ def group_calendar_feed(feed_token: str):
     if not group:
         raise HTTPException(status_code=404, detail="Calendar feed not found")
 
-    events = db.get_group_events(group["id"], is_member=True)
+    # Feed token = bearer auth granting access to the entire group's
+    # calendar. We intentionally bypass the per-user invitee gate here
+    # because the URL is a holistic subscription — that's how iCal
+    # feeds work and how subscribers expect them to behave. (Per-user
+    # feed tokens would be a follow-up if we ever need finer scoping.)
+    events = db.get_group_events(group["id"])
 
     lines = [
         "BEGIN:VCALENDAR",
