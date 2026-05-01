@@ -23,6 +23,10 @@
 import { Capacitor } from '@capacitor/core'
 
 export function isGoogleConfigured() {
+  // On native (iOS/Android), config lives in capacitor.config.json — assume
+  // the build pipeline already wired the iosClientId / androidClientId.
+  if (Capacitor.isNativePlatform?.()) return true
+  // On web, the env var is the source of truth for whether OAuth is set up.
   return !!import.meta.env.VITE_GOOGLE_CLIENT_ID
 }
 
