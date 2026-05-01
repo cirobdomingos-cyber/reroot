@@ -10,16 +10,20 @@ __pycache__/
 *.db
 .idea/
 
-# Android / TWA build artifacts
-.gradle/
-build/
-app/
-gradle/
-gradlew
-gradlew.bat
-build.gradle
-settings.gradle
-gradle.properties
+# Android / TWA build artifacts. Scoped to /android/ so the rules don't
+# also catch case-insensitive matches inside /ios/App/ (which has a
+# subfolder also named App/ — bare `app/` was hitting it on Windows
+# and quietly excluding iOS source files like Info.plist and
+# App.entitlements).
+/android/.gradle/
+/android/build/
+/android/app/
+/android/gradle/
+/android/gradlew
+/android/gradlew.bat
+/android/build.gradle
+/android/settings.gradle
+/android/gradle.properties
 
 # Signing keys — NEVER commit
 *.keystore
