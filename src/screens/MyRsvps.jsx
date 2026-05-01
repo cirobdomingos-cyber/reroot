@@ -38,7 +38,30 @@ export default function MyRsvps() {
         setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
       })
       fetchUserGroupEvents(googleId).then(events => {
-        if (!cancelled) setGroupEvents(events || [])
+        if (cancelled) return
+        const live = events || []
+        setGroupEvents(live)
+        // Reconcile local RSVP cache with the server's view: any
+        // grp_ev_* RSVP that the server no longer surfaces means the
+        // user was kicked (or the event was deleted). Drop those
+        // local entries so the row doesn't keep showing as
+        // "Confirmado" forever on the kicked user's phone.
+        const liveIds = new Set(live.map(e => e.id))
+        const staleIds = Object.keys(state.rsvps || {}).filter(id =>
+          typeof id === 'string' && id.startsWith('grp_ev_') && !liveIds.has(id)
+        )
+        for (const id of staleIds) {
+          const cached = state.rsvps[id] || {}
+          dispatch({
+            type: 'TOGGLE_RSVP',
+            payload: {
+              eventId: id,
+              dateStart: cached.dateStart,
+              name: cached.name,
+              venue: cached.venue,
+            },
+          })
+        }
       })
     }
     load()
@@ -47,6 +70,7 @@ export default function MyRsvps() {
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => { cancelled = true; document.removeEventListener('visibilitychange', onVisible) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.googleUser?.id])
 
   // Build a lookup of group/personal-plan metadata so each RSVP entry
