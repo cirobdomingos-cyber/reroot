@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -377,12 +377,17 @@ export default function Events() {
       return
     }
     setDetailLoading(true)
-    const { event, forbidden, networkError, message } = await fetchEventDetail(eventId, state.googleUser?.id || '')
+    const { event, forbidden, networkError, message, eventName, canRequest, requestStatus } =
+      await fetchEventDetail(eventId, state.googleUser?.id || '')
     if (forbidden) {
       // Backend returned 403 (private plan / private group event). Render
       // a friendly 'this is private' panel instead of the silent-empty
-      // state that masquerades as "link is broken".
-      setDetailEvent({ _forbidden: true, _message: message, id: eventId })
+      // state that masquerades as "link is broken". canRequest +
+      // requestStatus drive the "Pedir convite" affordance.
+      setDetailEvent({
+        _forbidden: true, _message: message, id: eventId,
+        _eventName: eventName, _canRequest: canRequest, _requestStatus: requestStatus,
+      })
       setDetailLoading(false)
       return
     }
@@ -1267,14 +1272,23 @@ export default function Events() {
                   Evento privado
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 18, lineHeight: 1.5, maxWidth: 280 }}>
-                  {detailEvent._message || 'Só convidados podem ver os detalhes desse evento.'}
+                  {detailEvent._eventName ? (
+                    <>"{detailEvent._eventName}" — só convidados podem ver os detalhes.</>
+                  ) : (detailEvent._message || 'Só convidados podem ver os detalhes desse evento.')}
                 </div>
+                <RequestInviteButton
+                  eventId={detailEvent.id}
+                  googleId={state.googleUser?.id}
+                  canRequest={detailEvent._canRequest}
+                  initialStatus={detailEvent._requestStatus}
+                />
                 <button
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
                     background: 'var(--sage)', color: 'white',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    marginTop: 12,
                   }}
                 >
                   Voltar
@@ -1808,6 +1822,95 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
 // rollup, then appends utm_source=aue&utm_campaign=event_<id> to
 // the outbound URL so we can show "auê drove X visits" later when
 // pitching per-event affiliate invites.
+// "Pedir convite" button on the private-event lock screen. Calls the
+// backend to ask the creator + co-hosts to be added; backend rate-limits
+// to 5/hour/user across all events. Status states: 'none' shows the
+// button enabled, 'pending' shows a disabled "Pedido enviado" pill,
+// 'rejected' shows a disabled "Pedido recusado" pill (the row stays
+// in the DB to enforce no-re-request).
+function RequestInviteButton({ eventId, googleId, canRequest, initialStatus }) {
+  const [status, setStatus] = useState(initialStatus || 'none')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!googleId) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 4 }}>
+        Faça login pra pedir convite.
+      </div>
+    )
+  }
+  if (!canRequest && status === 'none') {
+    return null
+  }
+
+  if (status === 'pending') {
+    return (
+      <div style={{
+        padding: '10px 16px', borderRadius: 12,
+        background: 'var(--sage-pale)', color: 'var(--sage)',
+        fontSize: 13, fontWeight: 700,
+      }}>
+        ✓ Pedido enviado
+      </div>
+    )
+  }
+  if (status === 'rejected') {
+    return (
+      <div style={{
+        padding: '10px 16px', borderRadius: 12,
+        background: '#FFEBEE', color: '#B71C1C',
+        fontSize: 13, fontWeight: 700,
+      }}>
+        Pedido recusado
+      </div>
+    )
+  }
+  if (status === 'accepted' || status === 'already_invited') {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 4 }}>
+        Você já tem acesso — recarregue a tela.
+      </div>
+    )
+  }
+
+  async function handleClick() {
+    if (submitting) return
+    setSubmitting(true); setError('')
+    try {
+      const result = await requestEventInvite(eventId, googleId)
+      setStatus(result?.status || 'pending')
+    } catch (err) {
+      setError(err?.message || 'Falha ao pedir convite')
+    }
+    setSubmitting(false)
+  }
+
+  return (
+    <>
+      <button
+        onClick={handleClick}
+        disabled={submitting}
+        style={{
+          padding: '10px 22px', borderRadius: 12, border: 'none',
+          background: 'var(--terra)', color: 'white',
+          fontSize: 13, fontWeight: 700,
+          cursor: submitting ? 'wait' : 'pointer',
+          opacity: submitting ? 0.7 : 1,
+        }}
+      >
+        {submitting ? 'Pedindo...' : '📩 Pedir convite'}
+      </button>
+      {error && (
+        <div style={{ fontSize: 12, color: '#B71C1C', marginTop: 8, textAlign: 'center', maxWidth: 280 }}>
+          {error}
+        </div>
+      )}
+    </>
+  )
+}
+
+
 function SymplaBuyButton({ ev }) {
   const igHandle = (ev.id || '').startsWith('instagram_ig_')
     ? (() => {

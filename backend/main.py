@@ -1629,7 +1629,26 @@ def get_event(event_id: str, google_id: str = ""):
                 return _group_event_to_frontend(
                     ge, group_name=group_name, viewer_google_id=google_id,
                 )
-            raise HTTPException(status_code=403, detail="Evento privado — só convidados podem ver")
+            # Forbidden — but include enough info for the frontend to
+            # show "Pedir convite" instead of just a hard lock screen.
+            # request_status: 'none' | 'pending' | 'rejected' decides
+            # the button state. event_name surfaces in the request UX
+            # so the user knows what they're asking to join.
+            req_status = (
+                db.get_invite_request_status(event_id, google_id) or "none"
+                if google_id else "none"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "private_event",
+                    "message": "Evento privado — só convidados podem ver",
+                    "event_id": event_id,
+                    "event_name": ge.get("name") or "",
+                    "can_request": bool(google_id) and req_status != "rejected",
+                    "request_status": req_status,
+                },
+            )
 
     raise HTTPException(status_code=404, detail="Evento não encontrado")
 
@@ -2988,6 +3007,154 @@ def group_stats(group_id: str, google_id: str):
         raise HTTPException(status_code=403, detail="Apenas membros veem as estatísticas do grupo")
     stats = db.get_group_stats(group_id)
     return stats
+
+
+# ── Invite requests ──────────────────────────────────────
+# Flow: a non-invitee opens an event link → backend's GET /events/{id}
+# returns 403 with `request_status` so the frontend shows "Pedir convite";
+# user POSTs request-invite → creator sees inline "Pedidos pendentes" on
+# the event hero and pushes are bundled to one notification per event;
+# accept folds the requester into extra_invitee_ids; reject keeps the row
+# (status='rejected') as a permanent block on re-requests.
+
+@app.post("/events/{event_id}/request-invite")
+def request_event_invite(event_id: str, google_id: str, background_tasks: BackgroundTasks):
+    """Ask the event's creator + co-hosts to be added as an invitee.
+    Rate-limited to 5 per hour per requesting user across all events.
+    Idempotent at the (event, user) level — calling again on a pending
+    or rejected request returns the existing status. Notifications to
+    creator/co-hosts are bundled via a tag so iOS replaces previous
+    pushes for the same event with the latest count."""
+    if not google_id:
+        raise HTTPException(status_code=400, detail="google_id obrigatório")
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    # Already has access? Skip the request and return 200.
+    creator_id = event.get("created_by") or ""
+    invitees = event.get("extra_invitee_ids") or []
+    co_hosts = event.get("co_host_ids") or []
+    if google_id == creator_id or google_id in invitees or google_id in co_hosts:
+        return {"ok": True, "status": "already_invited"}
+
+    # Existing request for this (event, user) — return its status.
+    current = db.get_invite_request_status(event_id, google_id)
+    if current == "pending":
+        return {"ok": True, "status": "pending"}
+    if current == "rejected":
+        return {"ok": True, "status": "rejected"}
+    if current == "accepted":
+        return {"ok": True, "status": "accepted"}
+
+    # Rate limit: 5 / hour / user.
+    if db.count_recent_invite_requests(google_id) >= db.RATE_LIMIT_MAX_REQUESTS:
+        raise HTTPException(status_code=429, detail="Muitos pedidos. Tenta de novo mais tarde.")
+
+    if not db.create_invite_request(event_id, google_id):
+        return {"ok": True, "status": "pending"}
+
+    # Notify creator + co-hosts. Bundle via tag so multiple requests
+    # for the same event collapse into one notification slot.
+    requester_name = _user_display_name(google_id)
+    pending = db.get_pending_invite_requests(event_id)
+    count = len(pending)
+    body = (
+        f"{requester_name} pediu pra entrar"
+        if count == 1
+        else f"{requester_name} e mais {count - 1} pediram pra entrar"
+    )
+    title = f"📩 {event.get('name') or 'Convite'}"
+    tag = f"invite-request-{event_id}"
+    targets = [creator_id, *[c for c in co_hosts if c != creator_id]]
+
+    def _fanout():
+        for tgt in targets:
+            try:
+                _send_push_to_user(
+                    tgt, title=title, body=body,
+                    url=f"/#/events?event={event_id}", tag=tag,
+                )
+            except Exception as exc:
+                log.warning(f"invite-request push to {tgt} failed: {exc}")
+
+    background_tasks.add_task(_fanout)
+    return {"ok": True, "status": "pending"}
+
+
+@app.get("/events/{event_id}/invite-requests")
+def list_invite_requests(event_id: str, google_id: str):
+    """List pending invite requests for an event. Creator/co-host only.
+    The frontend renders these as "Pedidos pendentes" rows on the hero
+    with inline Aceitar/Recusar buttons."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Apenas criador ou co-organizadores")
+    return {"requests": db.get_pending_invite_requests(event_id)}
+
+
+@app.post("/events/{event_id}/invite-requests/{requester_google_id}/accept")
+def accept_invite_request(
+    event_id: str, requester_google_id: str, google_id: str,
+    background_tasks: BackgroundTasks,
+):
+    """Approve a pending request. Adds the requester to extra_invitee_ids,
+    marks the request accepted, and pushes "Te convidaram pra ..." to the
+    requester so they know to RSVP."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Apenas criador ou co-organizadores")
+    if not db.accept_invite_request(event_id, requester_google_id):
+        raise HTTPException(status_code=404, detail="Pedido não encontrado ou já decidido")
+
+    # Push to the now-invited user. Mirrors the post-creation invite copy.
+    creator_name = _user_display_name(google_id)
+    name = event.get("name") or "um plano"
+    venue_label = event.get("venue") or ""
+    when_label = (event.get("date_start") or "")[:10]
+    body = (
+        f"{creator_name} aceitou seu pedido — {name}"
+        + (f" no {venue_label}" if venue_label else "")
+        + (f", {when_label}" if when_label else "")
+    )
+
+    def _push():
+        try:
+            _send_push_to_user(
+                requester_google_id,
+                title="🎉 Você foi convidado",
+                body=body,
+                url=f"/#/events?event={event_id}",
+                tag=f"invite-accepted-{event_id}",
+            )
+        except Exception as exc:
+            log.warning(f"invite-accepted push to {requester_google_id} failed: {exc}")
+
+    background_tasks.add_task(_push)
+    return {"ok": True}
+
+
+@app.delete("/events/{event_id}/invite-requests/{requester_google_id}")
+def reject_invite_request(event_id: str, requester_google_id: str, google_id: str):
+    """Reject a pending request. The row stays (status='rejected') so
+    the same user can't re-request the same event."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Apenas criador ou co-organizadores")
+    db.reject_invite_request(event_id, requester_google_id)
+    return {"ok": True}
 
 
 @app.delete("/events/{event_id}/groups/{group_id}")

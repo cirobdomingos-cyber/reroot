@@ -284,9 +284,22 @@ export async function fetchEventDetail(eventId, googleId = '') {
       return { event: normalizeBackendEvent(data), source: 'live' }
     }
     if (res.status === 403) {
-      let msg = ''
-      try { msg = (await res.json()).detail || '' } catch {}
-      return { event: null, source: 'forbidden', forbidden: true, message: msg }
+      // Backend now returns a structured detail object for private
+      // events: { code, message, event_id, event_name, can_request,
+      // request_status }. Older endpoints return a plain string —
+      // tolerate both shapes.
+      let detail = null
+      try { detail = (await res.json()).detail } catch {}
+      const isObj = detail && typeof detail === 'object'
+      return {
+        event: null,
+        source: 'forbidden',
+        forbidden: true,
+        message: isObj ? detail.message : (detail || ''),
+        eventName: isObj ? detail.event_name : '',
+        canRequest: isObj ? !!detail.can_request : false,
+        requestStatus: isObj ? (detail.request_status || 'none') : 'none',
+      }
     }
     // 404 (or any other non-OK): fall through to embedded data — if it's
     // not in the static seed either, the caller will render "not found".
@@ -885,6 +898,49 @@ export async function createGroupEvent(groupId, googleId, eventData) {
     },
   )
   if (!res.ok) throw new Error(`Create group event failed: ${res.status}`)
+  return res.json()
+}
+
+// ── Invite requests ──
+// Used when a user opens a private event link they're not invited to.
+// They can ask the creator/co-hosts; rate-limited to 5/hour/user
+// across all events. Re-requesting after rejection is blocked server-side.
+export async function requestEventInvite(eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/request-invite?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'POST' },
+  )
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Muitos pedidos. Tenta de novo mais tarde.')
+  }
+  if (!res.ok) throw new Error(`Request invite failed: ${res.status}`)
+  return res.json()  // { ok, status: 'pending'|'rejected'|'accepted'|'already_invited' }
+}
+
+export async function fetchEventInviteRequests(eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/invite-requests?google_id=${encodeURIComponent(googleId)}`,
+  )
+  if (!res.ok) return { requests: [] }
+  return res.json()
+}
+
+export async function acceptEventInviteRequest(eventId, requesterGoogleId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/invite-requests/${encodeURIComponent(requesterGoogleId)}/accept?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new Error(`Accept invite request failed: ${res.status}`)
+  return res.json()
+}
+
+export async function rejectEventInviteRequest(eventId, requesterGoogleId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/invite-requests/${encodeURIComponent(requesterGoogleId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Reject invite request failed: ${res.status}`)
   return res.json()
 }
 

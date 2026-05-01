@@ -251,6 +251,25 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Invite requests — when a non-invitee opens a private event link
+        # they can ask the creator/co-hosts to be added. Rejected requests
+        # are kept (status='rejected') to enforce "no re-requesting"; the
+        # row's existence blocks future requests for the same (event, user).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS event_invite_requests (
+                event_id              TEXT NOT NULL,
+                requester_google_id   TEXT NOT NULL,
+                status                TEXT NOT NULL DEFAULT 'pending',
+                requested_at          TEXT NOT NULL,
+                decided_at            TEXT,
+                PRIMARY KEY (event_id, requester_google_id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_invite_req_requester_time "
+            "ON event_invite_requests(requester_google_id, requested_at)"
+        )
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_events (
                 id           TEXT PRIMARY KEY,
@@ -2757,6 +2776,141 @@ def get_group_event(event_id: str) -> Optional[dict]:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM group_events WHERE id = ?", (event_id,)).fetchone()
     return _hydrate_invitees(dict(row)) if row else None
+
+
+RATE_LIMIT_WINDOW_SECS = 3600
+RATE_LIMIT_MAX_REQUESTS = 5
+
+
+def count_recent_invite_requests(google_id: str, window_secs: int = RATE_LIMIT_WINDOW_SECS) -> int:
+    """How many invite requests this user has made in the last
+    `window_secs` seconds. Used to gate the "max 5 per hour" rule
+    so a user can't spam-request a thousand events."""
+    if not google_id:
+        return 0
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_secs)).isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM event_invite_requests "
+            "WHERE requester_google_id = ? AND requested_at > ?",
+            (google_id, cutoff),
+        ).fetchone()
+    return int((row["c"] if row else 0) or 0)
+
+
+def get_invite_request_status(event_id: str, google_id: str) -> Optional[str]:
+    """Return 'pending', 'rejected', or None for a (event, user) pair.
+    Used by the 403 path to decide whether to surface a "Pedir convite"
+    button or a "Pedido recusado" disabled state."""
+    if not event_id or not google_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status FROM event_invite_requests "
+            "WHERE event_id = ? AND requester_google_id = ?",
+            (event_id, google_id),
+        ).fetchone()
+    return row["status"] if row else None
+
+
+def create_invite_request(event_id: str, google_id: str) -> bool:
+    """Insert a new pending invite request. Returns False if a row for
+    this (event, user) already exists (pending OR rejected — caller
+    should check status separately if it cares)."""
+    if not event_id or not google_id:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO event_invite_requests "
+                "(event_id, requester_google_id, status, requested_at) "
+                "VALUES (?, ?, 'pending', ?)",
+                (event_id, google_id, now),
+            )
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def get_pending_invite_requests(event_id: str) -> list[dict]:
+    """List of pending requests for an event. Used by the creator's
+    inline 'Pedidos pendentes' list. Hydrates with the requester's
+    display name + picture from user_states."""
+    if not event_id:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT requester_google_id, requested_at FROM event_invite_requests "
+            "WHERE event_id = ? AND status = 'pending' "
+            "ORDER BY requested_at ASC",
+            (event_id,),
+        ).fetchall()
+    out = []
+    for r in rows:
+        gid = r["requester_google_id"]
+        state = get_user_state(gid) or {}
+        gu = state.get("googleUser") or {}
+        out.append({
+            "google_id": gid,
+            "name": state.get("userName") or gu.get("givenName") or gu.get("name") or "Alguém",
+            "picture": gu.get("picture") or "",
+            "requested_at": r["requested_at"],
+        })
+    return out
+
+
+def accept_invite_request(event_id: str, requester_google_id: str) -> bool:
+    """Mark a pending request as accepted and fold the requester into
+    extra_invitee_ids. Returns True on success, False if no pending
+    request exists. Caller is responsible for the auth check."""
+    if not event_id or not requester_google_id:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE event_invite_requests SET status = 'accepted', decided_at = ? "
+            "WHERE event_id = ? AND requester_google_id = ? AND status = 'pending'",
+            (now, event_id, requester_google_id),
+        )
+        if cur.rowcount == 0:
+            return False
+        # Append to extra_invitee_ids if not already there.
+        row = conn.execute(
+            "SELECT extra_invitee_ids FROM group_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+        if row:
+            try:
+                ids = json.loads(row["extra_invitee_ids"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                ids = []
+            if requester_google_id not in ids:
+                ids.append(requester_google_id)
+                conn.execute(
+                    "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
+                    (json.dumps(ids), event_id),
+                )
+        conn.commit()
+    return True
+
+
+def reject_invite_request(event_id: str, requester_google_id: str) -> bool:
+    """Mark a request as rejected. The row stays in the table — its
+    existence blocks future re-requests for the same (event, user).
+    Caller is responsible for the auth check."""
+    if not event_id or not requester_google_id:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE event_invite_requests SET status = 'rejected', decided_at = ? "
+            "WHERE event_id = ? AND requester_google_id = ? AND status = 'pending'",
+            (now, event_id, requester_google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
 
 
 def decline_event_invite(event_id: str, google_id: str) -> bool:
