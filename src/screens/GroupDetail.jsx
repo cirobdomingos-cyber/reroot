@@ -1220,6 +1220,11 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
             position: 'fixed', inset: 0,
             background: 'var(--cream)', zIndex: 1000,
             overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+            // Pad the bottom so the last action ("Excluir evento" etc.)
+            // clears the iOS home-bar gesture zone — without this, the
+            // bottom 30-40px of content sits underneath the home bar
+            // and the user can't reach it without aggressive scrolling.
+            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
           }}
         >
           {/* Hero band — user-uploaded image if set, else sage gradient
@@ -1323,7 +1328,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
                   // Layout-present (not display:none) so iOS WKWebView
                   // fires the picker reliably on programmatic .click().
                   style={{

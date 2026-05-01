@@ -3289,7 +3289,7 @@ async def upload_event_image(
         raise HTTPException(status_code=413, detail="Imagem maior que 8MB")
     public = image_store.save_user_upload(event_id, content, file.content_type or "")
     if not public:
-        raise HTTPException(status_code=400, detail="Imagem inválida (use JPG, PNG, WebP ou GIF)")
+        raise HTTPException(status_code=400, detail="Imagem inválida (use JPG, PNG, WebP, GIF ou HEIC)")
     db.set_event_image_url(event_id, public)
     return {"ok": True, "image_url": public}
 

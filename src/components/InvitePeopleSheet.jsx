@@ -100,22 +100,27 @@ export default function InvitePeopleSheet({
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
               borderRadius: '20px 20px 0 0',
-              padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
-              zIndex: 10501, maxHeight: '85vh', overflowY: 'auto',
-              overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+              zIndex: 10501, maxHeight: '85vh',
+              display: 'flex', flexDirection: 'column',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
-            </div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: 'var(--charcoal)' }}>
-              👥 Convidar mais gente
-            </h3>
-            {eventName && (
-              <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', marginBottom: 14 }}>
-                pra {eventName}
+            <div style={{ flexShrink: 0, padding: '6px 20px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
               </div>
-            )}
+              <h3 style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: 'var(--charcoal)' }}>
+                👥 Convidar mais gente
+              </h3>
+              {eventName && (
+                <div style={{ fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center', marginBottom: 14 }}>
+                  pra {eventName}
+                </div>
+              )}
+            </div>
+            <div style={{
+              flex: 1, overflowY: 'auto', padding: '0 20px 8px',
+              overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
+            }}>
 
             {friends.length === 0 ? (
               <div style={{
@@ -190,8 +195,14 @@ export default function InvitePeopleSheet({
                 {error}
               </div>
             )}
+            </div>{/* /scrollable */}
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <div style={{
+              flexShrink: 0,
+              display: 'flex', gap: 8,
+              padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
+              borderTop: '1px solid var(--border)', background: 'white',
+            }}>
               <button
                 type="button"
                 onClick={onClose}

@@ -50,8 +50,16 @@ _CT_TO_EXT = {
     "image/png": "png",
     "image/webp": "webp",
     "image/gif": "gif",
+    # iPhone default photo format. iOS Safari + Chrome (Android 14+)
+    # render HEIC natively, so we serve it as-is rather than running
+    # a Pillow+pillow-heif conversion pipeline (which would force a
+    # libheif system dep on Railway). Older Android browsers + most
+    # desktops will see a broken image; tradeoff is worth it for the
+    # iOS beta because most testers shoot HEIC by default.
+    "image/heic": "heic",
+    "image/heif": "heic",
 }
-_EXTS = ("jpg", "jpeg", "png", "webp", "gif")
+_EXTS = ("jpg", "jpeg", "png", "webp", "gif", "heic")
 _PUBLIC_PREFIX = "/event-images"
 
 # Reasonable cap so a malicious or broken upstream can't fill the disk

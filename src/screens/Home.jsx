@@ -230,11 +230,6 @@ export default function Home() {
     })
     .slice(0, 3)
 
-  // Post-event reconnect — the most recent past RSVP (if any)
-  const reconnectEvent = allEvents.find(ev =>
-    state.rsvps[ev.id] && ev.dateStart && new Date(ev.dateStart).getTime() <= now
-  )
-
   return (
     <div>
       {/* Brand + avatar. Home is the anchor screen, so we lead with the
@@ -408,27 +403,6 @@ export default function Home() {
         }}
         onGroupRsvp={handleAcceptInvite}
       />
-
-      {/* Post-event reconnect nudge */}
-      {reconnectEvent && (
-        <div
-          style={{
-            margin: '0 16px 12px', background: 'var(--sage-pale)', borderRadius: 16,
-            padding: '14px 16px', border: '1px solid rgba(122,158,126,0.25)', cursor: 'pointer',
-          }}
-          onClick={() => navigate('/events', { state: { openEventId: reconnectEvent.id } })}
-        >
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 4 }}>
-            🤝 {t.home_reconnect_label ?? 'Você foi ao evento?'}
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4 }}>
-            {reconnectEvent.name}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
-            {t.home_reconnect_cta ?? 'Veja quem esteve lá e conecte-se →'}
-          </div>
-        </div>
-      )}
 
       {/* Upcoming RSVPs */}
       {upcomingRsvps.length > 0 && (

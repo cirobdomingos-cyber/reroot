@@ -1046,8 +1046,15 @@ export async function fetchUserGroupEvents(googleId) {
     )
     if (!res.ok) return []
     const { events } = await res.json()
-    // Resolve image_url to absolute so iOS wrapper can load them.
-    return (events || []).map(e => ({ ...e, image_url: resolveImageUrl(e.image_url) }))
+    // /events/group returns events through _group_event_to_frontend which
+    // emits camelCase keys (imageUrl). The /groups/{id} endpoint returns
+    // raw DB rows (snake_case image_url) — see fetchGroupDetail. Both
+    // need their respective key resolved so the iOS wrapper can load
+    // them; previous version read e.image_url here and silently no-op'd.
+    return (events || []).map(e => ({
+      ...e,
+      imageUrl: resolveImageUrl(e.imageUrl),
+    }))
   } catch {
     return []
   }

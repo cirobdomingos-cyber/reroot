@@ -2238,7 +2238,7 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
               // Keep the input in the layout (not display:none) so iOS
               // WKWebView fires the file picker reliably on programmatic
               // .click(). Visually invisible via 0×0 + opacity:0.
@@ -2314,8 +2314,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
         </div>
       )}
 
-      {/* Content */}
-      <div style={{ padding: '14px 20px 28px' }}>
+      {/* Content — bottom padding clears iOS home bar so "Adicionar a um
+          grupo" / "Editar evento" / "Excluir" don't sit under the
+          gesture zone when you scroll to the end. */}
+      <div style={{
+        padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 32px)',
+      }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
           {ev.name}
         </div>
