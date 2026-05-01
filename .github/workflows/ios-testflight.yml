@@ -25,7 +25,7 @@ on:
 
 jobs:
   testflight:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     env:
       TEAM_ID: GR8L4N89V2
