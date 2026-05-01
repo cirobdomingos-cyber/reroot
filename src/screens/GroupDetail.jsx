@@ -11,11 +11,11 @@ import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EditEventSheet from '../components/EditEventSheet'
 import { compressImageForUpload } from '../lib/image-compress'
-import { shareLink, appLink } from '../lib/share'
+import { shareLink, appLink, shortEventLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
-  setGroupMemberRole, fetchGroupStats, fetchFriendsFeed, getFriends,
+  setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed, getFriends,
   uploadEventImage, deleteEventImage, BASE_URL,
 } from '../services/api'
 
@@ -1202,7 +1202,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
     // reads `?event=<id>` and opens the hero drawer for both catalog
     // events and group events (backend's /events/{id} handles both
     // shapes; group ids are prefixed `grp_ev_`).
-    const url = appLink(`/events?event=${encodeURIComponent(event.id)}`)
+    const url = shortEventLink(event.id)
     const venueStr = event.venue ? ` no ${event.venue}` : ''
     const dateStr = dateLabel ? ` · ${dateLabel}` : ''
     const text = `${event.name}${venueStr}${dateStr}`
@@ -1583,11 +1583,23 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
     setBusyId(member.google_id)
     try {
       await setGroupMemberRole(group.id, member.google_id, viewerGoogleId, nextRole)
-      // Optimistic refresh — let parent re-fetch the group so the role
-      // chip + admin-only affordances update everywhere.
       onRoleChanged?.()
     } catch (e) {
       setError(e?.message || 'Não consegui atualizar o papel')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleRemove(member) {
+    if (!confirm(`Remover ${member.name || member.google_id} do grupo?`)) return
+    setError(null)
+    setBusyId(member.google_id)
+    try {
+      await removeGroupMember(group.id, member.google_id, viewerGoogleId)
+      onRoleChanged?.()
+    } catch (e) {
+      setError(e?.message || 'Não consegui remover o membro')
     } finally {
       setBusyId(null)
     }
@@ -1637,20 +1649,34 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                 </span>
               )}
               {canActOnMember && (
-                <button
-                  onClick={() => handleRole(m, isAdmin ? 'member' : 'admin')}
-                  disabled={busyId === m.google_id}
-                  style={{
-                    padding: '6px 10px', borderRadius: 8,
-                    border: '1px solid var(--border)', background: 'white',
-                    fontSize: 11, fontWeight: 600, color: 'var(--charcoal)',
-                    cursor: busyId === m.google_id ? 'wait' : 'pointer',
-                    flexShrink: 0,
-                  }}
-                  title={isAdmin ? 'Tirar admin' : 'Tornar admin'}
-                >
-                  {busyId === m.google_id ? '…' : isAdmin ? 'Tirar admin' : 'Tornar admin'}
-                </button>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleRole(m, isAdmin ? 'member' : 'admin')}
+                    disabled={busyId === m.google_id}
+                    style={{
+                      padding: '6px 10px', borderRadius: 8,
+                      border: '1px solid var(--border)', background: 'white',
+                      fontSize: 11, fontWeight: 600, color: 'var(--charcoal)',
+                      cursor: busyId === m.google_id ? 'wait' : 'pointer',
+                    }}
+                    title={isAdmin ? 'Tirar admin' : 'Tornar admin'}
+                  >
+                    {busyId === m.google_id ? '…' : isAdmin ? 'Tirar admin' : 'Tornar admin'}
+                  </button>
+                  <button
+                    onClick={() => handleRemove(m)}
+                    disabled={busyId === m.google_id}
+                    style={{
+                      padding: '6px 10px', borderRadius: 8,
+                      border: '1px solid #FFCDD2', background: 'white',
+                      fontSize: 11, fontWeight: 600, color: '#C62828',
+                      cursor: busyId === m.google_id ? 'wait' : 'pointer',
+                    }}
+                    title="Remover do grupo"
+                  >
+                    Remover
+                  </button>
+                </div>
               )}
             </div>
           )

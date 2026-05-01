@@ -56,3 +56,18 @@ export function appLink(hashPath) {
   const path = hashPath.startsWith('/') ? hashPath : `/${hashPath}`
   return `${getPublicOrigin()}/#${path}`
 }
+
+/**
+ * Short-link variant for event share. Backend `/e/{id}` 302s into the
+ * full HashRouter URL — saves ~30 chars on the wire and reads cleaner
+ * in chat ("aue.app/e/abc" vs "aue.app/#/events?event=grp_ev_abc...").
+ * Falls back to appLink() when the id isn't an event-shaped string
+ * (defensive — keeps callers from accidentally producing /e/ links
+ * for non-event paths).
+ */
+export function shortEventLink(eventId) {
+  if (!eventId || typeof eventId !== 'string') {
+    return appLink('/events')
+  }
+  return `${getPublicOrigin()}/e/${encodeURIComponent(eventId)}`
+}

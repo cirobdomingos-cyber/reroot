@@ -5,6 +5,7 @@ import { useApp } from './context/AppContext'
 import { useT } from './i18n'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
+import InstallBanner from './components/InstallBanner'
 import CompanionChat from './components/CompanionChat'
 import SyncStatus from './components/SyncStatus'
 import BadgeUnlockToast from './components/BadgeUnlockToast'
@@ -123,6 +124,7 @@ export default function App() {
   return (
     <div className="phone-shell">
       <StatusBar dark={isOnboarding} />
+      <InstallBanner />
 
       {/* Screen area — AnimatePresence key on pathname triggers exit/enter */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>

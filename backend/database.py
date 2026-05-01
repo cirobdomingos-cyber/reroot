@@ -2510,6 +2510,22 @@ def set_group_member_role(group_id: str, google_id: str, role: str) -> bool:
         return cur.rowcount > 0
 
 
+def remove_group_member(group_id: str, google_id: str) -> bool:
+    """Kick a member out of a group. Returns True if a row was removed.
+    Caller is responsible for the auth check (admin-only) and for
+    blocking removal of the last remaining admin (use count_group_admins
+    to verify before calling)."""
+    if not group_id or not google_id:
+        return False
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
 def count_group_admins(group_id: str) -> int:
     """How many admins a group has — used to block demoting the last one."""
     with get_conn() as conn:

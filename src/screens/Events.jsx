@@ -14,13 +14,14 @@ import Avatar from '../components/Avatar'
 import { createPortal } from 'react-dom'
 import { compressImageForUpload } from '../lib/image-compress'
 import AddToGroupSheet from '../components/AddToGroupSheet'
+import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EventsMap from '../components/EventsMap'
-import { shareLink, appLink } from '../lib/share'
+import { shareLink, appLink, shortEventLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
 
@@ -2249,7 +2250,7 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
   // resolves catalog events and group events (ids prefixed grp_ev_); the
   // Events screen reads `?event=` and opens the drawer on mount.
   async function handleShare() {
-    const url = appLink(`/events?event=${encodeURIComponent(ev.id)}`)
+    const url = shortEventLink(ev.id)
     const dateStr = ev.date ? ` · ${ev.date}` : ''
     const venueStr = ev.venue ? ` no ${ev.venue}` : ''
     const text = `${ev.name}${venueStr}${dateStr}`
@@ -2713,6 +2714,17 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             sympla_click + appends utm_source=aue so we can show
             venues we drove X visits to their event. */}
         {ev.symplaUrl && <SymplaBuyButton ev={ev} />}
+
+        {/* Pending invite requests — visible to creator + co-hosts. The
+            panel hides itself when there are zero requests, so this
+            doesn't add visual weight on the typical event hero. */}
+        {ev.isGroupEvent && googleId && (ev.createdBy === googleId || (ev.coHostIds || []).includes(googleId)) && (
+          <InviteRequestsPanel
+            eventId={ev.id}
+            googleId={googleId}
+            canManage
+          />
+        )}
 
         <button className="btn btn--primary" onClick={onRsvp}>
           {rsvped

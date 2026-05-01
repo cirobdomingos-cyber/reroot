@@ -794,6 +794,27 @@ _INSTALL_HTML = """<!DOCTYPE html>
 """
 
 
+@app.get("/e/{event_id}")
+def short_event_link(event_id: str):
+    """Short-link redirect for share URLs. Tradeoff: shorter copy at
+    the cost of one extra HTTP hop on the recipient's first tap.
+    Universal Links on iOS still match the path (the AASA's component
+    `/*` covers /e/* too), so an installed app intercepts before the
+    redirect ever runs. For not-installed users, this 302s into the
+    full HashRouter URL the React app expects.
+
+    Sharing pattern: appLink('/events?event=<id>') → frontend rewrites
+    to /e/<id> when the id starts with grp_ev_ or instagram_ig_, or
+    falls back to the long URL for anything else."""
+    from fastapi.responses import RedirectResponse
+    if not event_id:
+        return RedirectResponse(url="/", status_code=302)
+    return RedirectResponse(
+        url=f"/#/events?event={event_id}",
+        status_code=302,
+    )
+
+
 @app.get("/install", response_class=PlainTextResponse)
 def install_page(request: Request):
     """Universal install entry point. Sniffs the recipient's User-Agent
@@ -2994,6 +3015,34 @@ def update_group_member_role(group_id: str, member_google_id: str, req: GroupMem
             )
     db.set_group_member_role(group_id, member_google_id, req.role)
     return {"ok": True, "role": req.role}
+
+
+@app.delete("/groups/{group_id}/members/{member_google_id}")
+def remove_group_member(group_id: str, member_google_id: str, google_id: str):
+    """Kick a member out of a group. Admin-only. Refuses to remove the
+    last admin (would leave the group ungovernable). A member kicking
+    themselves out should use POST /groups/{id}/leave instead — this
+    endpoint is for admin-driven removal of someone else.
+
+    Side effect: existing event invitee lists are NOT cleaned up here.
+    The kicked user keeps access to events they were already invited
+    to (their RSVPs survive); they just stop receiving new event
+    notifications from the group going forward. That's the gentlest
+    semantic for "I removed you from my group" — drama-free for already
+    confirmed plans, prevents future ones."""
+    actor_role = db.get_group_member_role(group_id, google_id)
+    if actor_role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem remover membros")
+    target_role = db.get_group_member_role(group_id, member_google_id)
+    if target_role is None:
+        raise HTTPException(status_code=404, detail="Membro não está no grupo")
+    if target_role == "admin" and db.count_group_admins(group_id) <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Não dá pra remover o último admin — promova alguém antes",
+        )
+    db.remove_group_member(group_id, member_google_id)
+    return {"ok": True}
 
 
 @app.get("/groups/{group_id}/stats")

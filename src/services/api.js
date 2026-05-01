@@ -901,6 +901,20 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// Kick a member out of a group. Admin-only on the backend; can't
+// remove the last admin. Existing event RSVPs survive.
+export async function removeGroupMember(groupId, memberGoogleId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberGoogleId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
+    throw new Error(typeof detail === 'string' ? detail : 'Falha ao remover membro')
+  }
+  return res.json()
+}
+
 // ── Invite requests ──
 // Used when a user opens a private event link they're not invited to.
 // They can ask the creator/co-hosts; rate-limited to 5/hour/user
