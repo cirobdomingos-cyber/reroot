@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, declineEventInvite } from '../services/api'
+import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, declineEventInvite, deletePersonalPlan, deleteGroupEvent } from '../services/api'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
 
@@ -131,39 +131,69 @@ export default function MyRsvps() {
     })
     .sort((a, b) => Date.parse(a.dateStart) - Date.parse(b.dateStart))
 
+  // Remove an event from the user's "My RSVPs" list. The right action
+  // depends on the user's role for that event:
+  //
+  //   creator → DELETE the whole event (destructive — affects every
+  //             invitee). Confirms with extra warning copy.
+  //   invitee → DECLINE (remove self from extra_invitee_ids). Polite,
+  //             affects only this user.
+  //   catalog → just cancel the local RSVP. Catalog events have no
+  //             invitee model.
+  //
+  // Without the creator branch, a creator who tapped trash kept seeing
+  // their own event because they're seen via `created_by`, not via the
+  // invitee list. Decline-self was a no-op for creators.
   function unRsvp(entry) {
-    if (!confirm(`Remover "${entry.name || entry.id}" da sua lista?`)) return
+    if (!state.googleUser?.id) return
+    const googleId = state.googleUser.id
+    const isGroupShape = typeof entry.id === 'string' && entry.id.startsWith('grp_ev_')
+    const fresh = groupEventsById[entry.id]
+    const isCreator = isGroupShape && fresh && (fresh.created_by === googleId || fresh.createdBy === googleId)
+    const isCoHost = isGroupShape && fresh && (
+      (fresh.co_host_ids || []).includes(googleId) ||
+      (fresh.coHostIds || []).includes(googleId)
+    )
+
+    const prompt = isCreator
+      ? `Apagar o evento "${entry.name || entry.id}"? Os convidados também perdem acesso.`
+      : `Remover "${entry.name || entry.id}" da sua lista?`
+    if (!confirm(prompt)) return
+
+    // Local: drop the RSVP either way so the row updates immediately.
     dispatch({
       type: 'TOGGLE_RSVP',
       payload: { eventId: entry.id, dateStart: entry.dateStart, name: entry.name, venue: entry.venue },
     })
-    if (state.googleUser?.id) {
-      syncRsvp(state.googleUser.id, {
-        id: entry.id,
-        name: entry.name,
-        venue: entry.venue,
-        dateStart: entry.dateStart,
-        url: '',
-      }, false)
-      // For group events / personal plans, also decline the invite so
-      // the row doesn't bounce from Confirmados → Pendentes (it would
-      // otherwise reappear since cancelling RSVP alone keeps the user
-      // on the invitee list). Catalog event ids don't start with
-      // grp_ev_ — those just stay in the cancelled state.
-      if (typeof entry.id === 'string' && entry.id.startsWith('grp_ev_')) {
-        declineEventInvite(entry.id, state.googleUser.id).then(() => {
-          // Refresh the group-events feed so the now-declined invite
-          // disappears from the Pendentes section as well.
-          return fetchUserGroupEvents(state.googleUser.id)
-        }).then((events) => {
-          if (events) setGroupEvents(events)
-        }).catch(() => {})
-      }
-    }
+    syncRsvp(googleId, {
+      id: entry.id,
+      name: entry.name,
+      venue: entry.venue,
+      dateStart: entry.dateStart,
+      url: '',
+    }, false)
+
+    if (!isGroupShape) return  // catalog event — nothing else to do
+
+    // Creator (or co-host, who shares the destructive privilege) deletes
+    // the event entirely. Personal plans and group events have different
+    // delete endpoints.
+    const action = isCreator || isCoHost
+      ? () => fresh.group_id || fresh.groupId
+        ? deleteGroupEvent(fresh.group_id || fresh.groupId, entry.id, googleId)
+        : deletePersonalPlan(entry.id, googleId)
+      : () => declineEventInvite(entry.id, googleId)
+
+    action()
+      .then(() => fetchUserGroupEvents(googleId))
+      .then((events) => { if (events) setGroupEvents(events) })
+      .catch(() => {})
   }
 
   // Decline-only flow for the Pendentes section — user never RSVP'd
-  // to begin with, just remove them from the invitee list.
+  // to begin with, just remove them from the invitee list. Creators
+  // never appear in Pendentes (they're auto-RSVP'd at create time)
+  // so we don't need the role-aware branch here.
   function declineInvite(ev) {
     if (!confirm(`Recusar convite pra "${ev.name || ev.id}"?`)) return
     if (!state.googleUser?.id) return
