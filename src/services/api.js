@@ -309,6 +309,19 @@ export async function checkBackendHealth() {
   }
 }
 
+// Make a relative image URL absolute against BASE_URL — required in the
+// iOS Capacitor wrapper where window.location.origin is capacitor://localhost
+// and a bare path like "/event-images/abc.jpg" resolves to the wrapper's
+// custom-scheme origin (which doesn't serve anything). On web, BASE_URL is
+// '' and we leave the URL as-is so it resolves against the real origin.
+export function resolveImageUrl(url) {
+  if (!url) return url
+  if (typeof url !== 'string') return url
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  if (BASE_URL && url.startsWith('/')) return `${BASE_URL}${url}`
+  return url
+}
+
 // Track whether a remote load is in-flight so saves don't race against it
 let _loadInFlight = false
 export function isLoadInFlight() { return _loadInFlight }
@@ -773,7 +786,13 @@ export async function fetchGroupDetail(groupId, googleId) {
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}?google_id=${encodeURIComponent(googleId)}`
   )
   if (!res.ok) throw new Error(`Group detail failed: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  // Backend returns event image_url as a relative path; resolve to
+  // absolute so the iOS wrapper can actually load them.
+  if (Array.isArray(data?.events)) {
+    data.events = data.events.map(e => ({ ...e, image_url: resolveImageUrl(e.image_url) }))
+  }
+  return data
 }
 
 export async function updateGroup(groupId, googleId, fields) {
@@ -955,11 +974,15 @@ export async function uploadEventImage(eventId, googleId, file) {
     throw new Error(detail)
   }
   const data = await res.json()
-  // Normalize the path the same way fetchEvents does so callers can
-  // drop the returned URL straight into <img src> without thinking
-  // about the dev/prod base.
+  // Normalize + cache-bust. Backend stores the file as `<event_id>.<ext>`
+  // and overwrites on replace, so the URL is byte-identical between
+  // upload-1 and upload-2 — WKWebView happily serves the stale cached
+  // image. Appending ?v=<timestamp> forces a fresh fetch for the
+  // just-uploaded image without thrashing cache for unrelated URLs.
   if (data.image_url && data.image_url.startsWith('/event-images/') && BASE_URL) {
-    data.image_url = `${BASE_URL}${data.image_url}`
+    data.image_url = `${BASE_URL}${data.image_url}?v=${Date.now()}`
+  } else if (data.image_url) {
+    data.image_url = `${data.image_url}?v=${Date.now()}`
   }
   return data
 }
@@ -1023,7 +1046,8 @@ export async function fetchUserGroupEvents(googleId) {
     )
     if (!res.ok) return []
     const { events } = await res.json()
-    return events || []
+    // Resolve image_url to absolute so iOS wrapper can load them.
+    return (events || []).map(e => ({ ...e, image_url: resolveImageUrl(e.image_url) }))
   } catch {
     return []
   }
