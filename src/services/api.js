@@ -155,6 +155,7 @@ function normalizeBackendEvent(ev) {
     isGroupEvent: ev.isGroupEvent ?? false,
     isPersonalPlan: ev.isPersonalPlan ?? false,
     groupId: ev.groupId ?? null,
+    groupIds: ev.groupIds ?? (ev.groupId ? [ev.groupId] : []),
     groupName: ev.groupName ?? '',
     createdBy: ev.createdBy ?? null,
     inviteeCount: ev.inviteeCount ?? 0,
@@ -884,6 +885,19 @@ export async function createGroupEvent(groupId, googleId, eventData) {
     },
   )
   if (!res.ok) throw new Error(`Create group event failed: ${res.status}`)
+  return res.json()
+}
+
+// Remove an event's link to a group. Multi-group: events can belong to
+// many groups; this removes one link without affecting the others. The
+// event itself isn't deleted. Allowed for creator + co-hosts. Returns
+// the updated event.
+export async function unlinkEventFromGroup(eventId, groupId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/groups/${encodeURIComponent(groupId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Unlink group failed: ${res.status}`)
   return res.json()
 }
 

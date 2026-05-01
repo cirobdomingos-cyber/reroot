@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
-import { fetchGroups, createGroupEvent, fetchGroupsWithSource } from '../services/api'
+import { fetchGroups, createGroupEvent, fetchGroupsWithSource, unlinkEventFromGroup } from '../services/api'
 
 // Reusable bottom sheet for "add this catalog event to one of my groups".
 // Lists the user's groups; tap one to add the event. Hidden when not
@@ -53,7 +53,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     try {
       const desc = (event.description || '').trim()
       const urlSuffix = event.url ? `\n\nVer original: ${event.url}` : ''
-      await createGroupEvent(group.id, googleId, {
+      const result = await createGroupEvent(group.id, googleId, {
         name: event.name,
         venue: event.venue || '',
         date_start: event.dateStart,
@@ -61,15 +61,50 @@ export default function AddToGroupSheet({ open, onClose, event }) {
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
         note: note.trim().slice(0, 280),
-        // Pass through the catalog event id so the backend can parse the
-        // source IG handle. Drives venue-dashboard attribution: views/RSVPs
-        // on the group event still count toward the source venue's Painel.
         source_event_id: event.id || '',
       })
+      // Multi-group: keep the sheet open so the user can pick more
+      // groups. Mark this group as linked so the row flips to
+      // "Adicionado · toque pra remover" immediately.
+      setLinkedGroupIds(prev => new Set([...prev, group.id]))
       setDoneId(group.id)
-      setTimeout(() => { onClose(); setDoneId(null) }, 900)
+      setTimeout(() => setDoneId(null), 900)
+      // If the backend returned a relinked event with a different id
+      // than the source (i.e. catalog fork case), update event.id so
+      // subsequent unlinks target the right row.
+      if (result?.id && result.id !== event.id && event.id?.startsWith('grp_ev_')) {
+        // Source was a user-owned event; backend just appended group_id
+        // to its group_ids — no id change. Catalog forks always have a
+        // different id, but we don't track those across taps yet.
+      }
     } catch {
       alert('Falha ao adicionar. Tenta de novo.')
+    }
+    setSubmittingId(null)
+  }
+
+  async function handleUnlink(group) {
+    if (submittingId || !event?.id) return
+    if (!confirm(`Remover esse evento do grupo "${group.name}"?`)) return
+    setSubmittingId(group.id)
+    try {
+      // Unlink only works for user-owned events (grp_ev_ ids). Catalog
+      // forks have a different id than the catalog source, so the
+      // event.id we have here is the source's id, not the fork's —
+      // skip the unlink for now in that case.
+      if (!event.id.startsWith('grp_ev_')) {
+        alert('Para remover um evento do catálogo de um grupo, abra o grupo e remova de lá.')
+        setSubmittingId(null)
+        return
+      }
+      await unlinkEventFromGroup(event.id, group.id, googleId)
+      setLinkedGroupIds(prev => {
+        const next = new Set(prev)
+        next.delete(group.id)
+        return next
+      })
+    } catch {
+      alert('Falha ao remover. Tenta de novo.')
     }
     setSubmittingId(null)
   }
@@ -186,25 +221,25 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                 {groups.map(g => {
                   const isSubmitting = submittingId === g.id
                   const isDone = doneId === g.id
-                  // Already a fork of this catalog event in the group —
-                  // tapping again would just hit the dedup branch and
-                  // be a no-op, so show it as a checked/disabled row
-                  // instead of teasing a new add.
+                  // Multi-group: an event can belong to many groups
+                  // simultaneously. linkedGroupIds is the current set;
+                  // tapping a linked row UNLINKS, tapping an unlinked
+                  // row LINKS. Both happen via the existing handlers
+                  // — handlePick for link, handleUnlink for the
+                  // sage-pale removal action.
                   const alreadyLinked = linkedGroupIds.has(g.id)
-                  const checked = isDone || alreadyLinked
                   return (
                     <button
                       key={g.id}
-                      onClick={() => { if (!alreadyLinked) handlePick(g) }}
-                      disabled={isSubmitting || !!doneId || alreadyLinked}
+                      onClick={() => alreadyLinked ? handleUnlink(g) : handlePick(g)}
+                      disabled={isSubmitting || !!doneId}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
-                        background: checked ? 'var(--sage-pale)' : 'white',
-                        border: `1px solid ${checked ? 'var(--sage)' : 'var(--border)'}`,
+                        background: alreadyLinked ? 'var(--sage-pale)' : (isDone ? 'var(--sage-pale)' : 'white'),
+                        border: `1px solid ${alreadyLinked || isDone ? 'var(--sage)' : 'var(--border)'}`,
                         borderRadius: 12, padding: '12px 14px',
                         textAlign: 'left',
-                        cursor: isSubmitting || checked ? 'default' : 'pointer',
-                        opacity: alreadyLinked ? 0.85 : 1,
+                        cursor: isSubmitting ? 'default' : 'pointer',
                       }}
                     >
                       <span style={{ fontSize: 22 }}>👥</span>
@@ -216,7 +251,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                           {g.name}
                         </div>
                         <div style={{ fontSize: 11, color: alreadyLinked ? 'var(--sage)' : 'var(--charcoal-mid)', marginTop: 1 }}>
-                          {alreadyLinked ? 'Já adicionado' : (
+                          {alreadyLinked ? 'Adicionado · toque pra remover' : (
                             <>
                               {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}
                               {g.visibility === 'private' && ' · 🔒'}
@@ -224,8 +259,8 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                           )}
                         </div>
                       </div>
-                      <div style={{ fontSize: 14, color: checked ? 'var(--sage)' : 'var(--charcoal-light)' }}>
-                        {checked ? '✓' : isSubmitting ? '…' : '+'}
+                      <div style={{ fontSize: 16, color: alreadyLinked ? 'var(--sage)' : (isDone ? 'var(--sage)' : 'var(--charcoal-light)') }}>
+                        {isSubmitting ? '…' : alreadyLinked ? '✓' : isDone ? '✓' : '+'}
                       </div>
                     </button>
                   )

@@ -1535,6 +1535,10 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         "isPersonalPlan": is_personal,
         "groupId": visible_group_id,
         "groupName": visible_group_name,
+        # Multi-group: full list of groups this event is linked to.
+        # Frontend uses this for the AddToGroupSheet "Já adicionado"
+        # check and to show all groups the event belongs to.
+        "groupIds": list(ge.get("group_ids") or []),
         "createdBy": ge.get("created_by"),
         "createdByName": creator_name,
         "createdByPicture": creator_picture,
@@ -2986,6 +2990,23 @@ def group_stats(group_id: str, google_id: str):
     return stats
 
 
+@app.delete("/events/{event_id}/groups/{group_id}")
+def unlink_event_group(event_id: str, group_id: str, google_id: str):
+    """Remove a group link from a user-owned event. The event itself
+    isn't deleted — only the link to this group. Allowed for the
+    event's creator or any co-host. Returns the updated event row.
+    No-op if the group wasn't linked."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só criador ou co-organizadores podem desvincular")
+    updated = db.unlink_event_from_group(event_id, group_id)
+    return {"ok": True, "event": updated}
+
+
 @app.get("/catalog-events/{source_event_id}/groups")
 def get_groups_with_source(source_event_id: str, google_id: str):
     """For each group the caller belongs to, return whether that group
@@ -3036,29 +3057,29 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
     # for from-scratch personal plans.
     src_id = (req.source_event_id or "").strip()
 
-    # Re-tag instead of fork when the source IS a user-owned group_events
-    # row (id starts with grp_ev_, the user is the creator). Adding their
-    # own personal plan to a group should MOVE it there, not create a
-    # second event with the same name. Catalog events fall through to
-    # the dedup + create path below.
+    # Multi-group ADD when the source IS a user-owned group_events row
+    # (id starts with grp_ev_, the user is the creator). Adding their
+    # own plan to a group should LINK it (append to group_ids), not
+    # create a second event with the same name. Catalog events fall
+    # through to the dedup + create path below.
     if src_id.startswith("grp_ev_"):
         src_row = db.get_group_event(src_id)
         if src_row and src_row.get("created_by") == req.google_id:
-            if src_row.get("group_id") == group_id:
-                # Already in this group — nothing to do.
+            if group_id in (src_row.get("group_ids") or []):
+                # Already linked to this group — nothing to do.
                 return src_row
             # Expand the invitee list to include this group's members
             # (minus the creator). Existing invitees are preserved so
-            # personal-plan friends stay visible to the new group.
+            # other groups' members stay visible.
             existing_invitees = src_row.get("extra_invitee_ids") or []
             new_invitees = sorted({
                 *[str(g) for g in existing_invitees if g],
                 *[m["google_id"] for m in db.get_group_members(group_id)
                   if m.get("google_id") and m["google_id"] != req.google_id],
             })
-            relinked = db.relink_event_to_group(src_id, group_id, new_invitees)
-            if relinked:
-                return relinked
+            linked = db.link_event_to_group(src_id, group_id, new_invitees)
+            if linked:
+                return linked
 
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)

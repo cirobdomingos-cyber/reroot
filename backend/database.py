@@ -320,6 +320,27 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `group_ids` (JSON array) lets an event belong to
+        # multiple groups simultaneously. `group_id` (singular) stays as
+        # the "primary" / first-tagged group for backward compat with
+        # callers that haven't been updated; group_ids is the authoritative
+        # list. Backfilled for existing rows so SELECTs don't have to
+        # branch on null.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN group_ids TEXT NOT NULL DEFAULT '[]'"
+            )
+            # Seed group_ids from existing group_id where the new column
+            # is still empty (just-migrated rows).
+            conn.execute(
+                """UPDATE group_events
+                   SET group_ids = json_array(group_id)
+                   WHERE group_id IS NOT NULL
+                     AND group_id != ''
+                     AND (group_ids IS NULL OR group_ids = '[]' OR group_ids = '')"""
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         # Migration: `image_url` for user-uploaded event images. Empty
         # string means "no image; render the default gradient." Same
         # path scheme as catalog images (/event-images/<filename>) so
@@ -2623,13 +2644,16 @@ def create_group_event(
     handle = (source_ig_handle or "").strip().lstrip("@").lower()
     src = (source_event_id or "").strip()
     with get_conn() as conn:
+        # group_ids seeded from group_id at creation. Multi-group adds
+        # come later via /events/{id}/groups/{gid} which appends.
+        group_ids_json = json.dumps([group_id] if group_id else [])
         conn.execute(
             """INSERT INTO group_events
-               (id, group_id, name, description, venue, date_start, date_end,
+               (id, group_id, group_ids, name, description, venue, date_start, date_end,
                 created_by, visibility, note, extra_invitee_ids,
                 source_ig_handle, source_event_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (event_id, group_id, name, description, venue, date_start, date_end,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (event_id, group_id, group_ids_json, name, description, venue, date_start, date_end,
              google_id, visibility, note, invitees_json, handle, src, now),
         )
         conn.commit()
@@ -2640,6 +2664,7 @@ def create_group_event(
         "created_by": google_id, "visibility": visibility,
         "note": note,
         "extra_invitee_ids": json.loads(invitees_json),
+        "group_ids": json.loads(group_ids_json),
         "co_host_ids": [],  # always empty at creation; promoted via /co-hosts
         "source_ig_handle": handle,
         "source_event_id": src,
@@ -2649,12 +2674,22 @@ def create_group_event(
 
 def _hydrate_invitees(row: dict) -> dict:
     """Parse the JSON-stringified list columns on a group_events row
-    (extra_invitee_ids and co_host_ids) into real Python lists."""
+    (extra_invitee_ids, co_host_ids, group_ids) into real Python lists."""
     raw = row.get("extra_invitee_ids") or "[]"
     try:
         row["extra_invitee_ids"] = json.loads(raw) if isinstance(raw, str) else (raw or [])
     except (json.JSONDecodeError, TypeError):
         row["extra_invitee_ids"] = []
+    # group_ids — multi-group support (May 2026). Backward-compat: fall
+    # back to [group_id] if column is empty/missing for legacy rows.
+    raw_groups = row.get("group_ids") or "[]"
+    try:
+        gids = json.loads(raw_groups) if isinstance(raw_groups, str) else (raw_groups or [])
+    except (json.JSONDecodeError, TypeError):
+        gids = []
+    if not gids and row.get("group_id"):
+        gids = [row["group_id"]]
+    row["group_ids"] = gids
     raw_ch = row.get("co_host_ids") or "[]"
     try:
         row["co_host_ids"] = json.loads(raw_ch) if isinstance(raw_ch, str) else (raw_ch or [])
@@ -2677,16 +2712,23 @@ def get_group_events(group_id: str, viewer_google_id: Optional[str] = None) -> l
     group with no per-user gate. Used by the iCal feed (anonymous,
     bearer-token-authed) — the token grants "this whole group's
     calendar," which is how subscribers expect feeds to work."""
+    # Multi-group: match by either the primary group_id column OR the
+    # group_ids JSON array. The LIKE pattern depends on group ids being
+    # alphanumeric+underscore only (no JSON-special chars), which is the
+    # case (UUIDs from secrets.token_hex). Same JSON-array LIKE pattern
+    # used elsewhere for extra_invitee_ids.
+    group_match = "(group_id = ? OR group_ids LIKE ?)"
+    group_pattern = f'%"{group_id}"%'
     if viewer_google_id:
         query = (
-            "SELECT * FROM group_events "
-            "WHERE group_id = ? AND (created_by = ? OR extra_invitee_ids LIKE ?) "
-            "ORDER BY date_start ASC"
+            f"SELECT * FROM group_events "
+            f"WHERE {group_match} AND (created_by = ? OR extra_invitee_ids LIKE ?) "
+            f"ORDER BY date_start ASC"
         )
-        params = (group_id, viewer_google_id, f'%"{viewer_google_id}"%')
+        params = (group_id, group_pattern, viewer_google_id, f'%"{viewer_google_id}"%')
     else:
-        query = "SELECT * FROM group_events WHERE group_id = ? ORDER BY date_start ASC"
-        params = (group_id,)
+        query = f"SELECT * FROM group_events WHERE {group_match} ORDER BY date_start ASC"
+        params = (group_id, group_pattern)
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_hydrate_invitees(dict(r)) for r in rows]
@@ -2747,22 +2789,59 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
     return True
 
 
-def relink_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:
-    """Move an existing user-owned group_events row into a different
-    group, expanding the invitee list. Used when the user taps
-    "Adicionar a um grupo" on their own personal plan — without this,
-    the backend creates a SECOND row and the user sees their plan
-    duplicated in My RSVPs. Re-tagging keeps a single row, preserves
-    the existing RSVP, and broadens visibility to the new group.
+def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:
+    """Add a group to an event's group_ids list, expanding invitees with
+    the group's members. Used by "Adicionar a um grupo" on user-owned
+    events to broaden visibility instead of creating a duplicate fork.
 
-    Caller already verified the requester owns the row."""
+    Multi-group: an event can be linked to many groups simultaneously.
+    group_ids is the authoritative list; group_id (singular) is kept as
+    the "primary" / first-tagged group for callers that haven't been
+    updated to read group_ids yet.
+
+    No-op if the group is already in group_ids. Caller already verified
+    the requester owns the row."""
     if not event_id or not group_id:
         return None
+    row = get_group_event(event_id)
+    if not row:
+        return None
+    current = row.get("group_ids") or []
+    if group_id in current:
+        return row  # already linked, nothing to do
+    new_groups = [*current, group_id]
     invitees_json = json.dumps([str(g) for g in (extra_invitees or []) if g])
+    new_groups_json = json.dumps(new_groups)
+    # Promote group_id to first-of-list if it was empty (so legacy
+    # callers keep working). Otherwise leave the primary alone.
+    primary = row.get("group_id") or new_groups[0]
     with get_conn() as conn:
         conn.execute(
-            "UPDATE group_events SET group_id = ?, extra_invitee_ids = ? WHERE id = ?",
-            (group_id, invitees_json, event_id),
+            "UPDATE group_events SET group_id = ?, group_ids = ?, extra_invitee_ids = ? WHERE id = ?",
+            (primary, new_groups_json, invitees_json, event_id),
+        )
+        conn.commit()
+    return get_group_event(event_id)
+
+
+def unlink_event_from_group(event_id: str, group_id: str) -> Optional[dict]:
+    """Remove a group from an event's group_ids list. If the removed
+    group was the primary (group_id), promote the next remaining group
+    or null it out if the event no longer belongs to any group."""
+    if not event_id or not group_id:
+        return None
+    row = get_group_event(event_id)
+    if not row:
+        return None
+    current = row.get("group_ids") or []
+    if group_id not in current:
+        return row
+    new_groups = [g for g in current if g != group_id]
+    new_primary = new_groups[0] if new_groups else None
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE group_events SET group_id = ?, group_ids = ? WHERE id = ?",
+            (new_primary, json.dumps(new_groups), event_id),
         )
         conn.commit()
     return get_group_event(event_id)
@@ -2785,15 +2864,17 @@ def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[
         return None
     src = source_event_id.strip()
     with get_conn() as conn:
-        # Path 0: source IS a user-owned event already re-tagged into
-        # this group. Re-tag (relink_event_to_group) updates group_id
-        # in place, so the row's own id == src AND group_id matches.
-        # This path needs to fire before the fork lookup so the
-        # frontend sees "Já adicionado" for relinked plans.
+        # Path 0: source IS a user-owned event linked to this group.
+        # Multi-group: check both the legacy primary group_id column
+        # AND the new group_ids JSON array (fires for events linked
+        # to >1 group via link_event_to_group).
         if src.startswith("grp_ev_"):
             row = conn.execute(
-                "SELECT * FROM group_events WHERE id = ? AND group_id = ? LIMIT 1",
-                (src, group_id),
+                """SELECT * FROM group_events
+                   WHERE id = ?
+                     AND (group_id = ? OR group_ids LIKE ?)
+                   LIMIT 1""",
+                (src, group_id, f'%"{group_id}"%'),
             ).fetchone()
             if row:
                 return _hydrate_invitees(dict(row))
