@@ -901,6 +901,22 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// Host-driven removal of an invitee from an event. Allowed for the
+// creator + co-hosts. Distinct from declineEventInvite (which the
+// invitee uses on themselves). The host can't remove the creator
+// (themselves) — backend rejects that with 400.
+export async function removeEventInvitee(eventId, inviteeGoogleId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/invitees/${encodeURIComponent(inviteeGoogleId)}?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
+    throw new Error(typeof detail === 'string' ? detail : 'Falha ao remover convidado')
+  }
+  return res.json()
+}
+
 // Public-ish profile lookup for any user, used by tap-to-add-friend
 // surfaces. friend_status: 'self' | 'friends' | 'none' tells the
 // caller whether to hide / disable / enable the "Adicionar" button.

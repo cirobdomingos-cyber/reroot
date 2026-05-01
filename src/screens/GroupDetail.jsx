@@ -1444,6 +1444,10 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
               viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
               viewerPicture={state.googleUser?.picture}
               onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+              canManage={
+                event?.created_by === googleId ||
+                (event?.co_host_ids || []).includes(googleId)
+              }
             />
 
             {/* Actions */}

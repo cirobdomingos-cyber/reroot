@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Avatar from './Avatar'
-import { fetchEventAttendees } from '../services/api'
+import { fetchEventAttendees, removeEventInvitee } from '../services/api'
 
 // "Quem vai" — compact RSVP roster for the event hero. Avatar stack with
 // a +N overflow pill plus a friendly summary ("Você + 3 amigos", "2 pessoas").
@@ -29,10 +29,15 @@ import { fetchEventAttendees } from '../services/api'
 export default function AttendeesRow({
   eventId, googleId, isRsvped, refreshKey,
   viewerName, viewerPicture, onFriend,
+  // canManage: true when the viewer is the event creator or a co-host —
+  // unlocks the "Remover" button next to each attendee/pending entry.
+  // Caller is responsible for the role check; backend re-validates.
+  canManage = false,
 }) {
   const [attendees, setAttendees] = useState([])
   const [pending, setPending] = useState([])
   const [expanded, setExpanded] = useState(false)
+  const [bumpKey, setBumpKey] = useState(0)
   useEffect(() => {
     if (!eventId || !googleId) { setAttendees([]); setPending([]); return }
     let cancelled = false
@@ -40,7 +45,19 @@ export default function AttendeesRow({
       if (!cancelled) { setAttendees(a || []); setPending(p || []) }
     })
     return () => { cancelled = true }
-  }, [eventId, googleId, refreshKey])
+  }, [eventId, googleId, refreshKey, bumpKey])
+
+  async function handleRemove(invitee) {
+    if (!canManage || !invitee?.google_id) return
+    if (!confirm(`Remover ${invitee.name || 'esse convidado'} do evento?`)) return
+    try {
+      await removeEventInvitee(eventId, invitee.google_id, googleId)
+      // Refetch attendees so the row updates immediately.
+      setBumpKey(k => k + 1)
+    } catch (err) {
+      alert(err?.message || 'Falha ao remover.')
+    }
+  }
 
   const others = attendees
   const total = others.length + (isRsvped ? 1 : 0)
@@ -166,37 +183,63 @@ export default function AttendeesRow({
             </div>
           )}
           {friendsList.map(a => (
-            <button
-              key={a.google_id}
-              onClick={() => onFriend?.(a.google_id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                background: 'none', border: 'none', padding: 4,
-                cursor: onFriend ? 'pointer' : 'default',
-                textAlign: 'left', borderRadius: 8,
-              }}
-            >
-              <Avatar name={a.name} src={a.picture} size={28} />
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
-                {a.name}
-              </div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, color: '#5B8DD9',
-                textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>
-                amigo
-              </span>
-              {onFriend && <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</span>}
-            </button>
+            <div key={a.google_id} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: 4,
+            }}>
+              <button
+                onClick={() => onFriend?.(a.google_id)}
+                style={{
+                  flex: 1,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'none', border: 'none', padding: 0,
+                  cursor: onFriend ? 'pointer' : 'default',
+                  textAlign: 'left',
+                }}
+              >
+                <Avatar name={a.name} src={a.picture} size={28} />
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
+                  {a.name}
+                </div>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: '#5B8DD9',
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                }}>
+                  amigo
+                </span>
+                {onFriend && <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</span>}
+              </button>
+              {canManage && (
+                <RemoveBtn onClick={() => handleRemove(a)} />
+              )}
+            </div>
           ))}
           {strangersList.map(a => (
             <div key={a.google_id} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: 4,
+              display: 'flex', alignItems: 'center', gap: 6, padding: 4,
             }}>
-              <Avatar name={a.name} src={a.picture} size={28} />
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
-                {a.name}
-              </div>
+              {/* Strangers are tappable too — same onFriend handler
+                  that takes friends to their detail page. The detail
+                  page (FriendDetail) now handles non-friends by
+                  showing the "+ Adicionar como amigo" button. */}
+              <button
+                onClick={() => onFriend?.(a.google_id)}
+                style={{
+                  flex: 1,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'none', border: 'none', padding: 0,
+                  cursor: onFriend ? 'pointer' : 'default',
+                  textAlign: 'left',
+                }}
+              >
+                <Avatar name={a.name} src={a.picture} size={28} />
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
+                  {a.name}
+                </div>
+                {onFriend && <span style={{ fontSize: 14, color: 'var(--charcoal-light)' }}>→</span>}
+              </button>
+              {canManage && (
+                <RemoveBtn onClick={() => handleRemove(a)} />
+              )}
             </div>
           ))}
           {/* Pending invitees — named-but-haven't-responded. Muted
@@ -216,19 +259,33 @@ export default function AttendeesRow({
               )}
               {pending.map(a => (
                 <div key={`pending-${a.google_id}`} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: 4,
-                  opacity: 0.7,
+                  display: 'flex', alignItems: 'center', gap: 6, padding: 4,
                 }}>
-                  <Avatar name={a.name} src={a.picture} size={28} />
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
-                    {a.name}
-                  </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
-                    color: 'var(--charcoal-light)', textTransform: 'uppercase',
-                  }}>
-                    convidado
-                  </span>
+                  <button
+                    onClick={() => onFriend?.(a.google_id)}
+                    style={{
+                      flex: 1,
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'none', border: 'none', padding: 0,
+                      cursor: onFriend ? 'pointer' : 'default',
+                      textAlign: 'left',
+                      opacity: 0.7,
+                    }}
+                  >
+                    <Avatar name={a.name} src={a.picture} size={28} />
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
+                      {a.name}
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                      color: 'var(--charcoal-light)', textTransform: 'uppercase',
+                    }}>
+                      convidado
+                    </span>
+                  </button>
+                  {canManage && (
+                    <RemoveBtn onClick={() => handleRemove(a)} />
+                  )}
                 </div>
               ))}
             </>
@@ -236,5 +293,27 @@ export default function AttendeesRow({
         </div>
       )}
     </div>
+  )
+}
+
+// Compact "X" button used by hosts to remove an attendee/invitee from
+// the event. Keeps the row clean — destructive action stays small and
+// to the right edge so accidental taps are rare.
+function RemoveBtn({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Remover do evento"
+      style={{
+        width: 28, height: 28, borderRadius: '50%',
+        border: '1px solid #FFCDD2', background: 'white',
+        color: '#C62828', fontSize: 14, fontWeight: 700,
+        cursor: 'pointer', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        lineHeight: 1,
+      }}
+    >
+      ×
+    </button>
   )
 }

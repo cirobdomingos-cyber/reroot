@@ -3277,6 +3277,31 @@ def reject_invite_request(event_id: str, requester_google_id: str, google_id: st
     return {"ok": True}
 
 
+@app.delete("/events/{event_id}/invitees/{invitee_google_id}")
+def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str):
+    """Remove someone from an event's invitee list. Allowed for the
+    event's creator OR any co-host (they share the invite privilege).
+    Distinct from POST /events/{event_id}/decline (which a user calls
+    on themselves to leave) — this is the host-driven kick.
+
+    No effect on the user's existing RSVP — that's a separate concern.
+    Cleaner UX would also clear the RSVP, but for now we keep semantics
+    simple: removing from invite list = "you're no longer expected";
+    if they had RSVP'd they'd see the event vanish from group fetches
+    on next refresh anyway."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Apenas criador ou co-organizadores podem remover convidados")
+    if invitee_google_id == event["created_by"]:
+        raise HTTPException(status_code=400, detail="Não dá pra remover o criador do próprio evento")
+    db.decline_event_invite(event_id, invitee_google_id)
+    return {"ok": True}
+
+
 @app.delete("/events/{event_id}/groups/{group_id}")
 def unlink_event_group(event_id: str, group_id: str, google_id: str):
     """Remove a group link from a user-owned event. The event itself

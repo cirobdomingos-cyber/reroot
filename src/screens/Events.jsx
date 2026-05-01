@@ -2647,6 +2647,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
               viewerName={viewerName}
               viewerPicture={viewerPicture}
               onFriend={onFriend}
+              canManage={
+                ev.isGroupEvent && (
+                  ev.createdBy === googleId ||
+                  (ev.coHostIds || []).includes(googleId)
+                )
+              }
             />
           </div>
         )}
