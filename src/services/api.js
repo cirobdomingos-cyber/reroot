@@ -7,6 +7,7 @@
  */
 import { EVENTS } from '../data/events'
 import { getAnchorToday } from '../lib/dateAnchor'
+import { getPublicOrigin } from '../lib/share'
 
 // In production (single-service deploy), API is same-origin → empty string.
 // In local dev, frontend runs on :5173 and backend on :8000.
@@ -1012,7 +1013,10 @@ export async function fetchUserGroupEvents(googleId) {
 }
 
 export function getGroupCalendarFeedUrl(feedToken) {
-  const base = BASE_URL || window.location.origin
+  // BASE_URL is the Railway URL on iOS (baked at build time) and same-origin
+  // on web. Calendar feed needs an absolute URL because it's pasted into
+  // external calendar apps that resolve it independently of the app.
+  const base = BASE_URL || getPublicOrigin()
   return `${base}/groups/feed/${feedToken}.ics`
 }
 

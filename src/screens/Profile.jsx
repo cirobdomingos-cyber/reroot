@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats } from '../services/api'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
@@ -485,7 +486,7 @@ function ShareInstallSection() {
     window.matchMedia &&
     window.matchMedia('(display-mode: standalone)').matches
   const installUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/install`
+    ? `${getPublicOrigin()}/install`
     : 'https://reroot-production.up.railway.app/install'
 
   useEffect(() => {
@@ -505,7 +506,7 @@ function ShareInstallSection() {
   }
 
   async function handleShare() {
-    const url = `${window.location.origin}/install`
+    const url = `${getPublicOrigin()}/install`
     const text = 'Olha o auê — app de eventos em Curitiba. Bora ver o que tá rolando? 🎉'
     if (navigator.share) {
       try {

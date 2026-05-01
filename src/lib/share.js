@@ -11,6 +11,19 @@
 //   'cancelled' — user dismissed the share sheet (Web Share API)
 //   'failed' — neither share nor clipboard worked
 
+import { Capacitor } from '@capacitor/core'
+
+// In Capacitor wrappers, window.location.origin is capacitor://localhost (iOS)
+// or https://localhost (Android default) — meaningless to anyone receiving a
+// shared link. Force the canonical public URL on native. Web keeps using
+// window.location.origin so dev / staging / prod each share their own host.
+const NATIVE_PUBLIC_ORIGIN = 'https://reroot-production.up.railway.app'
+
+export function getPublicOrigin() {
+  if (Capacitor.isNativePlatform?.()) return NATIVE_PUBLIC_ORIGIN
+  return window.location.origin
+}
+
 export async function shareLink({ url, title = '', text = '' }) {
   // Web Share API — works on iOS Safari, Android Chrome/Firefox, recent
   // Edge. Opens the native share sheet with WhatsApp/SMS/Email/etc.
@@ -41,5 +54,5 @@ export async function shareLink({ url, title = '', text = '' }) {
  */
 export function appLink(hashPath) {
   const path = hashPath.startsWith('/') ? hashPath : `/${hashPath}`
-  return `${window.location.origin}/#${path}`
+  return `${getPublicOrigin()}/#${path}`
 }
