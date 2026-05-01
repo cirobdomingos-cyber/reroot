@@ -5,11 +5,17 @@ name: iOS — TestFlight
 # or via the GitHub UI's "Run workflow" button.
 #
 # Required GitHub secrets:
-#   ASC_KEY_ID       — App Store Connect API key ID (10 chars, e.g. 2X9KLMNPQR)
-#   ASC_ISSUER_ID    — App Store Connect issuer UUID (same for every key in account)
-#   ASC_KEY_P8       — full content of the .p8 private key file (multi-line)
+#   APPLE_P12_BASE64      — base64-encoded Apple Distribution .p12 (cert + private key)
+#   APPLE_P12_PASSWORD    — password used when exporting the .p12
+#   APPLE_PROFILE_BASE64  — base64-encoded "aue App Store" provisioning profile
+#   ASC_KEY_ID            — App Store Connect API key ID (10 chars)
+#   ASC_ISSUER_ID         — App Store Connect issuer UUID
+#   ASC_KEY_P8            — full content of the .p8 file (used for upload, not signing)
 #
-# Bundle ID, Team ID, and Services ID are non-secret and live in this file.
+# Why manual signing instead of -allowProvisioningUpdates: auto-provisioning
+# wouldn't yield a working profile across multiple debug rounds even with an
+# Admin API key + a registered device. Manual cert + profile management is
+# slower to set up but rock-solid forever after.
 
 on:
   push:
@@ -25,6 +31,7 @@ jobs:
       TEAM_ID: GR8L4N89V2
       XCODE_PROJECT: ios/App/App.xcodeproj
       XCODE_SCHEME: App
+      PROFILE_NAME: "aue App Store"
 
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +64,48 @@ jobs:
         working-directory: ios/App
         run: xcrun agvtool new-version -all "${{ github.run_number }}"
 
-      # Stage the App Store Connect API key on disk where xcodebuild expects it.
+      # Install Apple Distribution certificate into a fresh, ephemeral keychain.
+      # Using a temp keychain isolates this run from the runner's default state
+      # and avoids leaving credentials behind.
+      - name: Install Apple Distribution certificate
+        env:
+          APPLE_P12_BASE64: ${{ secrets.APPLE_P12_BASE64 }}
+          APPLE_P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          P12_PATH="$RUNNER_TEMP/cert.p12"
+
+          echo "$APPLE_P12_BASE64" | base64 -d > "$P12_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$P12_PATH" \
+            -P "$APPLE_P12_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Add to the user keychain search list so codesign can find the cert.
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          # Allow codesign to use the key without a UI password prompt.
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+      - name: Install provisioning profile
+        env:
+          APPLE_PROFILE_BASE64: ${{ secrets.APPLE_PROFILE_BASE64 }}
+        run: |
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          echo "$APPLE_PROFILE_BASE64" | base64 -d > "$PROFILES_DIR/aue.mobileprovision"
+
+      # ASC API key still needed for the upload step (xcrun altool authenticates
+      # to App Store Connect via the same key).
       - name: Write App Store Connect API key
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
@@ -67,7 +115,7 @@ jobs:
           printf '%s' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
-      - name: Archive
+      - name: Archive (manual signing)
         run: |
           xcodebuild \
             -project "$XCODE_PROJECT" \
@@ -75,10 +123,10 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/aue.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             archive
 
       - name: Export IPA
@@ -93,7 +141,12 @@ jobs:
             <key>teamID</key>
             <string>${TEAM_ID}</string>
             <key>signingStyle</key>
-            <string>automatic</string>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>app.aue</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
             <key>uploadSymbols</key>
             <true/>
           </dict>
@@ -103,11 +156,7 @@ jobs:
             -exportArchive \
             -archivePath "$RUNNER_TEMP/aue.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
-            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
-            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+            -exportPath "$RUNNER_TEMP/export"
 
       - name: Upload to TestFlight
         run: |
