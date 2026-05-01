@@ -50,7 +50,12 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      # In iOS, Capacitor serves web assets from capacitor://localhost/, so the
+      # default same-origin BASE_URL='' breaks every backend fetch. Bake the
+      # production Railway URL at build time so the wrapper hits the right host.
       - name: Build web app (Vite)
+        env:
+          VITE_API_URL: https://reroot-production.up.railway.app
         run: npm run build
 
       - name: Capacitor sync (copies dist/ into iOS bundle)
