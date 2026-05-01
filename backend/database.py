@@ -295,6 +295,18 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `co_host_ids` (JSON array of google_ids) — May 2026
+        # co-organizer feature. Co-hosts share the creator's invite +
+        # delete privileges. Stored as a JSON list on the row to keep
+        # the read path single-row and avoid a join table; N is small
+        # in practice (≤5 co-hosts per event). Defaults to '[]', so the
+        # migration is non-destructive for existing rows.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN co_host_ids TEXT NOT NULL DEFAULT '[]'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
 
         # Migration: drop NOT NULL on group_id so personal plans (group_id
         # IS NULL + extra_invitee_ids non-empty) are insertable. SQLite has
@@ -320,23 +332,25 @@ def init_db():
                     note              TEXT NOT NULL DEFAULT '',
                     extra_invitee_ids TEXT NOT NULL DEFAULT '[]',
                     source_ig_handle  TEXT NOT NULL DEFAULT '',
+                    co_host_ids       TEXT NOT NULL DEFAULT '[]',
                     created_at        TEXT NOT NULL
                 )
             """)
-            # source_ig_handle is new in this rebuild — older rows have
-            # no value, so we leave it as the column default ('').
+            # Newer columns (source_ig_handle, co_host_ids) may not exist
+            # in the legacy table — fall back to defaults via SELECT
+            # constants when the source column is missing.
             old_cols = {c[1] for c in conn.execute("PRAGMA table_info(group_events_old)").fetchall()}
-            has_src = "source_ig_handle" in old_cols
-            select_src = "source_ig_handle" if has_src else "''"
+            select_src = "source_ig_handle" if "source_ig_handle" in old_cols else "''"
+            select_coh = "co_host_ids" if "co_host_ids" in old_cols else "'[]'"
             conn.execute(f"""
                 INSERT INTO group_events
                   (id, group_id, name, description, venue, date_start, date_end,
                    created_by, visibility, note, extra_invitee_ids,
-                   source_ig_handle, created_at)
+                   source_ig_handle, co_host_ids, created_at)
                 SELECT
                   id, group_id, name, description, venue, date_start, date_end,
                   created_by, visibility, note, extra_invitee_ids,
-                  {select_src}, created_at
+                  {select_src}, {select_coh}, created_at
                 FROM group_events_old
             """)
             conn.execute("DROP TABLE group_events_old")
@@ -2599,18 +2613,25 @@ def create_group_event(
         "created_by": google_id, "visibility": visibility,
         "note": note,
         "extra_invitee_ids": json.loads(invitees_json),
+        "co_host_ids": [],  # always empty at creation; promoted via /co-hosts
         "source_ig_handle": handle,
         "created_at": now,
     }
 
 
 def _hydrate_invitees(row: dict) -> dict:
-    """Parse the JSON-stringified extra_invitee_ids into a real list."""
+    """Parse the JSON-stringified list columns on a group_events row
+    (extra_invitee_ids and co_host_ids) into real Python lists."""
     raw = row.get("extra_invitee_ids") or "[]"
     try:
         row["extra_invitee_ids"] = json.loads(raw) if isinstance(raw, str) else (raw or [])
     except (json.JSONDecodeError, TypeError):
         row["extra_invitee_ids"] = []
+    raw_ch = row.get("co_host_ids") or "[]"
+    try:
+        row["co_host_ids"] = json.loads(raw_ch) if isinstance(raw_ch, str) else (raw_ch or [])
+    except (json.JSONDecodeError, TypeError):
+        row["co_host_ids"] = []
     return row
 
 
@@ -2666,6 +2687,78 @@ def get_group_event(event_id: str) -> Optional[dict]:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM group_events WHERE id = ?", (event_id,)).fetchone()
     return _hydrate_invitees(dict(row)) if row else None
+
+
+def is_event_co_host(event_id: str, google_id: str) -> bool:
+    """Check whether a user is a co-host of an event. Used by auth
+    paths that should accept either creator or co-host. Doesn't return
+    creator status — call sites compare against created_by separately
+    so the privilege source stays explicit in the calling code."""
+    if not event_id or not google_id:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT co_host_ids FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+    if not row:
+        return False
+    try:
+        ids = json.loads(row["co_host_ids"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return google_id in ids
+
+
+def add_co_host(event_id: str, google_id: str) -> tuple[list[str], bool]:
+    """Append google_id to the event's co_host_ids if not already
+    present. Returns (full_co_host_list, was_newly_added). Endpoint
+    layer enforces creator-only auth and the invariant that co-hosts
+    must already be on extra_invitee_ids."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT co_host_ids FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+        if row is None:
+            return ([], False)
+        try:
+            current = json.loads(row["co_host_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            current = []
+        gid = str(google_id)
+        if gid in current:
+            return (current, False)
+        current.append(gid)
+        conn.execute(
+            "UPDATE group_events SET co_host_ids = ? WHERE id = ?",
+            (json.dumps(current), event_id),
+        )
+        conn.commit()
+        return (current, True)
+
+
+def remove_co_host(event_id: str, google_id: str) -> tuple[list[str], bool]:
+    """Drop google_id from co_host_ids. Returns (full_co_host_list,
+    was_removed). Endpoint layer enforces auth (creator-or-self)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT co_host_ids FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+        if row is None:
+            return ([], False)
+        try:
+            current = json.loads(row["co_host_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            current = []
+        gid = str(google_id)
+        if gid not in current:
+            return (current, False)
+        new_list = [g for g in current if g != gid]
+        conn.execute(
+            "UPDATE group_events SET co_host_ids = ? WHERE id = ?",
+            (json.dumps(new_list), event_id),
+        )
+        conn.commit()
+        return (new_list, True)
 
 
 def add_invitees_to_event(event_id: str, new_invitee_ids: list[str]) -> tuple[list[str], list[str]]:

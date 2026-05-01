@@ -1459,6 +1459,10 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # /events/{id}/attendees endpoint, so this isn't a fresh
         # privacy surface.
         "extraInviteeIds": list(ge.get("extra_invitee_ids", []) or []),
+        # Co-hosts — invitees promoted to share the creator's invite +
+        # delete privileges. Frontend uses this to extend the
+        # "Adicionado por" chip and gate the manage sheet.
+        "coHostIds": list(ge.get("co_host_ids", []) or []),
         "note": ge.get("note") or "",
         # Source venue handle when this row was forked from a public IG
         # catalog event. Frontend uses it to fire `event_view` analytics
@@ -2975,13 +2979,16 @@ def list_group_events(group_id: str, google_id: str = ""):
 
 @app.delete("/groups/{group_id}/events/{event_id}")
 def delete_group_event(group_id: str, event_id: str, google_id: str):
-    """Delete a group event. Admins or the event creator can delete."""
+    """Delete a group event. Admins, the creator, or any co-host can
+    delete — co-hosts share the creator's destructive privilege."""
     event = db.get_group_event(event_id)
     if not event or event["group_id"] != group_id:
         raise HTTPException(status_code=404, detail="Event not found in this group")
     role = db.get_group_member_role(group_id, google_id)
-    if role != "admin" and event["created_by"] != google_id:
-        raise HTTPException(status_code=403, detail="Only admins or the event creator can delete")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if role != "admin" and not is_creator and not is_co_host:
+        raise HTTPException(status_code=403, detail="Only admins, the creator, or co-organizers can delete")
     db.delete_group_event(event_id)
     return {"ok": True}
 
@@ -2994,9 +3001,8 @@ class AddInviteesRequest(BaseModel):
 @app.post("/events/{event_id}/invitees")
 def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks: BackgroundTasks):
     """Append google_ids to an event's invitee list post-creation.
-    Restricted to the event's creator — adding people to someone else's
-    plan changes the social shape of the event, which the framer of the
-    plan should control.
+    Allowed for the event's creator OR any co-host — co-hosts share
+    the invite privilege by design.
 
     Works for both group-tagged events and standalone plans (same row
     schema after the May 2026 unification). Dedupes against the
@@ -3007,8 +3013,10 @@ def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks:
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    if event["created_by"] != req.google_id:
-        raise HTTPException(status_code=403, detail="Só quem criou o evento pode convidar mais gente")
+    is_creator = event["created_by"] == req.google_id
+    is_co_host = req.google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem convidar mais gente")
     incoming = sorted({
         str(g) for g in req.invitee_google_ids
         if g and str(g) != req.google_id  # creator is implicit
@@ -3051,6 +3059,72 @@ def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks:
         "invitee_google_ids": full_list,
         "added": added,
     }
+
+
+class AddCoHostRequest(BaseModel):
+    google_id: str            # the requester (must be the creator)
+    co_host_google_id: str    # the user to promote
+
+
+@app.post("/events/{event_id}/co-hosts")
+def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: BackgroundTasks):
+    """Promote an invitee to co-host. Creator-only — co-hosts share the
+    creator's invite + delete privileges, so the privilege of *granting*
+    that power stays with the framer of the plan.
+
+    The promoted user must already be on extra_invitee_ids (you can't
+    co-host someone who isn't even invited). After promotion, fires a
+    push: 'Ciro te promoveu a co-organizador de…'."""
+    if not req.co_host_google_id or str(req.co_host_google_id) == req.google_id:
+        raise HTTPException(status_code=400, detail="co_host_google_id inválido")
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event["created_by"] != req.google_id:
+        raise HTTPException(status_code=403, detail="Só o criador do evento pode promover co-organizadores")
+    target = str(req.co_host_google_id)
+    invitees = event.get("extra_invitee_ids") or []
+    if target not in invitees:
+        raise HTTPException(
+            status_code=400,
+            detail="A pessoa precisa estar convidada antes de virar co-organizador",
+        )
+    full_list, was_added = db.add_co_host(event_id, target)
+    if was_added:
+        creator_name = _user_display_name(req.google_id)
+        name = event.get("name") or "um plano"
+        body = f"{creator_name} te promoveu a co-organizador de {name}"
+        tag = f"event-co-host-{event_id}-{target}"
+
+        def _push():
+            try:
+                _send_push_to_user(
+                    target,
+                    title="🎲 Co-organizador",
+                    body=body,
+                    url=f"/#/events/{event_id}",
+                    tag=tag,
+                )
+            except Exception as exc:
+                log.warning(f"Event {event_id}: co-host push to {target} failed: {exc}")
+
+        background_tasks.add_task(_push)
+    return {"ok": True, "co_host_ids": full_list, "added": was_added}
+
+
+@app.delete("/events/{event_id}/co-hosts/{co_host_google_id}")
+def remove_event_co_host(event_id: str, co_host_google_id: str, google_id: str):
+    """Remove a co-host. Creator can demote anyone; a co-host can
+    self-demote (no creator approval needed for stepping down)."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == google_id
+    is_self = google_id == co_host_google_id
+    if not (is_creator or is_self):
+        raise HTTPException(status_code=403, detail="Só o criador ou o próprio co-organizador podem remover")
+    full_list, was_removed = db.remove_co_host(event_id, str(co_host_google_id))
+    return {"ok": True, "co_host_ids": full_list, "removed": was_removed}
 
 
 @app.post("/events/private")
@@ -3153,12 +3227,15 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
 
 @app.delete("/events/private/{event_id}")
 def delete_personal_plan(event_id: str, google_id: str):
-    """Only the creator can delete their own personal plan."""
+    """The creator or any co-host can delete the plan. Co-hosts share
+    the destructive privilege."""
     event = db.get_group_event(event_id)
     if not event or event.get("group_id"):
         raise HTTPException(status_code=404, detail="Plano não encontrado")
-    if event["created_by"] != google_id:
-        raise HTTPException(status_code=403, detail="Só quem criou o plano pode apagar")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem apagar")
     db.delete_group_event(event_id)
     return {"ok": True}
 

@@ -15,6 +15,7 @@ import AddToGroupSheet from '../components/AddToGroupSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
+import CoHostsSheet from '../components/CoHostsSheet'
 import EventsMap from '../components/EventsMap'
 import { shareLink, appLink } from '../lib/share'
 
@@ -1336,14 +1337,15 @@ export default function Events() {
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
                 onDelete={
-                  // Phase 1: only personal plans get a delete affordance
-                  // here. Group events have their own delete in GroupDetail
-                  // (admin or creator). createdBy is camelCase from
-                  // _group_event_to_frontend; the comparison is the source
-                  // of truth for "is this my plan".
+                  // Personal plans only get a delete affordance here.
+                  // Group events have their own delete in GroupDetail
+                  // (admin / creator / co-host). Personal plan deletion
+                  // is allowed for the creator OR any co-host.
                   state.googleUser?.id &&
-                  detailEvent.isPersonalPlan &&
-                  detailEvent.createdBy === state.googleUser.id
+                  detailEvent.isPersonalPlan && (
+                    detailEvent.createdBy === state.googleUser.id ||
+                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
+                  )
                     ? async () => {
                         if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
                         try {
@@ -1373,11 +1375,13 @@ export default function Events() {
                     : null
                 }
                 canInvite={
-                  // Creator-only, and only on private events. Catalog
-                  // events have no invitee list to add to.
-                  state.googleUser?.id &&
-                  detailEvent.isGroupEvent &&
-                  detailEvent.createdBy === state.googleUser.id
+                  // Creator OR co-host, and only on private events.
+                  // Catalog events have no invitee list to add to.
+                  !!(state.googleUser?.id &&
+                  detailEvent.isGroupEvent && (
+                    detailEvent.createdBy === state.googleUser.id ||
+                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
+                  ))
                 }
                 onInvited={({ invitee_google_ids }) => {
                   // Mirror the new list into local state so the next
@@ -1390,6 +1394,11 @@ export default function Events() {
                   // reflects the new pending count on Home + Events.
                   const gid = state.googleUser?.id
                   if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+                }}
+                onCoHostsChanged={(newCoHostIds) => {
+                  setDetailEvent(prev => prev && prev.id === detailEvent.id
+                    ? { ...prev, coHostIds: newCoHostIds }
+                    : prev)
                 }}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
@@ -1993,13 +2002,14 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
-  // Post-creation invite sheet — only opens for the creator of a
-  // private event. Bumped invitedTick refetches AttendeesRow so the
-  // newly added pending invitees show up immediately.
+  // Post-creation invite sheet — only opens for the creator/co-hosts
+  // of a private event. Bumped invitedTick refetches AttendeesRow so
+  // the newly added pending invitees show up immediately.
   const [showInvite, setShowInvite] = useState(false)
+  const [showCoHosts, setShowCoHosts] = useState(false)
   const [invitedTick, setInvitedTick] = useState(0)
   const [imageZoomed, setImageZoomed] = useState(false)
   // Track image load failure separately. IG CDN URLs are signed and
@@ -2289,20 +2299,38 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
 
         {/* Adicionado por — group events / personal plans surface the
             creator so the recipient knows who put this on the calendar.
-            Catalog (IG) events leave createdByName empty and skip this. */}
-        {ev.createdByName && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
-            padding: '8px 12px', borderRadius: 12, background: 'white',
-            border: '1px solid var(--border)',
-          }}>
-            <Avatar name={ev.createdByName} src={ev.createdByPicture} size={28} />
-            <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
-              {ev.isPersonalPlan ? 'Convite de ' : 'Adicionado por '}
-              <strong style={{ color: 'var(--charcoal)' }}>{ev.createdByName}</strong>
-            </span>
-          </div>
-        )}
+            Catalog (IG) events leave createdByName empty and skip this.
+            Chip is tappable on private events so creator/co-host can
+            manage co-organizers and viewers can see who's organizing. */}
+        {ev.createdByName && (() => {
+          const coHostCount = (ev.coHostIds || []).length
+          const isPrivate = !!ev.isGroupEvent
+          const ChipTag = isPrivate ? 'button' : 'div'
+          return (
+            <ChipTag
+              {...(isPrivate ? { onClick: () => setShowCoHosts(true) } : {})}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                padding: '8px 12px', borderRadius: 12, background: 'white',
+                border: '1px solid var(--border)',
+                width: '100%', textAlign: 'left',
+                cursor: isPrivate ? 'pointer' : 'default',
+              }}
+            >
+              <Avatar name={ev.createdByName} src={ev.createdByPicture} size={28} />
+              <span style={{ flex: 1, fontSize: 12, color: 'var(--charcoal-mid)' }}>
+                {ev.isPersonalPlan ? 'Convite de ' : 'Adicionado por '}
+                <strong style={{ color: 'var(--charcoal)' }}>{ev.createdByName}</strong>
+                {coHostCount > 0 && (
+                  <span> · {coHostCount} co-organizador{coHostCount === 1 ? '' : 'es'}</span>
+                )}
+              </span>
+              {isPrivate && (
+                <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>›</span>
+              )}
+            </ChipTag>
+          )
+        })()}
 
         {/* Quem vai — full RSVP roster (friends + strangers + viewer if
             confirmed). Replaces the older "Amigos vão" block: this row
@@ -2488,6 +2516,18 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           setInvitedTick(t => t + 1)
           onInvited?.(result)
         }}
+      />
+      <CoHostsSheet
+        open={showCoHosts}
+        onClose={() => setShowCoHosts(false)}
+        eventId={ev.id}
+        googleId={googleId}
+        creatorId={ev.createdBy}
+        creatorName={ev.createdByName}
+        creatorPicture={ev.createdByPicture}
+        coHostIds={ev.coHostIds || []}
+        inviteeIds={ev.extraInviteeIds || []}
+        onChange={(newCoHostIds) => onCoHostsChanged?.(newCoHostIds)}
       />
     </>
   )

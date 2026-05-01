@@ -8,6 +8,7 @@ import Avatar from '../components/Avatar'
 import AttendeesRow from '../components/AttendeesRow'
 import HomeEventRow from '../components/HomeEventRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
+import CoHostsSheet from '../components/CoHostsSheet'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -375,8 +376,15 @@ export default function GroupDetail() {
         group={group}
         googleId={googleId}
         isRsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
-        canDelete={selectedEvent ? (isAdmin || selectedEvent.created_by === googleId) : false}
-        canInvite={selectedEvent ? selectedEvent.created_by === googleId : false}
+        canDelete={selectedEvent ? (
+          isAdmin
+          || selectedEvent.created_by === googleId
+          || (selectedEvent.co_host_ids || []).includes(googleId)
+        ) : false}
+        canInvite={selectedEvent ? (
+          selectedEvent.created_by === googleId
+          || (selectedEvent.co_host_ids || []).includes(googleId)
+        ) : false}
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
         onDelete={async () => {
@@ -399,6 +407,19 @@ export default function GroupDetail() {
           } : prev)
           setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
             ? { ...prev, extra_invitee_ids: invitee_google_ids }
+            : prev)
+        }}
+        onCoHostsChanged={(newCoHostIds) => {
+          setGroup(prev => prev ? {
+            ...prev,
+            events: prev.events.map(e =>
+              e.id === selectedEvent?.id
+                ? { ...e, co_host_ids: newCoHostIds }
+                : e
+            ),
+          } : prev)
+          setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
+            ? { ...prev, co_host_ids: newCoHostIds }
             : prev)
         }}
         t={t}
@@ -1063,11 +1084,12 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, onClose, onRsvp, onDelete, onInvited, t }) {
+function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, t }) {
   const { state } = useApp()
   const open = !!event
   const [shareStatus, setShareStatus] = useState(null)
   const [showInvite, setShowInvite] = useState(false)
+  const [showCoHosts, setShowCoHosts] = useState(false)
   // Bumped after a successful add-invitees so the AttendeesRow re-fetches
   // and the new pending entries surface immediately.
   const [invitedTick, setInvitedTick] = useState(0)
@@ -1203,19 +1225,34 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
               </div>
             )}
 
-            {/* Adicionado por */}
-            {creator && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
-                padding: '8px 12px', borderRadius: 12, background: 'white',
-                border: '1px solid var(--border)',
-              }}>
-                <Avatar name={creator.name} src={creator.picture} size={28} />
-                <span style={{ fontSize: 12, color: 'var(--charcoal-mid)' }}>
-                  Adicionado por <strong style={{ color: 'var(--charcoal)' }}>{creator.name}</strong>
-                </span>
-              </div>
-            )}
+            {/* Adicionado por — also the entry point for the co-host
+                management sheet. Tapping opens CoHostsSheet, which gates
+                actions by viewer role (creator promotes, co-host self-
+                demotes, others read-only). The chip surfaces co-host
+                count when there's at least one. */}
+            {creator && (() => {
+              const coHostCount = (event?.co_host_ids || []).length
+              return (
+                <button
+                  onClick={() => setShowCoHosts(true)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
+                    padding: '8px 12px', borderRadius: 12, background: 'white',
+                    border: '1px solid var(--border)', cursor: 'pointer',
+                    width: '100%', textAlign: 'left',
+                  }}
+                >
+                  <Avatar name={creator.name} src={creator.picture} size={28} />
+                  <span style={{ flex: 1, fontSize: 12, color: 'var(--charcoal-mid)' }}>
+                    Adicionado por <strong style={{ color: 'var(--charcoal)' }}>{creator.name}</strong>
+                    {coHostCount > 0 && (
+                      <span> · {coHostCount} co-organizador{coHostCount === 1 ? '' : 'es'}</span>
+                    )}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>›</span>
+                </button>
+              )
+            })()}
 
             {/* Quem vai — RSVP roster. Includes the viewer (if RSVPed) plus
                 everyone else the backend will reveal (friends always, plus
@@ -1303,6 +1340,18 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
               setInvitedTick(t => t + 1)
               onInvited?.(result)
             }}
+          />
+          <CoHostsSheet
+            open={showCoHosts}
+            onClose={() => setShowCoHosts(false)}
+            eventId={event?.id}
+            googleId={googleId}
+            creatorId={event?.created_by}
+            creatorName={creator?.name}
+            creatorPicture={creator?.picture}
+            coHostIds={event?.co_host_ids || []}
+            inviteeIds={event?.extra_invitee_ids || []}
+            onChange={(newCoHostIds) => onCoHostsChanged?.(newCoHostIds)}
           />
         </motion.div>
       )}
