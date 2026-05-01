@@ -1,6 +1,6 @@
 {
-  "appId": "com.reroot.app",
-  "appName": "Reroot",
+  "appId": "app.aue",
+  "appName": "auê",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

@@ -1,0 +1,118 @@
+name: iOS — TestFlight
+
+# Builds the Capacitor iOS app and uploads it to TestFlight.
+# Triggers on `ios-v*` tags (so `git tag ios-v0.1 && git push --tags` ships a build)
+# or via the GitHub UI's "Run workflow" button.
+#
+# Required GitHub secrets:
+#   ASC_KEY_ID       — App Store Connect API key ID (10 chars, e.g. 2X9KLMNPQR)
+#   ASC_ISSUER_ID    — App Store Connect issuer UUID (same for every key in account)
+#   ASC_KEY_P8       — full content of the .p8 private key file (multi-line)
+#
+# Bundle ID, Team ID, and Services ID are non-secret and live in this file.
+
+on:
+  push:
+    tags:
+      - 'ios-v*'
+  workflow_dispatch:
+
+jobs:
+  testflight:
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      TEAM_ID: GR8L4N89V2
+      XCODE_PROJECT: ios/App/App.xcodeproj
+      XCODE_SCHEME: App
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin Xcode 15.4
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build web app (Vite)
+        run: npm run build
+
+      - name: Capacitor sync (copies dist/ into iOS bundle)
+        run: npx cap sync ios
+
+      - name: Resolve SPM packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME"
+
+      # Monotonic build number per CI run — TestFlight rejects duplicates.
+      - name: Set CFBundleVersion to run number
+        working-directory: ios/App
+        run: xcrun agvtool new-version -all "${{ github.run_number }}"
+
+      # Stage the App Store Connect API key on disk where xcodebuild expects it.
+      - name: Write App Store Connect API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      - name: Archive
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/aue.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            archive
+
+      - name: Export IPA
+        run: |
+          cat > "$RUNNER_TEMP/exportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/aue.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/exportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$RUNNER_TEMP/export/App.ipa" \
+            --apiKey ${{ secrets.ASC_KEY_ID }} \
+            --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
