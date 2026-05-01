@@ -868,6 +868,23 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// Edit content fields of an existing group event or personal plan.
+// Allowed for creator OR any co-host. Pass only the fields you want to
+// change; omit (or pass null) to leave a field unchanged. Returns the
+// updated event so callers can refresh local state without a re-fetch.
+export async function updateGroupEvent(eventId, googleId, fields) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, ...fields }),
+    },
+  )
+  if (!res.ok) throw new Error(`Update group event failed: ${res.status}`)
+  return res.json()
+}
+
 export async function deleteGroupEvent(groupId, eventId, googleId) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events/${encodeURIComponent(eventId)}?google_id=${encodeURIComponent(googleId)}`,

@@ -2701,6 +2701,27 @@ def get_group_event(event_id: str) -> Optional[dict]:
     return _hydrate_invitees(dict(row)) if row else None
 
 
+def update_group_event(event_id: str, fields: dict) -> Optional[dict]:
+    """Update editable content fields on a group_events row. Caller
+    already verified permissions (creator or co-host).
+
+    Allowed fields: name, venue, date_start, date_end, description, note.
+    Anything else in `fields` is silently ignored — keeps callers from
+    accidentally rewriting created_by, group_id, visibility, etc.
+    Pass an empty string to clear a clearable field; None means
+    "don't update". Returns the updated event row or None if not found."""
+    allowed = {"name", "venue", "date_start", "date_end", "description", "note"}
+    updates = {k: v for k, v in (fields or {}).items() if k in allowed and v is not None}
+    if not updates:
+        return get_group_event(event_id)
+    set_clauses = ", ".join(f"{k} = ?" for k in updates)
+    params = list(updates.values()) + [event_id]
+    with get_conn() as conn:
+        conn.execute(f"UPDATE group_events SET {set_clauses} WHERE id = ?", params)
+        conn.commit()
+    return get_group_event(event_id)
+
+
 def is_event_co_host(event_id: str, google_id: str) -> bool:
     """Check whether a user is a co-host of an event. Used by auth
     paths that should accept either creator or co-host. Doesn't return

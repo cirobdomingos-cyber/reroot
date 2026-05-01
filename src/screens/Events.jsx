@@ -12,6 +12,7 @@ import EventsWeekStrip from '../components/EventsWeekStrip'
 import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
 import AddToGroupSheet from '../components/AddToGroupSheet'
+import EditEventSheet from '../components/EditEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
@@ -238,6 +239,8 @@ export default function Events() {
   const [groupEventsReady, setGroupEventsReady] = useState(false)
   // Add-to-group sheet target. null = sheet closed.
   const [addToGroupEvent, setAddToGroupEvent] = useState(null)
+  // Edit-event sheet target. null = sheet closed.
+  const [editEvent, setEditEvent] = useState(null)
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -1336,6 +1339,17 @@ export default function Events() {
                 onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
+                onEdit={
+                  // Same permission set as image management — creator or
+                  // co-host of any user-created event (group or personal).
+                  !!(state.googleUser?.id &&
+                  detailEvent.isGroupEvent && (
+                    detailEvent.createdBy === state.googleUser.id ||
+                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
+                  ))
+                    ? () => setEditEvent(detailEvent)
+                    : null
+                }
                 onDelete={
                   // Personal plans only get a delete affordance here.
                   // Group events have their own delete in GroupDetail
@@ -1432,6 +1446,30 @@ export default function Events() {
         open={!!addToGroupEvent}
         onClose={() => setAddToGroupEvent(null)}
         event={addToGroupEvent}
+      />
+
+      <EditEventSheet
+        open={!!editEvent}
+        onClose={() => setEditEvent(null)}
+        event={editEvent}
+        googleId={state.googleUser?.id}
+        onSaved={(updatedRow) => {
+          // Backend returns the raw DB row (snake_case). Mirror it into
+          // the live detail panel and the user's group-events feed so the
+          // changes show without a full refetch. Field names follow the
+          // frontend's normalized shape (Events.jsx already maps name,
+          // venue, dateStart, etc. when reading from the catalog).
+          setDetailEvent(prev => prev && prev.id === updatedRow.id ? {
+            ...prev,
+            name: updatedRow.name,
+            venue: updatedRow.venue,
+            dateStart: updatedRow.date_start,
+            description: updatedRow.description,
+            note: updatedRow.note,
+          } : prev)
+          const gid = state.googleUser?.id
+          if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+        }}
       />
 
       <PersonalPlanSheet
@@ -2020,7 +2058,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
   // Post-creation invite sheet — only opens for the creator/co-hosts
@@ -2134,7 +2172,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           </>
         )}
         <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
-          position: 'absolute', top: 12, left: 12,
+          position: 'absolute',
+          // Push below iPhone notch / Dynamic Island. env() degrades to
+          // 0 on browsers that don't define the safe-area-inset, so this
+          // is also correct on web.
+          top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+          left: 12,
           width: 32, height: 32, borderRadius: '50%',
           background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2157,7 +2200,9 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             on the upload control. */}
         {canEdit ? (
           <div style={{
-            position: 'absolute', top: 12, right: 12,
+            position: 'absolute',
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+            right: 12,
             display: 'flex', gap: 6, zIndex: 2,
           }}>
             <button
@@ -2192,13 +2237,21 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
               ref={fileInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
-              style={{ display: 'none' }}
+              // Keep the input in the layout (not display:none) so iOS
+              // WKWebView fires the file picker reliably on programmatic
+              // .click(). Visually invisible via 0×0 + opacity:0.
+              style={{
+                position: 'absolute', width: 0, height: 0, opacity: 0,
+                pointerEvents: 'none',
+              }}
               onChange={handleImagePicked}
             />
           </div>
         ) : showImage ? (
           <div style={{
-            position: 'absolute', top: 12, right: 12,
+            position: 'absolute',
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+            right: 12,
             padding: '5px 8px', borderRadius: 999,
             background: 'rgba(0,0,0,0.45)', color: 'white',
             fontSize: 11, fontWeight: 700,
@@ -2387,7 +2440,14 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
               : `🗓 ${ev.date} · ${ev.duration || ev.time}`
             }
           </div>
-          <div>{ev.categoryEmoji} {ev.categoryLabel}</div>
+          {/* Catalog events show their genre/source category here ("🎵
+              Música", "🍻 Bar"). Group events and personal plans get
+              "👥 Grupo" / "🎲 Plano" from the backend, which is
+              redundant — the user already knows it's a plan from the
+              creator chip + invitee list. Hide for those. */}
+          {!ev.isGroupEvent && (
+            <div>{ev.categoryEmoji} {ev.categoryLabel}</div>
+          )}
           {ev.price && <div>💰 {ev.price}</div>}
           {ev.hasFood && <div>{t.events_food_drink}</div>}
         </div>
@@ -2543,6 +2603,21 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             }}
           >
             👥 Adicionar a um grupo
+          </button>
+        )}
+
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            style={{
+              width: '100%', marginTop: 10,
+              padding: '12px', borderRadius: 12,
+              background: 'transparent', border: '1.5px solid var(--border)',
+              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            ✏️ Editar evento
           </button>
         )}
 

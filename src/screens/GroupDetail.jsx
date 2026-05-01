@@ -9,6 +9,7 @@ import AttendeesRow from '../components/AttendeesRow'
 import HomeEventRow from '../components/HomeEventRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
+import EditEventSheet from '../components/EditEventSheet'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -28,6 +29,8 @@ export default function GroupDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showInvite, setShowInvite] = useState(false)
+  // Edit-event sheet target. null = sheet closed.
+  const [editingEvent, setEditingEvent] = useState(null)
   const [showCalendar, setShowCalendar] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
   const [showCatalog, setShowCatalog]   = useState(false)
@@ -443,7 +446,29 @@ export default function GroupDetail() {
             ? { ...prev, image_url: newImageUrl || '' }
             : prev)
         }}
+        onEdit={selectedEvent && (
+          selectedEvent.created_by === googleId
+          || (selectedEvent.co_host_ids || []).includes(googleId)
+        ) ? () => setEditingEvent(selectedEvent) : null}
         t={t}
+      />
+
+      <EditEventSheet
+        open={!!editingEvent}
+        onClose={() => setEditingEvent(null)}
+        event={editingEvent}
+        googleId={googleId}
+        onSaved={(updatedRow) => {
+          setGroup(prev => prev ? {
+            ...prev,
+            events: prev.events.map(e =>
+              e.id === updatedRow.id ? { ...e, ...updatedRow } : e
+            ),
+          } : prev)
+          setSelectedEvent(prev => prev && prev.id === updatedRow.id
+            ? { ...prev, ...updatedRow }
+            : prev)
+        }}
       />
     </div>
   )
@@ -1105,7 +1130,7 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, canEdit, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, onImageChanged, t }) {
+function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, canEdit, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, onImageChanged, onEdit, t }) {
   const { state } = useApp()
   const open = !!event
   const [shareStatus, setShareStatus] = useState(null)
@@ -1235,7 +1260,10 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   }} />
                 )}
                 <button onClick={onClose} aria-label="Fechar" style={{
-                  position: 'absolute', top: 12, left: 12,
+                  position: 'absolute',
+                  // Below iPhone notch / Dynamic Island.
+                  top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+                  left: 12,
                   width: 32, height: 32, borderRadius: '50%',
                   background: 'rgba(255,255,255,0.92)', border: 'none', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1248,7 +1276,9 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 )}
                 {canEdit && (
                   <div style={{
-                    position: 'absolute', top: 12, right: 12,
+                    position: 'absolute',
+                    top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+                    right: 12,
                     display: 'flex', gap: 6,
                   }}>
                     <button
@@ -1294,7 +1324,12 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   ref={fileInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
-                  style={{ display: 'none' }}
+                  // Layout-present (not display:none) so iOS WKWebView
+                  // fires the picker reliably on programmatic .click().
+                  style={{
+                    position: 'absolute', width: 0, height: 0, opacity: 0,
+                    pointerEvents: 'none',
+                  }}
                   onChange={handleImagePicked}
                 />
               </div>
@@ -1452,6 +1487,17 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 }}>
                   🔗 Ver original
                 </a>
+              )}
+
+              {onEdit && (
+                <button onClick={onEdit} style={{
+                  padding: '12px', borderRadius: 14,
+                  background: 'transparent', border: '1.5px solid var(--border)',
+                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                }}>
+                  ✏️ Editar evento
+                </button>
               )}
 
               {canDelete && (

@@ -3004,6 +3004,45 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
     return {"ok": True}
 
 
+class UpdateGroupEventRequest(BaseModel):
+    google_id: str                       # the requester (must be creator or co-host)
+    name: Optional[str] = None
+    venue: Optional[str] = None
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+    description: Optional[str] = None
+    note: Optional[str] = None
+
+
+@app.patch("/events/{event_id}")
+def edit_group_event(event_id: str, req: UpdateGroupEventRequest):
+    """Edit an event's content fields. Allowed for the event's creator
+    OR any co-host — same permission set as image management and
+    invitee additions. Works for both group-tagged events and
+    standalone personal plans (same row schema).
+
+    Image, co-hosts, and visibility have separate endpoints — this is
+    only for name / venue / date / description / note."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == req.google_id
+    is_co_host = req.google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só criador ou co-organizadores podem editar")
+
+    fields = req.model_dump(exclude={"google_id"}, exclude_none=True)
+    # Sanitize text fields. Length limits mirror the create flow.
+    for k, limit in (("name", 200), ("venue", 200), ("description", 1000), ("note", 280)):
+        if k in fields:
+            fields[k] = (fields[k] or "").strip()[:limit]
+    if "name" in fields and not fields["name"]:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+
+    updated = db.update_group_event(event_id, fields)
+    return {"ok": True, "event": updated}
+
+
 class AddInviteesRequest(BaseModel):
     google_id: str                       # the requester (must be creator)
     invitee_google_ids: list[str] = []   # google_ids to add to the invitee list
