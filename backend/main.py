@@ -1521,8 +1521,11 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         "city": "Curitiba",
         # User-uploaded images live on the same /event-images/ mount as
         # catalog rehosts. Empty string means "no image; render the
-        # default sage gradient on the hero."
-        "imageUrl": ge.get("image_url") or None,
+        # default sage gradient on the hero." cache_busted appends a
+        # ?v=<mtime> param so iOS WKWebView refetches when the user
+        # replaces the photo (without it, the cached old image stays
+        # visible because the URL bytes are identical).
+        "imageUrl": image_store.cache_busted(ge.get("image_url") or "") or None,
         "isCustom": False,
         # Group-event markers — the frontend uses these to render the lock
         # pill, group-name link, and to gate any "private" affordances.
@@ -2856,6 +2859,11 @@ def get_group(group_id: str, google_id: str):
     # subset event before the create flow auto-disconnects the group)
     # won't see it here. Non-members see no events.
     events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
+    # Cache-bust image URLs so iOS WKWebView refetches when a user
+    # replaces an event photo. See image_store.cache_busted().
+    for e in events:
+        if e.get("image_url"):
+            e["image_url"] = image_store.cache_busted(e["image_url"])
 
     return {
         **group,
@@ -2997,6 +3005,20 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")
+
+    # Dedup: if this catalog event has already been added to this group,
+    # return the existing row instead of creating a second one. Without
+    # this, tapping "Adicionar a um grupo" twice spawned two group_events
+    # rows from the same source — one auto-RSVP per row, two "Confirmado"
+    # badges for what the user thinks is the same plan. source_event_id
+    # is the catalog event id (set by the frontend in eventData), empty
+    # for from-scratch personal plans.
+    src_id = (req.source_event_id or "").strip()
+    if src_id:
+        existing = db.find_group_event_by_source(group_id, src_id)
+        if existing:
+            return existing
+
     if req.invitee_google_ids is None:
         invitees = [
             m["google_id"]

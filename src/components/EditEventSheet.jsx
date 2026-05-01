@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { updateGroupEvent } from '../services/api'
 
@@ -69,7 +70,10 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
     setSaving(false)
   }
 
-  return (
+  // Portal to document.body so the sheet escapes AnimatedPage's
+  // framer-motion transform stacking context — otherwise BottomNav
+  // sits ON TOP of the sheet no matter the z-index.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -215,7 +219,8 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

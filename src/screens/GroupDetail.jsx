@@ -10,6 +10,7 @@ import HomeEventRow from '../components/HomeEventRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EditEventSheet from '../components/EditEventSheet'
+import { compressImageForUpload } from '../lib/image-compress'
 import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
@@ -1144,11 +1145,14 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
   const fileInputRef = useRef(null)
 
   async function handleImagePicked(e) {
-    const file = e.target.files?.[0]
+    const picked = e.target.files?.[0]
     e.target.value = ''  // reset so picking the same file again re-fires
-    if (!file || !event?.id) return
+    if (!picked || !event?.id) return
     setImageError(null); setImageUploading(true)
     try {
+      // Client-side compress — converts iPhone HEIC to JPEG (decoded
+      // on Safari) and shrinks oversize photos below the 8MB cap.
+      const file = await compressImageForUpload(picked)
       const result = await uploadEventImage(event.id, googleId, file)
       onImageChanged?.(result.image_url)
     } catch (err) {

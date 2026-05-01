@@ -334,6 +334,32 @@ def existing_path(event_id: str) -> Optional[Path]:
     return None
 
 
+def cache_busted(image_url: str) -> str:
+    """Append ?v=<file_mtime> to an /event-images/ URL so clients
+    refetch when the file changes. Without this, iOS WKWebView serves
+    stale cached bytes when a user replaces a photo (the URL bytes are
+    identical because the filename is event_id.ext — replace overwrites
+    in place). Returns the original URL unchanged when the path doesn't
+    look like an event-image, when the file is missing, or when the URL
+    already has a query string."""
+    if not image_url or not isinstance(image_url, str):
+        return image_url
+    if "?" in image_url:
+        return image_url  # already has a query string — don't double up
+    # Match both "/event-images/foo.jpg" and absolute "https://.../event-images/foo.jpg"
+    marker = "/event-images/"
+    idx = image_url.find(marker)
+    if idx < 0:
+        return image_url
+    filename = image_url[idx + len(marker):]
+    path = IMAGES_DIR / filename
+    try:
+        mtime = int(path.stat().st_mtime)
+    except OSError:
+        return image_url
+    return f"{image_url}?v={mtime}"
+
+
 def save_user_upload(event_id: str, content: bytes, content_type: str) -> Optional[str]:
     """Persist a user-uploaded image for `event_id`. Same on-disk
     naming as catalog rehosts (`{event_id}.<ext>`) so the existing

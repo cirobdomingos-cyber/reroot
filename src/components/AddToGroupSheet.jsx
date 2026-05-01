@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
@@ -67,7 +68,11 @@ export default function AddToGroupSheet({ open, onClose, event }) {
 
   if (!googleId) return null
 
-  return (
+  // Portal to document.body — sheets rendered inside an AnimatedPage are
+  // trapped in framer-motion's transform-induced stacking context and
+  // can't stack above siblings like the BottomNav, no matter how high
+  // their z-index. Portaling escapes the trap.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -211,6 +216,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }

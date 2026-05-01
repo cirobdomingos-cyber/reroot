@@ -11,6 +11,8 @@ import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
 import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
+import { createPortal } from 'react-dom'
+import { compressImageForUpload } from '../lib/image-compress'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import EditEventSheet from '../components/EditEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
@@ -1205,11 +1207,11 @@ export default function Events() {
       </AnimatePresence>
 
       {/* ── Detail drawer ──
-          Fixed-positioned so it pins to the phone-shell (which has
-          `transform: translateZ(0)` to act as a containing block). If we
-          used `absolute`, the drawer would scale to the parent scroll
-          content height — making it thousands of pixels tall on a long
-          catalog and leaving big blank areas after the content. */}
+          Portaled to document.body so it escapes the AnimatedPage's
+          framer-motion transform stacking context — without that, the
+          BottomNav (sibling to AnimatedPage) renders ON TOP of this
+          fullscreen drawer no matter how high its z-index. */}
+      {createPortal(
       <AnimatePresence>
         {selectedEventId && (
           <motion.div
@@ -1447,7 +1449,9 @@ export default function Events() {
             )}
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
 
       <AddToGroupSheet
         open={!!addToGroupEvent}
@@ -2091,11 +2095,15 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
   const fileInputRef = useRef(null)
 
   async function handleImagePicked(e) {
-    const file = e.target.files?.[0]
+    const picked = e.target.files?.[0]
     e.target.value = ''
-    if (!file || !ev.id) return
+    if (!picked || !ev.id) return
     setImageError(null); setImageUploading(true)
     try {
+      // Compress on the client first — handles iPhone HEIC photos
+      // (which canvas decodes on Safari and we re-encode as JPEG)
+      // and shrinks 8-15MB originals under the backend's 8MB cap.
+      const file = await compressImageForUpload(picked)
       const result = await uploadEventImage(ev.id, googleId, file)
       onImageChanged?.(result.image_url)
     } catch (err) {

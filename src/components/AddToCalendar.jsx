@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { generateICS, getGoogleCalendarURL } from '../lib/calendar'
 
@@ -51,7 +52,9 @@ export default function AddToCalendar({ event, style }) {
         📅
       </button>
 
-      {/* Bottom sheet overlay */}
+      {/* Bottom sheet overlay — portaled so it escapes AnimatedPage's
+          stacking context and stacks above BottomNav. */}
+      {createPortal(
       <AnimatePresence>
         {open && (
           <>
@@ -136,7 +139,9 @@ export default function AddToCalendar({ event, style }) {
             </motion.div>
           </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </>
   )
 }
