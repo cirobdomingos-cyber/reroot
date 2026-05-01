@@ -2701,6 +2701,56 @@ def get_group_event(event_id: str) -> Optional[dict]:
     return _hydrate_invitees(dict(row)) if row else None
 
 
+def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[dict]:
+    """Return an existing group_events row that was forked from the same
+    catalog event into the same group, if any. Used to short-circuit
+    "Adicionar a um grupo" when the user taps it twice — the description
+    of every forked row contains "Ver original: <catalog url>" with the
+    catalog event's id embedded, but it's cleaner to dedup via the
+    source_ig_handle column when the catalog event has a handle, and
+    fall back to a description-substring scan when it doesn't.
+
+    Returns the hydrated dict (extra_invitee_ids parsed) or None."""
+    if not group_id or not source_event_id:
+        return None
+    src = source_event_id.strip()
+    # The catalog id format `instagram_ig_<handle>_<post>` lets us pull
+    # the handle for a fast indexed lookup. From-scratch personal plans
+    # don't have a parseable handle — they fall through to None below.
+    handle = ""
+    if src.startswith("instagram_ig_"):
+        rest = src[len("instagram_ig_"):]
+        # rest = "<handle>_<post>" — handle can contain underscores too,
+        # but the post id is always trailing alphanumeric. Splitting on
+        # the last underscore gives the handle.
+        if "_" in rest:
+            handle = rest.rsplit("_", 1)[0].lower()
+    with get_conn() as conn:
+        if handle:
+            # Match same handle in same group AND the description carries
+            # the source URL marker — narrows to actual forks vs unrelated
+            # events that happen to share a handle (e.g. multiple shows
+            # at the same venue).
+            row = conn.execute(
+                """SELECT * FROM group_events
+                   WHERE group_id = ?
+                     AND source_ig_handle = ?
+                     AND description LIKE ?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (group_id, handle, f"%{src}%"),
+            ).fetchone()
+        else:
+            # No handle to filter by — direct description scan.
+            row = conn.execute(
+                """SELECT * FROM group_events
+                   WHERE group_id = ?
+                     AND description LIKE ?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (group_id, f"%{src}%"),
+            ).fetchone()
+    return _hydrate_invitees(dict(row)) if row else None
+
+
 def update_group_event(event_id: str, fields: dict) -> Optional[dict]:
     """Update editable content fields on a group_events row. Caller
     already verified permissions (creator or co-host).
