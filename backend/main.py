@@ -3082,6 +3082,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         note=req.note.strip(),
         extra_invitee_ids=invitees,
         source_ig_handle=_handle_from_event_id(req.source_event_id),
+        source_event_id=(req.source_event_id or "").strip(),
     )
 
     # Auto-RSVP the creator — same contract as create_personal_plan.
@@ -3446,6 +3447,7 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
         note=(req.note or "").strip(),
         extra_invitee_ids=invitees,
         source_ig_handle=_handle_from_event_id(req.source_event_id),
+        source_event_id=(req.source_event_id or "").strip(),
     )
 
     # Auto-RSVP the creator. Mirrors the contract from POST /rsvp so the

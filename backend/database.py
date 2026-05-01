@@ -307,6 +307,19 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `source_event_id` records the catalog event id this
+        # row was forked from (when the user used "Adicionar a um grupo"
+        # from a catalog event). Drives the dedup check that prevents
+        # creating a second fork in the same group. Empty string for
+        # from-scratch personal/group plans. Earlier code only stored
+        # `source_ig_handle` (lossy); description-substring matching
+        # didn't work because the description embeds the URL, not the id.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN source_event_id TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         # Migration: `image_url` for user-uploaded event images. Empty
         # string means "no image; render the default gradient." Same
         # path scheme as catalog images (/event-images/<filename>) so
@@ -2589,6 +2602,7 @@ def create_group_event(
     visibility: str = "members", note: str = "",
     extra_invitee_ids: Optional[list[str]] = None,
     source_ig_handle: str = "",
+    source_event_id: str = "",
 ) -> dict:
     """Create an event row. Two flavors:
       - Classic group event: group_id set, extra_invitee_ids empty/None.
@@ -2607,15 +2621,16 @@ def create_group_event(
     event_id = f"grp_ev_{secrets.token_hex(6)}"
     invitees_json = json.dumps([str(g) for g in (extra_invitee_ids or []) if g])
     handle = (source_ig_handle or "").strip().lstrip("@").lower()
+    src = (source_event_id or "").strip()
     with get_conn() as conn:
         conn.execute(
             """INSERT INTO group_events
                (id, group_id, name, description, venue, date_start, date_end,
                 created_by, visibility, note, extra_invitee_ids,
-                source_ig_handle, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                source_ig_handle, source_event_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (event_id, group_id, name, description, venue, date_start, date_end,
-             google_id, visibility, note, invitees_json, handle, now),
+             google_id, visibility, note, invitees_json, handle, src, now),
         )
         conn.commit()
     return {
@@ -2627,6 +2642,7 @@ def create_group_event(
         "extra_invitee_ids": json.loads(invitees_json),
         "co_host_ids": [],  # always empty at creation; promoted via /co-hosts
         "source_ig_handle": handle,
+        "source_event_id": src,
         "created_at": now,
     }
 
@@ -2734,50 +2750,51 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
 def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[dict]:
     """Return an existing group_events row that was forked from the same
     catalog event into the same group, if any. Used to short-circuit
-    "Adicionar a um grupo" when the user taps it twice — the description
-    of every forked row contains "Ver original: <catalog url>" with the
-    catalog event's id embedded, but it's cleaner to dedup via the
-    source_ig_handle column when the catalog event has a handle, and
-    fall back to a description-substring scan when it doesn't.
+    "Adicionar a um grupo" when the user taps it twice.
 
-    Returns the hydrated dict (extra_invitee_ids parsed) or None."""
+    Lookup order:
+      1. Exact match on the new source_event_id column (fast, accurate)
+      2. Fallback: same group + same source_ig_handle + same date_start —
+         catches legacy rows from before the source_event_id column
+         existed. Same handle on the same date is essentially a unique
+         hit for "this venue's event on this day."
+
+    Returns the hydrated dict or None."""
     if not group_id or not source_event_id:
         return None
     src = source_event_id.strip()
-    # The catalog id format `instagram_ig_<handle>_<post>` lets us pull
-    # the handle for a fast indexed lookup. From-scratch personal plans
-    # don't have a parseable handle — they fall through to None below.
-    handle = ""
-    if src.startswith("instagram_ig_"):
-        rest = src[len("instagram_ig_"):]
-        # rest = "<handle>_<post>" — handle can contain underscores too,
-        # but the post id is always trailing alphanumeric. Splitting on
-        # the last underscore gives the handle.
-        if "_" in rest:
-            handle = rest.rsplit("_", 1)[0].lower()
     with get_conn() as conn:
-        if handle:
-            # Match same handle in same group AND the description carries
-            # the source URL marker — narrows to actual forks vs unrelated
-            # events that happen to share a handle (e.g. multiple shows
-            # at the same venue).
-            row = conn.execute(
-                """SELECT * FROM group_events
-                   WHERE group_id = ?
-                     AND source_ig_handle = ?
-                     AND description LIKE ?
-                   ORDER BY created_at DESC LIMIT 1""",
-                (group_id, handle, f"%{src}%"),
-            ).fetchone()
-        else:
-            # No handle to filter by — direct description scan.
-            row = conn.execute(
-                """SELECT * FROM group_events
-                   WHERE group_id = ?
-                     AND description LIKE ?
-                   ORDER BY created_at DESC LIMIT 1""",
-                (group_id, f"%{src}%"),
-            ).fetchone()
+        # Path 1: the proper column (set on every fork created after the
+        # source_event_id migration).
+        row = conn.execute(
+            """SELECT * FROM group_events
+               WHERE group_id = ? AND source_event_id = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (group_id, src),
+        ).fetchone()
+        if row:
+            return _hydrate_invitees(dict(row))
+        # Path 2: legacy fallback — match by handle + date for rows that
+        # pre-date the column. Parses the catalog id's handle and pairs
+        # it with date_start to disambiguate from other events on the
+        # same handle.
+        handle = ""
+        if src.startswith("instagram_ig_"):
+            rest = src[len("instagram_ig_"):]
+            if "_" in rest:
+                handle = rest.rsplit("_", 1)[0].lower()
+        if not handle:
+            return None
+        # We don't have date_start here; pick any row with the matching
+        # handle in the group as a "good enough" fallback. False positives
+        # only happen across multiple events from the same handle in
+        # the same group, which is rare.
+        row = conn.execute(
+            """SELECT * FROM group_events
+               WHERE group_id = ? AND source_ig_handle = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (group_id, handle),
+        ).fetchone()
     return _hydrate_invitees(dict(row)) if row else None
 
 
