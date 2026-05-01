@@ -2213,15 +2213,15 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
           zIndex: 1,
         }}>←</button>
-        {/* Category emoji is the visual anchor only when there's no
-            image AND no editor controls — the upload/edit buttons on
-            top-right already signal "your event", and on a short
-            no-image hero the emoji collided visually with the back
-            button (both anchored to the left edge once the safe-area
-            top inset pushed the back button down). */}
-        {!showImage && !canEdit && (
+        {/* Category emoji as visual anchor when there's no image. Pinned
+            to bottom-right so it never collides with the back button
+            (top-left) or the photo-upload pill (top-right when canEdit).
+            Earlier bottom-left placement worked on tall heroes but
+            stacked on top of the back button on short 120px heroes
+            once the safe-area-inset-top pushed the back button down. */}
+        {!showImage && (
           <div style={{
-            position: 'absolute', bottom: 12, left: 14, fontSize: 30,
+            position: 'absolute', bottom: 12, right: 14, fontSize: 30,
             zIndex: 1,
           }}>{ev.icon}</div>
         )}

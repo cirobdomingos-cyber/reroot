@@ -1279,7 +1279,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
                 }}>←</button>
                 {!hasImage && (
-                  <div style={{ position: 'absolute', bottom: 12, left: 16, fontSize: 32 }}>
+                  <div style={{ position: 'absolute', bottom: 12, right: 16, fontSize: 32 }}>
                     {sourceUrl ? '🌍' : '📅'}
                   </div>
                 )}
