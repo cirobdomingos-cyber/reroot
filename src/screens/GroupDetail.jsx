@@ -1278,11 +1278,9 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
                 }}>←</button>
-                {!hasImage && (
-                  <div style={{ position: 'absolute', bottom: 12, right: 16, fontSize: 32 }}>
-                    {sourceUrl ? '🌍' : '📅'}
-                  </div>
-                )}
+                {/* Emoji removed for visual cleanup — surrounding labels
+                    already convey "this is a group event from a source"
+                    without needing a globe/calendar icon overlay. */}
                 {canEdit && (
                   <div style={{
                     position: 'absolute',
