@@ -1,10 +1,42 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { AppProvider } from './context/AppContext'
 import { reportError } from './services/api'
 import App from './App'
 import './styles/globals.css'
+
+// ── iOS / Android Universal Link handler ──────────────────
+// When iOS hands a tapped reroot-production.up.railway.app/... URL to the
+// installed app (because the AASA file declares this domain belongs to
+// app.aue), Capacitor fires an `appUrlOpen` event with the full URL.
+// We extract the hash fragment and apply it to window.location so
+// HashRouter picks up the deep route.
+//
+// Cold-launch case (app not running): iOS still fires appUrlOpen after the
+// webview boots — handler sees it just like the warm case.
+//
+// OAuth callbacks (custom scheme com.googleusercontent.apps.*) are a
+// different listener entirely (in google-auth.js); we skip them here so
+// the universal link handler doesn't fight the auth flow.
+if (Capacitor.isNativePlatform?.()) {
+  import('@capacitor/app').then(({ App: CapApp }) => {
+    CapApp.addListener('appUrlOpen', (event) => {
+      const url = event?.url || ''
+      if (!url || url.startsWith('com.googleusercontent.apps.')) return
+      try {
+        const parsed = new URL(url)
+        // Hash already includes the leading #. If the link has no hash
+        // (e.g. the bare landing page), stay where we are.
+        if (parsed.hash) window.location.hash = parsed.hash
+      } catch {
+        // Unparseable — ignore. Better to land users on the home screen
+        // than crash on a malformed deep link.
+      }
+    })
+  })
+}
 
 // Global error handlers — catch uncaught JS errors in production
 window.addEventListener('error', (event) => {

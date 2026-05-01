@@ -194,6 +194,45 @@ def asset_links():
     }]
 
 
+# ── iOS Universal Links (Apple App Site Association) ────
+# Apple validates this domain belongs to the iOS app by fetching this JSON
+# on every app install/update. Once validated, taps on URLs matching the
+# `paths` patterns open the auê iOS app instead of Safari.
+#
+# Format requirements (Apple is strict):
+#   - Served over HTTPS (Railway provides)
+#   - Content-Type: application/json (NOT pkcs7 — that was iOS 8 era)
+#   - No redirects on the path
+#   - Apple ID format: <TEAM_ID>.<BUNDLE_ID>
+#
+# Apple fetches at BOTH /apple-app-site-association and /.well-known/...
+# — modern iOS prefers the .well-known path; we serve both for compat.
+APPLE_APP_SITE_ASSOCIATION = {
+    "applinks": {
+        "details": [
+            {
+                "appIDs": ["GR8L4N89V2.app.aue"],
+                "components": [
+                    # Match every path so the app handles any reroot URL
+                    # users get from share sheets. The HashRouter fragment
+                    # (`#/events?event=...`) isn't part of the path — iOS
+                    # passes the full URL to the app, where the React
+                    # router reads window.location.hash.
+                    {"/": "/*"},
+                ],
+            }
+        ]
+    }
+}
+
+
+@app.get("/apple-app-site-association")
+@app.get("/.well-known/apple-app-site-association")
+def apple_app_site_association():
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content=APPLE_APP_SITE_ASSOCIATION)
+
+
 # ── Privacy policy ───────────────────────────────────────
 # Plain HTML, served at /privacy. Required URL for Play Console submission
 # (data safety form references it). Easier to keep here than as a React
@@ -4647,12 +4686,18 @@ if STATIC_DIR.exists():
     async def spa_fallback(request: Request, path: str):
         """Serve static files or fall back to index.html for SPA routing.
 
-        Also handles /.well-known/assetlinks.json here because Starlette's
-        router does not reliably match explicit routes for dotfile paths.
+        Also handles dotfile paths here because Starlette's router does
+        not reliably match explicit routes for them — we re-do the
+        dispatch by hand. Same reason both AASA endpoints are listed:
+        Apple fetches the .well-known one but historic apps used the
+        root path.
         """
         from fastapi.responses import JSONResponse
         if path == ".well-known/assetlinks.json":
             return JSONResponse(content=_ASSET_LINKS)
+        if path in ("apple-app-site-association",
+                    ".well-known/apple-app-site-association"):
+            return JSONResponse(content=APPLE_APP_SITE_ASSOCIATION)
         file_path = STATIC_DIR / path
         if file_path.is_file():
             return FileResponse(file_path)

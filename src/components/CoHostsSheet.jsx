@@ -122,7 +122,7 @@ export default function CoHostsSheet({
           <motion.div
             key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={busyId ? undefined : onClose}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1100 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }}
           />
           <motion.div
             key="sheet"
@@ -132,7 +132,7 @@ export default function CoHostsSheet({
               position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
-              zIndex: 1101, maxHeight: '85vh', overflowY: 'auto',
+              zIndex: 10501, maxHeight: '85vh', overflowY: 'auto',
               overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
             }}
           >

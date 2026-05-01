@@ -84,7 +84,11 @@ export default function AddToGroupSheet({ open, onClose, event }) {
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0,
               background: 'white', borderRadius: '20px 20px 0 0',
-              padding: '8px 20px 28px', zIndex: 10501,
+              // bottom-padding picks up the iOS home-bar inset so the last
+              // tappable element clears the gesture area. 28 is the
+              // baseline, env() degrades to 0 on browsers without it.
+              padding: '8px 20px calc(28px + env(safe-area-inset-bottom, 0px))',
+              zIndex: 10501,
               maxHeight: '80vh', overflowY: 'auto',
             }}
           >

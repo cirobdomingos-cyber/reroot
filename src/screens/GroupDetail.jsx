@@ -1674,13 +1674,13 @@ function BottomSheet({ open, onClose, title, children }) {
       {open && (
         <>
           <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999 }} />
+            onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }} />
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
-              zIndex: 1000, maxHeight: '85vh', overflowY: 'auto',
+              zIndex: 10501, maxHeight: '85vh', overflowY: 'auto',
               overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}>
             <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />

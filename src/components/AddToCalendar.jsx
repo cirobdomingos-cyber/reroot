@@ -66,7 +66,7 @@ export default function AddToCalendar({ event, style }) {
               style={{
                 position: 'fixed', inset: 0,
                 background: 'rgba(0,0,0,0.35)',
-                zIndex: 200,
+                zIndex: 10500,
               }}
             />
             {/* Sheet */}
@@ -80,8 +80,9 @@ export default function AddToCalendar({ event, style }) {
                 position: 'fixed', bottom: 0, left: 0, right: 0,
                 background: 'white',
                 borderRadius: '20px 20px 0 0',
-                padding: '8px 16px 28px',
-                zIndex: 201,
+                // bottom-padding clears iOS home bar
+                padding: '8px 16px calc(28px + env(safe-area-inset-bottom, 0px))',
+                zIndex: 10501,
               }}
             >
               {/* Drag handle */}

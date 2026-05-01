@@ -162,14 +162,14 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
         <>
           <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={submitting ? undefined : onClose}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999 }} />
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }} />
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
-              zIndex: 1000, maxHeight: '90vh', overflowY: 'auto',
+              zIndex: 10501, maxHeight: '90vh', overflowY: 'auto',
               overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch',
             }}>
             {/* Drag handle */}

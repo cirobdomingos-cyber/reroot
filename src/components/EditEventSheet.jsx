@@ -86,16 +86,30 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0,
               background: 'white', borderRadius: '20px 20px 0 0',
-              padding: '8px 20px 28px', zIndex: 10501,
-              maxHeight: '90vh', overflowY: 'auto',
+              zIndex: 10501,
+              // Cap at 85% of viewport so on small phones (and with the
+              // iOS keyboard up) you can always see what's behind the
+              // sheet to confirm context. Content area below scrolls;
+              // the action footer is sticky.
+              maxHeight: '85vh',
+              display: 'flex', flexDirection: 'column',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }}/>
+            <div style={{ flexShrink: 0, padding: '6px 20px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }}/>
+              </div>
+              <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 18, color: 'var(--charcoal)' }}>
+                Editar evento
+              </h3>
             </div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 18, color: 'var(--charcoal)' }}>
-              Editar evento
-            </h3>
+
+            {/* Scrollable content area — form fields. Pads the bottom so
+                the last field doesn't sit flush against the sticky footer. */}
+            <div style={{
+              flex: 1, overflowY: 'auto', padding: '0 20px 8px',
+              WebkitOverflowScrolling: 'touch', // iOS momentum scroll
+            }}>
 
             <Field label="Nome">
               <input
@@ -160,7 +174,18 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            </div>{/* /scrollable content area */}
+
+            {/* Sticky footer — action buttons stay visible no matter
+                how tall the form is or where the keyboard pushes the
+                viewport. Bottom padding accommodates the iOS home bar. */}
+            <div style={{
+              flexShrink: 0,
+              display: 'flex', gap: 10,
+              padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
+              borderTop: '1px solid var(--border)',
+              background: 'white',
+            }}>
               <button
                 onClick={onClose}
                 disabled={saving}

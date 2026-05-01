@@ -321,7 +321,7 @@ const adminBadgeStyle = {
 }
 
 const backdropStyle = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 999,
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500,
 }
 
 // Cap at 85% viewport + scroll internally so the submit stays reachable
@@ -333,7 +333,9 @@ const sheetStyle = {
   position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
   borderRadius: '20px 20px 0 0',
   padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
-  zIndex: 1000,
+  // Above DetailPanel (10000) so sheets opened from inside an event
+  // detail aren't hidden behind it.
+  zIndex: 10501,
   maxHeight: '85vh',
   overflowY: 'auto',
   overscrollBehavior: 'contain',

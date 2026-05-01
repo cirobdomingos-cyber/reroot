@@ -53,7 +53,8 @@ registerRoute(new NavigationRoute(navigationHandler, {
     /^\/install(\/|$|\?)/,     // /install universal walkthrough (server HTML)
     /^\/ios(\/|$|\?)/,         // /ios → /install redirect (back-compat)
     /^\/privacy(\/|$|\?)/,     // /privacy LGPD policy (server HTML)
-    /^\/\.well-known\//,       // assetlinks.json + future verification files
+    /^\/\.well-known\//,       // assetlinks.json + apple-app-site-association
+    /^\/apple-app-site-association/,  // legacy AASA path (some iOS versions)
     /^\/manifest\.webmanifest/,// PWA manifest itself
     /^\/sw\.js/,               // service worker file
     /^\/registerSW\.js/,       // SW registration script
