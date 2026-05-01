@@ -2747,6 +2747,27 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
     return True
 
 
+def relink_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:
+    """Move an existing user-owned group_events row into a different
+    group, expanding the invitee list. Used when the user taps
+    "Adicionar a um grupo" on their own personal plan — without this,
+    the backend creates a SECOND row and the user sees their plan
+    duplicated in My RSVPs. Re-tagging keeps a single row, preserves
+    the existing RSVP, and broadens visibility to the new group.
+
+    Caller already verified the requester owns the row."""
+    if not event_id or not group_id:
+        return None
+    invitees_json = json.dumps([str(g) for g in (extra_invitees or []) if g])
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE group_events SET group_id = ?, extra_invitee_ids = ? WHERE id = ?",
+            (group_id, invitees_json, event_id),
+        )
+        conn.commit()
+    return get_group_event(event_id)
+
+
 def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[dict]:
     """Return an existing group_events row that was forked from the same
     catalog event into the same group, if any. Used to short-circuit
@@ -2764,6 +2785,19 @@ def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[
         return None
     src = source_event_id.strip()
     with get_conn() as conn:
+        # Path 0: source IS a user-owned event already re-tagged into
+        # this group. Re-tag (relink_event_to_group) updates group_id
+        # in place, so the row's own id == src AND group_id matches.
+        # This path needs to fire before the fork lookup so the
+        # frontend sees "Já adicionado" for relinked plans.
+        if src.startswith("grp_ev_"):
+            row = conn.execute(
+                "SELECT * FROM group_events WHERE id = ? AND group_id = ? LIMIT 1",
+                (src, group_id),
+            ).fetchone()
+            if row:
+                return _hydrate_invitees(dict(row))
+
         # Path 1: the proper column (set on every fork created after the
         # source_event_id migration).
         row = conn.execute(

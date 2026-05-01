@@ -3035,6 +3035,31 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
     # is the catalog event id (set by the frontend in eventData), empty
     # for from-scratch personal plans.
     src_id = (req.source_event_id or "").strip()
+
+    # Re-tag instead of fork when the source IS a user-owned group_events
+    # row (id starts with grp_ev_, the user is the creator). Adding their
+    # own personal plan to a group should MOVE it there, not create a
+    # second event with the same name. Catalog events fall through to
+    # the dedup + create path below.
+    if src_id.startswith("grp_ev_"):
+        src_row = db.get_group_event(src_id)
+        if src_row and src_row.get("created_by") == req.google_id:
+            if src_row.get("group_id") == group_id:
+                # Already in this group — nothing to do.
+                return src_row
+            # Expand the invitee list to include this group's members
+            # (minus the creator). Existing invitees are preserved so
+            # personal-plan friends stay visible to the new group.
+            existing_invitees = src_row.get("extra_invitee_ids") or []
+            new_invitees = sorted({
+                *[str(g) for g in existing_invitees if g],
+                *[m["google_id"] for m in db.get_group_members(group_id)
+                  if m.get("google_id") and m["google_id"] != req.google_id],
+            })
+            relinked = db.relink_event_to_group(src_id, group_id, new_invitees)
+            if relinked:
+                return relinked
+
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)
         if existing:
