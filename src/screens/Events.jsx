@@ -2138,10 +2138,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
       <div
         onClick={showImage ? () => setImageZoomed(true) : undefined}
         style={{
-          // Image hero gets more room (180px) so faces/posters read at
-          // glance; gradient hero stays 120px to keep no-image events
-          // from looking unintentionally tall and empty.
-          height: showImage ? 180 : 120,
+          // Image hero gets more room (240px) so faces/posters/flyers
+          // actually read at a glance — 180 was enough to know "yes,
+          // there is a photo" but cropped most of the content.
+          // Gradient hero stays 120 to keep no-image events from
+          // looking unintentionally tall and empty.
+          height: showImage ? 240 : 120,
           background: ev.headerBg,
           position: 'relative',
           overflow: 'hidden',

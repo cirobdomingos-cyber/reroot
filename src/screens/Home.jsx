@@ -59,6 +59,11 @@ export default function Home() {
   // Live event catalog — fetched from backend instead of using the stale
   // static EVENTS array. Drives suggestions, RSVP cards, and reconnect.
   const [allEvents, setAllEvents] = useState([])
+  // Lifted from WeekCalendar so "Seus próximos eventos" knows which week
+  // the calendar is currently showing — without this, navigating the
+  // calendar to a future week leaves the "próximos" section showing the
+  // exact same events that are already visible in the strip.
+  const [calendarWeekOffset, setCalendarWeekOffset] = useState(0)
 
   useEffect(() => {
     // Fetch the live catalog (broad "Tudo" view — same as Events screen).
@@ -150,13 +155,15 @@ export default function Home() {
   const rsvpCount = upcomingRsvpIds.length
 
   // upcomingRsvps drives "Seus próximos eventos" — every planned event
-  // beyond the calendar's next-7-day window. Catalog RSVPs + accepted
-  // group/personal-plan invites; events within the next 7 days already
-  // show under "Seus eventos essa semana" so we drop those from this
-  // section to avoid the same row appearing in both places.
+  // beyond the END of the week the calendar is currently showing. Catalog
+  // RSVPs + accepted group/personal-plan invites; events inside the
+  // visible week already render under "Seus eventos essa semana" so we
+  // drop them here to avoid the same row appearing in both places.
+  // The horizon shifts with calendarWeekOffset: navigating the calendar
+  // to next week pushes the próximos cutoff by another 7 days.
   const calendarHorizon = (() => {
     const d = getAnchorToday()
-    d.setDate(d.getDate() + 7)
+    d.setDate(d.getDate() + (calendarWeekOffset + 1) * 7)
     return d.getTime()
   })()
   const upcomingRsvps = (() => {
@@ -374,6 +381,8 @@ export default function Home() {
       {/* Week Calendar */}
       <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
       <WeekCalendar
+        weekOffset={calendarWeekOffset}
+        onWeekOffsetChange={setCalendarWeekOffset}
         rsvpEvents={[
           ...allEvents.filter(ev => state.rsvps[ev.id] && ev.dateStart),
           ...groupEventsAccepted.map(ev => ({

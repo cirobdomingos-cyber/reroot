@@ -44,9 +44,25 @@ function isToday(d) {
  *   onEventTap:  (event, type) => void  — type is 'rsvp' or 'group'
  *   onGroupRsvp: (event) => void
  */
-export default function WeekCalendar({ rsvpEvents = [], groupEvents = [], friendsByEventId = {}, language = 'pt', onEventTap, onGroupRsvp }) {
+export default function WeekCalendar({
+  rsvpEvents = [], groupEvents = [], friendsByEventId = {},
+  language = 'pt', onEventTap, onGroupRsvp,
+  // Optional controlled API. If `weekOffset` is provided the parent owns
+  // the state (so it can compute "events outside the visible week" for
+  // its own sections); otherwise we keep an internal offset for callers
+  // that don't care about the current week.
+  weekOffset: weekOffsetProp,
+  onWeekOffsetChange,
+}) {
   const t = useT()
-  const [weekOffset, setWeekOffset] = useState(0)
+  const [internalOffset, setInternalOffset] = useState(0)
+  const isControlled = typeof weekOffsetProp === 'number'
+  const weekOffset = isControlled ? weekOffsetProp : internalOffset
+  const setWeekOffset = (next) => {
+    const value = typeof next === 'function' ? next(weekOffset) : next
+    if (isControlled) onWeekOffsetChange?.(value)
+    else setInternalOffset(value)
+  }
 
   const days = getWeekDays(weekOffset)
   const dayLabels = language === 'pt' ? DAY_LABELS_PT : DAY_LABELS_EN
