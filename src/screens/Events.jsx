@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, uploadEventImage, deleteEventImage } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -1351,19 +1351,26 @@ export default function Events() {
                     : null
                 }
                 onDelete={
-                  // Personal plans only get a delete affordance here.
-                  // Group events have their own delete in GroupDetail
-                  // (admin / creator / co-host). Personal plan deletion
-                  // is allowed for the creator OR any co-host.
+                  // Delete affordance for any user-created event the
+                  // viewer is creator or co-host of — covers personal
+                  // plans AND group events. Routes to the right backend
+                  // endpoint based on whether the event is tagged to a
+                  // group. Group admins still have the full Excluir flow
+                  // inside GroupDetail; this button is the catalog-side
+                  // shortcut for the same action.
                   state.googleUser?.id &&
-                  detailEvent.isPersonalPlan && (
+                  detailEvent.isGroupEvent && (
                     detailEvent.createdBy === state.googleUser.id ||
                     (detailEvent.coHostIds || []).includes(state.googleUser.id)
                   )
                     ? async () => {
                         if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
                         try {
-                          await deletePersonalPlan(detailEvent.id, state.googleUser.id)
+                          if (detailEvent.groupId) {
+                            await deleteGroupEvent(detailEvent.groupId, detailEvent.id, state.googleUser.id)
+                          } else {
+                            await deletePersonalPlan(detailEvent.id, state.googleUser.id)
+                          }
                           // Pull from local RSVP state if it was there
                           // (creators are auto-RSVP'd at creation time).
                           if (state.rsvps[detailEvent.id]) {
