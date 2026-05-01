@@ -2701,6 +2701,36 @@ def get_group_event(event_id: str) -> Optional[dict]:
     return _hydrate_invitees(dict(row)) if row else None
 
 
+def decline_event_invite(event_id: str, google_id: str) -> bool:
+    """Remove `google_id` from an event's extra_invitee_ids list. Used
+    when a user wants to fully exit an event (drop the pending invite
+    or the past RSVP) — cancelling the RSVP alone leaves them on the
+    invitee list, so the row reappears as "pending" on next render.
+    Returns True if the user was removed, False if they weren't on
+    the list (or the event doesn't exist)."""
+    if not event_id or not google_id:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT extra_invitee_ids FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+        if not row:
+            return False
+        try:
+            ids = json.loads(row["extra_invitee_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            ids = []
+        if google_id not in ids:
+            return False
+        ids = [g for g in ids if g != google_id]
+        conn.execute(
+            "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
+            (json.dumps(ids), event_id),
+        )
+        conn.commit()
+    return True
+
+
 def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[dict]:
     """Return an existing group_events row that was forked from the same
     catalog event into the same group, if any. Used to short-circuit

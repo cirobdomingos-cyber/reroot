@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents } from '../services/api'
+import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, declineEventInvite } from '../services/api'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
 
@@ -77,14 +77,23 @@ export default function MyRsvps() {
     return 'group'
   }
 
-  const entries = Object.entries(state.rsvps).map(([id, info]) => ({
-    id,
-    name: info?.name || '',
-    venue: info?.venue || '',
-    dateStart: info?.dateStart || '',
-    parsed: info?.dateStart ? Date.parse(info.dateStart) : NaN,
-    kind: classify(id),
-  }))
+  // Prefer fresh server data (groupEventsById) over the cached entry in
+  // state.rsvps. The cache was populated at RSVP time and never updates
+  // when the event is edited later — so without this, an edited event
+  // still showed its old name/venue/date here forever.
+  const entries = Object.entries(state.rsvps).map(([id, info]) => {
+    const fresh = groupEventsById[id]
+    return {
+      id,
+      name: fresh?.name || info?.name || '',
+      venue: fresh?.venue || info?.venue || '',
+      dateStart: fresh?.dateStart || fresh?.date_start || info?.dateStart || '',
+      parsed: ((fresh?.dateStart || fresh?.date_start || info?.dateStart) || '')
+        ? Date.parse(fresh?.dateStart || fresh?.date_start || info?.dateStart)
+        : NaN,
+      kind: classify(id),
+    }
+  })
 
   const upcoming = entries.filter(e => !Number.isNaN(e.parsed) && e.parsed > now)
                           .sort((a, b) => a.parsed - b.parsed)
@@ -123,7 +132,7 @@ export default function MyRsvps() {
     .sort((a, b) => Date.parse(a.dateStart) - Date.parse(b.dateStart))
 
   function unRsvp(entry) {
-    if (!confirm(`Cancelar RSVP de "${entry.name || entry.id}"?`)) return
+    if (!confirm(`Remover "${entry.name || entry.id}" da sua lista?`)) return
     dispatch({
       type: 'TOGGLE_RSVP',
       payload: { eventId: entry.id, dateStart: entry.dateStart, name: entry.name, venue: entry.venue },
@@ -136,7 +145,33 @@ export default function MyRsvps() {
         dateStart: entry.dateStart,
         url: '',
       }, false)
+      // For group events / personal plans, also decline the invite so
+      // the row doesn't bounce from Confirmados → Pendentes (it would
+      // otherwise reappear since cancelling RSVP alone keeps the user
+      // on the invitee list). Catalog event ids don't start with
+      // grp_ev_ — those just stay in the cancelled state.
+      if (typeof entry.id === 'string' && entry.id.startsWith('grp_ev_')) {
+        declineEventInvite(entry.id, state.googleUser.id).then(() => {
+          // Refresh the group-events feed so the now-declined invite
+          // disappears from the Pendentes section as well.
+          return fetchUserGroupEvents(state.googleUser.id)
+        }).then((events) => {
+          if (events) setGroupEvents(events)
+        }).catch(() => {})
+      }
     }
+  }
+
+  // Decline-only flow for the Pendentes section — user never RSVP'd
+  // to begin with, just remove them from the invitee list.
+  function declineInvite(ev) {
+    if (!confirm(`Recusar convite pra "${ev.name || ev.id}"?`)) return
+    if (!state.googleUser?.id) return
+    declineEventInvite(ev.id, state.googleUser.id).then(() =>
+      fetchUserGroupEvents(state.googleUser.id),
+    ).then((events) => {
+      if (events) setGroupEvents(events)
+    }).catch(() => {})
   }
 
   function openEvent(entry) {
@@ -204,6 +239,7 @@ export default function MyRsvps() {
               key={ev.id}
               event={ev}
               onOpen={() => openEvent({ id: ev.id })}
+              onDecline={() => declineInvite(ev)}
             />
           ))}
         </Section>
@@ -366,20 +402,36 @@ function FriendEventRow({ event: ev, kind = 'public', onOpen, onFriend }) {
   )
 }
 
-function PendingRow({ event: ev, onOpen }) {
+function PendingRow({ event: ev, onOpen, onDecline }) {
   // Pending invite — distinct from confirmed RSVPs by the terra
-  // "Convite" pill in the trailing slot. Tap to open the event detail
-  // and confirm; the row will graduate to Confirmados on next render.
+  // "Convite" pill. Trash button declines the invite (removes the
+  // user from the event's invitee list) so the row vanishes — without
+  // it, the only way out of a pending invite was to confirm + cancel,
+  // which left the row bouncing back to pending.
   const time = (ev.dateStart || '').slice(11, 16)
   const isPlan = ev.isPersonalPlan
   const trailing = (
-    <span style={{
-      fontSize: 10, fontWeight: 700, color: 'var(--terra)',
-      background: 'var(--terra-pale)', padding: '4px 8px', borderRadius: 6,
-      letterSpacing: 0.3,
-    }}>
-      {isPlan ? '🎲 Convite' : '👥 Grupo'}
-    </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{
+        fontSize: 10, fontWeight: 700, color: 'var(--terra)',
+        background: 'var(--terra-pale)', padding: '4px 8px', borderRadius: 6,
+        letterSpacing: 0.3,
+      }}>
+        {isPlan ? '🎲 Convite' : '👥 Grupo'}
+      </span>
+      {onDecline && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDecline() }}
+          title="Recusar convite"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+          }}
+        >
+          🗑
+        </button>
+      )}
+    </div>
   )
   return (
     <HomeEventRow

@@ -3105,6 +3105,24 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
     return {"ok": True}
 
 
+@app.post("/events/{event_id}/decline")
+def decline_event(event_id: str, google_id: str):
+    """Remove the calling user from an event's invitee list. The trash
+    icon in My RSVPs cancels the RSVP, but cancelling alone leaves the
+    user on the invitee list — the row just bounces from Confirmados
+    to Pendentes on the next render. This endpoint is the second half
+    of "fully remove this from my list."
+
+    No-op (still 200) if the user wasn't on the invitee list — the
+    frontend uses this defensively right after a cancel-RSVP and we
+    don't want to surface "already gone" as an error."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    db.decline_event_invite(event_id, google_id)
+    return {"ok": True}
+
+
 class UpdateGroupEventRequest(BaseModel):
     google_id: str                       # the requester (must be creator or co-host)
     name: Optional[str] = None

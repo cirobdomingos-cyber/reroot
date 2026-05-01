@@ -887,6 +887,18 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// Remove the calling user from an event's invitee list. Pairs with
+// cancel-RSVP to fully remove an event from "My RSVPs" — without this,
+// cancelling RSVP just bounces the row from Confirmados to Pendentes.
+export async function declineEventInvite(eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/decline?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'POST' },
+  )
+  if (!res.ok) throw new Error(`Decline invite failed: ${res.status}`)
+  return res.json()
+}
+
 // Edit content fields of an existing group event or personal plan.
 // Allowed for creator OR any co-host. Pass only the fields you want to
 // change; omit (or pass null) to leave a field unchanged. Returns the
