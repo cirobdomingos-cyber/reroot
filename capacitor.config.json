@@ -12,10 +12,6 @@
       "showSpinner": false,
       "androidSpinnerStyle": "small",
       "spinnerColor": "#7A9E7E"
-    },
-    "GoogleAuth": {
-      "iosClientId": "511485926685-irun1c38rluvso37l9lqhbh03e35gms5.apps.googleusercontent.com",
-      "scopes": ["profile", "email"]
     }
   }
 }

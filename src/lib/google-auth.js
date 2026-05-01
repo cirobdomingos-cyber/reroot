@@ -5,26 +5,35 @@
 //            with prompt='select_account' so the account picker always shows.
 //            The library is loaded in index.html via <script src="...gsi/client" async>.
 //
-//   NATIVE — @codetrix-studio/capacitor-google-auth plugin invokes iOS's
-//            native Google Sign-In SDK. Required because Google blocks
-//            embedded webview OAuth as of 2021 — GSI inside Capacitor's
-//            WKWebView silently fails (button does nothing).
+//   NATIVE — Custom OAuth 2.0 + PKCE flow using @capacitor/browser
+//            (SFSafariViewController on iOS) + @capacitor/app deep link
+//            listener. Required because Google blocks embedded webview OAuth
+//            as of 2021 — GSI inside Capacitor's WKWebView silently fails.
+//            We can't use community Google-Auth plugins because they all
+//            require CocoaPods, and this project is Capacitor 8 SPM-only.
 //
 // Both branches end up calling onSuccess({id, name, givenName, email, picture})
 // with the same shape, so callers never need to know which platform is active.
 //
 // Build-time env vars:
-//   VITE_GOOGLE_CLIENT_ID      — web OAuth client ID (used by GSI)
-//   VITE_GOOGLE_IOS_CLIENT_ID  — iOS OAuth client ID (also in capacitor.config.json)
+//   VITE_GOOGLE_CLIENT_ID — web OAuth client ID (used by GSI on web)
 //
-// MOCK mode: when VITE_GOOGLE_CLIENT_ID isn't set, the button renders but
-// uses MOCK_GOOGLE_USER on click — handy for local dev without OAuth setup.
+// The iOS OAuth client ID and reversed-client-ID redirect URI are hardcoded
+// below — they're non-secret (the URL scheme is already in Info.plist).
 
 import { Capacitor } from '@capacitor/core'
 
+// iOS OAuth client ID + reversed-client-ID redirect URI. The URL scheme
+// suffix `:/oauth2redirect/google` is what Google's iOS OAuth flow expects.
+// Both registered at console.cloud.google.com under Bundle ID `app.aue`.
+const IOS_CLIENT_ID =
+  '511485926685-irun1c38rluvso37l9lqhbh03e35gms5.apps.googleusercontent.com'
+const IOS_REDIRECT_URI =
+  'com.googleusercontent.apps.511485926685-irun1c38rluvso37l9lqhbh03e35gms5:/oauth2redirect/google'
+
 export function isGoogleConfigured() {
-  // On native (iOS/Android), config lives in capacitor.config.json — assume
-  // the build pipeline already wired the iosClientId / androidClientId.
+  // On native (iOS/Android), config lives in this file (IOS_CLIENT_ID etc.)
+  // — assume the build pipeline has the URL scheme wired in Info.plist.
   if (Capacitor.isNativePlatform?.()) return true
   // On web, the env var is the source of truth for whether OAuth is set up.
   return !!import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -72,30 +81,138 @@ export function mountGoogleButton(containerRef, onSuccess) {
     : mountWebGoogleButton(containerRef, onSuccess)
 }
 
-// ── Native (iOS / Android) ────────────────────────────────
-// Plugin reads iosClientId from capacitor.config.json. We dynamically import
-// the plugin so the web bundle doesn't pull it in (its web fallback uses an
-// older `gapi` library that conflicts with our GSI setup).
+// ── Native (iOS) ──────────────────────────────────────────
+// PKCE flow: generate verifier + challenge, open SFSafariViewController to
+// Google's auth URL, listen for the deep-link redirect, exchange the code
+// for an access token, fetch userinfo. iOS public OAuth clients don't need
+// a client secret.
 function mountNativeGoogleButton(containerRef, onSuccess) {
   if (!containerRef.current) return () => {}
 
   renderCustomButton(containerRef.current, async () => {
     try {
-      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-      const result = await GoogleAuth.signIn()
-      onSuccess({
-        id: result.id,
-        name: result.name,
-        givenName: result.givenName,
-        email: result.email,
-        picture: result.imageUrl,
-      })
+      const user = await signInWithGoogleNative()
+      onSuccess(user)
     } catch (err) {
-      console.warn('Google sign-in (native) failed:', err)
+      // Show user-visible feedback — there's no console on iOS for non-Mac users.
+      const msg = err?.message || String(err)
+      alert(`Login com Google falhou: ${msg}`)
     }
   })
 
   return () => {}
+}
+
+async function signInWithGoogleNative() {
+  const { App } = await import('@capacitor/app')
+  const { Browser } = await import('@capacitor/browser')
+
+  const verifier = generateCodeVerifier()
+  const challenge = await sha256Base64Url(verifier)
+
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  authUrl.searchParams.set('client_id', IOS_CLIENT_ID)
+  authUrl.searchParams.set('redirect_uri', IOS_REDIRECT_URI)
+  authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('scope', 'openid profile email')
+  authUrl.searchParams.set('code_challenge', challenge)
+  authUrl.searchParams.set('code_challenge_method', 'S256')
+  authUrl.searchParams.set('prompt', 'select_account')
+
+  // Set up the deep-link listener BEFORE opening the browser, then await a
+  // promise that resolves when the redirect URL fires. 60s timeout in case
+  // the user just stares at the auth screen.
+  const code = await new Promise((resolve, reject) => {
+    let listenerHandlePromise = null
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('OAuth timeout (60s)'))
+    }, 60000)
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      listenerHandlePromise?.then((h) => h.remove?.()).catch(() => {})
+    }
+
+    listenerHandlePromise = App.addListener('appUrlOpen', (event) => {
+      const url = event?.url || ''
+      if (!url.startsWith('com.googleusercontent.apps.')) return // not ours
+      try {
+        // Apple's URL parser doesn't love custom schemes — strip the scheme
+        // before constructing a URL so searchParams works reliably.
+        const query = url.split('?')[1] || ''
+        const params = new URLSearchParams(query)
+        const c = params.get('code')
+        const e = params.get('error')
+        cleanup()
+        if (e) reject(new Error(`Google rejected: ${e}`))
+        else if (c) resolve(c)
+        else reject(new Error('Redirect had no code'))
+      } catch (err) {
+        cleanup()
+        reject(err)
+      }
+    })
+
+    Browser.open({ url: authUrl.toString() }).catch((err) => {
+      cleanup()
+      reject(err)
+    })
+  })
+
+  // Close the in-app browser if iOS didn't auto-dismiss it on the redirect.
+  await Browser.close().catch(() => {})
+
+  // Exchange code for token. iOS public clients don't need client_secret.
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: IOS_CLIENT_ID,
+      code,
+      code_verifier: verifier,
+      grant_type: 'authorization_code',
+      redirect_uri: IOS_REDIRECT_URI,
+    }).toString(),
+  })
+  if (!tokenRes.ok) {
+    const body = await tokenRes.text().catch(() => '')
+    throw new Error(`Token exchange ${tokenRes.status}: ${body.slice(0, 120)}`)
+  }
+  const tokens = await tokenRes.json()
+
+  const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  })
+  if (!userRes.ok) throw new Error(`userinfo ${userRes.status}`)
+  const data = await userRes.json()
+
+  return {
+    id: data.sub,
+    name: data.name,
+    givenName: data.given_name,
+    email: data.email,
+    picture: data.picture,
+  }
+}
+
+// ── PKCE helpers ──────────────────────────────────────────
+function generateCodeVerifier() {
+  const arr = new Uint8Array(32)
+  crypto.getRandomValues(arr)
+  return base64UrlEncode(arr)
+}
+
+async function sha256Base64Url(text) {
+  const data = new TextEncoder().encode(text)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return base64UrlEncode(new Uint8Array(hash))
+}
+
+function base64UrlEncode(bytes) {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 // ── Web (browser PWA) ─────────────────────────────────────
