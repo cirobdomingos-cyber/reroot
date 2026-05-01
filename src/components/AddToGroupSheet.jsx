@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { fetchGroups, createGroupEvent } from '../services/api'
@@ -11,6 +12,7 @@ import { fetchGroups, createGroupEvent } from '../services/api'
 // flow as the GroupDetail "Do catálogo" button.
 export default function AddToGroupSheet({ open, onClose, event }) {
   const { state } = useApp()
+  const navigate = useNavigate()
   const googleId = state.googleUser?.id
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(false)
@@ -73,7 +75,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
             key="backdrop"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 250 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }}
           />
           <motion.div
             key="sheet"
@@ -82,7 +84,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0,
               background: 'white', borderRadius: '20px 20px 0 0',
-              padding: '8px 20px 28px', zIndex: 251,
+              padding: '8px 20px 28px', zIndex: 10501,
               maxHeight: '80vh', overflowY: 'auto',
             }}
           >
@@ -137,8 +139,30 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                 Carregando…
               </div>
             ) : groups.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: 'var(--charcoal-mid)', fontSize: 13 }}>
-                Você não tem grupos ainda. Crie um na aba Comunidade → Grupos.
+              <div style={{ padding: '12px 4px 4px', textAlign: 'center' }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
+                  Você ainda não tem grupos
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.4, marginBottom: 16 }}>
+                  Crie um grupo com seus amigos pra combinar de ir junto nesse e em outros eventos.
+                </div>
+                <button
+                  onClick={() => { onClose(); navigate('/groups') }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: 12,
+                    background: 'var(--terracotta)',
+                    color: 'white',
+                    border: 'none',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + Criar grupo agora
+                </button>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
