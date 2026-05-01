@@ -2687,7 +2687,7 @@ def create_group_event(
                (id, group_id, group_ids, name, description, venue, date_start, date_end,
                 created_by, visibility, note, extra_invitee_ids,
                 source_ig_handle, source_event_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (event_id, group_id, group_ids_json, name, description, venue, date_start, date_end,
              google_id, visibility, note, invitees_json, handle, src, now),
         )
