@@ -432,15 +432,31 @@ export default function Events() {
   // Full union of everything we'll ever display — used both as the source
   // of truth for chip counts (so "Tudo" doesn't fluctuate as the user
   // filters) and as the input list to filter for the actual rendering.
+  // Tiered sort: paid placements first, then the user's own commitments
+  // (group invites + accepted public events), then everything else. The
+  // user's complaint was that opening Eventos buried their plans below
+  // 30 unrelated catalog rows; tier ranking surfaces "what you signed up
+  // for" before "what's happening".
+  //
+  //   0 — featured (paid Seleção auê)
+  //   1 — group events / personal plans (pending or accepted)
+  //   2 — public catalog events the user RSVP'd to
+  //   3 — everything else
+  //
+  // Within a tier, sort chronologically. Same-day group-vs-public
+  // tie-break stays so a sibling group plan still beats a public event
+  // on the same day if both end up in the same tier (won't normally,
+  // but defensive against future tier-merging changes).
+  function eventTier(ev) {
+    if (ev.featured) return 0
+    if (ev.isGroupEvent) return 1
+    if (state.rsvps?.[ev.id]) return 2
+    return 3
+  }
   const allDisplayEvents = [...(state.customEvents || []), ...groupEvents, ...events].sort((a, b) => {
-    // Tier 1 — featured (Seleção auê) ABOVE everything else regardless
-    // of date. That's the paid-placement guarantee the venue is paying
-    // for. The backend already ships them sorted; the merge with
-    // group/custom events would otherwise mix them back into the
-    // chronological pile, so we re-pin here.
-    const fa = a.featured ? 0 : 1
-    const fb = b.featured ? 0 : 1
-    if (fa !== fb) return fa - fb
+    const ta_tier = eventTier(a)
+    const tb_tier = eventTier(b)
+    if (ta_tier !== tb_tier) return ta_tier - tb_tier
 
     const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
     const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
@@ -450,10 +466,6 @@ export default function Events() {
     const dayA = a.dateStart.slice(0, 10)
     const dayB = b.dateStart.slice(0, 10)
     if (dayA === dayB) {
-      // Same day: pin group events to the top so the user's own crew
-      // shows above the public catalog. The day strip says "you have
-      // plans on Saturday" — opening Saturday should surface those
-      // plans first, not bury them under 30 public events.
       if (a.isGroupEvent && !b.isGroupEvent) return -1
       if (!a.isGroupEvent && b.isGroupEvent) return 1
     }
@@ -2202,9 +2214,12 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           zIndex: 1,
         }}>←</button>
         {/* Category emoji is the visual anchor only when there's no
-            image — when a photo is showing it's redundant noise on top
-            of the actual content of the event. */}
-        {!showImage && (
+            image AND no editor controls — the upload/edit buttons on
+            top-right already signal "your event", and on a short
+            no-image hero the emoji collided visually with the back
+            button (both anchored to the left edge once the safe-area
+            top inset pushed the back button down). */}
+        {!showImage && !canEdit && (
           <div style={{
             position: 'absolute', bottom: 12, left: 14, fontSize: 30,
             zIndex: 1,
