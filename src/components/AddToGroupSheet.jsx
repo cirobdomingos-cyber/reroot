@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
-import { fetchGroups, createGroupEvent } from '../services/api'
+import { fetchGroups, createGroupEvent, fetchGroupsWithSource } from '../services/api'
 
 // Reusable bottom sheet for "add this catalog event to one of my groups".
 // Lists the user's groups; tap one to add the event. Hidden when not
@@ -16,6 +16,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   const navigate = useNavigate()
   const googleId = state.googleUser?.id
   const [groups, setGroups] = useState([])
+  const [linkedGroupIds, setLinkedGroupIds] = useState(new Set())
   const [loading, setLoading] = useState(false)
   const [submittingId, setSubmittingId] = useState(null)
   const [doneId, setDoneId] = useState(null)
@@ -28,13 +29,20 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     if (!open || !googleId) return
     let cancelled = false
     setLoading(true)
-    fetchGroups(googleId).then(gs => {
+    setLinkedGroupIds(new Set())
+    Promise.all([
+      fetchGroups(googleId),
+      // event?.id might be empty for some weird flows — fetch returns []
+      // gracefully so we don't gate on the result.
+      fetchGroupsWithSource(event?.id || '', googleId),
+    ]).then(([gs, linked]) => {
       if (cancelled) return
       setGroups(gs || [])
+      setLinkedGroupIds(new Set(linked?.linked_group_ids || []))
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [open, googleId])
+  }, [open, googleId, event?.id])
 
   // Reset the note when the sheet closes/reopens for a different event.
   useEffect(() => { if (!open) setNote('') }, [open])
@@ -178,18 +186,25 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                 {groups.map(g => {
                   const isSubmitting = submittingId === g.id
                   const isDone = doneId === g.id
+                  // Already a fork of this catalog event in the group —
+                  // tapping again would just hit the dedup branch and
+                  // be a no-op, so show it as a checked/disabled row
+                  // instead of teasing a new add.
+                  const alreadyLinked = linkedGroupIds.has(g.id)
+                  const checked = isDone || alreadyLinked
                   return (
                     <button
                       key={g.id}
-                      onClick={() => handlePick(g)}
-                      disabled={isSubmitting || !!doneId}
+                      onClick={() => { if (!alreadyLinked) handlePick(g) }}
+                      disabled={isSubmitting || !!doneId || alreadyLinked}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
-                        background: isDone ? 'var(--sage-pale)' : 'white',
-                        border: `1px solid ${isDone ? 'var(--sage)' : 'var(--border)'}`,
+                        background: checked ? 'var(--sage-pale)' : 'white',
+                        border: `1px solid ${checked ? 'var(--sage)' : 'var(--border)'}`,
                         borderRadius: 12, padding: '12px 14px',
                         textAlign: 'left',
-                        cursor: isSubmitting || isDone ? 'default' : 'pointer',
+                        cursor: isSubmitting || checked ? 'default' : 'pointer',
+                        opacity: alreadyLinked ? 0.85 : 1,
                       }}
                     >
                       <span style={{ fontSize: 22 }}>👥</span>
@@ -200,13 +215,17 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                         }}>
                           {g.name}
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 1 }}>
-                          {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}
-                          {g.visibility === 'private' && ' · 🔒'}
+                        <div style={{ fontSize: 11, color: alreadyLinked ? 'var(--sage)' : 'var(--charcoal-mid)', marginTop: 1 }}>
+                          {alreadyLinked ? 'Já adicionado' : (
+                            <>
+                              {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}
+                              {g.visibility === 'private' && ' · 🔒'}
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div style={{ fontSize: 14, color: isDone ? 'var(--sage)' : 'var(--charcoal-light)' }}>
-                        {isDone ? '✓' : isSubmitting ? '…' : '+'}
+                      <div style={{ fontSize: 14, color: checked ? 'var(--sage)' : 'var(--charcoal-light)' }}>
+                        {checked ? '✓' : isSubmitting ? '…' : '+'}
                       </div>
                     </button>
                   )

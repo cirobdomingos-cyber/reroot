@@ -2986,6 +2986,27 @@ def group_stats(group_id: str, google_id: str):
     return stats
 
 
+@app.get("/catalog-events/{source_event_id}/groups")
+def get_groups_with_source(source_event_id: str, google_id: str):
+    """For each group the caller belongs to, return whether that group
+    already has a fork of this catalog event. Drives the AddToGroupSheet
+    "already added" affordance — without it, users have no way to know
+    they've already added the event to a group except by checking each
+    group manually. Returns just the list of group ids that already
+    have a fork."""
+    if not google_id or not source_event_id:
+        return {"linked_group_ids": []}
+    user_groups = db.get_groups_for_user(google_id) or []
+    linked: list[str] = []
+    for g in user_groups:
+        gid = g.get("id") or g.get("group_id")
+        if not gid:
+            continue
+        if db.find_group_event_by_source(gid, source_event_id):
+            linked.append(gid)
+    return {"linked_group_ids": linked}
+
+
 @app.post("/groups/{group_id}/events")
 def create_group_event(group_id: str, req: GroupEventCreateRequest):
     """Create an event tagged to a group. Any member can create.
@@ -3017,6 +3038,21 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)
         if existing:
+            # Self-heal legacy events that pre-date the create-time
+            # auto-RSVP — re-tapping "Adicionar a um grupo" on the
+            # same source now ensures the user is RSVP'd. upsert_rsvp
+            # is idempotent so this is a no-op for fresh events.
+            try:
+                db.upsert_rsvp(
+                    google_id=req.google_id,
+                    event_id=existing["id"],
+                    event_name=existing.get("name") or "",
+                    event_venue=existing.get("venue") or "",
+                    event_date=existing.get("date_start") or "",
+                    event_url="",
+                )
+            except Exception as e:
+                log.warning(f"Group event {existing['id']}: dedup auto-RSVP failed: {e}")
             return existing
 
     if req.invitee_google_ids is None:
@@ -3047,6 +3083,23 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         extra_invitee_ids=invitees,
         source_ig_handle=_handle_from_event_id(req.source_event_id),
     )
+
+    # Auto-RSVP the creator — same contract as create_personal_plan.
+    # Without this, "Adicionar a um grupo" leaves the creator showing
+    # in their own Pendentes section, asking them to confirm an event
+    # they just created. They're already going by definition.
+    try:
+        db.upsert_rsvp(
+            google_id=req.google_id,
+            event_id=event["id"],
+            event_name=req.name.strip(),
+            event_venue=event.get("venue", ""),
+            event_date=req.date_start,
+            event_url="",
+        )
+    except Exception as e:
+        log.warning(f"Group event {event['id']}: auto-RSVP failed: {e}")
+
     # Notify everyone on the invitee list (group members + outsiders).
     # Tag per (group, event) so accidental double-creates collapse
     # instead of stacking. The note (if any) shows in the push body —

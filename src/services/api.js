@@ -887,6 +887,23 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// For each group the user belongs to, check whether the catalog event
+// is already linked there. Drives the "Já adicionado" affordance on
+// AddToGroupSheet so users don't tap-tap-tap the same group expecting
+// new behavior. Returns { linked_group_ids: [string] }.
+export async function fetchGroupsWithSource(sourceEventId, googleId) {
+  if (!sourceEventId || !googleId) return { linked_group_ids: [] }
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/catalog-events/${encodeURIComponent(sourceEventId)}/groups?google_id=${encodeURIComponent(googleId)}`,
+    )
+    if (!res.ok) return { linked_group_ids: [] }
+    return res.json()
+  } catch {
+    return { linked_group_ids: [] }
+  }
+}
+
 // Remove the calling user from an event's invitee list. Pairs with
 // cancel-RSVP to fully remove an event from "My RSVPs" — without this,
 // cancelling RSVP just bounces the row from Confirmados to Pendentes.
