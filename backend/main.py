@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     # PWABuilder's signing-key-info.txt after generating the AAB bundle.
     twa_package_name: str = "app.aue"
     twa_sha256_fingerprint: str = ""  # e.g. "AB:CD:EF:..." — empty disables endpoint
+    # Beta distribution links — the /install endpoint sniffs User-Agent and
+    # 302s iOS users to TestFlight + Android users to Play Store internal
+    # testing. Empty string disables the redirect for that platform and
+    # falls back to the universal HTML walkthrough.
+    testflight_invite_url: str = ""  # https://testflight.apple.com/join/XXXXXX
+    play_store_internal_url: str = ""  # https://play.google.com/apps/internaltest/...
     # Deployment environment label. Defaults to "production" so a missing
     # var fails-safe (staging-only behaviors stay off if someone forgets to
     # set it). Set ENV_NAME=staging on the Railway staging service and use
@@ -789,7 +795,41 @@ _INSTALL_HTML = """<!DOCTYPE html>
 
 
 @app.get("/install", response_class=PlainTextResponse)
-def install_page():
+def install_page(request: Request):
+    """Universal install entry point. Sniffs the recipient's User-Agent
+    and 302s to the right beta channel:
+
+      - iOS / iPadOS  → TestFlight invite link
+      - Android       → Play Store internal-testing link
+      - Anything else → existing HTML walkthrough (PWA install + manual
+                        Add-to-Home-Screen instructions for both platforms)
+
+    Why server-side sniffing instead of a JS redirect on the page: the
+    sharer's QR code or pasted link works for any recipient OS without
+    them landing on a "tap your platform" intermediary screen. UA can
+    be spoofed but it costs nothing here — worst case we send them to
+    the wrong store and they hit a "not available" page.
+
+    Empty env var disables the redirect for that platform — handy
+    during the beta-link transition when only one store is provisioned.
+    """
+    from fastapi.responses import RedirectResponse
+    ua = (request.headers.get("user-agent") or "").lower()
+    # Bracket on iPad too — iPadOS still sends "Mac OS X" with a "Mobile"
+    # token in some Safari versions, but the most reliable signal is the
+    # iPhone/iPad/iPod string.
+    is_ios = (
+        ("iphone" in ua or "ipad" in ua or "ipod" in ua)
+        # iPadOS 13+ Safari masquerades as Mac — heuristic: "Mac OS X" UA
+        # AND multi-touch hint. We err on the side of NOT redirecting
+        # desktop Macs accidentally; iPad users can fall through to /install
+        # and tap the Add-to-Home-Screen walkthrough.
+    )
+    is_android = "android" in ua
+    if is_ios and settings.testflight_invite_url:
+        return RedirectResponse(url=settings.testflight_invite_url, status_code=302)
+    if is_android and settings.play_store_internal_url:
+        return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
     return PlainTextResponse(_INSTALL_HTML, media_type="text/html; charset=utf-8")
 
 
