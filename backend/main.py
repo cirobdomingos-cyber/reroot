@@ -2052,13 +2052,16 @@ def friends_feed(google_id: str):
     rsvps = db.get_rsvps_for_users(visible_ids)
     today = date.today().isoformat()
 
-    # Privacy gate for group events: a friend's RSVP to a group event
-    # (event_id starts with "grp_ev_") must be filtered out unless the
-    # viewer is a member of that group. Otherwise the day-strip dot would
-    # leak the existence of private plans the viewer can't even open.
-    viewer_group_ids = {g["id"] for g in db.get_groups_for_user(google_id)}
-
-    # Group by event_id, filter to future events
+    # Privacy gate for private events (event_id starts with "grp_ev_"):
+    # surface the friend's RSVP only when the viewer can see the event
+    # itself — same rule as /events/{id} after the May 2026 unification:
+    # viewer is the creator OR is in extra_invitee_ids. Group membership
+    # alone no longer grants access.
+    #
+    # Pre-unification, this gate filtered by `viewer_group_ids` membership,
+    # which silently dropped (a) personal plans (group_id IS NULL) and
+    # (b) group-tagged events where the viewer was an outsider invitee.
+    # That's why outsiders weren't seeing friends_going stacks on Home.
     grouped: dict[str, dict] = {}
     for rsvp in rsvps:
         if rsvp["event_date"] and rsvp["event_date"] < today:
@@ -2066,7 +2069,10 @@ def friends_feed(google_id: str):
         eid = rsvp["event_id"]
         if eid.startswith("grp_ev_"):
             ge = db.get_group_event(eid)
-            if not ge or ge["group_id"] not in viewer_group_ids:
+            if not ge:
+                continue
+            invitees = ge.get("extra_invitee_ids") or []
+            if google_id != ge.get("created_by") and google_id not in invitees:
                 continue
         if eid not in grouped:
             grouped[eid] = {
