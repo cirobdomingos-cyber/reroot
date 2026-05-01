@@ -27,9 +27,24 @@ if (Capacitor.isNativePlatform?.()) {
       if (!url || url.startsWith('com.googleusercontent.apps.')) return
       try {
         const parsed = new URL(url)
-        // Hash already includes the leading #. If the link has no hash
-        // (e.g. the bare landing page), stay where we are.
-        if (parsed.hash) window.location.hash = parsed.hash
+        // 1. Old-style hash links (#/events?event=...) — used directly.
+        if (parsed.hash) {
+          window.location.hash = parsed.hash
+          return
+        }
+        // 2. Short-link path /e/<event_id> → expand to /#/events?event=<id>.
+        //    Without this, Universal Links to short URLs open the app
+        //    cold and just sit on the Home tab because the listener
+        //    had nothing to forward.
+        const shortMatch = parsed.pathname.match(/^\/e\/([^/?#]+)/)
+        if (shortMatch) {
+          const eventId = decodeURIComponent(shortMatch[1])
+          window.location.hash = `#/events?event=${encodeURIComponent(eventId)}`
+          return
+        }
+        // 3. Future short-paths could be added here. For everything
+        //    else (bare landing, unknown path), stay on the current
+        //    route — better than guessing wrong.
       } catch {
         // Unparseable — ignore. Better to land users on the home screen
         // than crash on a malformed deep link.
