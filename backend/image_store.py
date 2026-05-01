@@ -326,6 +326,58 @@ def existing_path(event_id: str) -> Optional[Path]:
     return None
 
 
+def save_user_upload(event_id: str, content: bytes, content_type: str) -> Optional[str]:
+    """Persist a user-uploaded image for `event_id`. Same on-disk
+    naming as catalog rehosts (`{event_id}.<ext>`) so the existing
+    StaticFiles mount serves both. Validates content-type and size,
+    returns the public URL on success or None on rejection.
+
+    On success, also wipes any stale extension for the same event_id
+    (e.g., user replaces a .jpg with a .png) so we don't leave
+    orphaned files around."""
+    if not event_id or not content:
+        return None
+    if len(content) > _MAX_BYTES:
+        log.warning("upload: image too large for %s (%d bytes)", event_id, len(content))
+        return None
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    ext = _CT_TO_EXT.get(ct)
+    if not ext:
+        log.info("upload: rejected content-type %r for %s", ct, event_id)
+        return None
+    # Wipe any older extension for this event so replace doesn't
+    # leave stale .jpg behind when the new one is .png.
+    for old_ext in _EXTS:
+        old = IMAGES_DIR / f"{event_id}.{old_ext}"
+        if old.exists() and old_ext != ext:
+            try: old.unlink()
+            except OSError: pass
+    target = IMAGES_DIR / f"{event_id}.{ext}"
+    try:
+        target.write_bytes(content)
+    except OSError as exc:
+        log.warning("upload: write failed for %s: %s", event_id, exc)
+        return None
+    log.info("upload: saved %s (%d bytes, ct=%s)", target.name, len(content), ct)
+    return public_url(target.name)
+
+
+def delete_event_image(event_id: str) -> bool:
+    """Remove any on-disk image file(s) for `event_id`. Returns True if
+    at least one file was deleted. Used both by explicit DELETE and as
+    a cascade when the event itself is removed."""
+    deleted = False
+    for ext in _EXTS:
+        path = IMAGES_DIR / f"{event_id}.{ext}"
+        if path.exists():
+            try:
+                path.unlink()
+                deleted = True
+            except OSError as exc:
+                log.warning("delete-image: unlink failed for %s: %s", path.name, exc)
+    return deleted
+
+
 def rehost_image(event_id: str, source_url: str) -> Optional[str]:
     """Download `source_url` (typically an IG CDN URL) to the local store
     and return our public path. Returns None on any failure — the caller

@@ -21,7 +21,7 @@ from typing import Optional
 
 import httpx
 from anthropic import Anthropic
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +30,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import database as db
 import badges
+import image_store
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -1439,7 +1440,10 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         "dateStart": ds,
         "venueAddress": "",
         "city": "Curitiba",
-        "imageUrl": None,
+        # User-uploaded images live on the same /event-images/ mount as
+        # catalog rehosts. Empty string means "no image; render the
+        # default sage gradient on the hero."
+        "imageUrl": ge.get("image_url") or None,
         "isCustom": False,
         # Group-event markers — the frontend uses these to render the lock
         # pill, group-name link, and to gate any "private" affordances.
@@ -2990,6 +2994,7 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
     if role != "admin" and not is_creator and not is_co_host:
         raise HTTPException(status_code=403, detail="Only admins, the creator, or co-organizers can delete")
     db.delete_group_event(event_id)
+    image_store.delete_event_image(event_id)  # cascade: don't leave orphan image files
     return {"ok": True}
 
 
@@ -3127,6 +3132,59 @@ def remove_event_co_host(event_id: str, co_host_google_id: str, google_id: str):
     return {"ok": True, "co_host_ids": full_list, "removed": was_removed}
 
 
+# Image upload max — generous for phone photos. The image_store helper
+# also enforces this; the FastAPI-level cap is a defense-in-depth so
+# a malicious upload doesn't even reach our handler. 8MB headroom over
+# the 5MB store cap so we get a clean 413 instead of a silent
+# truncation when someone sends a borderline file.
+_EVENT_IMAGE_UPLOAD_CAP = 8 * 1024 * 1024
+
+
+@app.post("/events/{event_id}/image")
+async def upload_event_image(
+    event_id: str,
+    file: UploadFile = File(...),
+    google_id: str = Form(...),
+):
+    """Upload (or replace) the cover image for a private event. Allowed
+    for the creator OR any co-host — same role set as invite/delete.
+
+    Stored on the same /event-images/ volume as catalog rehosts; same
+    filename convention (`<event_id>.<ext>`) so a replace overwrites
+    cleanly. Validates content-type (jpg/png/webp/gif) and size (5MB
+    via image_store, 8MB hard cap here as defense-in-depth)."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem editar a foto")
+    content = await file.read()
+    if len(content) > _EVENT_IMAGE_UPLOAD_CAP:
+        raise HTTPException(status_code=413, detail="Imagem maior que 8MB")
+    public = image_store.save_user_upload(event_id, content, file.content_type or "")
+    if not public:
+        raise HTTPException(status_code=400, detail="Imagem inválida (use JPG, PNG, WebP ou GIF)")
+    db.set_event_image_url(event_id, public)
+    return {"ok": True, "image_url": public}
+
+
+@app.delete("/events/{event_id}/image")
+def delete_event_image(event_id: str, google_id: str):
+    """Clear the cover image. Same auth as upload."""
+    event = db.get_group_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    is_creator = event["created_by"] == google_id
+    is_co_host = google_id in (event.get("co_host_ids") or [])
+    if not (is_creator or is_co_host):
+        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem remover a foto")
+    image_store.delete_event_image(event_id)
+    db.set_event_image_url(event_id, "")
+    return {"ok": True}
+
+
 @app.post("/events/private")
 def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: BackgroundTasks):
     """Create a 'personal plan' — an event tied to hand-picked invitees,
@@ -3237,6 +3295,7 @@ def delete_personal_plan(event_id: str, google_id: str):
     if not (is_creator or is_co_host):
         raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem apagar")
     db.delete_group_event(event_id)
+    image_store.delete_event_image(event_id)  # cascade: don't leave orphan image files
     return {"ok": True}
 
 

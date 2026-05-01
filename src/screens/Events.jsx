@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, uploadEventImage, deleteEventImage } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -1400,6 +1400,24 @@ export default function Events() {
                     ? { ...prev, coHostIds: newCoHostIds }
                     : prev)
                 }}
+                canEdit={
+                  // Image management = same role set as invite/delete.
+                  // Catalog events are not editable.
+                  !!(state.googleUser?.id &&
+                  detailEvent.isGroupEvent && (
+                    detailEvent.createdBy === state.googleUser.id ||
+                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
+                  ))
+                }
+                onImageChanged={(newImageUrl) => {
+                  setDetailEvent(prev => prev && prev.id === detailEvent.id
+                    ? { ...prev, imageUrl: newImageUrl || null }
+                    : prev)
+                  // Refresh the user's group-events feed so the row
+                  // shows the new cover image on Home + Events.
+                  const gid = state.googleUser?.id
+                  if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+                }}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 userNeighborhood={state.neighborhood}
@@ -2002,7 +2020,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
 
 // ── DetailPanel ───────────────────────────────────────────────────────────────
 
-function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, userNeighborhood, t }) {
+function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
   // Post-creation invite sheet — only opens for the creator/co-hosts
@@ -2019,6 +2037,43 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
   // cleanly to the gradient (and hide the zoom affordance).
   const [imageBroken, setImageBroken] = useState(false)
   const showImage = !!ev.imageUrl && !imageBroken
+  // Reset imageBroken whenever the underlying URL changes (e.g.,
+  // after a successful upload). Without this, a single onError
+  // would permanently mask any future uploaded image too.
+  useEffect(() => { setImageBroken(false) }, [ev.imageUrl])
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState(null)
+  const fileInputRef = useRef(null)
+
+  async function handleImagePicked(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !ev.id) return
+    setImageError(null); setImageUploading(true)
+    try {
+      const result = await uploadEventImage(ev.id, googleId, file)
+      onImageChanged?.(result.image_url)
+    } catch (err) {
+      setImageError(err?.message || 'Não consegui enviar a foto')
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
+  async function handleImageRemove(e) {
+    e?.stopPropagation()
+    if (!ev.id) return
+    if (!confirm('Remover a foto do evento?')) return
+    setImageError(null); setImageUploading(true)
+    try {
+      await deleteEventImage(ev.id, googleId)
+      onImageChanged?.('')
+    } catch (err) {
+      setImageError(err?.message || 'Não consegui remover a foto')
+    } finally {
+      setImageUploading(false)
+    }
+  }
 
   // Share the in-app deep link (/#/events?event=<id>) for every event —
   // catalog, group, custom — so recipients land in auê with the hero
@@ -2095,9 +2150,53 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             zIndex: 1,
           }}>{ev.icon}</div>
         )}
-        {/* Zoom hint only when the image actually loaded. Hidden when
-            the URL expired and we fell back to the gradient. */}
-        {showImage && (
+        {/* Top-right slot: editor controls (canEdit) win priority over
+            the zoom hint. For non-editors viewing an image we keep the
+            zoom hint so they know it expands. Stop propagation on
+            buttons so the hero's tap-to-zoom doesn't fire from a tap
+            on the upload control. */}
+        {canEdit ? (
+          <div style={{
+            position: 'absolute', top: 12, right: 12,
+            display: 'flex', gap: 6, zIndex: 2,
+          }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
+              disabled={imageUploading}
+              aria-label={showImage ? 'Trocar foto' : 'Adicionar foto'}
+              style={{
+                padding: '6px 12px', borderRadius: 16,
+                background: 'rgba(255,255,255,0.92)', border: 'none',
+                fontSize: 12, fontWeight: 700, cursor: imageUploading ? 'wait' : 'pointer',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                opacity: imageUploading ? 0.7 : 1,
+              }}
+            >
+              {imageUploading ? '...' : showImage ? '📷 Trocar' : '📷 Adicionar foto'}
+            </button>
+            {showImage && !imageUploading && (
+              <button
+                onClick={handleImageRemove}
+                aria-label="Remover foto"
+                style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.92)', border: 'none',
+                  cursor: 'pointer', fontSize: 14,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                }}
+              >
+                🗑
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              style={{ display: 'none' }}
+              onChange={handleImagePicked}
+            />
+          </div>
+        ) : showImage ? (
           <div style={{
             position: 'absolute', top: 12, right: 12,
             padding: '5px 8px', borderRadius: 999,
@@ -2107,6 +2206,16 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             zIndex: 1,
           }}>
             🔍 Ver
+          </div>
+        ) : null}
+        {imageError && (
+          <div style={{
+            position: 'absolute', bottom: 8, left: 12, right: 12,
+            padding: '6px 10px', borderRadius: 8,
+            background: '#FFEBEE', color: '#B71C1C', fontSize: 11,
+            zIndex: 2,
+          }}>
+            {imageError}
           </div>
         )}
       </div>

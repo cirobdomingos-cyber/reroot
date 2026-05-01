@@ -307,6 +307,17 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `image_url` for user-uploaded event images. Empty
+        # string means "no image; render the default gradient." Same
+        # path scheme as catalog images (/event-images/<filename>) so
+        # the existing StaticFiles mount serves both. Defaults to ''
+        # so legacy rows are unaffected.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN image_url TEXT NOT NULL DEFAULT ''"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
 
         # Migration: drop NOT NULL on group_id so personal plans (group_id
         # IS NULL + extra_invitee_ids non-empty) are insertable. SQLite has
@@ -333,24 +344,25 @@ def init_db():
                     extra_invitee_ids TEXT NOT NULL DEFAULT '[]',
                     source_ig_handle  TEXT NOT NULL DEFAULT '',
                     co_host_ids       TEXT NOT NULL DEFAULT '[]',
+                    image_url         TEXT NOT NULL DEFAULT '',
                     created_at        TEXT NOT NULL
                 )
             """)
-            # Newer columns (source_ig_handle, co_host_ids) may not exist
-            # in the legacy table — fall back to defaults via SELECT
-            # constants when the source column is missing.
+            # Newer columns may not exist in the legacy table — fall
+            # back to defaults via SELECT constants when missing.
             old_cols = {c[1] for c in conn.execute("PRAGMA table_info(group_events_old)").fetchall()}
             select_src = "source_ig_handle" if "source_ig_handle" in old_cols else "''"
             select_coh = "co_host_ids" if "co_host_ids" in old_cols else "'[]'"
+            select_img = "image_url" if "image_url" in old_cols else "''"
             conn.execute(f"""
                 INSERT INTO group_events
                   (id, group_id, name, description, venue, date_start, date_end,
                    created_by, visibility, note, extra_invitee_ids,
-                   source_ig_handle, co_host_ids, created_at)
+                   source_ig_handle, co_host_ids, image_url, created_at)
                 SELECT
                   id, group_id, name, description, venue, date_start, date_end,
                   created_by, visibility, note, extra_invitee_ids,
-                  {select_src}, {select_coh}, created_at
+                  {select_src}, {select_coh}, {select_img}, created_at
                 FROM group_events_old
             """)
             conn.execute("DROP TABLE group_events_old")
@@ -2759,6 +2771,28 @@ def remove_co_host(event_id: str, google_id: str) -> tuple[list[str], bool]:
         )
         conn.commit()
         return (new_list, True)
+
+
+def set_event_image_url(event_id: str, image_url: str) -> bool:
+    """Persist a user-uploaded image URL on an event row. Pass empty
+    string to clear. Returns True if a row was modified."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE group_events SET image_url = ? WHERE id = ?",
+            (image_url or "", event_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def get_event_image_url(event_id: str) -> str:
+    """Read the current image_url for an event. Empty string if unset
+    or row doesn't exist."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT image_url FROM group_events WHERE id = ?", (event_id,),
+        ).fetchone()
+    return (row["image_url"] if row else "") or ""
 
 
 def add_invitees_to_event(event_id: str, new_invitee_ids: list[str]) -> tuple[list[str], list[str]]:

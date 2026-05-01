@@ -10,7 +10,7 @@ import { getAnchorToday } from '../lib/dateAnchor'
 
 // In production (single-service deploy), API is same-origin → empty string.
 // In local dev, frontend runs on :5173 and backend on :8000.
-const BASE_URL = import.meta.env.VITE_API_URL ??
+export const BASE_URL = import.meta.env.VITE_API_URL ??
   (import.meta.env.DEV ? 'http://localhost:8000' : '')
 const TIMEOUT_MS = 5000
 
@@ -918,6 +918,40 @@ export async function removeEventCoHost(eventId, googleId, coHostGoogleId) {
     { method: 'DELETE' },
   )
   if (!res.ok) throw new Error(`Remove co-host failed: ${res.status}`)
+  return res.json()
+}
+
+// Upload (or replace) the cover image for a private event.
+// Creator-or-co-host on the backend. Bypass the default 5s fetch
+// timeout — image uploads can take longer over mobile networks and
+// the file's already on the device, so an early abort just frustrates
+// the user. 60s is generous for a 5MB cap on a 3G connection.
+export async function uploadEventImage(eventId, googleId, file) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('google_id', googleId)
+  const url = `${BASE_URL}/events/${encodeURIComponent(eventId)}/image`
+  const res = await fetch(url, { method: 'POST', body: form })
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
+    throw new Error(detail)
+  }
+  const data = await res.json()
+  // Normalize the path the same way fetchEvents does so callers can
+  // drop the returned URL straight into <img src> without thinking
+  // about the dev/prod base.
+  if (data.image_url && data.image_url.startsWith('/event-images/') && BASE_URL) {
+    data.image_url = `${BASE_URL}${data.image_url}`
+  }
+  return data
+}
+
+export async function deleteEventImage(eventId, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/events/${encodeURIComponent(eventId)}/image?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) throw new Error(`Delete event image failed: ${res.status}`)
   return res.json()
 }
 

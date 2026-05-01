@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -14,6 +14,7 @@ import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
   setGroupMemberRole, fetchGroupStats, fetchFriendsFeed, getFriends,
+  uploadEventImage, deleteEventImage, BASE_URL,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -385,6 +386,10 @@ export default function GroupDetail() {
           selectedEvent.created_by === googleId
           || (selectedEvent.co_host_ids || []).includes(googleId)
         ) : false}
+        canEdit={selectedEvent ? (
+          selectedEvent.created_by === googleId
+          || (selectedEvent.co_host_ids || []).includes(googleId)
+        ) : false}
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
         onDelete={async () => {
@@ -420,6 +425,22 @@ export default function GroupDetail() {
           } : prev)
           setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
             ? { ...prev, co_host_ids: newCoHostIds }
+            : prev)
+        }}
+        onImageChanged={(newImageUrl) => {
+          // Backend returns either '' (cleared) or '/event-images/...'
+          // (set). Local-state mirroring keeps the hero responsive
+          // without a fetchGroupDetail round-trip.
+          setGroup(prev => prev ? {
+            ...prev,
+            events: prev.events.map(e =>
+              e.id === selectedEvent?.id
+                ? { ...e, image_url: newImageUrl || '' }
+                : e
+            ),
+          } : prev)
+          setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
+            ? { ...prev, image_url: newImageUrl || '' }
             : prev)
         }}
         t={t}
@@ -1084,7 +1105,7 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, t }) {
+function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, canEdit, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, onImageChanged, t }) {
   const { state } = useApp()
   const open = !!event
   const [shareStatus, setShareStatus] = useState(null)
@@ -1093,6 +1114,38 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
   // Bumped after a successful add-invitees so the AttendeesRow re-fetches
   // and the new pending entries surface immediately.
   const [invitedTick, setInvitedTick] = useState(0)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageError, setImageError] = useState(null)
+  const fileInputRef = useRef(null)
+
+  async function handleImagePicked(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''  // reset so picking the same file again re-fires
+    if (!file || !event?.id) return
+    setImageError(null); setImageUploading(true)
+    try {
+      const result = await uploadEventImage(event.id, googleId, file)
+      onImageChanged?.(result.image_url)
+    } catch (err) {
+      setImageError(err?.message || 'Não consegui enviar a foto')
+    } finally {
+      setImageUploading(false)
+    }
+  }
+
+  async function handleImageRemove() {
+    if (!event?.id) return
+    if (!confirm('Remover a foto do evento?')) return
+    setImageError(null); setImageUploading(true)
+    try {
+      await deleteEventImage(event.id, googleId)
+      onImageChanged?.('')
+    } catch (err) {
+      setImageError(err?.message || 'Não consegui remover a foto')
+    } finally {
+      setImageUploading(false)
+    }
+  }
 
   // Hide the Companion FAB while the hero is up, same pattern as BottomSheet.
   useEffect(() => {
@@ -1144,26 +1197,109 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
             overflowY: 'auto', WebkitOverflowScrolling: 'touch',
           }}
         >
-          {/* Hero band — sage gradient as default since group events have
-              no headerBg from the catalog enrichment pipeline. */}
-          <div style={{
-            height: 130,
-            background: sourceUrl
-              ? 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)'
-              : 'linear-gradient(135deg, var(--sage) 0%, #9ec0a0 100%)',
-            position: 'relative',
-          }}>
-            <button onClick={onClose} aria-label="Fechar" style={{
-              position: 'absolute', top: 12, left: 12,
-              width: 32, height: 32, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.92)', border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-            }}>←</button>
-            <div style={{ position: 'absolute', bottom: 12, left: 16, fontSize: 32 }}>
-              {sourceUrl ? '🌍' : '📅'}
-            </div>
-          </div>
+          {/* Hero band — user-uploaded image if set, else sage gradient
+              (or terra gradient for catalog imports). canEdit = creator
+              or co-host can pick/replace/remove the image. */}
+          {(() => {
+            const rawImg = event?.image_url || ''
+            const imgSrc = rawImg && rawImg.startsWith('/event-images/') && BASE_URL
+              ? `${BASE_URL}${rawImg}`
+              : rawImg
+            const hasImage = !!rawImg
+            return (
+              <div style={{
+                height: hasImage ? 180 : 130,
+                background: hasImage
+                  ? '#222'
+                  : sourceUrl
+                    ? 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)'
+                    : 'linear-gradient(135deg, var(--sage) 0%, #9ec0a0 100%)',
+                position: 'relative', overflow: 'hidden',
+              }}>
+                {hasImage && (
+                  <img
+                    src={imgSrc}
+                    alt=""
+                    style={{
+                      position: 'absolute', inset: 0,
+                      width: '100%', height: '100%',
+                      objectFit: 'cover',
+                    }}
+                  />
+                )}
+                {hasImage && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.30) 100%)',
+                    pointerEvents: 'none',
+                  }} />
+                )}
+                <button onClick={onClose} aria-label="Fechar" style={{
+                  position: 'absolute', top: 12, left: 12,
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.92)', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                }}>←</button>
+                {!hasImage && (
+                  <div style={{ position: 'absolute', bottom: 12, left: 16, fontSize: 32 }}>
+                    {sourceUrl ? '🌍' : '📅'}
+                  </div>
+                )}
+                {canEdit && (
+                  <div style={{
+                    position: 'absolute', top: 12, right: 12,
+                    display: 'flex', gap: 6,
+                  }}>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={imageUploading}
+                      aria-label={hasImage ? 'Trocar foto' : 'Adicionar foto'}
+                      style={{
+                        padding: '6px 12px', borderRadius: 16,
+                        background: 'rgba(255,255,255,0.92)', border: 'none',
+                        fontSize: 12, fontWeight: 700, cursor: imageUploading ? 'wait' : 'pointer',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                        opacity: imageUploading ? 0.7 : 1,
+                      }}
+                    >
+                      {imageUploading ? '...' : hasImage ? '📷 Trocar' : '📷 Adicionar foto'}
+                    </button>
+                    {hasImage && !imageUploading && (
+                      <button
+                        onClick={handleImageRemove}
+                        aria-label="Remover foto"
+                        style={{
+                          width: 32, height: 32, borderRadius: '50%',
+                          background: 'rgba(255,255,255,0.92)', border: 'none',
+                          cursor: 'pointer', fontSize: 14,
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                        }}
+                      >
+                        🗑
+                      </button>
+                    )}
+                  </div>
+                )}
+                {imageError && (
+                  <div style={{
+                    position: 'absolute', bottom: 8, left: 12, right: 12,
+                    padding: '6px 10px', borderRadius: 8,
+                    background: '#FFEBEE', color: '#B71C1C', fontSize: 11,
+                  }}>
+                    {imageError}
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: 'none' }}
+                  onChange={handleImagePicked}
+                />
+              </div>
+            )
+          })()}
 
           {/* Content */}
           <div style={{ padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
