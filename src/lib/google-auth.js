@@ -1,19 +1,26 @@
-// ── Google Identity Services (GSI) helper ──────────────────
-// No backend required — client-side only OAuth via Google's GSI library.
-// The library is loaded in index.html via <script src="...gsi/client" async>.
+// ── Google Sign-In helper ──────────────────────────────────
+// Two implementations, switched at runtime:
 //
-// Two modes:
-//   REAL  — VITE_GOOGLE_CLIENT_ID is set → custom button + OAuth2 token flow
-//           with prompt='select_account' so the account picker always shows.
-//   MOCK  — env var not set → renders a custom button with demo user data
-//           so the full UI flow is always testable without Google Cloud setup.
+//   WEB    — Google Identity Services (GSI), client-side OAuth2 token flow
+//            with prompt='select_account' so the account picker always shows.
+//            The library is loaded in index.html via <script src="...gsi/client" async>.
 //
-// Why we do NOT use accounts.id.renderButton + ID token:
-// On modern Chrome / Edge / Opera, that path uses FedCM which auto-selects
-// the only signed-in Google account WITHOUT showing a picker. Users on a
-// shared machine or testing with a second account couldn't switch accounts
-// without juggling browser profiles. The OAuth2 token flow with explicit
-// prompt='select_account' is the documented escape hatch.
+//   NATIVE — @codetrix-studio/capacitor-google-auth plugin invokes iOS's
+//            native Google Sign-In SDK. Required because Google blocks
+//            embedded webview OAuth as of 2021 — GSI inside Capacitor's
+//            WKWebView silently fails (button does nothing).
+//
+// Both branches end up calling onSuccess({id, name, givenName, email, picture})
+// with the same shape, so callers never need to know which platform is active.
+//
+// Build-time env vars:
+//   VITE_GOOGLE_CLIENT_ID      — web OAuth client ID (used by GSI)
+//   VITE_GOOGLE_IOS_CLIENT_ID  — iOS OAuth client ID (also in capacitor.config.json)
+//
+// MOCK mode: when VITE_GOOGLE_CLIENT_ID isn't set, the button renders but
+// uses MOCK_GOOGLE_USER on click — handy for local dev without OAuth setup.
+
+import { Capacitor } from '@capacitor/core'
 
 export function isGoogleConfigured() {
   return !!import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -50,14 +57,51 @@ export function parseGoogleCredential(credential) {
 }
 
 /**
- * Mount a "Continue with Google" button that uses the OAuth2 token flow
- * (instead of the ID-token + FedCM path). Forces account picker every time.
- *
- * Polls until the GSI script is loaded (loaded async in index.html).
- * Only call when isGoogleConfigured() === true.
- * Returns a cleanup function.
+ * Mount a "Continue with Google" button that signs in via the right path
+ * for the current platform. Returns a cleanup function (clears any pending
+ * polls; safe to call even on native where there's nothing to clean up).
  */
 export function mountGoogleButton(containerRef, onSuccess) {
+  const isNative = Capacitor.isNativePlatform?.() ?? false
+  return isNative
+    ? mountNativeGoogleButton(containerRef, onSuccess)
+    : mountWebGoogleButton(containerRef, onSuccess)
+}
+
+// ── Native (iOS / Android) ────────────────────────────────
+// Plugin reads iosClientId from capacitor.config.json. We dynamically import
+// the plugin so the web bundle doesn't pull it in (its web fallback uses an
+// older `gapi` library that conflicts with our GSI setup).
+function mountNativeGoogleButton(containerRef, onSuccess) {
+  if (!containerRef.current) return () => {}
+
+  renderCustomButton(containerRef.current, async () => {
+    try {
+      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+      const result = await GoogleAuth.signIn()
+      onSuccess({
+        id: result.id,
+        name: result.name,
+        givenName: result.givenName,
+        email: result.email,
+        picture: result.imageUrl,
+      })
+    } catch (err) {
+      console.warn('Google sign-in (native) failed:', err)
+    }
+  })
+
+  return () => {}
+}
+
+// ── Web (browser PWA) ─────────────────────────────────────
+// Why we do NOT use accounts.id.renderButton + ID token:
+// On modern Chrome / Edge / Opera, that path uses FedCM which auto-selects
+// the only signed-in Google account WITHOUT showing a picker. Users on a
+// shared machine or testing with a second account couldn't switch accounts
+// without juggling browser profiles. The OAuth2 token flow with explicit
+// prompt='select_account' is the documented escape hatch.
+function mountWebGoogleButton(containerRef, onSuccess) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId) return () => {}
 
@@ -72,8 +116,6 @@ export function mountGoogleButton(containerRef, onSuccess) {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: 'openid profile email',
-      // The whole point of this rewrite — show the account picker every
-      // time, never silently sign in with the browser's default account.
       prompt: 'select_account',
       callback: async (response) => {
         if (!response?.access_token) return
