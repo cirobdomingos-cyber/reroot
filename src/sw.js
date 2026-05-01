@@ -55,6 +55,7 @@ registerRoute(new NavigationRoute(navigationHandler, {
     /^\/privacy(\/|$|\?)/,     // /privacy LGPD policy (server HTML)
     /^\/\.well-known\//,       // assetlinks.json + apple-app-site-association
     /^\/apple-app-site-association/,  // legacy AASA path (some iOS versions)
+    /^\/e\//,                  // short event-link → backend 302 to hash route
     /^\/manifest\.webmanifest/,// PWA manifest itself
     /^\/sw\.js/,               // service worker file
     /^\/registerSW\.js/,       // SW registration script
