@@ -3298,7 +3298,12 @@ def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str):
         raise HTTPException(status_code=403, detail="Apenas criador ou co-organizadores podem remover convidados")
     if invitee_google_id == event["created_by"]:
         raise HTTPException(status_code=400, detail="Não dá pra remover o criador do próprio evento")
+    # Remove from BOTH the invitee list AND any RSVP they made.
+    # Without the rsvp delete, an attendee who'd already RSVP'd would
+    # stay visible in the "Quem vai" roster after being kicked
+    # (the attendees endpoint joins both lists).
     db.decline_event_invite(event_id, invitee_google_id)
+    db.delete_rsvp(invitee_google_id, event_id)
     return {"ok": True}
 
 

@@ -50,12 +50,19 @@ export default function AttendeesRow({
   async function handleRemove(invitee) {
     if (!canManage || !invitee?.google_id) return
     if (!confirm(`Remover ${invitee.name || 'esse convidado'} do evento?`)) return
+    // Optimistic: drop the row from both lists locally so the UI
+    // responds instantly. The bumpKey-triggered refetch below
+    // reconciles with the server (in case the backend rejected for
+    // some reason we don't surface).
+    setAttendees(prev => prev.filter(a => a.google_id !== invitee.google_id))
+    setPending(prev => prev.filter(a => a.google_id !== invitee.google_id))
     try {
       await removeEventInvitee(eventId, invitee.google_id, googleId)
-      // Refetch attendees so the row updates immediately.
       setBumpKey(k => k + 1)
     } catch (err) {
       alert(err?.message || 'Falha ao remover.')
+      // Restore from server on error.
+      setBumpKey(k => k + 1)
     }
   }
 
