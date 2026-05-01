@@ -25,7 +25,7 @@ on:
 
 jobs:
   testflight:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       TEAM_ID: GR8L4N89V2
@@ -36,8 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pin Xcode 15.4
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      # macos-15 default Xcode is 16.x — required by Capacitor 8 for Swift
+      # plugin compilation. Letting GHA's default apply rather than pinning,
+      # since runner image updates also bump default Xcode predictably.
+      - name: Show Xcode version
+        run: xcodebuild -version
 
       - uses: actions/setup-node@v4
         with:
