@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { fetchFriendsFeed, getFriends } from '../services/api'
+import { fetchFriendsFeed, getFriends, fetchUserProfile, addFriendById } from '../services/api'
 import Avatar from '../components/Avatar'
 
 // Per-friend view: shows the friend's profile header + the upcoming events
@@ -15,18 +15,35 @@ export default function FriendDetail() {
   const myGoogleId = state.googleUser?.id
 
   const [friend, setFriend] = useState(null)
+  // friendStatus is what the BACKEND knows: 'friends' (already connected),
+  // 'self' (you tapped your own profile), 'none' (not connected yet —
+  // tap-to-add affordance fires).
+  const [friendStatus, setFriendStatus] = useState('none')
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
 
   useEffect(() => {
     if (!myGoogleId || !friendId) { setLoading(false); return }
     let cancelled = false
-    Promise.all([getFriends(myGoogleId), fetchFriendsFeed(myGoogleId)])
-      .then(([friendList, feed]) => {
+    Promise.all([
+      getFriends(myGoogleId),
+      fetchFriendsFeed(myGoogleId),
+      fetchUserProfile(friendId, myGoogleId).catch(() => null),
+    ])
+      .then(([friendList, feed, profile]) => {
         if (cancelled) return
+        // Prefer the friend-list entry (richer metadata) when the
+        // viewer is already friends with this user; fall back to the
+        // public profile for non-friends so we still render the page.
         const match = (friendList || []).find(f => f.google_id === friendId)
-        setFriend(match || null)
-        // Keep only events where this friend appears in friends_going
+        setFriend(match || (profile ? {
+          google_id: friendId,
+          name: profile.name,
+          picture: profile.picture,
+        } : null))
+        setFriendStatus(profile?.friend_status || (match ? 'friends' : 'none'))
         const theirs = (feed || []).filter(ev =>
           (ev.friends_going || []).some(f => f.google_id === friendId)
         )
@@ -35,6 +52,24 @@ export default function FriendDetail() {
       })
     return () => { cancelled = true }
   }, [myGoogleId, friendId])
+
+  async function handleAddFriend() {
+    if (adding || !myGoogleId || !friendId) return
+    setAdding(true); setAddError('')
+    try {
+      const result = await addFriendById(myGoogleId, friendId)
+      if (result.status === 'ok' || result.status === 'already_friends') {
+        setFriendStatus('friends')
+      } else if (result.status === 'self') {
+        setFriendStatus('self')
+      } else {
+        setAddError('Não consegui adicionar. Tenta de novo.')
+      }
+    } catch {
+      setAddError('Não consegui adicionar. Tenta de novo.')
+    }
+    setAdding(false)
+  }
 
   const upcoming = events
     .filter(ev => ev.event_date && Date.parse(ev.event_date) > Date.now())
@@ -72,17 +107,44 @@ export default function FriendDetail() {
               fontSize: 22, fontWeight: 700, margin: 0,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
-              {friend?.name || 'Amigo'}
+              {friend?.name || 'Pessoa'}
             </h1>
             <div style={{ fontSize: 13, color: 'var(--charcoal-light)', marginTop: 2 }}>
               {loading
                 ? 'Carregando…'
-                : upcoming.length === 0
-                  ? 'Sem eventos próximos.'
-                  : `${upcoming.length} evento${upcoming.length === 1 ? '' : 's'} próximo${upcoming.length === 1 ? '' : 's'}.`}
+                : friendStatus !== 'friends'
+                  ? (friendStatus === 'self' ? 'Você' : 'Ainda não são amigos')
+                  : upcoming.length === 0
+                    ? 'Sem eventos próximos.'
+                    : `${upcoming.length} evento${upcoming.length === 1 ? '' : 's'} próximo${upcoming.length === 1 ? '' : 's'}.`}
             </div>
           </div>
         </div>
+        {!loading && friendStatus === 'none' && (
+          <button
+            onClick={handleAddFriend}
+            disabled={adding}
+            style={{
+              marginTop: 14, width: '100%',
+              padding: '12px', borderRadius: 12,
+              background: 'var(--terra)', color: 'white',
+              border: 'none', fontSize: 14, fontWeight: 700,
+              cursor: adding ? 'wait' : 'pointer',
+              opacity: adding ? 0.7 : 1,
+            }}
+          >
+            {adding ? 'Adicionando…' : '+ Adicionar como amigo'}
+          </button>
+        )}
+        {addError && (
+          <div style={{
+            marginTop: 8, padding: '8px 12px',
+            background: '#FFEBEE', borderRadius: 8,
+            color: '#B71C1C', fontSize: 12,
+          }}>
+            {addError}
+          </div>
+        )}
       </div>
 
       {!loading && upcoming.length === 0 && (

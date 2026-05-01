@@ -901,6 +901,30 @@ export async function createGroupEvent(groupId, googleId, eventData) {
   return res.json()
 }
 
+// Public-ish profile lookup for any user, used by tap-to-add-friend
+// surfaces. friend_status: 'self' | 'friends' | 'none' tells the
+// caller whether to hide / disable / enable the "Adicionar" button.
+export async function fetchUserProfile(targetGoogleId, googleId = '') {
+  const url = `${BASE_URL}/users/${encodeURIComponent(targetGoogleId)}/profile`
+    + (googleId ? `?google_id=${encodeURIComponent(googleId)}` : '')
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) throw new Error(`Profile fetch failed: ${res.status}`)
+  return res.json()
+}
+
+// Add someone as a friend by their google_id (no invite-code juggling).
+// Auto-accepted, same shape as /friends/add: { status: 'ok'|'self'|
+// 'already_friends'|'not_found', friend_name?, new_badges? }
+export async function addFriendById(googleId, targetGoogleId) {
+  const res = await fetchWithTimeout(`${BASE_URL}/friends/add-by-id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ google_id: googleId, target_google_id: targetGoogleId }),
+  })
+  if (!res.ok) throw new Error(`Add friend by id failed: ${res.status}`)
+  return res.json()
+}
+
 // Kick a member out of a group. Admin-only on the backend; can't
 // remove the last admin. Existing event RSVPs survive.
 export async function removeGroupMember(groupId, memberGoogleId, googleId) {

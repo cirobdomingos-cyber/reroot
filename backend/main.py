@@ -2105,6 +2105,77 @@ def friends_lookup(code: str):
     }
 
 
+@app.get("/users/{target_google_id}/profile")
+def get_user_profile(target_google_id: str, google_id: str = ""):
+    """Public-ish profile lookup for any user by google_id. Used by the
+    "tap-to-add-friend" flow when the viewer sees someone in the app
+    (event creator, attendee, member of a shared group) and wants to
+    send a friend request without juggling codes.
+
+    Returns: { google_id, name, picture, friend_status }
+    where friend_status is 'self' | 'friends' | 'none'.
+
+    Doesn't leak anything that's not already visible elsewhere — name
+    + picture come from the same user_states the friends-feed already
+    surfaces. The friend_status check lets the frontend hide the
+    "Adicionar" button when the relationship already exists."""
+    target_state = db.get_user_state(target_google_id) or {}
+    if not target_state and not target_google_id:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    gu = target_state.get("googleUser") or {}
+    profile = {
+        "google_id": target_google_id,
+        "name": target_state.get("userName") or gu.get("givenName") or gu.get("name") or "",
+        "picture": gu.get("picture") or "",
+        "friend_status": "none",
+    }
+    if google_id:
+        if google_id == target_google_id:
+            profile["friend_status"] = "self"
+        else:
+            user_a, user_b = sorted([google_id, target_google_id])
+            with db.get_conn() as conn:
+                row = conn.execute(
+                    "SELECT status FROM friendships WHERE user_a = ? AND user_b = ?",
+                    (user_a, user_b),
+                ).fetchone()
+            if row and row["status"] == "accepted":
+                profile["friend_status"] = "friends"
+    return profile
+
+
+class AddFriendByIdRequest(BaseModel):
+    google_id: str        # the requester
+    target_google_id: str # who they want to add
+
+
+@app.post("/friends/add-by-id")
+def friends_add_by_id(req: AddFriendByIdRequest):
+    """Add a friendship directly by the target's google_id, instead of
+    going through the invite-code flow. Used by tap-to-add-friend
+    surfaces inside the app (someone you saw in an attendees list,
+    an event creator, etc.). Same auto-accept semantics as /friends/add
+    — adding someone you saw in the app is already a deliberate social
+    action, so a two-sided accept flow would add friction without
+    safety upside.
+
+    Returns the same shape as /friends/add — frontend can reuse the
+    success/already-friends/self handling."""
+    if not req.target_google_id:
+        return {"status": "not_found"}
+    code = db.get_friend_code(req.target_google_id)
+    result = db.upsert_friendship(
+        requester_google_id=req.google_id,
+        code=code,
+    )
+    if result.get("status") == "ok":
+        state = db.get_user_state(req.target_google_id) or {}
+        result["friend_name"] = state.get("userName") or req.target_google_id
+        result["new_badges"] = badges.evaluate(req.google_id)
+        badges.evaluate(req.target_google_id)
+    return result
+
+
 @app.post("/friends/add")
 def friends_add(req: FriendAddRequest):
     """
