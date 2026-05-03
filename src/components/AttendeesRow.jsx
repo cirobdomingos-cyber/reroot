@@ -120,7 +120,7 @@ export default function AttendeesRow({
 
   return (
     <div style={{
-      borderRadius: 12, background: 'white',
+      borderRadius: 12, background: 'var(--white)',
       border: '1px solid var(--border)', overflow: 'hidden',
       marginTop: 12,
     }}>
@@ -138,14 +138,14 @@ export default function AttendeesRow({
             <div style={{
               width: 28, height: 28, borderRadius: '50%',
               background: 'var(--cream)', color: 'var(--charcoal-mid)',
-              border: '2px solid white', marginLeft: -8,
+              border: '2px solid var(--bg2)', marginLeft: -8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 11, fontWeight: 700,
             }}>+{overflow}</div>
           )}
           {stack.slice().reverse().map((p, i) => (
             <div key={i} style={{
-              border: '2px solid white', borderRadius: '50%',
+              border: '2px solid var(--bg2)', borderRadius: '50%',
               marginLeft: i === stack.length - 1 ? 0 : -8,
             }}>
               <Avatar name={p.name} src={p.picture} size={28} />
@@ -313,7 +313,7 @@ function RemoveBtn({ onClick }) {
       title="Remover do evento"
       style={{
         width: 28, height: 28, borderRadius: '50%',
-        border: '1px solid #FFCDD2', background: 'white',
+        border: '1px solid #FFCDD2', background: 'var(--white)',
         color: '#C62828', fontSize: 14, fontWeight: 700,
         cursor: 'pointer', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',

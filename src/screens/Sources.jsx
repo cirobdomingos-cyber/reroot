@@ -213,7 +213,7 @@ export default function Sources() {
               width: '100%', boxSizing: 'border-box',
               padding: '11px 36px 11px 14px',
               fontSize: 13, fontFamily: 'inherit',
-              background: 'white',
+              background: 'var(--white)',
               border: '1px solid var(--border)', borderRadius: 12,
               outline: 'none', color: 'var(--charcoal)',
             }}
@@ -273,7 +273,7 @@ export default function Sources() {
       ) : noResults ? (
         <div style={{
           margin: '0 16px', padding: '24px 16px', textAlign: 'center',
-          background: 'white', borderRadius: 12, border: '1px dashed var(--border)',
+          background: 'var(--white)', borderRadius: 12, border: '1px dashed var(--border)',
           color: 'var(--charcoal-light)', fontSize: 13,
         }}>
           Nada com "{query}". Tenta uma palavra mais curta.
@@ -281,7 +281,7 @@ export default function Sources() {
       ) : renderedBuckets.length === 0 && featuredSources.length === 0 ? (
         <div style={{
           margin: '0 16px', padding: '24px 16px', textAlign: 'center',
-          background: 'white', borderRadius: 12, border: '1px dashed var(--border)',
+          background: 'var(--white)', borderRadius: 12, border: '1px dashed var(--border)',
           color: 'var(--charcoal-light)', fontSize: 13,
         }}>
           Nenhuma fonte ainda nesta categoria.
@@ -415,7 +415,7 @@ function AddHandleForm({ email, onAdded }) {
       onSubmit={submit}
       style={{
         margin: '0 16px 14px', padding: '14px',
-        background: 'white', borderRadius: 14,
+        background: 'var(--white)', borderRadius: 14,
         border: '1px solid var(--border)',
       }}
     >
@@ -488,7 +488,7 @@ const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   padding: '9px 12px',
   fontSize: 13, fontFamily: 'inherit',
-  background: 'white',
+  background: 'var(--white)',
   border: '1px solid var(--border)', borderRadius: 10,
   outline: 'none', color: 'var(--charcoal)',
 }
@@ -503,7 +503,7 @@ function CategoryChip({ label, count, active, onClick }) {
         fontSize: 11, fontWeight: 600, cursor: 'pointer',
         transition: 'all 0.15s',
         border: active ? 'none' : '1px solid var(--border)',
-        background: active ? 'var(--charcoal)' : 'transparent',
+        background: active ? 'var(--magenta)' : 'transparent',
         color: active ? 'white' : 'var(--charcoal-light)',
         whiteSpace: 'nowrap',
       }}
@@ -544,7 +544,7 @@ function SourceRow({ source: s, onOpen }) {
     <div
       onClick={onOpen}
       style={{
-        background: 'white', borderRadius: 14,
+        background: 'var(--white)', borderRadius: 14,
         border: isFeatured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
         padding: '12px 14px', cursor: 'pointer',
         display: 'flex', alignItems: 'center', gap: 12,

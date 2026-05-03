@@ -30,7 +30,7 @@ function LoginGate({ t }) {
   return (
     <div style={{
       margin: '16px', padding: '20px',
-      background: 'white', borderRadius: 16,
+      background: 'var(--white)', borderRadius: 16,
       border: '1px solid var(--border)', textAlign: 'center',
       color: 'var(--charcoal-mid)', fontSize: 13, lineHeight: 1.5,
     }}>
@@ -170,9 +170,9 @@ export default function Friends({ embedded = false }) {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           style={{
-            background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
+            background: 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)',
             borderRadius: 20, padding: '18px 20px', color: 'white',
-            boxShadow: '0 6px 18px rgba(232,98,63,0.35)',
+            boxShadow: '0 6px 18px rgba(255, 43, 214,0.35)',
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.85, marginBottom: 4 }}>
@@ -231,7 +231,7 @@ export default function Friends({ embedded = false }) {
           onSubmit={handleAdd}
           style={{
             display: 'flex', gap: 8,
-            background: 'white', borderRadius: 14, padding: 8,
+            background: 'var(--white)', borderRadius: 14, padding: 8,
             border: '1px solid var(--border)',
           }}
         >
@@ -253,7 +253,7 @@ export default function Friends({ embedded = false }) {
             disabled={!codeInput.trim() || addState === 'sending'}
             style={{
               padding: '10px 16px', borderRadius: 10, border: 'none',
-              background: 'var(--sage)', color: 'white',
+              background: 'var(--sage)', color: '#14081E',
               fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
               opacity: (!codeInput.trim() || addState === 'sending') ? 0.45 : 1,
               transition: 'opacity 0.15s',
@@ -293,7 +293,7 @@ export default function Friends({ embedded = false }) {
           </div>
         ) : friends.length === 0 ? (
           <div style={{
-            background: 'white', borderRadius: 14, padding: '18px 16px',
+            background: 'var(--white)', borderRadius: 14, padding: '18px 16px',
             border: '1px dashed var(--border)',
             fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5,
           }}>
@@ -301,7 +301,7 @@ export default function Friends({ embedded = false }) {
           </div>
         ) : (
           <div style={{
-            background: 'white', borderRadius: 16, padding: '6px 14px',
+            background: 'var(--white)', borderRadius: 16, padding: '6px 14px',
             border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
           }}>
             {friends.map((f, i) => (
@@ -357,7 +357,7 @@ export default function Friends({ embedded = false }) {
       <Section label={t.friends_feed_label}>
         {loading ? null : feed.length === 0 ? (
           <div style={{
-            background: 'white', borderRadius: 14, padding: '14px 16px',
+            background: 'var(--white)', borderRadius: 14, padding: '14px 16px',
             border: '1px dashed var(--border)',
             fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5,
           }}>
@@ -369,7 +369,7 @@ export default function Friends({ embedded = false }) {
               key={ev.event_id}
               onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
               style={{
-                background: 'white', borderRadius: 14, padding: '12px 14px',
+                background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                 border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
                 marginBottom: 8, cursor: 'pointer',
               }}

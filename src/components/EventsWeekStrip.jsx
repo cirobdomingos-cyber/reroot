@@ -227,6 +227,6 @@ export default function EventsWeekStrip({
 
 const navBtn = {
   width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)',
-  background: 'white', cursor: 'pointer', fontSize: 14, fontWeight: 700,
+  background: 'var(--white)', cursor: 'pointer', fontSize: 14, fontWeight: 700,
   color: 'var(--charcoal-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center',
 }

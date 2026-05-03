@@ -277,7 +277,7 @@ export default function MyRsvps() {
             onClick={() => navigate('/events')}
             style={{
               padding: '12px 24px', borderRadius: 12, border: 'none',
-              background: 'var(--sage)', color: 'white',
+              background: 'var(--sage)', color: '#14081E',
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}
           >
@@ -320,7 +320,7 @@ export default function MyRsvps() {
               key={place.id}
               onClick={() => navigate('/events', { state: { openEventId: place.id } })}
               style={{
-                background: 'white', borderRadius: 14, padding: '12px 14px',
+                background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                 border: '1px solid var(--border)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 12,
               }}
@@ -432,7 +432,7 @@ function FriendEventRow({ event: ev, kind = 'public', onOpen, onFriend }) {
             background: 'none', border: 'none', padding: 0,
             marginLeft: i === 0 ? 0 : -8,
             cursor: f.google_id ? 'pointer' : 'default',
-            borderRadius: '50%', boxShadow: '0 0 0 2px white',
+            borderRadius: '50%', boxShadow: '0 0 0 2px var(--bg2)',
           }}
         >
           <Avatar name={f.name} src={f.picture} size={22} />
@@ -514,7 +514,7 @@ function RsvpRow({ entry, friends = [], onOpen, onCancel, muted, undated }) {
               key={(friend.google_id || friend.name) + i}
               style={{
                 marginLeft: i === 0 ? 0 : -8,
-                boxShadow: '0 0 0 2px white',
+                boxShadow: '0 0 0 2px var(--bg2)',
                 borderRadius: '50%',
               }}
             >

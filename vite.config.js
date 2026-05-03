@@ -68,6 +68,15 @@ export default defineConfig({
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
       },
+      // Register the SW in dev too — without this, navigator.serviceWorker.ready
+      // never resolves (no SW is ever installed), and the push subscribe
+      // flow on Profile hangs in "..." forever. `type: 'module'` is required
+      // because the dev SW is served as an ES module, not a classic script.
+      devOptions: {
+        enabled: true,
+        type: 'module',
+        navigateFallback: 'index.html',
+      },
     }),
   ],
 })

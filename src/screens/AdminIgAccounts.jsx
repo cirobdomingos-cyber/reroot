@@ -439,7 +439,7 @@ function FeedbackSection({ feedback, email, onReload, busy, setBusy }) {
       </p>
       {feedback.length === 0 ? (
         <div style={{
-          background: 'white', borderRadius: 12, padding: '14px 16px',
+          background: 'var(--white)', borderRadius: 12, padding: '14px 16px',
           border: '1px dashed var(--border)',
           fontSize: 12, color: 'var(--charcoal-light)',
         }}>
@@ -459,7 +459,7 @@ function FeedbackSection({ feedback, email, onReload, busy, setBusy }) {
               <div
                 key={fb.id}
                 style={{
-                  background: 'white', border: '1px solid var(--border)',
+                  background: 'var(--white)', border: '1px solid var(--border)',
                   borderRadius: 12, padding: '12px 14px',
                   opacity: isOpen ? 1 : 0.65,
                 }}
@@ -526,7 +526,7 @@ function FeedbackSection({ feedback, email, onReload, busy, setBusy }) {
 function statusBtn(color) {
   return {
     padding: '5px 10px', borderRadius: 8,
-    border: `1px solid ${color}`, background: 'white', color,
+    border: `1px solid ${color}`, background: 'var(--white)', color,
     fontWeight: 700, fontSize: 11, cursor: 'pointer',
   }
 }
@@ -559,7 +559,7 @@ function UsageSection({ usage }) {
 
       {/* Daily series — 30d bar chart */}
       <div style={{
-        background: 'white', borderRadius: 12, padding: 14,
+        background: 'var(--white)', borderRadius: 12, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
@@ -606,7 +606,7 @@ function UsageSection({ usage }) {
 
       {/* Funnel */}
       <div style={{
-        background: 'white', borderRadius: 12, padding: 14,
+        background: 'var(--white)', borderRadius: 12, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 12 }}>
@@ -645,7 +645,7 @@ function UsageSection({ usage }) {
 
       {/* Recent logins */}
       <div style={{
-        background: 'white', borderRadius: 12, padding: 14,
+        background: 'var(--white)', borderRadius: 12, padding: 14,
         border: '1px solid var(--border)',
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 10 }}>
@@ -703,7 +703,7 @@ function UsageSection({ usage }) {
 function Metric({ label, value, small }) {
   return (
     <div style={{
-      background: 'white', borderRadius: 10, padding: small ? '8px 10px' : '10px 12px',
+      background: 'var(--white)', borderRadius: 10, padding: small ? '8px 10px' : '10px 12px',
       border: '1px solid var(--border)', textAlign: 'center', flex: small ? '1 1 80px' : 'unset',
     }}>
       <div style={{
@@ -732,14 +732,14 @@ const inputStyle = {
 
 const primaryBtn = (disabled) => ({
   padding: '8px 16px', borderRadius: 8, border: 'none',
-  background: 'var(--sage)', color: 'white', fontWeight: 700,
+  background: 'var(--sage)', color: '#14081E', fontWeight: 700,
   cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 13,
   opacity: disabled ? 0.5 : 1,
 })
 
 const ghostBtn = (color) => ({
   padding: '8px 14px', borderRadius: 8,
-  border: `1px solid ${color}`, background: 'white', color,
+  border: `1px solid ${color}`, background: 'var(--white)', color,
   fontWeight: 700, fontSize: 12, cursor: 'pointer',
 })
 
@@ -1038,7 +1038,7 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
   }, [v.promo_code, v.promo_perk])
   return (
     <div style={{
-      background: 'white', borderRadius: 10,
+      background: 'var(--white)', borderRadius: 10,
       border: v.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
       overflow: 'hidden',
     }}>
@@ -1233,7 +1233,7 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
               disabled={busy}
               style={{
                 padding: '6px 10px', borderRadius: 6, border: 'none',
-                background: 'var(--sage)', color: 'white',
+                background: 'var(--sage)', color: '#14081E',
                 fontSize: 11, fontWeight: 700,
                 cursor: busy ? 'default' : 'pointer',
               }}
@@ -1248,7 +1248,7 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
                 disabled={busy}
                 style={{
                   padding: '6px 10px', borderRadius: 6,
-                  border: '1px solid var(--border)', background: 'white',
+                  border: '1px solid var(--border)', background: 'var(--white)',
                   fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
                   cursor: busy ? 'default' : 'pointer',
                 }}
@@ -1287,7 +1287,7 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
     : rawPic
   return (
     <div style={{
-      background: 'white', border: '1px solid var(--border)',
+      background: 'var(--white)', border: '1px solid var(--border)',
       borderRadius: 12, padding: 12,
       opacity: acc.enabled ? 1 : 0.55,
       display: 'flex', alignItems: 'center', gap: 12,
@@ -1312,7 +1312,7 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
       >
         <span style={{
           position: 'absolute', top: 2, left: acc.enabled ? 18 : 2,
-          width: 18, height: 18, borderRadius: '50%', background: 'white',
+          width: 18, height: 18, borderRadius: '50%', background: 'var(--white)',
           transition: 'left 0.15s',
         }}/>
       </button>
@@ -1464,7 +1464,7 @@ function CuratorsSection({
       </p>
 
       <form onSubmit={onAdd} style={{
-        background: 'white', borderRadius: 14, padding: 14,
+        background: 'var(--white)', borderRadius: 14, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
         display: 'flex', gap: 8, flexWrap: 'wrap',
       }}>
@@ -1495,7 +1495,7 @@ function CuratorsSection({
           <div
             key={c.email}
             style={{
-              background: 'white', border: '1px solid var(--border)',
+              background: 'var(--white)', border: '1px solid var(--border)',
               borderRadius: 10, padding: '10px 12px',
               display: 'flex', alignItems: 'center', gap: 10,
             }}

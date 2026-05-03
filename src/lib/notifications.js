@@ -23,18 +23,10 @@ function strHash(str) {
   return Math.abs(h) % 2_147_483_647
 }
 
-function tomorrowAt8am() {
+function tomorrowAt10am() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
-  d.setHours(8, 0, 0, 0)
-  return d
-}
-
-function nextSundayAt18() {
-  const d = new Date()
-  const daysUntil = (7 - d.getDay()) % 7 || 7
-  d.setDate(d.getDate() + daysUntil)
-  d.setHours(18, 0, 0, 0)
+  d.setHours(10, 0, 0, 0)
   return d
 }
 
@@ -42,7 +34,8 @@ function nextSundayAt18() {
 
 /**
  * Called when user RSVPs to an event.
- * Native: schedules a local notification for tomorrow at 8am.
+ * Native: schedules a local notification for tomorrow at 10am (user-friendly
+ *   wake time — 8am pinged people too early per founder feedback).
  * Web: shows an immediate browser notification as confirmation.
  * Returns true if notification was delivered/scheduled.
  */
@@ -61,7 +54,7 @@ export async function scheduleEventReminder(event) {
           id: strHash(event.id),
           title: '🗓 Tem auê amanhã!',
           body: `${event.name} · ${event.time}`,
-          schedule: { at: tomorrowAt8am() },
+          schedule: { at: tomorrowAt10am() },
           smallIcon: 'ic_stat_icon_config_sample',
         }],
       })
@@ -99,67 +92,5 @@ export async function cancelEventReminder(eventId) {
   if (!plugin) return
   try {
     await plugin.cancel({ notifications: [{ id: strHash(eventId) }] })
-  } catch {}
-}
-
-/**
- * Schedule weekly Sunday check-in notification (native only).
- * Safe to call multiple times — cancels the previous one first.
- */
-export async function scheduleWeeklyCheckin() {
-  const plugin = await getLocalNotifications()
-  if (!plugin) return
-  try {
-    await plugin.cancel({ notifications: [{ id: 99_999 }] })
-    await plugin.schedule({
-      notifications: [{
-        id: 99_999,
-        title: '🎉 Domingão',
-        body: 'Bora ver o que rola essa semana.',
-        schedule: { at: nextSundayAt18(), every: 'week' },
-        smallIcon: 'ic_stat_icon_config_sample',
-      }],
-    })
-  } catch {}
-}
-
-/**
- * Schedule a post-event "reconnect" notification.
- * Fires 3 hours after the event start time on native.
- * No-op on web — the in-app reconnect card in Home.jsx handles that surface.
- */
-export async function schedulePostEventNotification(event) {
-  const plugin = await getLocalNotifications()
-  if (!plugin) return
-  try {
-    const { display } = await plugin.checkPermissions()
-    if (display !== 'granted') return
-
-    // Calculate notification time: event dateStart + 3h (fall back to time field, then +3h from now)
-    let at
-    if (event.dateStart) {
-      at = new Date(new Date(event.dateStart).getTime() + 3 * 60 * 60 * 1000)
-    } else if (event.time) {
-      const match = event.time.match(/(\d{1,2}):(\d{2})/)
-      if (match) {
-        at = new Date()
-        at.setHours(parseInt(match[1], 10) + 3, parseInt(match[2], 10), 0, 0)
-        if (at < new Date()) at = new Date(Date.now() + 3 * 60 * 60 * 1000)
-      } else {
-        at = new Date(Date.now() + 3 * 60 * 60 * 1000)
-      }
-    } else {
-      at = new Date(Date.now() + 3 * 60 * 60 * 1000)
-    }
-
-    await plugin.schedule({
-      notifications: [{
-        id: strHash(event.id + '_post'),
-        title: '🤝 Quem foi com você?',
-        body: `${event.name} — quem mais foi tá listado lá.`,
-        schedule: { at },
-        smallIcon: 'ic_stat_icon_config_sample',
-      }],
-    })
   } catch {}
 }

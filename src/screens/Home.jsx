@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
-import { scheduleEventReminder } from '../lib/notifications'
 import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
+import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { getAnchorToday } from '../lib/dateAnchor'
 
 function getGreetingKey() {
@@ -15,6 +15,16 @@ function getGreetingKey() {
   if (h < 12) return 'greeting_morning'
   if (h < 18) return 'greeting_afternoon'
   return 'greeting_evening'
+}
+
+// Eyebrow label tracks time-of-day on the same hour boundaries as the
+// greeting. Brand stamp ▸ CWB.NIGHT.LOG stays as-is — that's the
+// identity of the Neon Boteco direction and doesn't shift by hour.
+function getEyebrowLabel() {
+  const h = new Date().getHours()
+  if (h < 12) return 'SUA MANHÃ'
+  if (h < 18) return 'SUA TARDE'
+  return 'SUA NOITE'
 }
 
 // Mood→event matching, used to order Home suggestions by the user's profile.
@@ -53,6 +63,7 @@ export default function Home() {
   const t = useT()
 
   const [notifToast, setNotifToast] = useState(null)
+  const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [friendsFeed, setFriendsFeed] = useState([])
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
@@ -230,30 +241,40 @@ export default function Home() {
     })
     .slice(0, 3)
 
+  // Activity ticker counts — replaces the previous stat tiles.
+  // "rolando" = total events in the live catalog; falls back to a
+  // skeleton zero while the fetch resolves.
+  const rolandoCount = allEvents.length
+  // CWB.NIGHT.LOG version stamp. ISO week of year, padded — matches the
+  // mockup's `V.207` format. Live so it stays current without a deploy.
+  const _now = new Date()
+  const _start = new Date(_now.getFullYear(), 0, 1)
+  const _weekOfYear = Math.ceil((((_now - _start) / 86400000) + _start.getDay() + 1) / 7)
+  const versionStamp = `V.${String(_now.getFullYear() % 100).padStart(2, '0')}${String(_weekOfYear).padStart(2, '0')}`
+  const semana = String(_weekOfYear).padStart(2, '0')
+
   return (
     <div>
-      {/* Brand + avatar. Home is the anchor screen, so we lead with the
-          "auê" wordmark (sage, mirrors the Onboarding mark) and tuck the
-          greeting into a secondary line. The avatar shortcuts to Profile —
-          replaces the old Perfil bottom-nav tab. */}
-      <div style={{ padding: '14px 20px 4px' }}>
+      {/* Brand block — Neon Boteco direction. 84px "auê" wordmark in
+          magenta with magenta glow, mono caption underneath. Avatar tap
+          shortcuts to Profile (replaces the old Perfil nav tab). */}
+      <div style={{ padding: '20px 18px 16px' }}>
         <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, marginBottom: 6,
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: 12,
         }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-            <div style={{
-              fontSize: 32, fontWeight: 800, letterSpacing: -0.8,
-              color: 'var(--sage)', lineHeight: 1,
+          <div style={{ minWidth: 0 }}>
+            <div className="neon-display neon-glow-mag" style={{
+              fontSize: 84, lineHeight: 0.85,
             }}>
               auê
             </div>
-            <div style={{
-              fontSize: 9, fontWeight: 700, color: 'var(--charcoal-light)',
-              textTransform: 'uppercase', letterSpacing: 1.5,
-              whiteSpace: 'nowrap',
+            <div className="neon-mono" style={{
+              fontSize: 10, marginTop: 8,
+              letterSpacing: '0.24em', textTransform: 'uppercase',
+              color: 'var(--cyan)',
             }}>
-              Curitiba que acontece
+              ▸ CWB.NIGHT.LOG // {versionStamp}
             </div>
           </div>
           <button
@@ -261,8 +282,8 @@ export default function Home() {
             aria-label={t.nav_profile ?? 'Perfil'}
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              padding: 0, flexShrink: 0,
-              borderRadius: '50%',
+              padding: 0, flexShrink: 0, borderRadius: '50%',
+              marginTop: 6,
             }}
           >
             <Avatar
@@ -272,47 +293,106 @@ export default function Home() {
             />
           </button>
         </div>
-        <div style={{
-          fontSize: 13, color: 'var(--charcoal-mid)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+      </div>
+
+      {/* Activity ticker — three colored counts in mono, separated by
+          line dividers top + bottom. Replaces the old stat tiles; the
+          tile-tap routes are folded into the friends/confirmed section
+          headers below (each "Ver tudo →" jumps to /my-rsvps). */}
+      <div className="neon-mono" style={{
+        borderTop: '1px solid var(--line)',
+        borderBottom: '1px solid var(--line)',
+        padding: '8px 18px',
+        display: 'flex', gap: 20, overflowX: 'auto',
+        scrollbarWidth: 'none',
+      }}>
+        <span style={{
+          fontSize: 11, color: 'var(--lime)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
         }}>
-          {t[getGreetingKey()]}, <span style={{ color: 'var(--charcoal)', fontWeight: 700 }}>
+          ● {rsvpCount} {rsvpCount === 1 ? 'confirmado' : 'confirmados'}
+        </span>
+        <span style={{
+          fontSize: 11, color: 'var(--magenta)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
+          ● {friendGoingCount} {friendGoingCount === 1 ? 'amigo vai' : 'amigos vão'}
+        </span>
+        <span style={{
+          fontSize: 11, color: 'var(--cyan)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
+          ● {rolandoCount} rolando
+        </span>
+      </div>
+
+      {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
+      <div style={{ padding: '24px 18px 14px' }}>
+        <div className="neon-mono" style={{
+          fontSize: 10, letterSpacing: '0.24em',
+          color: 'var(--text3)', marginBottom: 8,
+        }}>
+          {'>>'} {getEyebrowLabel()}
+        </div>
+        <div className="neon-display" style={{
+          fontSize: 30, color: 'var(--text)', letterSpacing: '-0.025em',
+        }}>
+          {t[getGreetingKey()]}, <span style={{ color: 'var(--text)' }}>
             {state.userName || t.home_default_name}
-          </span> 👋
+          </span>. <span className="neon-glow-cyan">Bora?</span>
         </div>
       </div>
 
-      {/* Quick stats bar — both tiles route to /my-rsvps (RSVPs tab),
-          which now shows the user's RSVPs *and* friends' upcoming RSVPs
-          in one place. */}
-      <div style={{
-        display: 'flex', gap: 8, margin: '8px 16px 14px', justifyContent: 'space-between',
-      }}>
-        {[
-          {
-            val: rsvpCount, lbl: t.home_stat_rsvpd, color: 'var(--sage)',
-            onTap: rsvpCount > 0 ? () => navigate('/my-rsvps') : null,
-          },
-          {
-            val: friendGoingCount, lbl: t.home_stat_friends_going ?? 'Amigos vão', color: '#5B8DD9',
-            onTap: friendGoingCount > 0 ? () => navigate('/my-rsvps') : null,
-          },
-        ].map(({ val, lbl, color, onTap }) => (
-          <div
-            key={lbl}
-            onClick={onTap || undefined}
+      {/* Create-plan CTA — was tucked into the Events header as a small
+          icon pill, then promoted back to a full-width CTA after the
+          greeting since this is "Bora?" → "or organize your own thing".
+          Lime accent reads as the create affordance distinct from the
+          discovery/RSVP affordances elsewhere on Home. */}
+      {state.googleUser?.id && (
+        <div style={{ padding: '0 18px 14px' }}>
+          <button
+            onClick={() => setShowPlanSheet(true)}
             style={{
-              flex: 1, background: 'white', borderRadius: 14, padding: '12px 10px',
-              textAlign: 'center', border: '1px solid var(--border)',
-              cursor: onTap ? 'pointer' : 'default',
-              transition: 'transform 0.1s',
+              width: '100%',
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 16px',
+              background: 'transparent',
+              border: '1px solid var(--lime)',
+              borderRadius: 14, cursor: 'pointer',
+              boxShadow: '0 0 18px rgba(198, 255, 0, 0.15)',
+              textAlign: 'left',
             }}
           >
-            <div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div>
-            <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', marginTop: 2 }}>{lbl}</div>
-          </div>
-        ))}
-      </div>
+            <span style={{
+              width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+              background: 'rgba(198, 255, 0, 0.10)',
+              border: '1px solid rgba(198, 255, 0, 0.35)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18,
+              filter: 'drop-shadow(0 0 6px rgba(198, 255, 0, 0.5))',
+            }}>🎲</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="neon-display" style={{
+                fontSize: 15, color: 'var(--lime)',
+                letterSpacing: '-0.01em',
+                textShadow: '0 0 8px rgba(198, 255, 0, 0.4)',
+              }}>
+                Criar um evento com amigos
+              </div>
+              <div className="neon-mono" style={{
+                fontSize: 10, color: 'var(--text2)',
+                letterSpacing: '0.16em', textTransform: 'uppercase',
+                marginTop: 4,
+              }}>
+                Plano privado · convide a galera
+              </div>
+            </div>
+            <span className="neon-mono" style={{
+              fontSize: 18, color: 'var(--lime)', flexShrink: 0,
+            }}>→</span>
+          </button>
+        </div>
+      )}
 
       {/* Pending invites — surfaces personal plans and group events the
           user was invited to but hasn't RSVP'd yet. Capped to the next 3
@@ -331,16 +411,17 @@ export default function Home() {
             <div
               className="section-label"
               onClick={() => navigate('/my-rsvps')}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                cursor: 'pointer', color: 'var(--magenta)',
+              }}
             >
-              <span>
-                {t.home_pending_label ?? 'Convites pendentes'} · {groupEventsPending.length}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 600 }}>
-                {t.home_see_all ?? 'Ver tudo'} →
+              <span>// {(t.home_pending_label ?? 'Convites pendentes').toUpperCase()} · {String(groupEventsPending.length).padStart(2, '0')}</span>
+              <span style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.16em' }}>
+                {(t.home_see_all ?? 'Ver tudo').toUpperCase()} →
               </span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 16px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 18px', marginBottom: 14 }}>
               {visible.map(ev => (
                 <PendingInviteRow
                   key={ev.id}
@@ -358,11 +439,13 @@ export default function Home() {
               {hidden > 0 && (
                 <button
                   onClick={() => navigate('/my-rsvps')}
+                  className="neon-mono"
                   style={{
-                    background: 'transparent', border: '1px dashed var(--border)',
-                    borderRadius: 12, padding: '9px 12px',
-                    fontSize: 12, fontWeight: 600, color: 'var(--charcoal-mid)',
-                    cursor: 'pointer',
+                    background: 'transparent', border: '1px dashed var(--line)',
+                    borderRadius: 12, padding: '10px 12px',
+                    fontSize: 11, fontWeight: 500,
+                    letterSpacing: '0.18em', textTransform: 'uppercase',
+                    color: 'var(--text2)', cursor: 'pointer',
                   }}
                 >
                   + {hidden} {hidden === 1 ? 'outro convite' : 'outros convites'} →
@@ -374,7 +457,13 @@ export default function Home() {
       })()}
 
       {/* Week Calendar */}
-      <div className="section-label">{t.home_calendar_label ?? 'Seu calendário'}</div>
+      <div className="section-label" style={{
+        color: 'var(--cyan)',
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      }}>
+        <span>// {(t.home_calendar_label ?? 'Seu calendário').toUpperCase()}</span>
+        <span style={{ color: 'var(--text3)' }}>SEMANA {semana}</span>
+      </div>
       <WeekCalendar
         weekOffset={calendarWeekOffset}
         onWeekOffsetChange={setCalendarWeekOffset}
@@ -407,8 +496,13 @@ export default function Home() {
       {/* Upcoming RSVPs */}
       {upcomingRsvps.length > 0 && (
         <>
-          <div className="section-label">{t.home_upcoming_label ?? 'Seus próximos eventos'}</div>
-          <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="section-label" style={{
+            color: 'var(--lime)',
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          }}>
+            <span>// {(t.home_upcoming_label ?? 'Seus próximos eventos').toUpperCase()} · {String(upcomingRsvps.length).padStart(2, '0')}</span>
+          </div>
+          <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {upcomingRsvps.slice(0, 3).map(ev => {
               const friends = friendsByEventId[ev.id] || []
               return (
@@ -424,7 +518,7 @@ export default function Home() {
                 isGroupEvent={!!ev.isGroupEvent}
                 onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
                 trailing={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {friends.length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         {friends.slice(0, 3).map((friend, i) => (
@@ -432,27 +526,26 @@ export default function Home() {
                             key={(friend.google_id || friend.name) + i}
                             style={{
                               marginLeft: i === 0 ? 0 : -8,
-                              boxShadow: '0 0 0 2px white',
+                              boxShadow: '0 0 0 2px var(--bg2)',
                               borderRadius: '50%',
                             }}
                           >
                             <Avatar name={friend.name} src={friend.picture} size={22} />
                           </div>
                         ))}
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, color: 'var(--terra)',
-                          marginLeft: 5,
+                        <span className="neon-mono" style={{
+                          fontSize: 10, color: 'var(--magenta)',
+                          marginLeft: 5, letterSpacing: '0.1em',
                         }}>
                           {friends.length}
                         </span>
                       </div>
                     )}
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, color: 'var(--sage)',
-                      background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
+                    <span className="neon-pill" style={{
+                      color: 'var(--lime)', background: 'var(--lime-soft)',
                       flexShrink: 0,
                     }}>
-                      {state.language === 'en' ? 'Confirmed' : 'Confirmado'}
+                      ✓ ON
                     </span>
                   </div>
                 }
@@ -481,14 +574,17 @@ export default function Home() {
           <div
             className="section-label"
             onClick={() => navigate('/my-rsvps')}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+            style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              cursor: 'pointer', color: 'var(--magenta)',
+            }}
           >
-            <span>{t.home_friends_going_label ?? 'Amigos vão'}</span>
-            <span style={{ fontSize: 11, color: 'var(--charcoal-light)', fontWeight: 600 }}>
-              {t.home_see_all ?? 'Ver tudo'} →
+            <span>// {(t.home_friends_going_label ?? 'Amigos vão').toUpperCase()}</span>
+            <span style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.16em' }}>
+              {(t.home_see_all ?? 'Ver tudo').toUpperCase()} →
             </span>
           </div>
-          <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {friendsFeedFiltered.slice(0, 3).map(ev => {
               const userIsGoing = !!state.rsvps[ev.event_id]
               const time = (ev.event_date || '').slice(11, 16)  // "HH:MM" if present
@@ -503,14 +599,11 @@ export default function Home() {
                   trailing={
                     <>
                       {userIsGoing && (
-                        <span style={{
-                          fontSize: 9, fontWeight: 700,
-                          padding: '2px 6px', borderRadius: 5,
-                          background: 'var(--sage-pale)', color: 'var(--sage)',
-                          letterSpacing: 0.3, marginRight: 8,
-                          whiteSpace: 'nowrap',
+                        <span className="neon-pill" style={{
+                          color: 'var(--lime)', background: 'var(--lime-soft)',
+                          marginRight: 8,
                         }}>
-                          VOCÊ TAMBÉM
+                          ✓ VOCÊ
                         </span>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -519,14 +612,17 @@ export default function Home() {
                             key={friend.name + i}
                             style={{
                               marginLeft: i === 0 ? 0 : -8,
-                              boxShadow: '0 0 0 2px white',
+                              boxShadow: '0 0 0 2px var(--bg2)',
                               borderRadius: '50%',
                             }}
                           >
                             <Avatar name={friend.name} src={friend.picture} size={24} />
                           </div>
                         ))}
-                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--terra)', marginLeft: 6 }}>
+                        <span className="neon-mono" style={{
+                          fontSize: 10, color: 'var(--magenta)', marginLeft: 6,
+                          letterSpacing: '0.1em',
+                        }}>
                           {ev.friends_going.length}
                         </span>
                       </div>
@@ -541,13 +637,14 @@ export default function Home() {
       })()}
 
       {/* Suggested events — tap a row to open the full hero on the
-          Events tab; RSVP happens there. The previous inline
-          "Confirmar" button skipped the event-detail context and
-          lived in a code path that didn't sync to the backend rsvps
-          table either, so removing it also cleans up an out-of-band
-          RSVP source. */}
-      <div className="section-label">{t.home_suggested_label ?? 'Eventos para você'}</div>
-      <div style={{ margin: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          Events tab; RSVP happens there. */}
+      <div className="section-label" style={{
+        color: 'var(--cyan)',
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      }}>
+        <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()} · {String(rolandoCount).padStart(2, '0')}</span>
+      </div>
+      <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {suggestedEvents.map(ev => (
           <HomeEventRow
             key={ev.id}
@@ -563,40 +660,103 @@ export default function Home() {
         ))}
         <button
           onClick={() => navigate('/events')}
+          className="neon-mono"
           style={{
-            width: '100%', padding: '12px', borderRadius: 14, fontSize: 13,
-            fontWeight: 600, cursor: 'pointer', border: '1.5px solid var(--border)',
-            background: 'none', color: 'var(--charcoal-mid)',
+            width: '100%', padding: 12, borderRadius: 12,
+            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+            cursor: 'pointer', border: '1px solid var(--line)',
+            background: 'transparent', color: 'var(--cyan)',
           }}
         >
-          {t.home_see_all_events ?? 'Ver todos os eventos →'}
+          {(t.home_see_all_events ?? 'Ver todos os eventos').toUpperCase()} ↗
         </button>
       </div>
 
       {/* Community highlights */}
-      <div className="section-label">{t.home_community_label ?? 'Comunidade'}</div>
-      <div style={{ margin: '0 16px 12px' }}>
+      <div className="section-label" style={{ color: 'var(--magenta)' }}>
+        // {(t.home_community_label ?? 'Comunidade').toUpperCase()}
+      </div>
+      <div style={{ margin: '0 18px 12px' }}>
         <div
           onClick={() => navigate('/community')}
           style={{
-            background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
-            borderRadius: 16, padding: '16px 18px', cursor: 'pointer',
-            color: 'white',
+            background:
+              'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%),' +
+              ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%),' +
+              ' var(--bg2)',
+            border: '1px solid var(--line)',
+            borderRadius: 16, padding: '18px 20px', cursor: 'pointer',
+            color: 'var(--text)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="neon-mono" style={{
+                fontSize: 10, color: 'var(--lime)',
+                letterSpacing: '0.22em', textTransform: 'uppercase',
+                marginBottom: 4,
+              }}>
+                // REDE
+              </div>
+              <div className="neon-display" style={{
+                fontSize: 18, color: 'var(--text)', marginBottom: 4,
+              }}>
                 {t.home_community_cta ?? 'Amigos & Grupos'}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
+              <div className="neon-mono" style={{
+                fontSize: 11, color: 'var(--text2)', letterSpacing: '0.04em',
+              }}>
                 {t.home_community_sub ?? 'Conecte-se com pessoas e entre em grupos'}
               </div>
             </div>
-            <span style={{ fontSize: 24 }}>👥</span>
+            <span className="neon-mono" style={{
+              fontSize: 22, color: 'var(--cyan)', flexShrink: 0, marginLeft: 12,
+            }}>→</span>
           </div>
         </div>
       </div>
+
+      {/* Personal-plan creation sheet — opened by the "Criar um evento
+          com amigos" CTA above. Same component Events.jsx mounts; both
+          surfaces converge on the same backend POST /events/personal. */}
+      <PersonalPlanSheet
+        open={showPlanSheet}
+        onClose={() => setShowPlanSheet(false)}
+        googleId={state.googleUser?.id}
+        onCreated={(event) => {
+          // Backend auto-RSVPs the creator into the rsvps table; mirror
+          // it client-side so My RSVPs picks up the new plan without a
+          // refetch.
+          if (event?.id) {
+            dispatch({
+              type: 'TOGGLE_RSVP',
+              payload: {
+                eventId: event.id,
+                name: event.name,
+                venue: event.venue,
+                dateStart: event.date_start,
+              },
+            })
+          }
+          // Refresh the user's group/personal-plan feed so the new
+          // event surfaces in pending/upcoming sections of Home.
+          const gid = state.googleUser?.id
+          if (gid) fetchUserGroupEvents(gid).then(events => {
+            const now = Date.now()
+            const accepted = []
+            for (const ev of (events || [])) {
+              const tt = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+              if (Number.isNaN(tt) || tt <= now) continue
+              const norm = { ...ev, group_name: ev.groupName || ev.group_name || '' }
+              if (state.rsvps[ev.id] || ev.id === event?.id) accepted.push(norm)
+            }
+            setGroupEventsAccepted(prev => {
+              const ids = new Set(prev.map(e => e.id))
+              return [...prev, ...accepted.filter(e => !ids.has(e.id))]
+            })
+          })
+        }}
+      />
 
       {/* Notification toast */}
       <AnimatePresence>
@@ -604,18 +764,23 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
+            className="neon-card"
             style={{
               position: 'fixed', bottom: 90, left: 16, right: 16, zIndex: 300,
-              background: 'var(--charcoal)', color: 'white',
-              borderRadius: 14, padding: '12px 16px',
+              padding: '12px 16px',
               display: 'flex', alignItems: 'center', gap: 10,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 24px rgba(198, 255, 0, 0.25)',
             }}
           >
-            <span style={{ fontSize: 18 }}>🔔</span>
+            <span style={{ fontSize: 16, color: 'var(--lime)' }}>●</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>{t.home_notif_confirmed ?? '🎉 Confirmado!'}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
+              <div className="neon-mono" style={{
+                fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+                color: 'var(--lime)',
+              }}>
+                {t.home_notif_confirmed ?? 'Confirmado'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{notifToast}</div>
             </div>
           </motion.div>
         )}
@@ -635,30 +800,33 @@ function PendingInviteRow({ event: ev, onOpen, onAccept }) {
   return (
     <div
       onClick={onOpen}
+      className="neon-card"
       style={{
-        background: 'white', borderRadius: 14,
-        border: '1px solid var(--border)',
-        boxShadow: 'inset 4px 0 0 var(--terra)',
-        padding: '10px 12px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 10,
+        boxShadow: 'inset 3px 0 0 var(--magenta)',
+        padding: '12px 14px', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 12,
       }}
     >
       <div style={{
-        width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-        background: 'var(--terra-pale)', fontSize: 18,
+        width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+        background: 'rgba(255, 43, 214, 0.10)',
+        border: '1px solid rgba(255, 43, 214, 0.30)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--magenta)', fontSize: 18,
+        textShadow: '0 0 10px rgba(255, 43, 214, 0.6)',
       }}>
-        {isPlan ? '🎲' : '👥'}
+        {isPlan ? '◆' : '◌'}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+        <div className="neon-display" style={{
+          fontSize: 14, color: 'var(--text)',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {ev.name}
         </div>
-        <div style={{
-          fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2,
+        <div className="neon-mono" style={{
+          fontSize: 10, color: 'var(--text3)', marginTop: 4,
+          letterSpacing: '0.06em',
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
           {dateLabel}{venue ? ` · ${venue}` : ''}
@@ -666,14 +834,16 @@ function PendingInviteRow({ event: ev, onOpen, onAccept }) {
       </div>
       <button
         onClick={(e) => { e.stopPropagation(); onAccept() }}
+        className="neon-mono"
         style={{
-          background: 'var(--terra)', color: 'white', border: 'none',
-          padding: '7px 14px', borderRadius: 999,
-          fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          flexShrink: 0,
+          background: 'transparent', border: '1px solid var(--lime)',
+          color: 'var(--lime)',
+          padding: '6px 12px', borderRadius: 999,
+          fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+          cursor: 'pointer', flexShrink: 0,
         }}
       >
-        Confirmar
+        ✓ ON
       </button>
     </div>
   )

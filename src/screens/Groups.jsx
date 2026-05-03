@@ -77,7 +77,7 @@ export default function Groups({ embedded = false }) {
           </h1>
         )}
         <div style={{
-          margin: '16px 0', padding: '20px', background: 'white', borderRadius: 16,
+          margin: '16px 0', padding: '20px', background: 'var(--white)', borderRadius: 16,
           border: '1px solid var(--border)', textAlign: 'center',
           color: 'var(--charcoal-mid)', fontSize: 13, lineHeight: 1.5,
         }}>
@@ -100,7 +100,12 @@ export default function Groups({ embedded = false }) {
           <button onClick={() => setShowJoin(true)} style={actionBtnStyle}>
             {t.groups_join_btn}
           </button>
-          <button onClick={() => setShowCreate(true)} style={{ ...actionBtnStyle, background: 'var(--sage)', color: 'white' }}>
+          <button onClick={() => setShowCreate(true)} style={{
+            ...actionBtnStyle,
+            background: 'var(--lime)', color: '#14081E',
+            border: 'none',
+            boxShadow: '0 0 18px rgba(198, 255, 0, 0.35)',
+          }}>
             + {t.groups_create}
           </button>
         </div>
@@ -305,14 +310,16 @@ function JoinGroupSheet({ open, onClose, onJoin, t }) {
 // ── Shared styles ──
 
 const cardStyle = {
-  background: 'white', borderRadius: 16, padding: '14px 16px',
+  background: 'var(--white)', borderRadius: 16, padding: '14px 16px',
   border: '1px solid var(--border)', cursor: 'pointer',
 }
 
 const actionBtnStyle = {
-  padding: '7px 14px', borderRadius: 10, border: '1.5px solid var(--border)',
-  background: 'none', fontSize: 12, fontWeight: 600,
-  color: 'var(--charcoal)', cursor: 'pointer',
+  padding: '7px 14px', borderRadius: 10, border: '1px solid var(--line)',
+  background: 'transparent',
+  fontFamily: "'JetBrains Mono', monospace",
+  fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+  color: 'var(--text2)', cursor: 'pointer',
 }
 
 const adminBadgeStyle = {
@@ -330,7 +337,7 @@ const backdropStyle = {
 // generous bottom padding (safe-area + 24px) to lift the Cancel/Create
 // row clear of the iPhone home indicator on every device.
 const sheetStyle = {
-  position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
+  position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
   borderRadius: '20px 20px 0 0',
   padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
   // Above DetailPanel (10000) so sheets opened from inside an event
@@ -357,5 +364,5 @@ const cancelBtnStyle = {
 
 const submitBtnStyle = {
   flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
-  background: 'var(--sage)', color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  background: 'var(--sage)', color: '#14081E', fontSize: 14, fontWeight: 600, cursor: 'pointer',
 }

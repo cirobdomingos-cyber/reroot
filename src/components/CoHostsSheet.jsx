@@ -129,7 +129,7 @@ export default function CoHostsSheet({
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
+              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
               zIndex: 10501, maxHeight: '85vh', overflowY: 'auto',
@@ -231,7 +231,7 @@ export default function CoHostsSheet({
               onClick={onClose}
               style={{
                 width: '100%', marginTop: 16, padding: '12px 14px', borderRadius: 12,
-                border: '1px solid var(--border)', background: 'white',
+                border: '1px solid var(--border)', background: 'var(--white)',
                 fontSize: 13, fontWeight: 600, color: 'var(--charcoal-mid)', cursor: 'pointer',
               }}
             >
@@ -277,7 +277,7 @@ function OrganizerRow({ gid, profile, roleLabel, action }) {
 function promoteBtnStyle(busy) {
   return {
     padding: '6px 12px', borderRadius: 8,
-    background: 'var(--sage)', color: 'white',
+    background: 'var(--sage)', color: '#14081E',
     border: 'none', fontSize: 12, fontWeight: 700,
     cursor: busy ? 'wait' : 'pointer',
     opacity: busy ? 0.7 : 1,

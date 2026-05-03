@@ -32,7 +32,7 @@ function TypingIndicator() {
         🌿
       </div>
       <div style={{
-        background: 'white', borderRadius: '18px 18px 18px 4px',
+        background: 'var(--white)', borderRadius: '18px 18px 18px 4px',
         padding: '10px 16px', display: 'flex', gap: 4, alignItems: 'center',
       }}>
         {[0, 1, 2].map(i => (
@@ -60,7 +60,7 @@ function SuggestionCard({ suggestion, onCreateEvent, lang }) {
   const colors = CATEGORY_COLORS[suggestion.category] || CATEGORY_COLORS.quiet_social
   return (
     <div style={{
-      background: 'white', borderRadius: 14, padding: '10px 12px',
+      background: 'var(--white)', borderRadius: 14, padding: '10px 12px',
       border: '1.5px dashed var(--sage)', transition: 'all 0.15s',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -120,7 +120,7 @@ function CreateEventForm({ suggestion, onSubmit, onCancel, lang }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       style={{
-        background: 'white', borderRadius: 16, padding: 16,
+        background: 'var(--white)', borderRadius: 16, padding: 16,
         border: '2px solid var(--sage)', margin: '8px 16px',
         boxShadow: 'var(--shadow-md)',
       }}
@@ -218,7 +218,7 @@ function CompanionMessage({ msg, onEventClick, onRsvp, rsvps, onCreateEvent, lan
       </div>
       <div style={{ flex: 1 }}>
         <div style={{
-          background: 'white', borderRadius: '18px 18px 18px 4px',
+          background: 'var(--white)', borderRadius: '18px 18px 18px 4px',
           padding: '10px 14px', fontSize: 14, lineHeight: 1.5,
           color: 'var(--charcoal)', boxShadow: 'var(--shadow-sm)',
         }}>
@@ -233,7 +233,7 @@ function CompanionMessage({ msg, onEventClick, onRsvp, rsvps, onCreateEvent, lan
                 <div
                   key={ev.id}
                   style={{
-                    background: 'white', borderRadius: 14, padding: '10px 12px',
+                    background: 'var(--white)', borderRadius: 14, padding: '10px 12px',
                     border: isRsvped ? '1.5px solid var(--sage)' : '1.5px solid var(--sage-pale)',
                     transition: 'all 0.15s',
                   }}
@@ -518,7 +518,7 @@ export default function CompanionChat({ open, onClose }) {
           {/* Header */}
           <div style={{
             padding: '48px 16px 12px',
-            background: 'white', borderBottom: '1px solid var(--border)',
+            background: 'var(--white)', borderBottom: '1px solid var(--border)',
             display: 'flex', alignItems: 'center', gap: 12,
           }}>
             <button
@@ -587,7 +587,7 @@ export default function CompanionChat({ open, onClose }) {
                           padding: '8px 14px', borderRadius: 20,
                           fontSize: 12, fontWeight: 500,
                           border: '1.5px solid var(--border)',
-                          background: 'white', color: 'var(--charcoal)',
+                          background: 'var(--white)', color: 'var(--charcoal)',
                           cursor: 'pointer', transition: 'all 0.15s',
                         }}
                       >
@@ -630,7 +630,7 @@ export default function CompanionChat({ open, onClose }) {
           {/* Input */}
           <div style={{
             padding: '10px 16px 24px',
-            background: 'white', borderTop: '1px solid var(--border)',
+            background: 'var(--white)', borderTop: '1px solid var(--border)',
           }}>
             {/* AI disclaimer */}
             <div style={{

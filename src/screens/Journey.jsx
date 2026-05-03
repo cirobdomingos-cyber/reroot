@@ -107,7 +107,7 @@ export default function Journey() {
 
       {/* Reflection prompts */}
       <div className="section-label">{t.journey_prompts_label}</div>
-      <div style={{ margin: '0 16px 10px', background: 'white', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
+      <div style={{ margin: '0 16px 10px', background: 'var(--white)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
         {framework.prompts.map((p, i) => (
           <div key={p.num} style={{
             padding: '14px 16px',
@@ -156,7 +156,7 @@ export default function Journey() {
       {framework.actions.map(a => (
         <div key={a.step} style={{
           display: 'flex', alignItems: 'flex-start', gap: 12,
-          background: 'white', borderRadius: 14,
+          background: 'var(--white)', borderRadius: 14,
           padding: '13px 16px', margin: '0 16px 8px',
           boxShadow: 'var(--shadow-sm)',
         }}>
@@ -175,7 +175,7 @@ export default function Journey() {
       {/* Methodology note */}
       <div style={{ margin: '12px 16px 0' }}>
         <div style={{
-          background: 'white', borderRadius: 16, padding: '15px 16px',
+          background: 'var(--white)', borderRadius: 16, padding: '15px 16px',
           boxShadow: 'var(--shadow-sm)', borderLeft: '3px solid var(--sage)',
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--sage)', marginBottom: 6 }}>

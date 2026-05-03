@@ -75,7 +75,7 @@ export default function InstallBanner() {
       <button
         onClick={handleInstall}
         style={{
-          background: 'white', color: 'var(--terra)',
+          background: 'var(--white)', color: 'var(--terra)',
           border: 'none', borderRadius: 8,
           padding: '6px 12px', fontSize: 12, fontWeight: 700,
           cursor: 'pointer', flexShrink: 0,

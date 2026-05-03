@@ -200,6 +200,16 @@ async def run_refresh(settings):
     except Exception as e:
         log.warning(f"Scrape summary email failed: {e}")
 
+    # Daily push digest — replaces the old weekly broadcast. Same
+    # new_event_ids the email used. Imported lazily to avoid a circular
+    # import (main imports scheduler; scheduler can't import main at
+    # module load). Silent when no subscribers / VAPID unset.
+    try:
+        from main import send_daily_digest_to_all_subscribers
+        await send_daily_digest_to_all_subscribers(new_event_ids)
+    except Exception as e:
+        log.warning(f"Daily digest push failed: {e}")
+
 
 async def run_weekly_summary(settings):
     """Email the founder the past-7-days activity summary. Idempotent —

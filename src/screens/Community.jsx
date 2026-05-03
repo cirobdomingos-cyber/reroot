@@ -32,10 +32,11 @@ export default function Community() {
                 style={{
                   flex: 1, padding: '10px 0', borderRadius: 11,
                   border: 'none', cursor: 'pointer',
-                  fontSize: 13, fontWeight: 600,
-                  background: active ? 'white' : 'transparent',
-                  color: active ? 'var(--terra)' : 'var(--charcoal-mid)',
-                  boxShadow: active ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+                  background: active ? 'var(--magenta)' : 'transparent',
+                  color: active ? 'var(--bg)' : 'var(--text2)',
+                  boxShadow: active ? '0 0 18px rgba(255, 43, 214, 0.35)' : 'none',
                   transition: 'all 0.2s',
                 }}
               >

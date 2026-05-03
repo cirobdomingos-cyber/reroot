@@ -223,7 +223,7 @@ function PrimaryBtn({ label, onClick }) {
       onClick={onClick}
       style={{
         width: '100%', padding: '13px 24px', borderRadius: 14, border: 'none',
-        background: 'var(--sage)', color: 'white',
+        background: 'var(--sage)', color: '#14081E',
         fontSize: 15, fontWeight: 700, cursor: 'pointer',
       }}
     >
@@ -238,7 +238,7 @@ function SecondaryBtn({ label, onClick }) {
       onClick={onClick}
       style={{
         width: '100%', padding: '13px 24px', borderRadius: 14,
-        border: '1.5px solid var(--border)', background: 'white',
+        border: '1.5px solid var(--border)', background: 'var(--white)',
         color: 'var(--charcoal-mid)',
         fontSize: 15, fontWeight: 600, cursor: 'pointer',
       }}

@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite } from '../services/api'
-import { scheduleEventReminder, cancelEventReminder, schedulePostEventNotification } from '../lib/notifications'
+import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
@@ -142,7 +142,7 @@ function eventOverlapsRange(ev, startTs, endTs) {
 function EventCardSkeleton() {
   return (
     <div style={{
-      background: 'white', borderRadius: 16, margin: '0 16px 9px',
+      background: 'var(--white)', borderRadius: 16, margin: '0 16px 9px',
       padding: '12px 13px', border: '1px solid var(--border)',
       display: 'flex', gap: 12,
     }}>
@@ -163,7 +163,7 @@ function EventCardSkeleton() {
 function VenueSkeletonRow() {
   return (
     <div style={{
-      background: 'white', borderRadius: 16, margin: '0 16px 8px',
+      background: 'var(--white)', borderRadius: 16, margin: '0 16px 8px',
       padding: '13px 14px', border: '1px solid var(--border)',
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
@@ -643,8 +643,9 @@ export default function Events() {
         setNotifToast(ev.name)
         setTimeout(() => setNotifToast(null), 3000)
       }
-      // Schedule post-event reconnect nudge (native only, fires 3h after event start)
-      schedulePostEventNotification(ev)
+      // Post-event "quem foi com você" nudge removed: it pinged people
+      // 3h after event start (often during the event itself, or right at
+      // the wind-down) without enough signal to justify the interruption.
     } else if (wasRsvped) {
       cancelEventReminder(ev.id)
     }
@@ -675,22 +676,18 @@ export default function Events() {
             <div className="screen-header__title">{t.events_title}</div>
             <div className="screen-header__sub">{t.events_sub}</div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* Sources entry — was a 36px icon-only button that read as
-                a settings cog. Promoted to a labeled pill so it reads as
-                "browse where this catalog comes from" — the canonical
-                venue/curator browser, especially after we dropped the
-                Bares & Cafés / Parques / Cinema / Livrarias chips. */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button
               onClick={() => navigate('/sources')}
               title="Fontes monitoradas"
+              className="neon-mono"
               style={{
                 height: 36, padding: '0 12px',
                 borderRadius: 999,
-                background: 'white', border: '1.5px solid var(--border)',
+                background: 'transparent', border: '1px solid var(--line)',
                 display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                color: 'var(--charcoal)',
+                fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+                cursor: 'pointer', color: 'var(--text2)',
               }}
             >
               <span style={{ fontSize: 14 }}>📡</span>
@@ -700,11 +697,12 @@ export default function Events() {
               onClick={() => setSearchOpen(o => !o)}
               style={{
                 width: 36, height: 36, borderRadius: 12,
-                background: searchOpen ? 'var(--charcoal)' : 'white',
-                border: searchOpen ? 'none' : '1.5px solid var(--border)',
+                background: searchOpen ? 'var(--magenta)' : 'transparent',
+                border: searchOpen ? 'none' : '1px solid var(--line)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
-                color: searchOpen ? 'white' : 'var(--charcoal-mid)',
+                color: searchOpen ? 'var(--bg)' : 'var(--text2)',
+                boxShadow: searchOpen ? '0 0 12px rgba(255, 43, 214, 0.4)' : 'none',
               }}
             >🔍</button>
           </div>
@@ -723,7 +721,7 @@ export default function Events() {
               <div style={{ padding: '0 16px 8px' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
-                  background: 'white', borderRadius: 12,
+                  background: 'var(--white)', borderRadius: 12,
                   border: '1.5px solid var(--border)',
                   padding: '8px 12px', boxShadow: 'var(--shadow-sm)',
                 }}>
@@ -815,7 +813,7 @@ export default function Events() {
                       fontSize: 11, fontWeight: 600, cursor: 'pointer',
                       transition: 'all 0.15s',
                       border: active ? 'none' : '1px solid var(--border)',
-                      background: active ? 'var(--charcoal)' : 'transparent',
+                      background: active ? 'var(--magenta)' : 'transparent',
                       color: active ? 'white' : 'var(--charcoal-light)',
                     }}
                   >
@@ -1050,29 +1048,11 @@ export default function Events() {
         </div>
       )}
 
-      {/* ── Inline CTA — "Criar um evento com amigos" (creates a personal
-          plan with hand-picked invitees). Sole survivor of the previous
-          two-CTA row; the AI suggestion pill was dropped to declutter. */}
-      {!loading && !isVenueMode && state.googleUser?.id && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '4px 16px 10px' }}>
-          <button
-            onClick={() => setShowPlanSheet(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '7px 12px',
-              background: '#FFFAF3',
-              border: '1px solid #C8E6C9',
-              borderRadius: 999, cursor: 'pointer',
-              fontSize: 12, fontWeight: 600, color: 'var(--sage)',
-              textAlign: 'left',
-            }}
-          >
-            <span style={{ fontSize: 14 }}>🎲</span>
-            <span>Criar um evento com amigos</span>
-            <span style={{ opacity: 0.6 }}>→</span>
-          </button>
-        </div>
-      )}
+      {/* "Criar um evento com amigos" CTA was here as a wide row that
+          felt orphaned between the filter chips and the event list.
+          Moved into the Events header (lime 🎲 icon-pill next to
+          Fontes/🔍) so it's always reachable from the chrome without
+          stealing list real estate. */}
 
       {/* ── Loading skeletons ── */}
       {loading && (
@@ -1240,7 +1220,8 @@ export default function Events() {
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             style={{
               position: 'fixed', inset: 0,
-              background: 'var(--cream)',
+              background: 'var(--bg)',
+              color: 'var(--text)',
               // Above Leaflet's panes (popup pane is z-index 700 by
               // default) AND any framer-motion page transform that
               // re-localizes z-index. 9999 is the conventional max-
@@ -1251,8 +1232,37 @@ export default function Events() {
           >
             {/* Drag handle */}
             <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(44,44,44,0.18)' }}/>
+              <div style={{ width: 36, height: 3, borderRadius: 2, background: 'var(--line)' }}/>
             </div>
+
+            {/* In-app nav strip — mono '← BACK' on the left, EVT.id on the
+                right. Mirrors the Neon Boteco direction. Hidden when an
+                image hero is in play — those have their own back button
+                pinned to the photo. */}
+            {detailEvent && !detailEvent._forbidden && !detailEvent._networkError && !detailEvent.imageUrl && (
+              <div className="neon-mono" style={{
+                display: 'flex', justifyContent: 'space-between',
+                padding: '14px 18px',
+              }}>
+                <button
+                  onClick={closeDetail}
+                  style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontSize: 10, letterSpacing: '0.16em',
+                    color: 'var(--cyan)', textTransform: 'uppercase',
+                    padding: 0,
+                  }}
+                >
+                  ← BACK
+                </button>
+                <span style={{
+                  fontSize: 10, letterSpacing: '0.16em',
+                  color: 'var(--text3)', textTransform: 'uppercase',
+                }}>
+                  EVT.{String(detailEvent.id || '').slice(-4).toUpperCase()}
+                </span>
+              </div>
+            )}
 
             {detailLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%' }}>
@@ -1287,7 +1297,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: 'white',
+                    background: 'var(--sage)', color: '#14081E',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     marginTop: 12,
                   }}
@@ -1324,7 +1334,7 @@ export default function Events() {
                     onClick={closeDetail}
                     style={{
                       padding: '10px 22px', borderRadius: 12, border: '1px solid var(--border)',
-                      background: 'white', color: 'var(--charcoal)',
+                      background: 'var(--white)', color: 'var(--charcoal)',
                       fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}
                   >
@@ -1346,7 +1356,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: 'white',
+                    background: 'var(--sage)', color: '#14081E',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   }}
                 >
@@ -1604,15 +1614,20 @@ function _parseDayLabels(iso) {
 
 function _formatPrice(ev, freeLabel) {
   if (ev.priceTier === 'free' || ev.price === 'Gratuito' || ev.price === 'Free') {
-    return { text: (freeLabel || 'FREE').toUpperCase(), accent: true }
+    return { text: (freeLabel || 'FREE').toUpperCase(), tone: 'free' }
   }
-  if (!ev.price) return null
-  // Strip the R$ prefix for the compact terminal look — reference shows
-  // bare numbers ("80-160", "18"). Keep the raw string when stripping
-  // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
-  // consistency with the reference.
-  const stripped = ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()
-  return { text: stripped, accent: false }
+  if (ev.price) {
+    // Strip the R$ prefix for the compact terminal look — reference shows
+    // bare numbers ("80-160", "18"). Keep the raw string when stripping
+    // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
+    // consistency with the reference.
+    const stripped = ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()
+    return { text: stripped, tone: 'paid' }
+  }
+  // Unknown — neither a free flag nor a parsed price. Show a clear
+  // "?" so users don't assume the event is free by accident. Cyan tone
+  // so it reads as informational, not an error.
+  return { text: '?', tone: 'unknown' }
 }
 
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
@@ -1666,7 +1681,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         // Featured ("Destaque") events get a star pill in the top-right
         // of the card AND lift to the top of the list — that's the
         // monetization surface, not a card color change.
-        background: 'white',
+        background: 'var(--white)',
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: ev.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
@@ -1792,11 +1807,16 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           </div>
         )}
         {price && (
-          <div style={{
-            fontSize: 12, fontWeight: 800,
-            color: price.accent ? 'var(--sage)' : 'var(--charcoal)',
-            letterSpacing: 0.5, whiteSpace: 'nowrap',
-          }}>
+          <div
+            title={price.tone === 'unknown' ? 'Preço não informado' : undefined}
+            style={{
+              fontSize: 12, fontWeight: 800,
+              color: price.tone === 'free'    ? 'var(--lime)'
+                   : price.tone === 'unknown' ? 'var(--cyan)'
+                   :                            'var(--text)',
+              letterSpacing: 0.5, whiteSpace: 'nowrap',
+            }}
+          >
             {price.text}
           </div>
         )}
@@ -2032,7 +2052,7 @@ function PromoCodeBlock({ ev }) {
         onClick={copyCode}
         style={{
           padding: '7px 14px', borderRadius: 10,
-          background: 'white', border: '1px solid var(--honey)',
+          background: 'var(--white)', border: '1px solid var(--honey)',
           color: '#8D6E10', fontSize: 12, fontWeight: 700, cursor: 'pointer',
         }}
       >
@@ -2082,7 +2102,7 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
     <div
       onClick={onOpen}
       style={{
-        background: 'white', borderRadius: 16, margin: '0 16px 8px',
+        background: 'var(--white)', borderRadius: 16, margin: '0 16px 8px',
         padding: '13px 14px', border: '1px solid var(--border)',
         display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
         transition: 'box-shadow 0.15s',
@@ -2271,11 +2291,19 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
         style={{
           // Image hero gets more room (240px) so faces/posters/flyers
           // actually read at a glance — 180 was enough to know "yes,
-          // there is a photo" but cropped most of the content.
-          // Gradient hero stays 120 to keep no-image events from
-          // looking unintentionally tall and empty.
-          height: showImage ? 240 : 120,
-          background: ev.headerBg,
+          // there is a photo" but cropped most of the content. Neon
+          // Boteco gradient hero is taller (180) so the layered radial
+          // wash has room to breathe before the metadata slab below.
+          height: showImage ? 240 : 180,
+          // No-image hero: layered cyan + magenta radial gradients on
+          // bg2. Image case keeps the per-event ev.headerBg so any
+          // legacy callers still render their custom background under
+          // the photo overlay.
+          background: showImage ? ev.headerBg :
+            'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.4) 0%, transparent 50%),' +
+            ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.4) 0%, transparent 50%),' +
+            ' var(--bg2)',
+          borderBottom: showImage ? 'none' : '1px solid var(--line)',
           position: 'relative',
           overflow: 'hidden',
           cursor: showImage ? 'zoom-in' : 'default',
@@ -2304,19 +2332,27 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             }} />
           </>
         )}
-        <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
-          position: 'absolute',
-          // Push below iPhone notch / Dynamic Island. env() degrades to
-          // 0 on browsers that don't define the safe-area-inset, so this
-          // is also correct on web.
-          top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-          left: 12,
-          width: 32, height: 32, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.9)', border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-          zIndex: 1,
-        }}>←</button>
+        {/* Photo back button — only when an image hero is in play. The
+            no-image case has its own mono '← BACK' rendered above the
+            hero (in the drawer's nav strip), so this button would
+            duplicate it. */}
+        {showImage && (
+          <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
+            position: 'absolute',
+            // Push below iPhone notch / Dynamic Island. env() degrades to
+            // 0 on browsers that don't define the safe-area-inset, so this
+            // is also correct on web.
+            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+            left: 12,
+            width: 32, height: 32, borderRadius: '50%',
+            background: 'rgba(10, 5, 16, 0.7)', backdropFilter: 'blur(8px)',
+            border: '1px solid var(--line)',
+            color: 'var(--cyan)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.6)',
+            zIndex: 1,
+          }}>←</button>
+        )}
         {/* Category emoji removed — collided with the back/upload buttons
             on short heroes and the surrounding chips already convey
             "type of event" (Grupo / Plano / Música / etc.) without it. */}
@@ -2398,6 +2434,64 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             {imageError}
           </div>
         )}
+
+        {/* Hero content — Neon Boteco spec. Renders only when there's no
+            photo (the image case keeps the photo unobstructed; the title
+            still renders below in the content slab). Mono lime eyebrow
+            with the date stamp, chunky display title, neon-pill row. */}
+        {!showImage && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            padding: '32px 22px 22px',
+            display: 'flex', flexDirection: 'column',
+            justifyContent: 'flex-end',
+            zIndex: 2,
+          }}>
+            <div className="neon-mono" style={{
+              fontSize: 10, letterSpacing: '0.24em',
+              color: 'var(--lime)',
+              textTransform: 'uppercase',
+              marginBottom: 10,
+            }}>
+              ◯ {(ev.date || '').toUpperCase()}{ev.time ? ` // ${ev.time}` : ''}
+            </div>
+            <div className="neon-display" style={{
+              fontSize: 32, lineHeight: 0.95, letterSpacing: '-0.03em',
+              color: 'var(--text)',
+              textShadow: '0 2px 24px rgba(0, 0, 0, 0.6)',
+            }}>
+              {ev.name}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              {ev.priceTier === 'free' ? (
+                <span className="neon-pill" style={{ color: 'var(--lime)' }}>$0</span>
+              ) : ev.price ? (
+                <span className="neon-pill" style={{ color: 'var(--text)' }}>
+                  {ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()}
+                </span>
+              ) : (
+                <span
+                  className="neon-pill"
+                  title="Preço não informado"
+                  style={{ color: 'var(--cyan)' }}
+                >
+                  $ ?
+                </span>
+              )}
+              {ev.categoryLabel && !ev.isGroupEvent && (
+                <span className="neon-pill" style={{ color: 'var(--cyan)' }}>
+                  {ev.categoryLabel}
+                </span>
+              )}
+              {ev.kidsWelcome && (
+                <span className="neon-pill" style={{ color: 'var(--magenta)' }}>
+                  PRA TODOS
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lightbox — fullscreen overlay with the original-resolution image.
@@ -2445,9 +2539,19 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
       <div style={{
         padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 32px)',
       }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
-          {ev.name}
-        </div>
+        {/* Title only when an image hero is rendered — the no-image case
+            already shows the chunky title overlaid on the gradient hero
+            above, so duplicating it here would just push the metadata
+            slab down. */}
+        {showImage && (
+          <div className="neon-display" style={{
+            fontSize: 26, color: 'var(--text)',
+            letterSpacing: '-0.03em', lineHeight: 1,
+            marginBottom: 10,
+          }}>
+            {ev.name}
+          </div>
+        )}
 
         {/* Vibe summary — short LLM-extracted sentence about the event.
             Sits right under the title as the "what is this in one line"
@@ -2558,30 +2662,79 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
           </div>
         )}
 
-        <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 12 }}>
-          <div>📍 {ev.venue}{ev.city && !ev.venue?.includes(ev.city) ? ` · ${ev.city}` : ''}</div>
-          {ev.venueAddress && (
-            <div style={{ marginLeft: 18, fontSize: 12, color: 'var(--charcoal-light)' }}>
-              {ev.venueAddress}
+        {/* Spec table — Neon Boteco direction. Mono key/value rows with
+            label-specific accent colors. Replaces the previous emoji-
+            prefixed metadata list. Only rows with values render, so the
+            slab tightens cleanly for sparse events. */}
+        {(() => {
+          const venueValue = ev.venue
+            ? `${ev.venue}${ev.city && !ev.venue.includes(ev.city) ? ` · ${ev.city}` : ''}`
+            : ev.city || null
+          const whenValue = isVenue
+            ? t.events_venue_open
+            : (ev.date && (ev.duration || ev.time))
+              ? `${ev.date} · ${ev.duration || ev.time}`
+              : (ev.date || ev.time || null)
+          const costValue = ev.price
+            || (ev.priceTier === 'free' ? 'Grátis' : '? não informado')
+          const sourceValue = ev.source === 'instagram' && ev.igHandle
+            ? `@${ev.igHandle}`
+            : (ev.isCustom ? 'auê plano' : (ev.categoryLabel || null))
+          const rows = [
+            ['ONDE',   venueValue,  'var(--cyan)'],
+            ['QUANDO', whenValue,   'var(--magenta)'],
+            ['CUSTO',  costValue,   'var(--lime)'],
+            ['FONTE',  sourceValue, 'var(--text2)'],
+          ].filter(([, v]) => v)
+          if (rows.length === 0) return null
+          return (
+            <div style={{ marginBottom: 16 }}>
+              {rows.map(([label, value, color]) => (
+                <div
+                  key={label}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'baseline', gap: 12,
+                    padding: '12px 0',
+                    borderBottom: '1px solid var(--line)',
+                  }}
+                >
+                  <span className="neon-mono" style={{
+                    fontSize: 10, letterSpacing: '0.22em',
+                    textTransform: 'uppercase', color,
+                    flexShrink: 0,
+                  }}>
+                    {label}
+                  </span>
+                  <span className="neon-mono" style={{
+                    fontSize: 12, color: 'var(--text)',
+                    textAlign: 'right',
+                    overflow: 'hidden', textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {value}
+                  </span>
+                </div>
+              ))}
+              {ev.venueAddress && (
+                <div className="neon-mono" style={{
+                  fontSize: 11, color: 'var(--text3)',
+                  marginTop: 6, letterSpacing: '0.04em',
+                }}>
+                  {ev.venueAddress}
+                </div>
+              )}
+              {ev.hasFood && (
+                <div className="neon-mono" style={{
+                  fontSize: 11, color: 'var(--text3)',
+                  marginTop: 8, letterSpacing: '0.04em',
+                }}>
+                  {t.events_food_drink}
+                </div>
+              )}
             </div>
-          )}
-          <div>
-            {isVenue
-              ? `🕐 ${t.events_venue_open}`
-              : `🗓 ${ev.date} · ${ev.duration || ev.time}`
-            }
-          </div>
-          {/* Catalog events show their genre/source category here ("🎵
-              Música", "🍻 Bar"). Group events and personal plans get
-              "👥 Grupo" / "🎲 Plano" from the backend, which is
-              redundant — the user already knows it's a plan from the
-              creator chip + invitee list. Hide for those. */}
-          {!ev.isGroupEvent && (
-            <div>{ev.categoryEmoji} {ev.categoryLabel}</div>
-          )}
-          {ev.price && <div>💰 {ev.price}</div>}
-          {ev.hasFood && <div>{t.events_food_drink}</div>}
-        </div>
+          )
+        })()}
 
         {/* Price badge + Kids Welcome tag in detail view */}
         {(ev.priceTier === 'free' || ev.kidsWelcome) && (
@@ -2611,7 +2764,7 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
               {...(isPrivate ? { onClick: () => setShowCoHosts(true) } : {})}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
-                padding: '8px 12px', borderRadius: 12, background: 'white',
+                padding: '8px 12px', borderRadius: 12, background: 'var(--white)',
                 border: '1px solid var(--border)',
                 width: '100%', textAlign: 'left',
                 cursor: isPrivate ? 'pointer' : 'default',

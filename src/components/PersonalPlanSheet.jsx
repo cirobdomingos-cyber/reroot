@@ -166,7 +166,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
+              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
               zIndex: 10501, maxHeight: '90vh', overflowY: 'auto',
@@ -394,7 +394,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
                 disabled={submitting}
                 style={{
                   flex: 1, padding: '12px 14px', borderRadius: 12,
-                  border: '1px solid var(--border)', background: 'white',
+                  border: '1px solid var(--border)', background: 'var(--white)',
                   fontSize: 13, fontWeight: 600, color: 'var(--charcoal-mid)',
                   cursor: 'pointer',
                 }}
@@ -442,7 +442,7 @@ const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   padding: '10px 12px',
   fontSize: 13, fontFamily: 'inherit',
-  background: 'white',
+  background: 'var(--white)',
   border: '1px solid var(--border)', borderRadius: 10,
   outline: 'none', color: 'var(--charcoal)',
 }

@@ -2005,20 +2005,25 @@ def rsvp_upsert(req: RsvpUpsertRequest):
     new_badges = badges.evaluate(req.google_id)
 
     # Notify friends — only on a fresh RSVP (toggle off→on cycles
-    # don't re-spam) and only if the user opted in to sharing.
+    # don't re-spam), only if the user opted in to sharing, AND only
+    # when the friend is *also* relevant to this event (already RSVPed,
+    # invited, creator, or co-host). Without this filter every popular
+    # friend's RSVPs would fan out to their whole friend list and turn
+    # into push spam — the rule "tell me my friend confirmed something
+    # I was already considering" is the high-signal cut.
     if is_new and _user_share_rsvps(req.google_id):
         user_name = _user_display_name(req.google_id)
-        # Tag includes (user, event) so multiple friends RSVPing the same
-        # event don't pile up — each user/event pair gets one slot.
         tag = f"friend-rsvp-{req.google_id}-{req.event_id}"
         for friend in db.get_friends(req.google_id):
             if friend.get("status") != "accepted":
+                continue
+            if not _friend_cares_about_event(friend["google_id"], req.event_id):
                 continue
             _send_push_to_user(
                 friend["google_id"],
                 title=f"🎉 {user_name} vai",
                 body=req.event_name,
-                url="/",
+                url=f"/#/events?event={req.event_id}",
                 tag=tag,
             )
 
@@ -5029,13 +5034,18 @@ def admin_update_feedback_status(feedback_id: int, req: FeedbackStatusUpdate):
 
 # ── Web Push Notifications ──
 #
-# VAPID key pair — in production, generate your own and store in env vars.
-# These test keys are safe to commit for development only.
-# Generate production keys: py -m py_vapid --gen
-VAPID_PRIVATE_KEY = "nOAa5iExKg1EvBMkLblGvg"
-VAPID_PUBLIC_KEY  = "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBZuhbr6lT5E12OwvTPrBa5ygw"
-VAPID_CLAIMS = {"sub": "mailto:admin@aue.app"}
-WEEKLY_PUSH_MESSAGE = "Olha o auê do fim de semana — vai junto? 🎉"
+# VAPID key pair — read from env so production secrets aren't committed.
+# Generate with: py -m py_vapid --gen
+# Then set:  VAPID_PRIVATE_KEY=...  VAPID_PUBLIC_KEY=...  VAPID_CLAIMS_SUB=mailto:you@host
+# When unset, push functions silently no-op (logged once per process boot).
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "").strip()
+VAPID_PUBLIC_KEY  = os.environ.get("VAPID_PUBLIC_KEY", "").strip()
+VAPID_CLAIMS = {"sub": os.environ.get("VAPID_CLAIMS_SUB", "mailto:admin@aue.app")}
+if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
+    log.warning(
+        "VAPID keys not configured — push notifications will no-op. "
+        "Generate with `py -m py_vapid --gen` and set VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY env vars."
+    )
 
 
 class PushSubscriptionBody(BaseModel):
@@ -5048,10 +5058,24 @@ class PushSubscriptionBody(BaseModel):
 def push_subscribe(body: PushSubscriptionBody):
     """Store or update a Web Push subscription from the browser. The
     google_id, when present, lets us send per-user pushes (group events,
-    friend RSVPs) — anonymous subs only receive the weekly broadcast."""
+    friend RSVPs) — anonymous subs only receive the daily digest."""
     db.upsert_push_subscription(body.endpoint, json.dumps(body.keys), body.google_id)
     log.info(f"Push subscription saved (user={body.google_id or 'anon'}): {body.endpoint[:60]}…")
     return {"status": "subscribed"}
+
+
+class PushUnsubscribeBody(BaseModel):
+    endpoint: str
+
+
+@app.delete("/push/subscribe")
+def push_unsubscribe(body: PushUnsubscribeBody):
+    """Drop a subscription from the DB. Called by the client right after
+    pushManager.unsubscribe() so we don't keep firing pushes against an
+    endpoint that's already dead. Backend also self-prunes on 410 Gone,
+    so this is best-effort cleanup, not strict correctness."""
+    db.delete_push_subscription_by_endpoint(body.endpoint)
+    return {"status": "unsubscribed"}
 
 
 # ── Per-user push helper ─────────────────────────────────
@@ -5122,32 +5146,164 @@ def _user_display_name(google_id: str) -> str:
     return name or "Alguém"
 
 
-@app.post("/push/send-weekly")
-async def push_send_weekly():
-    """Send the weekly check-in push to all subscribers."""
+def _friend_cares_about_event(friend_google_id: str, event_id: str) -> bool:
+    """True iff the friend has skin in the event — they've RSVPed, are
+    on the invitee list of a private event, or are creator/co-host of one.
+
+    Used to gate the friend-RSVP push so it only fires for events the
+    recipient was already considering. Without this, every popular friend
+    spams their whole network on each catalog RSVP.
+    """
+    if not friend_google_id or not event_id:
+        return False
+    if db.rsvp_exists(friend_google_id, event_id):
+        return True
+    private = db.get_group_event(event_id)
+    if private:
+        if private.get("created_by") == friend_google_id:
+            return True
+        if friend_google_id in (private.get("co_host_ids") or []):
+            return True
+        if friend_google_id in (private.get("extra_invitee_ids") or []):
+            return True
+    return False
+
+
+def _user_daily_digest_opted_in(google_id: str) -> bool:
+    """Default ON. User toggles off in Profile (privacy.dailyDigest = false)."""
+    if not google_id:
+        return True  # anonymous subscribers — no UI to toggle, default in
+    state = db.get_user_state(google_id) or {}
+    privacy = state.get("privacy") or {}
+    if "dailyDigest" in privacy:
+        return bool(privacy["dailyDigest"])
+    return True
+
+
+async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) -> dict:
+    """Fanout the daily "novidades hoje" push after the catalog refresh.
+
+    Replaces the old weekly broadcast — that one was generic ("vai junto?")
+    and risked classic broadcast-fatigue. This version pulls the events
+    that actually showed up in today's scrape and tells each subscriber
+    "X novos rolês — Tributo Bowie · Pedreira · +2 mais", with the click
+    routed to the top event's hero so the user lands on Event Detail and
+    can RSVP in one tap.
+
+    Skipped silently when:
+      - No new events from this scrape (would be a noise push)
+      - No subscribers
+      - VAPID keys unset (push transport unconfigured)
+      - User toggled off via privacy.dailyDigest = false
+    """
+    if not new_event_ids:
+        return {"sent": 0, "skipped": 0, "reason": "no new events"}
+    if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
+        return {"sent": 0, "skipped": 0, "reason": "VAPID keys not configured"}
+
+    new_events_raw = db.get_events_by_ids(list(new_event_ids))
+    if not new_events_raw:
+        return {"sent": 0, "skipped": 0, "reason": "events not in DB"}
+
+    # Parse + filter to events with names. Sort by date_start ASC so the
+    # soonest-happening events lead the body — that's the hook ("Tributo
+    # Bowie HOJE 21h" beats "show genérico daqui 3 semanas").
+    parsed = []
+    for ev in new_events_raw:
+        try:
+            payload = json.loads(ev["payload"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        name = (payload.get("name") or "").strip()
+        if not name:
+            continue
+        parsed.append({
+            "id": ev["external_id"],
+            "name": name,
+            "date_start": payload.get("date_start") or "",
+        })
+    if not parsed:
+        return {"sent": 0, "skipped": 0, "reason": "no parseable events"}
+    parsed.sort(key=lambda e: e.get("date_start") or "9999")
+
+    n = len(parsed)
+    top_event = parsed[0]
+    # Body shows up to 3 names so the notification fits comfortably in the
+    # iOS lock-screen / Android shade preview without truncation. "+ N mais"
+    # tail surfaces the full count.
+    preview = " · ".join(e["name"][:38] for e in parsed[:3])
+    if n > 3:
+        preview += f" · +{n - 3} mais"
+    title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB"
+    # Click target: top event hero. The event-id deep link is handled by
+    # the SPA's HashRouter — Service Worker just opens the URL on tap.
+    url = f"/#/events?event={top_event['id']}"
+
     subscriptions = db.get_all_push_subscriptions()
     if not subscriptions:
-        return {"sent": 0, "message": "No subscribers"}
+        return {"sent": 0, "skipped": 0, "reason": "no subscribers"}
+
     try:
         from pywebpush import webpush, WebPushException
     except ImportError:
-        raise HTTPException(status_code=501, detail="pywebpush not installed")
-    sent = 0
-    failed = 0
+        return {"sent": 0, "skipped": 0, "reason": "pywebpush not installed"}
+
+    # Group by google_id so opt-out check runs once per user instead of
+    # once per registered device.
+    by_user: dict[str, list[dict]] = {}
     for sub in subscriptions:
-        try:
-            webpush(
-                subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
-                data=WEEKLY_PUSH_MESSAGE,
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims=VAPID_CLAIMS,
-            )
-            sent += 1
-        except Exception as exc:
-            log.warning(f"Push failed for {sub['endpoint'][:60]}…: {exc}")
-            failed += 1
-    log.info(f"Weekly push: {sent} sent, {failed} failed")
-    return {"sent": sent, "failed": failed}
+        by_user.setdefault(sub.get("google_id") or "", []).append(sub)
+
+    sent = 0
+    skipped = 0
+    failed = 0
+    for google_id, subs in by_user.items():
+        if not _user_daily_digest_opted_in(google_id):
+            skipped += len(subs)
+            continue
+        payload = json.dumps({
+            "title": title,
+            "body": preview,
+            "url": url,
+            "tag": "daily-digest",
+        })
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS,
+                )
+                sent += 1
+            except WebPushException as exc:
+                status = getattr(exc.response, "status_code", None)
+                if status in (404, 410):
+                    db.delete_push_subscription_by_endpoint(sub["endpoint"])
+                else:
+                    log.warning(f"daily digest push failed ({status}): {exc}")
+                failed += 1
+            except Exception as exc:
+                failed += 1
+                log.warning(f"daily digest push errored: {exc}")
+
+    log.info(f"Daily digest: {sent} sent, {skipped} opted-out, {failed} failed (events={n})")
+    return {"sent": sent, "skipped": skipped, "failed": failed, "events": n}
+
+
+class DigestTriggerBody(BaseModel):
+    requesting_email: str
+    new_event_ids: list[str] = []
+
+
+@app.post("/push/send-daily-digest")
+async def push_send_daily_digest(body: DigestTriggerBody):
+    """Manual digest trigger — admin/test helper. The scheduler calls
+    send_daily_digest_to_all_subscribers() automatically after each
+    refresh; this endpoint exists for backfills, dev testing, or
+    re-firing on a scrape where the cron didn't catch the event ids."""
+    _require_founder(body.requesting_email)
+    return await send_daily_digest_to_all_subscribers(body.new_event_ids)
 
 
 @app.get("/push/vapid-public-key")

@@ -131,7 +131,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0,
-              background: 'white', borderRadius: '20px 20px 0 0',
+              background: 'var(--white)', borderRadius: '20px 20px 0 0',
               // bottom-padding picks up the iOS home-bar inset so the last
               // tappable element clears the gesture area. 28 is the
               // baseline, env() degrades to 0 on browsers without it.

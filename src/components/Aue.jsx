@@ -13,9 +13,11 @@
 export default function Aue() {
   return (
     <span style={{
-      color: 'var(--sage)',
+      color: 'var(--magenta)',
+      fontFamily: "'Space Grotesk', sans-serif",
       fontWeight: 700,
-      letterSpacing: -0.2,
+      letterSpacing: '-0.04em',
+      textShadow: '0 0 10px rgba(255, 43, 214, 0.6)',
     }}>
       auê
     </span>

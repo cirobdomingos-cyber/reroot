@@ -7,6 +7,7 @@ import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats } from '../services/api'
+import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 
@@ -114,6 +115,12 @@ export default function Profile() {
       {/* Compartilhar / Instalar — drives PWA distribution to friends */}
       <ShareInstallSection />
 
+      {/* Notifications — placed right above Conquistas so the push opt-in
+          is the first decision after the share card. Earlier we had it
+          below Privacy at the bottom of the screen, which left it
+          discoverable only to users who scrolled to settings. */}
+      <NotificationsCard t={t} state={state} dispatch={dispatch} />
+
       {/* Conquistas — badges already earned + locked grid of what's possible */}
       <BadgesSection
         googleId={state.googleUser?.id}
@@ -174,7 +181,7 @@ export default function Profile() {
             }}
           >
             <div style={{
-              width: 24, height: 24, borderRadius: '50%', background: 'white',
+              width: 24, height: 24, borderRadius: '50%', background: 'var(--white)',
               position: 'absolute', top: 3,
               left: state.accessibilityMode ? 25 : 3,
               transition: 'left 0.2s',
@@ -219,7 +226,7 @@ export default function Profile() {
               >
                 <div style={{
                   width: 20, height: 20, borderRadius: '50%',
-                  background: 'white', position: 'absolute', top: 3,
+                  background: 'var(--white)', position: 'absolute', top: 3,
                   left: value ? 21 : 3,
                   transition: 'left 0.2s',
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
@@ -268,6 +275,139 @@ export default function Profile() {
           style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer' }}
         >
           {t.profile_reset}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Notifications card ──────────────────────────────────
+//
+// Subscribe-then-toggle pattern: the device must explicitly opt into
+// push (browser perm + pushManager.subscribe + backend register) before
+// the per-type toggles do anything. Without this gate, flipping
+// "Resumo diário" ON would silently set a preference no channel can
+// honor, and the user would assume push is broken.
+function NotificationsCard({ t, state, dispatch }) {
+  const { subscribed, subscribe, unsubscribe, loading, error } = usePushNotifications()
+  const supported = isPushSupported()
+  const dailyDigest = state.privacy?.dailyDigest ?? true
+
+  if (!supported) {
+    return (
+      <div style={{ margin: '0 16px 12px' }} className="card">
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 8 }}>
+          🔔 {t.notifications_title ?? 'Notificações'}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+          {t.notif_unsupported
+            ?? 'Push não funciona neste navegador. Instale o auê na tela inicial (Adicionar à Tela de Início) ou use Chrome/Firefox.'}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ margin: '0 16px 12px' }} className="card">
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
+        🔔 {t.notifications_title ?? 'Notificações'}
+      </div>
+
+      {/* Step 1 — device subscription. When already subscribed, shows a
+          confirmation pill + a "Desativar" link. When not, shows a
+          single primary CTA. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, paddingBottom: 12, marginBottom: 12,
+        borderBottom: '1px solid var(--border)',
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
+            {subscribed
+              ? (t.notif_status_on ?? '✓ Push ativado neste dispositivo')
+              : (t.notif_status_off ?? 'Push desativado')}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>
+            {subscribed
+              ? (t.notif_status_on_desc ?? 'Você vai receber as notificações abaixo nesse browser.')
+              : (t.notif_status_off_desc ?? 'Ative pra receber pings de novos rolês e convites.')}
+          </div>
+          {error && (
+            <div style={{ fontSize: 11, color: '#C62828', marginTop: 6 }}>
+              {error}
+            </div>
+          )}
+        </div>
+        {subscribed ? (
+          <button
+            onClick={unsubscribe}
+            disabled={loading}
+            style={{
+              fontSize: 11, fontWeight: 600,
+              padding: '8px 12px', borderRadius: 8,
+              background: 'transparent', border: '1px solid var(--border)',
+              color: 'var(--charcoal-mid)', cursor: 'pointer',
+              opacity: loading ? 0.6 : 1, flexShrink: 0,
+            }}
+          >
+            {loading ? '...' : (t.notif_disable ?? 'Desativar')}
+          </button>
+        ) : (
+          <button
+            onClick={subscribe}
+            disabled={loading}
+            style={{
+              fontSize: 12, fontWeight: 700,
+              padding: '10px 14px', borderRadius: 10, border: 'none',
+              background: 'var(--sage)', color: '#14081E',
+              cursor: 'pointer', opacity: loading ? 0.6 : 1, flexShrink: 0,
+            }}
+          >
+            {loading ? '...' : (t.notif_enable ?? 'Ativar push')}
+          </button>
+        )}
+      </div>
+
+      {/* Step 2 — per-type toggles. Disabled (greyed) when not subscribed
+          so users don't think they're armed. Clicking the disabled label
+          could prompt to subscribe, but for v1 keep it simple — they
+          tap "Ativar push" above first. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 0',
+        opacity: subscribed ? 1 : 0.45,
+      }}>
+        <div style={{ flex: 1, paddingRight: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
+            {t.notif_daily_digest ?? 'Resumo diário do auê'}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>
+            {t.notif_daily_digest_desc
+              ?? 'Toda tarde, depois do scrape — uma push com os novos rolês de Curitiba. Toque pra ver o evento.'}
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            if (!subscribed) return
+            dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key: 'dailyDigest', value: !dailyDigest } })
+          }}
+          disabled={!subscribed}
+          style={{
+            width: 44, height: 26, borderRadius: 13, border: 'none',
+            background: dailyDigest ? 'var(--sage)' : 'var(--border)',
+            position: 'relative',
+            cursor: subscribed ? 'pointer' : 'not-allowed',
+            flexShrink: 0, transition: 'background 0.2s',
+          }}
+        >
+          <div style={{
+            width: 20, height: 20, borderRadius: '50%',
+            background: 'var(--white)', position: 'absolute', top: 3,
+            left: dailyDigest ? 21 : 3,
+            transition: 'left 0.2s',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          }} />
         </button>
       </div>
     </div>
@@ -366,7 +506,7 @@ function FeedbackSection({ state }) {
               disabled={text.trim().length < 5 || submitting}
               style={{
                 padding: '8px 16px', borderRadius: 10, border: 'none',
-                background: 'var(--sage)', color: 'white',
+                background: 'var(--sage)', color: '#14081E',
                 fontSize: 12, fontWeight: 700,
                 cursor: text.trim().length < 5 || submitting ? 'not-allowed' : 'pointer',
                 opacity: text.trim().length < 5 || submitting ? 0.5 : 1,
@@ -560,10 +700,10 @@ function ShareInstallSection() {
           style={{
             width: '100%', padding: '11px 14px',
             border: 'none', borderRadius: 12,
-            background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
+            background: 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)',
             color: 'white', fontWeight: 700, fontSize: 13,
             cursor: 'pointer', fontFamily: 'inherit',
-            boxShadow: '0 4px 14px rgba(232, 98, 63, 0.25)',
+            boxShadow: '0 4px 14px rgba(255, 43, 214, 0.25)',
           }}
         >
           Compartilhar com amigos
@@ -603,7 +743,7 @@ function ShareInstallSection() {
           onClick={() => setQrFullscreen(true)}
           aria-label="Mostrar QR code em tela cheia"
           style={{
-            background: 'white', border: '1px solid var(--border)',
+            background: 'var(--white)', border: '1px solid var(--border)',
             borderRadius: 10, padding: 6, cursor: 'pointer',
             flexShrink: 0, display: 'flex',
           }}
@@ -645,7 +785,7 @@ function ShareInstallSection() {
               exit={{ scale: 0.85 }}
               transition={{ type: 'spring', damping: 22, stiffness: 280 }}
               style={{
-                background: 'white', padding: 24, borderRadius: 20,
+                background: 'var(--white)', padding: 24, borderRadius: 20,
                 boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
               }}
             >
@@ -982,7 +1122,7 @@ function BadgeDetailModal({ badge, instances = [], onClose }) {
               {/* Tier ladder */}
               {hasLadder && (
                 <div style={{
-                  background: 'white', borderRadius: 14, padding: '12px 14px',
+                  background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                   marginBottom: instances.length > 0 && badge.multi_instance ? 14 : 0,
                   border: '1px solid var(--border)',
                 }}>
@@ -1057,7 +1197,7 @@ function BadgeDetailModal({ badge, instances = [], onClose }) {
               {/* Multi-instance: list venues with tier chips */}
               {instances.length > 0 && badge.multi_instance && (
                 <div style={{
-                  background: 'white', borderRadius: 14, padding: '12px 14px',
+                  background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                   border: '1px solid var(--border)',
                 }}>
                   <div style={{
@@ -1225,7 +1365,7 @@ function SignInCard({ dispatch }) {
   return (
     <div style={{
       margin: '14px 16px 0',
-      background: 'white',
+      background: 'var(--white)',
       borderRadius: 14,
       padding: 16,
       border: '1px solid var(--border)',

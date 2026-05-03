@@ -115,7 +115,7 @@ export default function VenueDashboard() {
       {data.events_in_catalog === 0 ? (
         <div style={{
           margin: '0 16px', padding: '24px 16px', textAlign: 'center',
-          background: 'white', borderRadius: 12, border: '1px dashed var(--border)',
+          background: 'var(--white)', borderRadius: 12, border: '1px dashed var(--border)',
           color: 'var(--charcoal-light)', fontSize: 13,
         }}>
           Nenhum evento desse local no catálogo ainda. Quando o próximo
@@ -202,7 +202,7 @@ export default function VenueDashboard() {
           <div style={{ padding: '0 16px 14px' }}>
             <h2 style={sectionTitle}>🕒 Quando o público abre seus eventos</h2>
             <div style={{
-              padding: '12px', background: 'white',
+              padding: '12px', background: 'var(--white)',
               border: '1px solid var(--border)', borderRadius: 10,
             }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 70 }}>
@@ -261,7 +261,7 @@ function DailyActivity({ daily }) {
     <div style={{ padding: '0 16px 14px' }}>
       <h2 style={sectionTitle}>📊 Atividade nos últimos 30 dias</h2>
       <div style={{
-        background: 'white', border: '1px solid var(--border)',
+        background: 'var(--white)', border: '1px solid var(--border)',
         borderRadius: 10, padding: '12px 14px',
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 110 }}>
@@ -402,7 +402,7 @@ function PostBreakdownRow({ event: e, rank, fmtDate }) {
     <div
       onClick={() => navigate('/events', { state: { openEventId: e.event_id } })}
       style={{
-      background: 'white',
+      background: 'var(--white)',
       border: '1px solid var(--border)', borderRadius: 12,
       padding: 10, display: 'flex', gap: 10, alignItems: 'flex-start',
       cursor: 'pointer',
@@ -496,7 +496,7 @@ function PostBreakdownRow({ event: e, rank, fmtDate }) {
 function Metric({ emoji, label, value, sub, full = false }) {
   return (
     <div style={{
-      background: 'white', borderRadius: 12,
+      background: 'var(--white)', borderRadius: 12,
       border: '1px solid var(--border)',
       padding: '12px 14px',
       gridColumn: full ? '1 / -1' : 'auto',
@@ -527,6 +527,6 @@ const sectionTitle = {
 
 const btnPrimary = {
   padding: '10px 22px', borderRadius: 12, border: 'none',
-  background: 'var(--sage)', color: 'white',
+  background: 'var(--sage)', color: '#14081E',
   fontSize: 13, fontWeight: 700, cursor: 'pointer',
 }

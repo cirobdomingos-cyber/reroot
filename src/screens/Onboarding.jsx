@@ -190,7 +190,7 @@ function TeaserCard() {
           style={{ position: 'absolute', inset: 0 }}
         >
           <div style={{
-            background: 'white', borderRadius: 14, padding: '12px 14px',
+            background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
             display: 'flex', gap: 12, alignItems: 'flex-start',
             boxShadow: '0 12px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.04)',
             height: '100%', boxSizing: 'border-box',
@@ -227,7 +227,7 @@ function TeaserCard() {
                         color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 9, fontWeight: 700,
                         marginLeft: i === 0 ? 0 : -5,
-                        border: '2px solid white',
+                        border: '2px solid var(--bg2)',
                       }}>{name[0]}</div>
                     ))}
                   </div>
@@ -348,7 +348,7 @@ function VibeStep({ onPick }) {
                 display: 'flex', flexDirection: 'column', gap: 8,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(232, 98, 63, 0.18)'
+                e.currentTarget.style.background = 'rgba(255, 43, 214, 0.18)'
                 e.currentTarget.style.borderColor = 'var(--sage)'
               }}
               onMouseLeave={e => {

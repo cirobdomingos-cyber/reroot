@@ -53,7 +53,7 @@ export default function PostEventAttendees({ eventId, eventDate }) {
   if (loading) {
     return (
       <div style={{
-        background: 'white', borderRadius: 16, padding: '16px 18px',
+        background: 'var(--white)', borderRadius: 16, padding: '16px 18px',
         marginBottom: 18, border: '1px solid var(--border)',
       }}>
         <div style={{
@@ -93,7 +93,7 @@ export default function PostEventAttendees({ eventId, eventDate }) {
 
   return (
     <div style={{
-      background: 'white', borderRadius: 16, padding: '16px 18px',
+      background: 'var(--white)', borderRadius: 16, padding: '16px 18px',
       marginBottom: 18, border: '1px solid var(--border)',
       boxShadow: 'var(--shadow-sm)',
     }}>

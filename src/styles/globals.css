@@ -1,79 +1,147 @@
-/* ── Design tokens ──
-   Auê palette (rebranded from Reroot — Apr 2026):
-   - Coral quente as primary (where sage was)
-   - Azul tinta as secondary (where terra was)
-   - Mel as accent
-   - Cream slightly warmer
-   The legacy variable names (--sage, --terra) are kept on purpose so the
-   rebrand doesn't require touching every call site. The names lie a bit
-   semantically; cosmetic refactor for later. */
+/* ── Design tokens — Neon Boteco (Direction D, May 2026) ──
+   Y2K-inspired dark mode: saturated cyan / magenta / lime accents on
+   near-black, chunky display type, glassy chrome buttons, faint scanline
+   overlay. Replaces the previous coral/cream "auê" palette.
+
+   The legacy variable names (--sage, --terra, --cream, --charcoal, etc.)
+   are kept on purpose so the rebrand doesn't require touching every call
+   site (~150 files reference them inline). They are remapped to neon
+   equivalents below — the names lie semantically; cosmetic refactor for
+   later.
+
+   Mapping:
+     --terra (was anchor blue → primary brand)  → magenta  (the new brand glow)
+     --sage  (was coral → success/confirmed)    → lime     (going / free / confirmed)
+     --honey (was honey → accent badges)        → cyan     (secondary accent)
+     --cream (was warm bg)                      → near-black (page bg)
+     --white (was white card)                   → bg2       (dark surface)
+     --charcoal/-mid/-light (was text scale)    → text/text2/text3 (off-white scale)
+     --border                                   → line      (violet-black border)
+*/
 :root {
-  /* "terra" used to be terracotta; now it's deep ink blue (the new anchor). */
-  --terra:        #1E3A5F;
-  --terra-light:  #2E548A;
-  --terra-pale:   #DEE6F0;
+  /* Neon Boteco core tokens */
+  --bg:           #0A0510;   /* page bg, near-black with violet undertone */
+  --bg2:          #14081E;   /* hero gradient base, card surface */
+  --line:         #2A1640;   /* borders, dividers, card outlines */
+  --magenta:      #FF2BD6;   /* primary accent, logo, active nav */
+  --magenta-soft: rgba(255, 43, 214, 0.08);
+  --cyan:         #00E5FF;   /* secondary accent, links, browse emphasis */
+  --cyan-soft:    rgba(0, 229, 255, 0.08);
+  --lime:         #C6FF00;   /* success, going, free, confirmados */
+  --lime-soft:    rgba(198, 255, 0, 0.08);
+  --hot:          #FF5A1F;   /* reserved tertiary */
+  --text:         #F4ECFF;   /* primary text, off-white with violet tint */
+  --text2:        #B8A8D8;   /* secondary text */
+  --text3:        #6E5C8E;   /* tertiary text, muted metadata */
 
-  /* "sage" used to be sage green; now it's coral (the new brand primary). */
-  --sage:         #E8623F;
-  --sage-light:   #F08869;
-  --sage-pale:    #FCE3DA;
+  /* Legacy semantic vars — remapped to neon. Existing components keep
+     working without touching every call site. */
+  --terra:        var(--magenta);
+  --terra-light:  #FF6BE3;
+  --terra-pale:   rgba(255, 43, 214, 0.10);
 
-  /* New honey accent — used sparingly for highlights / "novo" badges. */
-  --honey:        #F4A623;
-  --honey-pale:   #FDEFD2;
+  --sage:         var(--lime);
+  --sage-light:   #DCFF55;
+  --sage-pale:    rgba(198, 255, 0, 0.10);
 
-  /* Slightly warmer cream and border to harmonize with coral. */
-  --cream:        #FCF5EB;
-  --charcoal:     #2C2C2C;
-  --charcoal-mid: #5A5A5A;
-  --charcoal-light: #9A9A9A;
-  --white:        #FFFFFF;
-  --border:       #EBE0CD;
+  --honey:        var(--cyan);
+  --honey-pale:   rgba(0, 229, 255, 0.10);
 
-  --shadow-sm: 0 1px 6px rgba(44,44,44,0.06);
-  --shadow:    0 2px 12px rgba(44,44,44,0.08);
-  --shadow-md: 0 4px 20px rgba(44,44,44,0.12);
+  --cream:        var(--bg);
+  --charcoal:     var(--text);
+  --charcoal-mid: var(--text2);
+  --charcoal-light: var(--text3);
+  --white:        var(--bg2);
+  --border:       var(--line);
+
+  --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.6);
+  --shadow:    0 2px 12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 43, 214, 0.06);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 229, 255, 0.10);
   --radius-sm: 10px;
-  --radius:    16px;
-  --radius-lg: 20px;
-  --radius-xl: 24px;
+  --radius:    14px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Glow */
+  --glow-magenta: 0 0 14px rgba(255, 43, 214, 0.6);
+  --glow-cyan:    0 0 14px rgba(0, 229, 255, 0.6);
+  --glow-lime:    0 0 14px rgba(198, 255, 0, 0.5);
 }
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #111;
+  font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #000;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   -webkit-font-smoothing: antialiased;
+  color: var(--text);
 }
-button { font-family: inherit; cursor: pointer; border: none; background: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input  { font-family: inherit; }
+
+/* Display type — used directly when components want chunky neon headings */
+.neon-display {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+}
+.neon-mono {
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+}
+.neon-glow-mag  { color: var(--magenta); text-shadow: var(--glow-magenta); }
+.neon-glow-cyan { color: var(--cyan);    text-shadow: var(--glow-cyan); }
+.neon-glow-lime { color: var(--lime);    text-shadow: var(--glow-lime); }
+
+/* Gradient card — faint cyan→magenta wash on top of bg2, line border.
+   Replaces the old white card surface globally via --white remap. */
+.neon-card {
+  background: linear-gradient(180deg,
+    rgba(255, 43, 214, 0.04) 0%,
+    rgba(0, 229, 255, 0.04) 100%),
+    var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+/* Pill chip — used for state pills + category badges */
+.neon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid currentColor;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 /* ── Phone shell ── */
 .phone-shell {
   width: 390px;
   height: 844px;
-  background: var(--cream);
+  background: var(--bg);
   border-radius: 50px;
   box-shadow:
     0 0 0 10px #1c1c1c,
     0 0 0 12px #2e2e2e,
-    0 50px 100px rgba(0,0,0,0.7);
+    0 50px 100px rgba(0,0,0,0.7),
+    0 0 80px rgba(255, 43, 214, 0.15);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   /* `transform` makes this element the containing block for any
-     position:fixed descendants. Lets the event detail drawer (and any
-     other fullscreen modal) pin to the phone shell on desktop preview
-     instead of escaping to the browser viewport, while still working
-     correctly on mobile where the shell already fills the viewport. */
+     position:fixed descendants. */
   transform: translateZ(0);
 }
 /* Dynamic island */
@@ -87,6 +155,20 @@ input  { font-family: inherit; }
   border-radius: 0 0 22px 22px;
   z-index: 100;
 }
+/* Scanline overlay — repeating 1px translucent line, pointer-events:none
+   so taps pass through. Sits above the screen content but below modals. */
+.phone-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.025) 0 1px,
+    transparent 1px 3px
+  );
+}
 
 /* ── Status bar ── */
 .status-bar {
@@ -98,10 +180,15 @@ input  { font-family: inherit; }
   flex-shrink: 0;
   position: relative;
   z-index: 10;
+  font-family: 'JetBrains Mono', monospace;
 }
-.status-bar--dark { color: white; }
-.status-bar--light { color: var(--charcoal); }
-.status-time { font-size: 15px; font-weight: 600; }
+.status-bar--dark, .status-bar--light { color: var(--text); }
+.status-time {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+}
 .status-icons { display: flex; gap: 5px; align-items: center; }
 
 /* ── Screen ── */
@@ -112,6 +199,8 @@ input  { font-family: inherit; }
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  background: var(--bg);
+  color: var(--text);
 }
 .screen::-webkit-scrollbar { display: none; }
 .screen-inner { padding-bottom: 88px; }
@@ -119,8 +208,10 @@ input  { font-family: inherit; }
 /* ── Bottom nav ── */
 .bottom-nav {
   height: 80px;
-  background: var(--white);
-  border-top: 1px solid var(--border);
+  background: rgba(10, 5, 16, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -139,62 +230,116 @@ input  { font-family: inherit; }
   transition: background 0.15s;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
+  color: var(--text3);
 }
-.nav-item:hover { background: var(--terra-pale); }
+.nav-item:hover { background: rgba(255, 43, 214, 0.06); }
 .nav-item__label {
-  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
   font-weight: 500;
-  color: var(--charcoal-light);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text3);
   transition: color 0.15s;
 }
-.nav-item--active .nav-item__label { color: var(--terra); font-weight: 600; }
+.nav-item--active .nav-item__label {
+  color: var(--text);
+}
+.nav-item--active {
+  color: var(--magenta);
+}
 
-/* ── Shared cards ── */
+/* ── Shared cards ──
+   Default `.card` is the neon gradient card. Tinted variants use
+   per-accent washes instead of the previous solid pales. */
 .card {
-  background: var(--white);
+  background: linear-gradient(180deg,
+    rgba(255, 43, 214, 0.04) 0%,
+    rgba(0, 229, 255, 0.04) 100%),
+    var(--bg2);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: 18px 20px;
   box-shadow: var(--shadow);
+  color: var(--text);
 }
 .card--terra {
-  background: linear-gradient(135deg, var(--terra-pale), #f9ede5);
-  border: 1px solid rgba(196,114,74,0.15);
+  background: linear-gradient(180deg,
+    rgba(255, 43, 214, 0.10) 0%,
+    rgba(255, 43, 214, 0.04) 100%),
+    var(--bg2);
+  border: 1px solid rgba(255, 43, 214, 0.25);
   box-shadow: none;
 }
 .card--sage {
-  background: linear-gradient(135deg, var(--sage-pale), #d4e8d5);
-  border: 1px solid rgba(122,158,126,0.2);
+  background: linear-gradient(180deg,
+    rgba(198, 255, 0, 0.10) 0%,
+    rgba(198, 255, 0, 0.04) 100%),
+    var(--bg2);
+  border: 1px solid rgba(198, 255, 0, 0.25);
   box-shadow: none;
 }
 .card--dark {
-  background: linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%);
-  color: white;
+  background: linear-gradient(135deg, #1a0a26 0%, #14081E 100%);
+  color: var(--text);
+  border: 1px solid var(--line);
 }
 
 /* ── Buttons ── */
 .btn {
   width: 100%;
-  padding: 15px;
-  border-radius: var(--radius);
+  padding: 16px;
+  border-radius: 12px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   transition: all 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
 .btn:active { transform: scale(0.98); }
-.btn--primary { background: var(--terra); color: white; }
-.btn--primary:hover { background: #b8663f; }
-.btn--sage { background: var(--sage); color: white; }
-.btn--sage:hover { background: #6d9071; }
+/* Primary CTA = chrome metallic gradient with magenta drop-shadow.
+   This is the signature button of the Neon Boteco direction. */
+.btn--primary {
+  background: linear-gradient(180deg,
+    #fff 0%,
+    #c0c0c0 38%,
+    #6a6a6a 50%,
+    #c0c0c0 70%,
+    #fff 100%);
+  color: #14081E;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 8px 24px rgba(255, 43, 214, 0.25);
+}
+.btn--primary:hover {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 8px 28px rgba(255, 43, 214, 0.40);
+}
+.btn--sage {
+  background: var(--lime);
+  color: #14081E;
+  box-shadow: 0 0 18px rgba(198, 255, 0, 0.35);
+}
+.btn--sage:hover { background: #DCFF55; }
 .btn--outline {
   background: transparent;
-  color: var(--terra);
-  border: 2px solid var(--terra);
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
 }
-.btn--outline:hover { background: var(--terra-pale); }
+.btn--outline:hover { background: rgba(0, 229, 255, 0.08); }
 .btn--ghost {
   background: transparent;
-  color: var(--charcoal-mid);
+  color: var(--text2);
+  border: 1px solid var(--line);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 500;
 }
 
 /* ── Tags ── */
@@ -202,14 +347,18 @@ input  { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 600;
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
   white-space: nowrap;
+  border: 1px solid currentColor;
 }
-.tag--terra { background: var(--terra-pale); color: var(--terra); }
-.tag--sage  { background: var(--sage-pale); color: var(--sage); }
-.tag--dark  { background: rgba(255,255,255,0.15); color: white; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+.tag--terra { color: var(--magenta); background: var(--magenta-soft); }
+.tag--sage  { color: var(--lime);    background: var(--lime-soft); }
+.tag--dark  { color: var(--text);    background: rgba(255, 255, 255, 0.05); border-color: var(--line); }
 
 /* ── Avatars ── */
 .avatar {
@@ -218,7 +367,7 @@ input  { font-family: inherit; }
   display: flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 700;
   flex-shrink: 0;
-  border: 2px solid var(--white);
+  border: 2px solid var(--bg2);
   color: white;
 }
 .avatar--lg { width: 72px; height: 72px; font-size: 26px; border: 3px solid rgba(255,255,255,0.2); }
@@ -226,40 +375,58 @@ input  { font-family: inherit; }
 .avatar-stack .avatar { margin-left: -10px; }
 .avatar-stack .avatar:first-child { margin-left: 0; }
 
-/* ── Section label ── */
+/* ── Section label ──
+   In Neon Boteco, section labels are mono uppercase eyebrows in an accent
+   color. The accent defaults to lime (matches "// CONFIRMADOS"); pass a
+   color via inline style to override (cyan for "// PRA VOCÊ", etc.). */
 .section-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--charcoal-light);
-  padding: 0 20px;
+  letter-spacing: 0.24em;
+  color: var(--lime);
+  padding: 0 18px;
   margin-bottom: 8px;
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
 /* ── Divider ── */
-.divider { height: 1px; background: var(--border); margin: 12px 0; }
+.divider { height: 1px; background: var(--line); margin: 12px 0; }
 
 /* ── Screen header ── */
 .screen-header {
-  padding: 14px 20px 6px;
-  background: var(--cream);
+  padding: 14px 18px 6px;
+  background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 10;
+  border-bottom: 1px solid var(--line);
 }
-.screen-header__title { font-size: 22px; font-weight: 700; color: var(--charcoal); }
-.screen-header__sub { font-size: 12px; color: var(--charcoal-mid); margin-top: 2px; }
+.screen-header__title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text);
+}
+.screen-header__sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-top: 4px;
+}
 
 /* ── Accessibility mode ── */
 [data-accessibility="on"] .nav-item__label {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--charcoal);
+  color: var(--text);
 }
 [data-accessibility="on"] .nav-item--active .nav-item__label {
-  color: var(--terra);
+  color: var(--magenta);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -268,16 +435,16 @@ input  { font-family: inherit; }
   gap: 6px;
 }
 [data-accessibility="on"] .nav-item--active {
-  background: var(--terra-pale);
+  background: rgba(255, 43, 214, 0.10);
 }
 [data-accessibility="on"] .screen-header__title {
   font-size: 26px;
 }
 [data-accessibility="on"] .screen-header__sub {
-  font-size: 14px;
+  font-size: 12px;
 }
 [data-accessibility="on"] .section-label {
-  font-size: 13px;
+  font-size: 12px;
 }
 [data-accessibility="on"] .btn {
   min-height: 48px;
@@ -287,7 +454,7 @@ input  { font-family: inherit; }
   font-size: 16px;
 }
 [data-accessibility="on"] .tag {
-  font-size: 13px;
+  font-size: 12px;
   padding: 6px 12px;
 }
 [data-accessibility="on"] .bottom-nav {
@@ -299,24 +466,21 @@ input  { font-family: inherit; }
 
 /* ── Responsive: full screen on mobile ── */
 @media (max-width: 430px) {
-  body { padding: 0; background: var(--cream); }
+  body { padding: 0; background: var(--bg); }
   .phone-shell {
     width: 100vw;
     height: 100dvh;
     border-radius: 0;
     box-shadow: none;
-    /* iOS safe area: real device OS already renders a status bar (real
-       time, real battery, real signal). Push our content below it instead
-       of letting it slide under. Requires viewport-fit=cover in index.html. */
+    /* iOS safe area: real device OS already renders a status bar.
+       Push our content below it. Requires viewport-fit=cover in index.html. */
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     box-sizing: border-box;
   }
   .phone-shell::before { display: none; }
-  /* Fake StatusBar component (signal/wifi/battery SVGs + clock) is
-     desktop-preview chrome only. On a real phone it duplicated the OS
-     bar with always-full mock icons — what users were calling out as
-     the "fake battery" bug. Hidden here; safe-area padding above keeps
-     real content clear of the real OS bar. */
+  /* Fake StatusBar component is desktop-preview chrome only. On a real
+     phone it duplicated the OS bar — hidden here; safe-area padding
+     above keeps real content clear of the real OS bar. */
   .status-bar { display: none; }
 }

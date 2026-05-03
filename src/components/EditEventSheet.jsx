@@ -89,7 +89,7 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0,
-              background: 'white', borderRadius: '20px 20px 0 0',
+              background: 'var(--white)', borderRadius: '20px 20px 0 0',
               zIndex: 10501,
               // Cap at 85% of viewport so on small phones (and with the
               // iOS keyboard up) you can always see what's behind the
@@ -188,7 +188,7 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
               display: 'flex', gap: 10,
               padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
               borderTop: '1px solid var(--border)',
-              background: 'white',
+              background: 'var(--white)',
             }}>
               <button
                 onClick={onClose}

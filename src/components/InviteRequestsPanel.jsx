@@ -81,7 +81,7 @@ export default function InviteRequestsPanel({ eventId, googleId, canManage }) {
         {requests.map(r => (
           <div key={r.google_id} style={{
             display: 'flex', alignItems: 'center', gap: 10,
-            background: 'white', borderRadius: 10, padding: '8px 10px',
+            background: 'var(--white)', borderRadius: 10, padding: '8px 10px',
           }}>
             <Avatar name={r.name} src={r.picture} size={32} />
             <div style={{
@@ -96,7 +96,7 @@ export default function InviteRequestsPanel({ eventId, googleId, canManage }) {
               disabled={busyId === r.google_id}
               style={{
                 padding: '6px 10px', borderRadius: 8,
-                border: 'none', background: 'var(--sage)', color: 'white',
+                border: 'none', background: 'var(--sage)', color: '#14081E',
                 fontSize: 11, fontWeight: 700,
                 cursor: busyId === r.google_id ? 'wait' : 'pointer',
               }}
@@ -108,7 +108,7 @@ export default function InviteRequestsPanel({ eventId, googleId, canManage }) {
               disabled={busyId === r.google_id}
               style={{
                 padding: '6px 10px', borderRadius: 8,
-                border: '1px solid #FFCDD2', background: 'white',
+                border: '1px solid #FFCDD2', background: 'var(--white)',
                 color: '#C62828', fontSize: 11, fontWeight: 700,
                 cursor: busyId === r.google_id ? 'wait' : 'pointer',
               }}

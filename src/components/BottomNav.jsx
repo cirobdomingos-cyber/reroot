@@ -30,13 +30,23 @@ export default function BottomNav() {
     return () => { cancelled = true }
   }, [email])
 
+  // Neon Boteco active vs. inactive: active strokes magenta with a drop-
+  // shadow glow filter; inactive strokes text3. Stroke is set via CSS var
+  // resolution so we get the live theme color without re-reading the
+  // value here.
+  const stroke = (active) => active ? 'var(--magenta)' : 'var(--text3)'
+  const glowStyle = (active) => active
+    ? { filter: 'drop-shadow(0 0 6px rgba(255, 43, 214, 0.7))' }
+    : undefined
+
   const NAV_ITEMS = [
     {
       path: '/home',
       label: t.nav_home,
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          style={glowStyle(active)}
+          stroke={stroke(active)}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
           <path d="M9 21V12h6v9"/>
@@ -48,7 +58,8 @@ export default function BottomNav() {
       label: t.nav_events,
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          style={glowStyle(active)}
+          stroke={stroke(active)}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="4" width="18" height="18" rx="2"/>
           <line x1="16" y1="2" x2="16" y2="6"/>
@@ -62,7 +73,8 @@ export default function BottomNav() {
       label: 'RSVPs',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          style={glowStyle(active)}
+          stroke={stroke(active)}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 11l3 3L22 4"/>
           <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
@@ -74,7 +86,8 @@ export default function BottomNav() {
       label: t.nav_community,
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          style={glowStyle(active)}
+          stroke={stroke(active)}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
@@ -92,7 +105,8 @@ export default function BottomNav() {
       label: 'Admin',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={active ? 'var(--terra)' : 'var(--charcoal-light)'}
+          style={glowStyle(active)}
+          stroke={stroke(active)}
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 2l2.39 4.84L20 8l-4 3.9.94 5.5L12 14.77l-4.94 2.6L8 11.9 4 8l5.61-1.16L12 2z"/>
         </svg>

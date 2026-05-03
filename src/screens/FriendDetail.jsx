@@ -167,7 +167,7 @@ export default function FriendDetail() {
                 key={ev.event_id}
                 onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
                 style={{
-                  background: 'white', borderRadius: 14, padding: '12px 14px',
+                  background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                   border: '1px solid var(--border)', cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', gap: 6,
                 }}

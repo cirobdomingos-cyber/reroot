@@ -136,11 +136,14 @@ const INITIAL_STATE = {
   // Social feed privacy toggle (legacy — migrated into privacy object)
   shareRsvps: true,     // kept for backward compat; canonical source is privacy.shareRsvps
 
-  // Granular privacy controls
+  // Granular privacy + notification controls. The `privacy` namespace
+  // is shared with notification prefs so the existing SET_PRIVACY_OPTION
+  // reducer covers both — the backend reads any key off `state.privacy`.
   privacy: {
     shareRsvps: true,              // show my RSVPs in friend feed
     showInFriendSuggestions: true,  // appear in "people near you" / friend suggestions
     showProfileToStrangers: false,  // non-friends can see my full profile
+    dailyDigest: true,              // receive daily push w/ new events from the scrape
   },
 
   // Accessibility mode — large fonts + enhanced nav labels for older users

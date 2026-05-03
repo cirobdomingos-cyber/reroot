@@ -50,7 +50,7 @@ export default function SourceDetail() {
           onClick={() => navigate('/sources')}
           style={{
             padding: '10px 22px', borderRadius: 12, border: 'none',
-            background: 'var(--sage)', color: 'white',
+            background: 'var(--sage)', color: '#14081E',
             fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}
         >
@@ -111,7 +111,7 @@ export default function SourceDetail() {
 
         {source.bio ? (
           <div style={{
-            background: 'white', border: '1px solid var(--border)',
+            background: 'var(--white)', border: '1px solid var(--border)',
             borderRadius: 12, padding: '10px 12px', marginTop: 12,
           }}>
             <div style={{
@@ -207,7 +207,7 @@ export default function SourceDetail() {
               key={ev.id}
               onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
               style={{
-                background: 'white', borderRadius: 14, padding: '12px 14px',
+                background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
                 border: '1px solid var(--border)', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 12,
               }}

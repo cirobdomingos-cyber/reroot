@@ -290,7 +290,7 @@ function renderCustomButton(container, onClick) {
     padding: '10px 18px',
     border: '1px solid #DADCE0',
     borderRadius: '999px',
-    background: 'white',
+    background: 'var(--white)',
     color: '#3C4043',
     fontFamily: '"Roboto", system-ui, -apple-system, sans-serif',
     fontSize: '14px',

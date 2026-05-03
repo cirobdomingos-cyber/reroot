@@ -6,7 +6,10 @@ import { useT } from './i18n'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
 import InstallBanner from './components/InstallBanner'
-import CompanionChat from './components/CompanionChat'
+// Companion chat (LLM) disabled — kept in the codebase as dead code so the
+// surface is easy to bring back, but unmounted here so users can't open it
+// and burn API tokens. Re-enable by restoring the import + FAB + mount.
+// import CompanionChat from './components/CompanionChat'
 import SyncStatus from './components/SyncStatus'
 import BadgeUnlockToast from './components/BadgeUnlockToast'
 import Onboarding     from './screens/Onboarding'
@@ -55,19 +58,10 @@ export default function App() {
   const { state } = useApp()
   const location = useLocation()
   const t = useT()
-  const [companionOpen, setCompanionOpen] = useState(false)
   // Counter incremented/decremented by any bottom-sheet via the `aue-modal`
-  // CustomEvent. We hide the FAB while any sheet is open because the FAB
-  // sits in the phone-shell stacking context and AnimatedPage establishes
-  // its own (framer-motion sets inline transform), so a sheet inside an
-  // AnimatedPage cannot stack above the FAB no matter how high its z-index.
+  // CustomEvent. Previously gated the Companion FAB; kept in case other
+  // floating UI wants to use the same broadcast.
   const [modalCount, setModalCount] = useState(0)
-
-  // First-visit coach-mark: show a hint bubble for 6s the first time the FAB renders,
-  // then fall back to the compact extended-FAB. Persisted in localStorage.
-  const [showHint, setShowHint] = useState(() => {
-    try { return localStorage.getItem('aue_companion_hint_seen') !== '1' } catch { return false }
-  })
 
   // Onboarding was previously a 4-step flow (welcome → identity mirror →
   // partner intro → diagnostic). The brand pivot to "Curitiba's complete
@@ -84,26 +78,8 @@ export default function App() {
     document.documentElement.dataset.accessibility = state.accessibilityMode ? 'on' : 'off'
   }, [state.accessibilityMode])
 
-  // Auto-dismiss the hint after 6s the first time the FAB is visible
-  useEffect(() => {
-    if (!showNav || !showHint) return
-    const id = setTimeout(() => {
-      setShowHint(false)
-      try { localStorage.setItem('aue_companion_hint_seen', '1') } catch {}
-    }, 6000)
-    return () => clearTimeout(id)
-  }, [showNav, showHint])
-
-  // Cross-screen bridge: any screen can open the Companion by dispatching
-  // a window CustomEvent('open-companion', { detail: { intent } }). Used
-  // by the Events tab "ask for ideas" CTA (intent: 'suggest').
-  useEffect(() => {
-    function onOpen() { setCompanionOpen(true) }
-    window.addEventListener('open-companion', onOpen)
-    return () => window.removeEventListener('open-companion', onOpen)
-  }, [])
-
-  // Track open bottom-sheets globally so we can hide the FAB while one is up.
+  // Track open bottom-sheets globally — kept around for any future
+  // floating UI that needs the same broadcast (was the Companion FAB).
   useEffect(() => {
     function onModal(e) {
       const delta = e.detail?.delta || 0
@@ -112,14 +88,6 @@ export default function App() {
     window.addEventListener('aue-modal', onModal)
     return () => window.removeEventListener('aue-modal', onModal)
   }, [])
-
-  function openCompanion() {
-    setCompanionOpen(true)
-    if (showHint) {
-      setShowHint(false)
-      try { localStorage.setItem('aue_companion_hint_seen', '1') } catch {}
-    }
-  }
 
   return (
     <div className="phone-shell">
@@ -168,75 +136,11 @@ export default function App() {
 
       {showNav && <BottomNav />}
 
-      {/* AI Companion FAB — extended pill, pulsing halo, first-visit hint bubble.
-          bottom:96 (BottomNav is 80) gives 16px clearance above the nav so
-          the FAB doesn't visually crowd the rightmost tab; the original 84
-          left only 4px which read as overlap on real devices. */}
-      {showNav && !companionOpen && modalCount === 0 && (
-        <div style={{ position: 'absolute', bottom: 96, right: 16, zIndex: 50 }}>
-          {/* First-visit hint bubble */}
-          <AnimatePresence>
-            {showHint && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                transition={{ duration: 0.3 }}
-                style={{
-                  position: 'absolute', bottom: 64, right: 0,
-                  background: 'white', color: 'var(--charcoal)',
-                  borderRadius: '16px 16px 4px 16px',
-                  padding: '10px 14px', fontSize: 13, fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                  border: '1px solid rgba(232, 98, 63, 0.3)',
-                }}
-              >
-                {t.companion_fab_hint ?? 'Converse com seu companheiro'}
-                <div style={{
-                  position: 'absolute', bottom: -6, right: 20,
-                  width: 12, height: 12, background: 'white',
-                  transform: 'rotate(45deg)',
-                  borderRight: '1px solid rgba(232, 98, 63, 0.3)',
-                  borderBottom: '1px solid rgba(232, 98, 63, 0.3)',
-                }}/>
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* Companion FAB + chat panel removed — entry point gone so users
+          can't trigger per-message LLM calls against the project's API
+          tokens. Backend cached enrichments (vibe summaries) still
+          render normally; only the real-time chat is gated. */}
 
-          {/* Compact FAB — was a 56px tall pill with a pulsing halo and 32px
-              icon, which the user flagged as "ocupando muito espaço". Now a
-              ~36px slim pill with no halo, lighter shadow, smaller icon —
-              still discoverable, no longer dominates the lower-right corner. */}
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.3, type: 'spring', stiffness: 260, damping: 20 }}
-            onClick={openCompanion}
-            aria-label={t.companion_fab_hint ?? 'Companion chat'}
-            style={{
-              position: 'relative',
-              display: 'flex', alignItems: 'center', gap: 6,
-              height: 36, padding: '0 12px 0 9px',
-              borderRadius: 999, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)',
-              color: 'white',
-              boxShadow: '0 3px 10px rgba(232, 98, 63, 0.35)',
-              fontSize: 12, fontWeight: 700, letterSpacing: 0.2,
-            }}
-          >
-            <span style={{
-              width: 22, height: 22, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.22)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13,
-            }}>🎉</span>
-            {t.companion_fab_label ?? 'Companheiro'}
-          </motion.button>
-        </div>
-      )}
-
-      <CompanionChat open={companionOpen} onClose={() => setCompanionOpen(false)} />
       <SyncStatus lang={state.language} />
       <BadgeUnlockToast />
     </div>

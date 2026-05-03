@@ -81,7 +81,7 @@ export default function AddToCalendar({ event, style }) {
               transition={{ type: 'spring', damping: 30, stiffness: 350 }}
               style={{
                 position: 'fixed', bottom: 0, left: 0, right: 0,
-                background: 'white',
+                background: 'var(--white)',
                 borderRadius: '20px 20px 0 0',
                 // bottom-padding clears iOS home bar
                 padding: '8px 16px calc(28px + env(safe-area-inset-bottom, 0px))',

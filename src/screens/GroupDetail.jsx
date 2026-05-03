@@ -188,14 +188,14 @@ export default function GroupDetail() {
                 style={{
                   flex: 1, fontSize: 20, fontWeight: 700, color: 'var(--charcoal)',
                   padding: '4px 10px', borderRadius: 8,
-                  border: '1.5px solid var(--sage)', background: 'white', outline: 'none',
+                  border: '1.5px solid var(--sage)', background: 'var(--white)', outline: 'none',
                 }}
               />
               <button
                 onClick={handleRename}
                 disabled={renaming}
                 style={{
-                  background: 'var(--sage)', color: 'white', border: 'none',
+                  background: 'var(--sage)', color: '#14081E', border: 'none',
                   padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
                   fontSize: 13, fontWeight: 700,
                 }}
@@ -280,7 +280,7 @@ export default function GroupDetail() {
             title={m.name}
             style={{
               marginLeft: i > 0 ? -8 : 0,
-              boxShadow: '0 0 0 2px white',
+              boxShadow: '0 0 0 2px var(--bg2)',
               borderRadius: '50%',
             }}
           >
@@ -495,7 +495,7 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
           key={(f.google_id || f.name) + i}
           style={{
             marginLeft: i === 0 ? 0 : -8,
-            boxShadow: '0 0 0 2px white',
+            boxShadow: '0 0 0 2px var(--bg2)',
             borderRadius: '50%',
           }}
         >
@@ -629,7 +629,7 @@ function GroupStatsPanel({ stats }) {
       {stats.top_organizer && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 12px', background: 'white',
+          padding: '10px 12px', background: 'var(--white)',
           border: '1px solid var(--border)', borderRadius: 12,
         }}>
           <Avatar
@@ -660,7 +660,7 @@ function GroupStatsPanel({ stats }) {
 function StatTile({ emoji, label, value }) {
   return (
     <div style={{
-      background: 'white', border: '1px solid var(--border)',
+      background: 'var(--white)', border: '1px solid var(--border)',
       borderRadius: 12, padding: '10px 12px',
     }}>
       <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
@@ -986,7 +986,7 @@ function AddEventSheet({ open, onClose, onSave, group, googleId, t }) {
 
         <button type="submit" disabled={saving || !name.trim() || !dateStart} style={{
           padding: '13px 0', borderRadius: 14, border: 'none',
-          background: 'var(--sage)', color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 4,
+          background: 'var(--sage)', color: '#14081E', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 4,
         }}>
           {saving ? '...' : t.groups_event_save}
         </button>
@@ -1085,7 +1085,7 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
                 disabled={isAdding}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  background: 'white', border: '1px solid var(--border)',
+                  background: 'var(--white)', border: '1px solid var(--border)',
                   borderRadius: 12, padding: '10px 12px',
                   textAlign: 'left', cursor: isAdding ? 'default' : 'pointer',
                   opacity: isAdding ? 0.6 : 1,
@@ -1246,7 +1246,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 background: hasImage
                   ? '#222'
                   : sourceUrl
-                    ? 'linear-gradient(135deg, #E8623F 0%, #F08869 100%)'
+                    ? 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)'
                     : 'linear-gradient(135deg, var(--sage) 0%, #9ec0a0 100%)',
                 position: 'relative', overflow: 'hidden',
               }}>
@@ -1356,7 +1356,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '4px 10px', borderRadius: 8,
-                  background: 'rgba(232, 98, 63, 0.10)',
+                  background: 'rgba(255, 43, 214, 0.10)',
                   fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
                   color: 'var(--terra)', textTransform: 'uppercase',
                 }}>
@@ -1415,7 +1415,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   onClick={() => setShowCoHosts(true)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
-                    padding: '8px 12px', borderRadius: 12, background: 'white',
+                    padding: '8px 12px', borderRadius: 12, background: 'var(--white)',
                     border: '1px solid var(--border)', cursor: 'pointer',
                     width: '100%', textAlign: 'left',
                   }}
@@ -1469,7 +1469,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                   style={{
                     padding: '13px', borderRadius: 14,
                     border: '1.5px solid var(--border)',
-                    background: 'white', color: 'var(--charcoal)',
+                    background: 'var(--white)', color: 'var(--charcoal)',
                     fontSize: 14, fontWeight: 600, cursor: 'pointer',
                   }}
                 >
@@ -1479,7 +1479,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
 
               <button onClick={handleShare} style={{
                 padding: '13px', borderRadius: 14, border: '1.5px solid var(--border)',
-                background: 'white', color: 'var(--charcoal)',
+                background: 'var(--white)', color: 'var(--charcoal)',
                 fontSize: 14, fontWeight: 600, cursor: 'pointer',
               }}>
                 {shareStatus === 'shared' ? '✓ Compartilhado'
@@ -1491,7 +1491,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
               {sourceUrl && (
                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{
                   padding: '13px', borderRadius: 14,
-                  background: 'white', border: '1.5px solid var(--border)',
+                  background: 'var(--white)', border: '1.5px solid var(--border)',
                   fontSize: 14, fontWeight: 600,
                   color: 'var(--terra)', textAlign: 'center',
                   textDecoration: 'none',
@@ -1659,7 +1659,7 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                     disabled={busyId === m.google_id}
                     style={{
                       padding: '6px 10px', borderRadius: 8,
-                      border: '1px solid var(--border)', background: 'white',
+                      border: '1px solid var(--border)', background: 'var(--white)',
                       fontSize: 11, fontWeight: 600, color: 'var(--charcoal)',
                       cursor: busyId === m.google_id ? 'wait' : 'pointer',
                     }}
@@ -1672,7 +1672,7 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                     disabled={busyId === m.google_id}
                     style={{
                       padding: '6px 10px', borderRadius: 8,
-                      border: '1px solid #FFCDD2', background: 'white',
+                      border: '1px solid #FFCDD2', background: 'var(--white)',
                       fontSize: 11, fontWeight: 600, color: '#C62828',
                       cursor: busyId === m.google_id ? 'wait' : 'pointer',
                     }}
@@ -1714,7 +1714,7 @@ function BottomSheet({ open, onClose, title, children }) {
             onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }} />
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
-            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
+            style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
               borderRadius: '20px 20px 0 0',
               padding: '8px 20px calc(env(safe-area-inset-bottom, 0px) + 24px)',
               zIndex: 10501, maxHeight: '85vh', overflowY: 'auto',

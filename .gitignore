@@ -28,8 +28,18 @@ __pycache__/
 # Signing keys — NEVER commit
 *.keystore
 android.keystore
+# VAPID / Web Push keys — generated locally, set in Railway env vars only
+*.pem
 
 # TWA generated
 twa-manifest.json
 manifest-checksum.txt
 store_icon.png
+
+# VitePWA dev-mode build artifacts — generated on every `npm run dev`
+# and regenerated on every config change. Never useful in git.
+dev-dist/
+
+# Local design references / handed-off mocks — keep on disk for
+# reference, don't ship to the repo.
+neon_boteco_rebrand/

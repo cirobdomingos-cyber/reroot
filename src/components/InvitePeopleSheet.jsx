@@ -98,7 +98,7 @@ export default function InvitePeopleSheet({
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
             style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
+              position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
               borderRadius: '20px 20px 0 0',
               zIndex: 10501, maxHeight: '85vh',
               display: 'flex', flexDirection: 'column',
@@ -201,7 +201,7 @@ export default function InvitePeopleSheet({
               flexShrink: 0,
               display: 'flex', gap: 8,
               padding: '12px 20px calc(12px + env(safe-area-inset-bottom, 0px))',
-              borderTop: '1px solid var(--border)', background: 'white',
+              borderTop: '1px solid var(--border)', background: 'var(--white)',
             }}>
               <button
                 type="button"
@@ -209,7 +209,7 @@ export default function InvitePeopleSheet({
                 disabled={submitting}
                 style={{
                   flex: 1, padding: '12px 14px', borderRadius: 12,
-                  border: '1px solid var(--border)', background: 'white',
+                  border: '1px solid var(--border)', background: 'var(--white)',
                   fontSize: 13, fontWeight: 600, color: 'var(--charcoal-mid)',
                   cursor: 'pointer',
                 }}
@@ -246,7 +246,7 @@ const inputStyle = {
   width: '100%', boxSizing: 'border-box',
   padding: '10px 12px',
   fontSize: 13, fontFamily: 'inherit',
-  background: 'white',
+  background: 'var(--white)',
   border: '1px solid var(--border)', borderRadius: 10,
   outline: 'none', color: 'var(--charcoal)',
 }

@@ -213,7 +213,7 @@ export default function WeekCalendar({
                         onClick={() => onEventTap?.(ev, ev._type)}
                         style={{
                           display: 'flex', alignItems: 'center', gap: 10,
-                          background: 'white', borderRadius: 12, padding: '10px 12px',
+                          background: 'var(--white)', borderRadius: 12, padding: '10px 12px',
                           border: `1.5px solid ${isGroup ? 'var(--terra-pale)' : 'var(--sage-pale)'}`,
                           boxShadow: `inset 3px 0 0 ${stripeColor}`,
                           cursor: 'pointer',
@@ -268,7 +268,7 @@ export default function WeekCalendar({
                                 key={(friend.google_id || friend.name) + i}
                                 style={{
                                   marginLeft: i === 0 ? 0 : -8,
-                                  boxShadow: '0 0 0 2px white',
+                                  boxShadow: '0 0 0 2px var(--bg2)',
                                   borderRadius: '50%',
                                 }}
                               >
@@ -336,6 +336,6 @@ export default function WeekCalendar({
 
 const navBtn = {
   width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border)',
-  background: 'white', cursor: 'pointer', fontSize: 16, fontWeight: 700,
+  background: 'var(--white)', cursor: 'pointer', fontSize: 16, fontWeight: 700,
   color: 'var(--charcoal-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
