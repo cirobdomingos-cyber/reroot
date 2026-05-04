@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import { signInWithApple } from '../lib/apple-auth'
 import { trackEvent } from '../services/api'
 
 // Sample events shown in the welcome teaser. NOT real catalog entries —
@@ -107,6 +108,28 @@ export default function Onboarding() {
     setStep('vibe')
   }
 
+  // Apple Sign-In — same shape as Google: drop the resolved user into
+  // state.googleUser (legacy field name; covers any provider). The
+  // hook handles platform detection (Capacitor native vs web JS SDK)
+  // and surfaces a Portuguese error string we just alert() since the
+  // failure modes are mostly "user cancelled" / "config missing" /
+  // network — none worth a custom UI surface yet.
+  async function handleApple() {
+    try {
+      const user = await signInWithApple()
+      dispatch({ type: 'SET_GOOGLE_USER', payload: user })
+      if (user.givenName || user.name) {
+        dispatch({ type: 'SET_NAME', payload: user.givenName || user.name?.split(' ')[0] || '' })
+      }
+      trackEvent('onboarding_signed_in', { method: 'apple', is_new_user: !!user.isNewUser })
+      setStep('vibe')
+    } catch (err) {
+      if (err?.message && err.message !== 'Login cancelado.') {
+        alert(err.message)
+      }
+    }
+  }
+
   function handleSkipSignin() {
     trackEvent('onboarding_signed_in', { method: 'skip' })
     setStep('vibe')
@@ -156,6 +179,7 @@ export default function Onboarding() {
           googleConfigured={googleConfigured}
           googleBtnRef={googleBtnRef}
           onMockGoogle={handleMockGoogle}
+          onApple={handleApple}
           onSkip={handleSkipSignin}
           privacyText={t.onboarding_privacy}
         />
@@ -258,7 +282,7 @@ function TeaserCard() {
 }
 
 // ── Step 1: welcome / sign-in ─────────────────────────────
-function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, privacyText }) {
+function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, onSkip, privacyText }) {
   return (
     <>
       <div style={{ flex: 1, padding: '24px 20px 0', color: 'white' }}>
@@ -287,12 +311,32 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onSkip, pri
         padding: '24px 20px 32px', marginTop: 20,
       }}>
         {googleConfigured ? (
-          <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }} />
+          <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }} />
         ) : (
           <button className="btn btn--primary" onClick={onMockGoogle} style={{ marginBottom: 10 }}>
             Entrar com Google
           </button>
         )}
+
+        {/* Apple Sign-In — Apple HIG specifies black button + system
+            font + Apple logo glyph for both iOS and web. Fixed black
+            even on the dark Neon Boteco shell because that's what
+            Apple's review guidelines accept. */}
+        <button
+          onClick={onApple}
+          style={{
+            width: '100%', marginBottom: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 8, height: 44, borderRadius: 12,
+            background: '#000', color: '#fff', border: '1px solid #000',
+            fontSize: 15, fontWeight: 600,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
+            cursor: 'pointer',
+          }}
+        >
+          <span aria-hidden style={{ fontSize: 17, lineHeight: 1, marginTop: -2 }}></span>
+          <span>Continuar com Apple</span>
+        </button>
 
         <button
           onClick={onSkip}

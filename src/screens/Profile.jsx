@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
+import { signInWithApple } from '../lib/apple-auth'
 import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
@@ -1362,6 +1363,20 @@ function SignInCard({ dispatch }) {
     dispatch({ type: 'SET_NAME', payload: MOCK_GOOGLE_USER.givenName })
   }
 
+  async function handleApple() {
+    try {
+      const user = await signInWithApple()
+      dispatch({ type: 'SET_GOOGLE_USER', payload: user })
+      if (user.givenName || user.name) {
+        dispatch({ type: 'SET_NAME', payload: user.givenName || user.name?.split(' ')[0] || '' })
+      }
+    } catch (err) {
+      if (err?.message && err.message !== 'Login cancelado.') {
+        alert(err.message)
+      }
+    }
+  }
+
   return (
     <div style={{
       margin: '14px 16px 0',
@@ -1372,19 +1387,19 @@ function SignInCard({ dispatch }) {
       boxShadow: 'var(--shadow-sm)',
     }}>
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
-        Entrar com Google
+        Entrar
       </div>
       <div style={{ fontSize: 12, color: 'var(--charcoal-light)', lineHeight: 1.5, marginBottom: 12 }}>
         Faça login pra salvar eventos, virar curador de Instagram e
         sincronizar entre dispositivos.
       </div>
       {googleConfigured ? (
-        <div ref={googleBtnRef} />
+        <div ref={googleBtnRef} style={{ marginBottom: 8 }} />
       ) : (
         <button
           onClick={handleMockSignIn}
           style={{
-            width: '100%', padding: '10px 16px',
+            width: '100%', padding: '10px 16px', marginBottom: 8,
             border: 'none', borderRadius: 10,
             background: 'var(--charcoal)', color: 'white',
             fontWeight: 700, fontSize: 13, cursor: 'pointer',
@@ -1393,6 +1408,23 @@ function SignInCard({ dispatch }) {
           Entrar (modo demo)
         </button>
       )}
+      {/* Apple Sign-In — Apple HIG: black button, system font, glyph
+          on the left. Same handler as Onboarding's. */}
+      <button
+        onClick={handleApple}
+        style={{
+          width: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 8, height: 40, borderRadius: 10,
+          background: '#000', color: '#fff', border: '1px solid #000',
+          fontSize: 14, fontWeight: 600,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
+          cursor: 'pointer',
+        }}
+      >
+        <span aria-hidden style={{ fontSize: 16, lineHeight: 1, marginTop: -2 }}></span>
+        <span>Continuar com Apple</span>
+      </button>
     </div>
   )
 }

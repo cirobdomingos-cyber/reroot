@@ -2038,6 +2038,79 @@ def get_event_by_id(event_id: str) -> Optional[EnrichedEvent]:
     return EnrichedEvent(**json.loads(row["payload"]))
 
 
+# ── Multi-provider auth resolution ────────────────────────
+
+def get_user_id_for_provider(provider: str, provider_id: str) -> Optional[str]:
+    """Look up the canonical user_id for a (provider, provider_id) pair.
+    Returns None when this provider account hasn't signed in yet — caller
+    is expected to register a fresh user via register_provider_user."""
+    if not provider or not provider_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM auth_providers WHERE provider = ? AND provider_id = ?",
+            (provider, provider_id),
+        ).fetchone()
+    return row["user_id"] if row else None
+
+
+def register_provider_user(
+    provider: str,
+    provider_id: str,
+    user_id: str,
+    display_name: str = "",
+    email: str = "",
+    picture: str = "",
+) -> None:
+    """Create or update the (users, auth_providers) pair for a fresh
+    sign-in. Idempotent — re-running with the same provider_id is a
+    no-op for the auth_providers row but updates the users row's
+    profile fields if they were empty before (Apple only returns name
+    + email on FIRST auth, so we MUST persist them then or we lose them
+    forever; subsequent sign-ins return only sub + token)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, display_name, email, picture, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, display_name, email, picture, now),
+        )
+        # Backfill profile fields only when missing — never overwrite a
+        # name/email the user has already customized.
+        if display_name or email or picture:
+            conn.execute(
+                """
+                UPDATE users SET
+                    display_name = CASE WHEN display_name = '' THEN ? ELSE display_name END,
+                    email        = CASE WHEN email        = '' THEN ? ELSE email END,
+                    picture      = CASE WHEN picture      = '' THEN ? ELSE picture END
+                WHERE id = ?
+                """,
+                (display_name, email, picture, user_id),
+            )
+        conn.execute(
+            "INSERT OR IGNORE INTO auth_providers (provider, provider_id, user_id, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (provider, provider_id, user_id, now),
+        )
+        conn.commit()
+
+
+def get_user_profile(user_id: str) -> Optional[dict]:
+    """Profile snapshot from `users` — used by the auth endpoints to
+    return display_name/email/picture to the frontend."""
+    if not user_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, display_name, email, picture FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return dict(row)
+
+
 def delete_catalog_event(event_id: str) -> bool:
     """Hard-delete a catalog event from the events table. Used by the
     admin "remove this LLM mis-extraction" endpoint when an IG post

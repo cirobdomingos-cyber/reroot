@@ -5422,6 +5422,102 @@ def push_vapid_public_key():
     return {"publicKey": VAPID_PUBLIC_KEY}
 
 
+# ── Apple Sign-In ──
+#
+# Google Sign-In runs entirely on the client (GIS button → JWT decoded
+# locally). Apple's flow is server-verified: the device returns an
+# identityToken JWT signed by Apple, and we MUST validate it server-side
+# against Apple's JWKs before trusting any claim. Otherwise any client
+# could submit a forged token and the backend would happily mint a user.
+#
+# Audience handling: native iOS uses the bundle id (app.aue) as `aud`;
+# web sign-ins use the Service ID configured in Apple Developer (e.g.
+# "app.aue.web"). Both are accepted as long as the env vars are set —
+# unset audiences just skip that branch instead of falling open.
+APPLE_NATIVE_AUDIENCE = os.environ.get("APPLE_NATIVE_AUDIENCE", "app.aue").strip()
+APPLE_WEB_AUDIENCE = os.environ.get("APPLE_WEB_AUDIENCE", "").strip()
+
+
+def _apple_audiences() -> list[str]:
+    auds = []
+    if APPLE_NATIVE_AUDIENCE:
+        auds.append(APPLE_NATIVE_AUDIENCE)
+    if APPLE_WEB_AUDIENCE:
+        auds.append(APPLE_WEB_AUDIENCE)
+    return auds
+
+
+class AppleSignInBody(BaseModel):
+    identity_token: str
+    # Apple returns the user's name + email ONLY on the first sign-in,
+    # and only when the user grants those scopes. The frontend captures
+    # them and forwards here so we can persist them to the users row.
+    # On subsequent sign-ins these come back empty and the existing row
+    # is kept untouched (register_provider_user only backfills, never
+    # overwrites a non-empty field).
+    given_name: str = ""
+    family_name: str = ""
+
+
+@app.post("/auth/apple")
+def auth_apple_sign_in(body: AppleSignInBody):
+    """Verify an Apple Sign-In identityToken and return a stable user
+    profile. Used by the iOS native plugin AND the web JS SDK — both
+    end up POSTing the JWT here.
+
+    Returns: { user_id, display_name, email, picture, is_new_user }
+    The frontend stores user_id in state.googleUser.id (legacy field
+    name; refactored later) so the rest of the app's per-user fetches
+    keep working without a sweep."""
+    try:
+        from apple_auth import verify_identity_token
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Apple Sign-In module not loaded")
+
+    auds = _apple_audiences()
+    if not auds:
+        raise HTTPException(
+            status_code=500,
+            detail="APPLE_NATIVE_AUDIENCE / APPLE_WEB_AUDIENCE not configured",
+        )
+
+    try:
+        claims = verify_identity_token(body.identity_token, auds)
+    except ValueError as exc:
+        log.warning(f"Apple Sign-In verify failed: {exc}")
+        raise HTTPException(status_code=401, detail=f"Token inválido: {exc}")
+
+    apple_sub = claims["sub"]
+    apple_email = (claims.get("email") or "").strip()
+
+    # Resolve canonical user_id, creating the (users, auth_providers)
+    # pair on first sign-in. Apple subs are opaque per-app strings, so
+    # we generate a fresh user_id (apl_<first 12 chars of sub>) when
+    # this is a new account.
+    existing_user_id = db.get_user_id_for_provider("apple", apple_sub)
+    is_new_user = existing_user_id is None
+    user_id = existing_user_id or f"apl_{apple_sub[:24].replace('.', '_')}"
+
+    display_name = (f"{body.given_name} {body.family_name}".strip()) or ""
+    db.register_provider_user(
+        provider="apple",
+        provider_id=apple_sub,
+        user_id=user_id,
+        display_name=display_name,
+        email=apple_email,
+        picture="",  # Apple doesn't return profile photos
+    )
+
+    profile = db.get_user_profile(user_id) or {"id": user_id}
+    return {
+        "user_id": user_id,
+        "display_name": profile.get("display_name") or "",
+        "email": profile.get("email") or "",
+        "picture": profile.get("picture") or "",
+        "is_new_user": is_new_user,
+    }
+
+
 # ── Static files + SPA fallback ──
 # Must be registered AFTER all API routes so /events, /health etc. take priority
 
