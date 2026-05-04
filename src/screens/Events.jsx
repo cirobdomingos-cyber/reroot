@@ -459,31 +459,43 @@ export default function Events() {
     if (state.rsvps?.[ev.id]) return 2
     return 3
   }
-  // Sort key clamped to "today or later". A multi-day event that
-  // started in the past but covers today should sort with TODAY's
-  // events, not get pinned to its original April start. Without the
-  // clamp, "Tudo" lists 30-day-long programações before May events
-  // even though those events are very much current.
+  // Sort key has to match what the card *visually shows* in its date
+  // column, otherwise the list reads as out-of-order. The card uses
+  // displayDate=today for any recurring/multi-day event that covers
+  // today (see displayDate logic on the EventCard render below); the
+  // sort key has to follow the same rule. Without this alignment a
+  // "Tributo Bowie SEX" recurring event with dateStart pinned to the
+  // next Friday would render as "DOM 03" today but sort by Friday,
+  // landing in the middle of the Friday block.
   const sortFloor = getAnchorToday().getTime()
+  const todayIsoForSort = getAnchorTodayIso()
+  function effectiveStartTs(ev) {
+    const raw = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+    if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
+    const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+    if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIsoForSort)) {
+      // Sort with today's bucket, with a small offset so the
+      // ordering inside the bucket is still stable (preserve relative
+      // ordering of multiple recurring events covering today).
+      return sortFloor + (raw % 86_400_000)
+    }
+    return Math.max(raw, sortFloor)
+  }
   const allDisplayEvents = [...(state.customEvents || []), ...groupEvents, ...events].sort((a, b) => {
     const ta_tier = eventTier(a)
     const tb_tier = eventTier(b)
     if (ta_tier !== tb_tier) return ta_tier - tb_tier
 
-    const ta_raw = a.dateStart ? Date.parse(a.dateStart) : NaN
-    const tb_raw = b.dateStart ? Date.parse(b.dateStart) : NaN
-    if (Number.isNaN(ta_raw) && Number.isNaN(tb_raw)) return 0
-    if (Number.isNaN(ta_raw)) return 1
-    if (Number.isNaN(tb_raw)) return -1
-    const ta = Math.max(ta_raw, sortFloor)
-    const tb = Math.max(tb_raw, sortFloor)
-    const dayA = a.dateStart.slice(0, 10)
-    const dayB = b.dateStart.slice(0, 10)
-    if (dayA === dayB) {
-      if (a.isGroupEvent && !b.isGroupEvent) return -1
-      if (!a.isGroupEvent && b.isGroupEvent) return 1
-    }
-    return ta - tb
+    const ta = effectiveStartTs(a)
+    const tb = effectiveStartTs(b)
+    if (ta !== tb) return ta - tb
+
+    // Same effective day: keep group events ahead of catalog ones —
+    // matches the displayDate-aware grouping by re-checking the card's
+    // visible day column (today for covering events, dateStart else).
+    if (a.isGroupEvent && !b.isGroupEvent) return -1
+    if (!a.isGroupEvent && b.isGroupEvent) return 1
+    return 0
   })
 
   // Apply search + source-category + date/venue filter

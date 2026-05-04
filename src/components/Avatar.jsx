@@ -26,8 +26,11 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
     borderRadius: '50%',
     flexShrink: 0,
     objectFit: 'cover',
-    background: 'var(--sage)', // coral; visible while picture loads
-    border: bordered ? '3px solid rgba(255,255,255,0.2)' : undefined,
+    // Magenta placeholder while picture loads — matches the brand and
+    // the ui-avatars fallback below so the swap doesn't flash to a
+    // different color mid-load.
+    background: 'var(--magenta)',
+    border: bordered ? '3px solid rgba(255, 43, 214, 0.3)' : undefined,
   }
 
   if (primarySrc && !failed) {
@@ -63,10 +66,13 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
 }
 
 function buildUiAvatarsUrl(name, sizePx) {
+  // Neon Boteco palette: deep magenta bg with cream-violet initials.
+  // Matches the brand stamp on Home + the magenta-on-bg2 chips
+  // throughout the app.
   const params = new URLSearchParams({
     name: name.trim(),
-    background: 'E8623F',
-    color: 'FCF5EB',
+    background: 'FF2BD6',
+    color: 'F4ECFF',
     size: String(Math.max(64, Math.round(sizePx))),
     rounded: 'true',
     bold: 'true',

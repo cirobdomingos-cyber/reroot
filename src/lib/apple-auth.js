@@ -153,13 +153,33 @@ export async function signInWithApple() {
 
   // Normalize into the same shape the rest of the app expects from a
   // "googleUser" — the field is legacy, the contract isn't.
-  const fullName = (data.display_name || appleResult.givenName ||
-                    [appleResult.givenName, appleResult.familyName].filter(Boolean).join(' ')).trim()
+  //
+  // Name fallback chain: Apple returns name ONLY on the first sign-in,
+  // and only when the user agrees to share it (the sheet has a separate
+  // "Use my Name" toggle from "Hide my Email"). When both are off and
+  // we get back just a sub + relay email, we'd otherwise have a blank
+  // display name forever. Fall back to the email's local-part so the
+  // user has a stable handle they can edit later in Profile.
+  const apiDisplayName = (data.display_name || '').trim()
+  const localFromName = [appleResult.givenName, appleResult.familyName]
+    .filter(Boolean).join(' ').trim()
+  const localFromEmail = (() => {
+    const e = data.email || appleResult.email || ''
+    if (!e || !e.includes('@')) return ''
+    const local = e.split('@')[0]
+    // Relay addresses look like "gnp2cbpmy5@privaterelay.appleid.com" —
+    // 10-char random local. Better than blank, but we tag it as
+    // "Apple User" with a short code for slightly nicer UX.
+    if (e.endsWith('@privaterelay.appleid.com')) return `Apple ${local.slice(0, 4)}`
+    return local
+  })()
+  const fullName = apiDisplayName || localFromName || localFromEmail || 'Apple User'
+
   return {
     id: data.user_id,
-    email: data.email || '',
+    email: data.email || appleResult.email || '',
     name: fullName,
-    givenName: appleResult.givenName || fullName.split(' ')[0] || '',
+    givenName: appleResult.givenName || fullName.split(' ')[0] || fullName,
     familyName: appleResult.familyName || '',
     picture: data.picture || '',
     isNewUser: !!data.is_new_user,
