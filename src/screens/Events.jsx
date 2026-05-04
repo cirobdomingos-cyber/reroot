@@ -459,16 +459,24 @@ export default function Events() {
     if (state.rsvps?.[ev.id]) return 2
     return 3
   }
+  // Sort key clamped to "today or later". A multi-day event that
+  // started in the past but covers today should sort with TODAY's
+  // events, not get pinned to its original April start. Without the
+  // clamp, "Tudo" lists 30-day-long programações before May events
+  // even though those events are very much current.
+  const sortFloor = getAnchorToday().getTime()
   const allDisplayEvents = [...(state.customEvents || []), ...groupEvents, ...events].sort((a, b) => {
     const ta_tier = eventTier(a)
     const tb_tier = eventTier(b)
     if (ta_tier !== tb_tier) return ta_tier - tb_tier
 
-    const ta = a.dateStart ? Date.parse(a.dateStart) : NaN
-    const tb = b.dateStart ? Date.parse(b.dateStart) : NaN
-    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0
-    if (Number.isNaN(ta)) return 1
-    if (Number.isNaN(tb)) return -1
+    const ta_raw = a.dateStart ? Date.parse(a.dateStart) : NaN
+    const tb_raw = b.dateStart ? Date.parse(b.dateStart) : NaN
+    if (Number.isNaN(ta_raw) && Number.isNaN(tb_raw)) return 0
+    if (Number.isNaN(ta_raw)) return 1
+    if (Number.isNaN(tb_raw)) return -1
+    const ta = Math.max(ta_raw, sortFloor)
+    const tb = Math.max(tb_raw, sortFloor)
     const dayA = a.dateStart.slice(0, 10)
     const dayB = b.dateStart.slice(0, 10)
     if (dayA === dayB) {
@@ -783,12 +791,14 @@ export default function Events() {
               count: eventCounts[c] || 0,
             })),
           ]
-          // Default-collapsed cap: shows roughly 2 rows on a 360-380px
-          // viewport (the typical small Android). Always include the
+          // Default-collapsed cap: 5 category chips + the "Ver mais"
+          // overflow button = 6 total elements, which lays out as ~2
+          // rows on a 360-380px viewport (the typical small Android,
+          // ~3 chips/row given the chip widths). Always include the
           // active chip in the visible set even when it would otherwise
           // be in the overflow tail — otherwise picking "Cinema · 1"
           // and then collapsing would hide what the user just selected.
-          const COLLAPSED_CAP = 10
+          const COLLAPSED_CAP = 5
           let visible = chips
           let hidden = 0
           if (!chipsExpanded && chips.length > COLLAPSED_CAP) {

@@ -48,54 +48,75 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Bucket events by ISO day. Each day gets +1 for every event covering
+  // Bucket events by LOCAL day. Each day gets +1 for every event covering
   // it: one-offs on their single day, multi-day ranges on every day in
   // the run, recurring residencies on every matching weekday in a
   // 60-day forward window.
   //
-  // Yes, this can make the strip badges look "busy" when residencies
-  // cover multiple weekdays — that's the discoverability tradeoff.
-  // Users who want only the time-sensitive stuff toggle the "Só únicos"
-  // filter on the price-row to drop residencies + ranges from both the
-  // strip events feed AND the list. 60-day cap protects against
-  // malformed multi-year ranges.
-  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  // Why local not UTC: the strip's day cells are computed in local time
+  // (getAnchorToday + dateKey return local YYYY-MM-DD). If we walk in
+  // UTC, after ~21:00 BRT the UTC date flips to "tomorrow" and the
+  // recurring loop starts from tomorrow, skipping today's bucket. Then
+  // today's count comes out wrong (only multi-day ranges match, not
+  // recurring events). Walking in local fixes it across timezones.
+  //
+  // 60-day cap on each event's loop protects against malformed
+  // multi-year ranges. Users who want only the time-sensitive stuff
+  // toggle "Só únicos" upstream to drop residencies + ranges from
+  // both the strip events feed AND the list.
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
   const countsByDay = useMemo(() => {
+    const localKey = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const today0 = new Date()
+    today0.setHours(0, 0, 0, 0)
+    const horizon = new Date(today0)
+    horizon.setDate(horizon.getDate() + 60)
+
+    const parseLocal = (yyyy_mm_dd) => {
+      const [y, m, d] = yyyy_mm_dd.split('-').map(Number)
+      if (!y || !m || !d) return null
+      return new Date(y, m - 1, d)
+    }
+
     const map = {}
-    const horizon = new Date()
-    horizon.setUTCDate(horizon.getUTCDate() + 60)
     for (const ev of events) {
-      // Recurring branch: walk forward 60 days, count every matching
-      // ISO weekday.
+      // Recurring branch: walk forward 60 days from today, count every
+      // matching ISO weekday. JS getDay() is 0=Sun..6=Sat — convert to
+      // ISO 1=Mon..7=Sun to match the backend's recurrenceDays encoding.
       if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
-        const cursor = new Date(`${todayIso}T00:00:00Z`)
+        const cursor = new Date(today0)
         let n = 0
         while (cursor <= horizon && n < 60) {
-          const isoDow = ((cursor.getUTCDay() + 6) % 7) + 1
+          const isoDow = ((cursor.getDay() + 6) % 7) + 1
           if (ev.recurrenceDays.includes(isoDow)) {
-            const k = cursor.toISOString().slice(0, 10)
+            const k = localKey(cursor)
             map[k] = (map[k] || 0) + 1
           }
-          cursor.setUTCDate(cursor.getUTCDate() + 1)
+          cursor.setDate(cursor.getDate() + 1)
           n += 1
         }
         continue
       }
+      // One-off / multi-day branch: walk every day from start to end.
       const isoStart = ev.dateStart || ev.date_start || ''
       if (!isoStart) continue
       const startKey = isoStart.slice(0, 10)
       const isoEnd = ev.dateEnd || ev.date_end || ''
       const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
-      const start = new Date(`${startKey}T00:00:00Z`)
-      const end = new Date(`${endKey}T00:00:00Z`)
-      if (Number.isNaN(start.getTime())) continue
-      const finalEnd = Number.isNaN(end.getTime()) || end < start ? start : end
+      const start = parseLocal(startKey)
+      const end = parseLocal(endKey)
+      if (!start) continue
+      const finalEnd = (!end || end < start) ? start : end
       const cursor = new Date(start)
       let n = 0
       while (cursor <= finalEnd && n < 60) {
-        const k = cursor.toISOString().slice(0, 10)
+        const k = localKey(cursor)
         map[k] = (map[k] || 0) + 1
-        cursor.setUTCDate(cursor.getUTCDate() + 1)
+        cursor.setDate(cursor.getDate() + 1)
         n += 1
       }
     }
