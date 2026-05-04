@@ -299,25 +299,28 @@ input  { font-family: inherit; }
   -webkit-tap-highlight-color: transparent;
 }
 .btn:active { transform: scale(0.98); }
-/* Primary CTA = chrome metallic gradient with magenta drop-shadow.
-   This is the signature button of the Neon Boteco direction. */
+/* Primary CTA = solid magenta with magenta glow.
+   The spec's chrome metallic gradient was tested and rejected — too much
+   visual noise (the dark middle band ate the deep-purple text, and even
+   after lightening the band the chrome still felt like a 90s OS button
+   instead of a brand CTA). Brand magenta reads as "the auê action" —
+   same color as the 84px wordmark on Home, the active bottom-nav state,
+   and the active filter chip. White text + glow keeps the Neon Boteco
+   energy without competing with the surrounding chrome. */
 .btn--primary {
-  background: linear-gradient(180deg,
-    #fff 0%,
-    #c0c0c0 38%,
-    #6a6a6a 50%,
-    #c0c0c0 70%,
-    #fff 100%);
-  color: #14081E;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: var(--magenta);
+  color: #ffffff;
+  border: 1px solid rgba(255, 43, 214, 0.6);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.6),
-    0 8px 24px rgba(255, 43, 214, 0.25);
+    0 0 0 1px rgba(255, 43, 214, 0.3),
+    0 8px 24px rgba(255, 43, 214, 0.45);
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 }
 .btn--primary:hover {
+  background: #FF4DDC;
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.6),
-    0 8px 28px rgba(255, 43, 214, 0.40);
+    0 0 0 1px rgba(255, 43, 214, 0.4),
+    0 8px 28px rgba(255, 43, 214, 0.65);
 }
 .btn--sage {
   background: var(--lime);

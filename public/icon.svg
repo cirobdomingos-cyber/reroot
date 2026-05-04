@@ -1,45 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  auê — app icon (1024×1024 viewBox).
+  auê — app icon (1024×1024, Neon Boteco direction).
 
-  Coral background, cream wordmark "aue" (NO native diacritic — the small
-  font-rendered ^ on the ê was visually competing with the brand mark).
-  The big drawn circumflex above the 'e' IS the brand mark — reads as a
-  "smile" / cheer gesture (auê = a lively gathering / cheer in BR-PT).
+  Dark violet-black background with the magenta "aue" wordmark and a
+  bold magenta circumflex above the e — the circumflex stands in for
+  the native diacritic and reads as the brand mark (a "smile" / cheer).
 
-  Wordmark drawn as <text> using Manrope/system fallback chain. PNGs
+  Square fill (no rounded corners on the rect) so the PNG output works
+  as a maskable PWA icon — Android/Chrome and iOS both apply their own
+  rounded-rect clip on top. Adding rx here would leave the corners
+  transparent, which Apple rejects for App Store submission and Chrome
+  renders awkwardly on Android home screens.
+
+  Lime spark in the corner = the "novidade" tone, matches the
+  ✓ confirmados / free pills inside the app.
+
+  Wordmark drawn as <text> using Space Grotesk fallback chain. PNGs
   rendered via scripts/render-icons.js.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Rounded-square background (Android-adaptive icon safe zone). -->
-  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="#E8623F"/>
+  <!-- Solid dark background — no rounded corners (OS adds the mask). -->
+  <rect x="0" y="0" width="1024" height="1024" fill="#14081E"/>
 
   <!--
-    Wordmark "aue" without the native diacritic on the e — the prominent
-    drawn circumflex below stands in for it. Single ^ on the icon now.
+    Wordmark "aue" without the native diacritic — the prominent drawn
+    circumflex below stands in for it. Magenta to match the brand glow.
+    Letter-spacing tightened so the characters read as one chunky mark
+    rather than three separate letters.
   -->
   <text
     x="512" y="640"
-    font-family="Manrope, Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
-    font-weight="800"
+    font-family="'Space Grotesk', Manrope, Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-weight="700"
     font-size="440"
-    fill="#FCF5EB"
+    fill="#FF2BD6"
     text-anchor="middle"
-    letter-spacing="-12">aue</text>
+    letter-spacing="-22">aue</text>
 
   <!--
-    Brand circumflex — sits over the 'e'. Bold stroke, lightly oversized
-    so it reads as the prominent design element, not as a typographic mark.
+    Brand circumflex — sits over the 'e'. Magenta to match the wordmark.
+    Bold rounded stroke; positioned slightly above the canvas center to
+    leave breathing room for the OS clip mask.
   -->
   <path
     d="M 700 290 L 790 200 L 880 290"
     fill="none"
-    stroke="#FCF5EB"
+    stroke="#FF2BD6"
     stroke-width="64"
     stroke-linecap="round"
     stroke-linejoin="round"/>
 
-  <!-- Honey accent dot — small "spark" near the circumflex.
-       Reads as confetti / "tem auê acontecendo". -->
-  <circle cx="170" cy="190" r="32" fill="#F4A623"/>
+  <!-- Lime spark in the upper-left — reads as confetti / "tem auê
+       acontecendo agora". Matches the lime accent inside the app
+       (✓ confirmados, free, going). -->
+  <circle cx="170" cy="190" r="32" fill="#C6FF00"/>
 </svg>
