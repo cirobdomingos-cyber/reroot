@@ -5278,6 +5278,12 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
     # Parse + filter to events with names. Sort by date_start ASC so the
     # soonest-happening events lead the body — that's the hook ("Tributo
     # Bowie HOJE 21h" beats "show genérico daqui 3 semanas").
+    #
+    # ev["id"] is the internal SQLite id — the same key /events/{id} uses
+    # to look events up. ev["external_id"] is the source-scoped key (like
+    # "ig_terno_rei_post123") and would 404 the deep link, surfacing the
+    # frontend's "não está mais no catálogo" fallback instead of opening
+    # the hero. Past bug — left this comment so it doesn't come back.
     parsed = []
     for ev in new_events_raw:
         try:
@@ -5288,7 +5294,7 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
         if not name:
             continue
         parsed.append({
-            "id": ev["external_id"],
+            "id": ev["id"],
             "name": name,
             "date_start": payload.get("date_start") or "",
         })
