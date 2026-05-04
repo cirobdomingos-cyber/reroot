@@ -85,6 +85,21 @@ def init_db():
             conn.execute("ALTER TABLE push_subscriptions ADD COLUMN google_id TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass  # already migrated
+        # APNs device tokens — separate channel from web push. iOS native
+        # subscribers register via @capacitor/push-notifications and POST
+        # the hex device token. `env` distinguishes sandbox (Xcode debug
+        # builds via `npx cap run ios`) from production (TestFlight + App
+        # Store) — they hit different APNs hosts and one token never
+        # works on the other host.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS apns_device_tokens (
+                token       TEXT PRIMARY KEY,
+                google_id   TEXT NOT NULL DEFAULT '',
+                bundle_id   TEXT NOT NULL DEFAULT '',
+                env         TEXT NOT NULL DEFAULT 'production',
+                created_at  TEXT NOT NULL
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_states (
                 google_id   TEXT PRIMARY KEY,
@@ -573,13 +588,18 @@ def upsert_push_subscription(endpoint: str, keys_json: str, google_id: str = "")
 
 
 def get_all_push_subscriptions() -> list[dict]:
-    """Return all stored push subscriptions as dicts. Used by the weekly
-    broadcast — per-user pushes use get_push_subscriptions_for_user()."""
+    """Return all stored push subscriptions as dicts. Used by the daily
+    digest broadcast — per-user pushes use get_push_subscriptions_for_user().
+    Includes google_id so the caller can group by user for opt-out filtering."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT endpoint, keys_json FROM push_subscriptions"
+            "SELECT endpoint, keys_json, google_id FROM push_subscriptions"
         ).fetchall()
-    return [{"endpoint": r["endpoint"], "keys": json.loads(r["keys_json"])} for r in rows]
+    return [{
+        "endpoint": r["endpoint"],
+        "keys": json.loads(r["keys_json"]),
+        "google_id": r["google_id"] or "",
+    } for r in rows]
 
 
 def get_push_subscriptions_for_user(google_id: str) -> list[dict]:
@@ -600,6 +620,57 @@ def delete_push_subscription_by_endpoint(endpoint: str) -> None:
     Keeps the table clean and prevents wasted retry attempts."""
     with get_conn() as conn:
         conn.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+        conn.commit()
+
+
+# ── APNs device tokens (iOS native push) ──────────────────
+
+def upsert_apns_token(token: str, google_id: str = "",
+                      bundle_id: str = "", env: str = "production") -> None:
+    """Insert or replace an APNs device token. The token is the unique key —
+    same device re-installing the app gets a new token, old one becomes dead.
+    Backend prunes dead tokens lazily on 410 BadDeviceToken responses from APNs."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("""
+            INSERT INTO apns_device_tokens (token, google_id, bundle_id, env, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(token) DO UPDATE SET
+                google_id  = excluded.google_id,
+                bundle_id  = excluded.bundle_id,
+                env        = excluded.env,
+                created_at = excluded.created_at
+        """, (token, google_id, bundle_id, env, now))
+        conn.commit()
+
+
+def get_all_apns_tokens() -> list[dict]:
+    """All registered iOS device tokens. Used by the daily digest fanout."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT token, google_id, bundle_id, env FROM apns_device_tokens"
+        ).fetchall()
+    return [{"token": r["token"], "google_id": r["google_id"] or "",
+             "bundle_id": r["bundle_id"], "env": r["env"]} for r in rows]
+
+
+def get_apns_tokens_for_user(google_id: str) -> list[dict]:
+    """All iOS tokens for a single user. A user can have multiple devices
+    (iPhone + iPad)."""
+    if not google_id:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT token, bundle_id, env FROM apns_device_tokens WHERE google_id = ?",
+            (google_id,),
+        ).fetchall()
+    return [{"token": r["token"], "bundle_id": r["bundle_id"], "env": r["env"]} for r in rows]
+
+
+def delete_apns_token(token: str) -> None:
+    """Drop a dead device token (APNs returned 410 BadDeviceToken)."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM apns_device_tokens WHERE token = ?", (token,))
         conn.commit()
 
 

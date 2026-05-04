@@ -1,25 +1,27 @@
 /**
- * usePushNotifications — Web Push subscription hook (PWA / browser only).
+ * usePushNotifications — Dual-channel push subscription hook.
  *
- * The full subscribe flow:
- *   1. Fetch VAPID public key from the backend
- *   2. Request browser Notification permission
- *   3. Subscribe via pushManager → creates a PushSubscription
- *   4. POST it to /push/subscribe so the backend can reach this device
+ * Detects the runtime and picks the right channel:
+ *   - Browser / PWA (incl. iOS Safari "Add to Home Screen"): Web Push
+ *     via VAPID + pushManager + custom Service Worker
+ *   - Capacitor wrapper (iOS native via TestFlight/App Store): APNs via
+ *     `@capacitor/push-notifications` plugin → device token → backend
  *
- * The backend stores subscriptions in SQLite and delivers pushes via
- * pywebpush from `_send_push_to_user` (per-user) or
- * `send_daily_digest_to_all_subscribers` (broadcast). The custom Service
- * Worker in src/sw.js handles `push` and `notificationclick` events.
+ * The Profile UI doesn't care which channel is in use — `subscribe()`
+ * does the right thing. Backend `_send_push_to_user` and the daily
+ * digest fan out to both channels per user (a user with both PWA on
+ * laptop and TestFlight on iPhone gets pinged on both).
  *
- * iOS Capacitor wrappers do NOT use this hook — Web Push doesn't work
- * inside capacitor:// scheme. Native iOS/Android push will plug in via
- * `@capacitor/push-notifications` later, with its own subscribe flow.
+ * Push payload shape stays identical across channels: {title, body,
+ * url, tag}. The native side reads `url` from the data dict on tap and
+ * navigates the SPA via the HashRouter, mirroring what the SW does.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useApp } from '../context/AppContext'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
+const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 
 // VAPID public key arrives URL-safe base64 from the backend; pushManager.subscribe()
 // needs it as a Uint8Array.
@@ -30,11 +32,13 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
 }
 
-// Capability detection that survives both real browsers and Capacitor wrappers.
-// The wrapper has a service worker scope but pushManager throws on subscribe;
-// safest to just gate on the public APIs being present.
+// Capability detection across both runtimes.
+// - Native (Capacitor): always supported — the plugin is installed and
+//   handles APNs registration. Permission is requested at subscribe time.
+// - Browser: gate on Web Push APIs being present.
 export function isPushSupported() {
   if (typeof window === 'undefined') return false
+  if (IS_NATIVE) return true
   return 'serviceWorker' in navigator
     && 'PushManager' in window
     && 'Notification' in window
@@ -49,9 +53,18 @@ export function usePushNotifications() {
   // dropped server-side or the user used a fresh device).
   const [subscribed, setSubscribed] = useState(false)
 
-  // On mount, ask the SW if it already has a subscription on this device.
+  // Native APNs token, captured from the Capacitor plugin's `registration`
+  // event so we can re-POST it on retries and DELETE it on unsubscribe.
+  // null until the plugin emits, persists across hook re-renders.
+  const [apnsToken, setApnsToken] = useState(null)
+
+  // On mount, restore the existing subscription state for this device.
+  // Native: no API to query "do we have a token?" — the plugin only fires
+  // `registration` once after `register()`. So we treat it as unsubscribed
+  // until the user explicitly re-subscribes; backend de-dups on token
+  // upsert anyway. Browser: ask the SW.
   useEffect(() => {
-    if (!isPushSupported()) return
+    if (!isPushSupported() || IS_NATIVE) return
     let cancelled = false
     navigator.serviceWorker.ready
       .then(reg => reg.pushManager.getSubscription())
@@ -65,9 +78,90 @@ export function usePushNotifications() {
     setError(null)
     try {
       if (!isPushSupported()) {
-        throw new Error('Web Push não suportado neste navegador.')
+        throw new Error('Push não suportado nesse ambiente.')
       }
 
+      // ── Native (iOS Capacitor) channel ────────────────────────
+      if (IS_NATIVE) {
+        const { PushNotifications } = await import('@capacitor/push-notifications')
+        // Permission first — APNs returns "granted" on iOS only after
+        // the user accepts the system prompt.
+        const permResult = await PushNotifications.requestPermissions()
+        if (permResult.receive !== 'granted') {
+          dispatch({ type: 'SET_PUSH_DISMISSED' })
+          return false
+        }
+
+        // Listen for the registration event before calling register() —
+        // the event fires fast and we'd miss it otherwise.
+        const tokenPromise = new Promise((resolve, reject) => {
+          let regHandle, errHandle
+          PushNotifications.addListener('registration', token => {
+            regHandle?.remove?.()
+            errHandle?.remove?.()
+            resolve(token.value)
+          }).then(h => { regHandle = h })
+          PushNotifications.addListener('registrationError', err => {
+            regHandle?.remove?.()
+            errHandle?.remove?.()
+            reject(new Error(`APNs registration falhou: ${err?.error || 'unknown'}`))
+          }).then(h => { errHandle = h })
+          // Safety timeout — APNs registration usually completes in <1s.
+          setTimeout(() => reject(new Error('APNs registration timeout (15s).')), 15_000)
+        })
+
+        await PushNotifications.register()
+        const token = await tokenPromise
+
+        // Forward the token to the backend so the digest fanout can
+        // reach this device. Bundle id matches capacitor.config.json
+        // appId — backend uses it for cross-app safety on multi-tenant
+        // sends (currently we only have one app, but the field future-
+        // proofs the schema).
+        const res = await fetch(`${API_BASE}/push/register-device-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            google_id: state.googleUser?.id || '',
+            bundle_id: 'app.aue',
+            // production = TestFlight + App Store. The aps-environment
+            // entitlement value we ship with (production) only routes
+            // there; sandbox is for Xcode-built debug installs.
+            env: 'production',
+          }),
+        })
+        if (!res.ok) throw new Error('Falha ao registrar token no servidor.')
+
+        // Wire the tap handler ONCE — the plugin keeps the listener for
+        // the lifetime of the app process, so subscribing again is
+        // idempotent (we don't dedupe; the tap handler is fast and
+        // harmless to re-register). Reads the `url` field from the data
+        // dict and navigates the SPA via HashRouter.
+        await PushNotifications.addListener('pushNotificationActionPerformed', action => {
+          const data = action?.notification?.data || {}
+          const target = data.url
+          if (target && typeof target === 'string') {
+            // HashRouter URLs start with '/#/...'. Setting location.hash
+            // is enough — Router picks it up.
+            try {
+              const hashIdx = target.indexOf('#')
+              if (hashIdx >= 0) {
+                window.location.hash = target.slice(hashIdx)
+              } else {
+                window.location.assign(target)
+              }
+            } catch {}
+          }
+        })
+
+        setApnsToken(token)
+        dispatch({ type: 'SET_PUSH_OPTED_IN' })
+        setSubscribed(true)
+        return true
+      }
+
+      // ── Web (browser/PWA) channel ────────────────────────────
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
         dispatch({ type: 'SET_PUSH_DISMISSED' })
@@ -136,6 +230,25 @@ export function usePushNotifications() {
     setError(null)
     try {
       if (!isPushSupported()) return false
+
+      // ── Native (iOS Capacitor) ──
+      if (IS_NATIVE) {
+        if (apnsToken) {
+          try {
+            await fetch(`${API_BASE}/push/register-device-token`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: apnsToken }),
+            })
+          } catch {}
+          setApnsToken(null)
+        }
+        dispatch({ type: 'SET_PUSH_DISMISSED' })
+        setSubscribed(false)
+        return true
+      }
+
+      // ── Web ──
       const registration = await navigator.serviceWorker.ready
       const subscription = await registration.pushManager.getSubscription()
       if (subscription) {
@@ -159,7 +272,7 @@ export function usePushNotifications() {
     } finally {
       setLoading(false)
     }
-  }, [dispatch])
+  }, [dispatch, apnsToken])
 
   return { subscribed, subscribe, unsubscribe, loading, error }
 }

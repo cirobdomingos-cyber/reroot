@@ -5078,11 +5078,51 @@ def push_unsubscribe(body: PushUnsubscribeBody):
     return {"status": "unsubscribed"}
 
 
+class ApnsRegisterBody(BaseModel):
+    token: str            # APNs device token (hex, 64 chars)
+    google_id: str = ""   # links to a logged-in user (anonymous = "")
+    bundle_id: str = ""   # iOS app bundle id, used for cross-app safety
+    env: str = "production"  # "production" (TestFlight/App Store) or "sandbox" (Xcode debug)
+
+
+@app.post("/push/register-device-token")
+def push_register_device_token(body: ApnsRegisterBody):
+    """Store an iOS APNs device token. The Capacitor PushNotifications
+    plugin emits the hex token via its `registration` event after the
+    user grants permission; the JS hook POSTs it here.
+
+    Tokens are unique per (device, app, install) — re-installing the app
+    yields a new token, so the upsert key is the token itself, not
+    google_id (a single user can also have multiple devices: iPhone +
+    iPad)."""
+    db.upsert_apns_token(body.token, body.google_id, body.bundle_id, body.env)
+    log.info(f"APNs token saved (user={body.google_id or 'anon'}, env={body.env}): {body.token[:16]}…")
+    return {"status": "registered"}
+
+
+class ApnsUnregisterBody(BaseModel):
+    token: str
+
+
+@app.delete("/push/register-device-token")
+def push_unregister_device_token(body: ApnsUnregisterBody):
+    """Drop an APNs token (e.g. user toggled push off in Profile)."""
+    db.delete_apns_token(body.token)
+    return {"status": "unregistered"}
+
+
 # ── Per-user push helper ─────────────────────────────────
 # Sends a structured payload (title/body/url/tag) to every device the
-# user has registered. The Service Worker parses the JSON and shows a
-# rich notification — falls back to text body if it can't parse.
-# Failures are dropped silently and dead endpoints (410/404) are pruned.
+# user has registered, across both push channels:
+#   - Web Push (browser PWA, including iOS Safari "Add to Home Screen"
+#     standalone), via VAPID + pywebpush. The custom Service Worker
+#     parses the JSON and shows a rich notification.
+#   - APNs (iOS native via Capacitor), via JWT-authed HTTP/2 to
+#     api.push.apple.com. The Capacitor PushNotifications plugin emits
+#     a JS event on tap, the frontend reads `url` and navigates the SPA.
+# Dead endpoints/tokens are pruned lazily on the corresponding error
+# codes. Both fanouts run regardless of which channels the user has —
+# missing channels short-circuit cheaply.
 def _send_push_to_user(
     google_id: str,
     title: str,
@@ -5090,11 +5130,21 @@ def _send_push_to_user(
     url: str = "/",
     tag: str = "default",
 ) -> int:
-    """Returns the number of devices the push was successfully delivered to."""
+    """Returns total devices (web + APNs) that received the push."""
     if not google_id:
         return 0
+    sent = _send_webpush_to_user(google_id, title, body, url, tag)
+    sent += _send_apns_to_user(google_id, title, body, url, tag)
+    return sent
+
+
+def _send_webpush_to_user(google_id: str, title: str, body: str,
+                           url: str, tag: str) -> int:
+    """Browser PWA channel — VAPID + pywebpush."""
     subs = db.get_push_subscriptions_for_user(google_id)
     if not subs:
+        return 0
+    if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
         return 0
     try:
         from pywebpush import webpush, WebPushException
@@ -5117,9 +5167,31 @@ def _send_push_to_user(
             if status in (404, 410):
                 db.delete_push_subscription_by_endpoint(sub["endpoint"])
             else:
-                log.warning(f"push to {google_id} failed ({status}): {exc}")
+                log.warning(f"webpush to {google_id} failed ({status}): {exc}")
         except Exception as exc:
-            log.warning(f"push to {google_id} errored: {exc}")
+            log.warning(f"webpush to {google_id} errored: {exc}")
+    return sent
+
+
+def _send_apns_to_user(google_id: str, title: str, body: str,
+                       url: str, tag: str) -> int:
+    """iOS native channel — APNs HTTP/2 with token-based JWT auth."""
+    tokens = db.get_apns_tokens_for_user(google_id)
+    if not tokens:
+        return 0
+    try:
+        from apns import send_to_token as apns_send
+    except ImportError:
+        return 0
+    sent = 0
+    for t in tokens:
+        ok, reason = apns_send(t["token"], title, body, url=url, tag=tag)
+        if ok:
+            sent += 1
+        elif reason and ("BadDeviceToken" in reason or "Unregistered" in reason or reason.startswith("410")):
+            db.delete_apns_token(t["token"])
+        elif reason:
+            log.warning(f"apns to {google_id} failed: {reason}")
     return sent
 
 
@@ -5181,25 +5253,23 @@ def _user_daily_digest_opted_in(google_id: str) -> bool:
 
 
 async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) -> dict:
-    """Fanout the daily "novidades hoje" push after the catalog refresh.
+    """Fanout the daily "novidades hoje" push after the catalog refresh,
+    across both push channels:
+      - Web Push subscribers (browser PWA / iOS Safari standalone)
+      - APNs device tokens (iOS native via Capacitor / TestFlight)
 
     Replaces the old weekly broadcast — that one was generic ("vai junto?")
-    and risked classic broadcast-fatigue. This version pulls the events
-    that actually showed up in today's scrape and tells each subscriber
-    "X novos rolês — Tributo Bowie · Pedreira · +2 mais", with the click
-    routed to the top event's hero so the user lands on Event Detail and
-    can RSVP in one tap.
+    and risked broadcast-fatigue. This version pulls the events from
+    today's scrape and tells each subscriber "X novos — Tributo Bowie ·
+    Pedreira · +2 mais", with the tap routed to the top event hero.
 
     Skipped silently when:
       - No new events from this scrape (would be a noise push)
-      - No subscribers
-      - VAPID keys unset (push transport unconfigured)
+      - No subscribers on either channel
       - User toggled off via privacy.dailyDigest = false
     """
     if not new_event_ids:
         return {"sent": 0, "skipped": 0, "reason": "no new events"}
-    if not (VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY):
-        return {"sent": 0, "skipped": 0, "reason": "VAPID keys not configured"}
 
     new_events_raw = db.get_events_by_ids(list(new_event_ids))
     if not new_events_raw:
@@ -5228,64 +5298,83 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
 
     n = len(parsed)
     top_event = parsed[0]
-    # Body shows up to 3 names so the notification fits comfortably in the
-    # iOS lock-screen / Android shade preview without truncation. "+ N mais"
-    # tail surfaces the full count.
     preview = " · ".join(e["name"][:38] for e in parsed[:3])
     if n > 3:
         preview += f" · +{n - 3} mais"
     title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB"
-    # Click target: top event hero. The event-id deep link is handled by
-    # the SPA's HashRouter — Service Worker just opens the URL on tap.
     url = f"/#/events?event={top_event['id']}"
+    tag = "daily-digest"
 
-    subscriptions = db.get_all_push_subscriptions()
-    if not subscriptions:
+    web_subs = db.get_all_push_subscriptions()
+    apns_tokens = db.get_all_apns_tokens()
+    if not web_subs and not apns_tokens:
         return {"sent": 0, "skipped": 0, "reason": "no subscribers"}
 
+    # Group both channels by google_id so opt-out runs once per user.
+    by_user_web: dict[str, list[dict]] = {}
+    for sub in web_subs:
+        by_user_web.setdefault(sub.get("google_id") or "", []).append(sub)
+    by_user_apns: dict[str, list[dict]] = {}
+    for tok in apns_tokens:
+        by_user_apns.setdefault(tok.get("google_id") or "", []).append(tok)
+    all_users = set(by_user_web) | set(by_user_apns)
+
+    # Lazy imports — keeps endpoint usable even without optional deps.
+    web_payload = json.dumps({"title": title, "body": preview, "url": url, "tag": tag})
+    has_vapid = bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY)
     try:
         from pywebpush import webpush, WebPushException
+        has_pywebpush = True
     except ImportError:
-        return {"sent": 0, "skipped": 0, "reason": "pywebpush not installed"}
+        has_pywebpush = False
 
-    # Group by google_id so opt-out check runs once per user instead of
-    # once per registered device.
-    by_user: dict[str, list[dict]] = {}
-    for sub in subscriptions:
-        by_user.setdefault(sub.get("google_id") or "", []).append(sub)
+    try:
+        from apns import send_to_token as apns_send, _is_configured as apns_configured
+        has_apns = apns_configured()
+    except ImportError:
+        has_apns = False
 
     sent = 0
     skipped = 0
     failed = 0
-    for google_id, subs in by_user.items():
+    for google_id in all_users:
         if not _user_daily_digest_opted_in(google_id):
-            skipped += len(subs)
+            skipped += len(by_user_web.get(google_id, []))
+            skipped += len(by_user_apns.get(google_id, []))
             continue
-        payload = json.dumps({
-            "title": title,
-            "body": preview,
-            "url": url,
-            "tag": "daily-digest",
-        })
-        for sub in subs:
-            try:
-                webpush(
-                    subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
-                    data=payload,
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims=VAPID_CLAIMS,
-                )
-                sent += 1
-            except WebPushException as exc:
-                status = getattr(exc.response, "status_code", None)
-                if status in (404, 410):
-                    db.delete_push_subscription_by_endpoint(sub["endpoint"])
+        # Web push channel
+        if has_vapid and has_pywebpush:
+            for sub in by_user_web.get(google_id, []):
+                try:
+                    webpush(
+                        subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]},
+                        data=web_payload,
+                        vapid_private_key=VAPID_PRIVATE_KEY,
+                        vapid_claims=VAPID_CLAIMS,
+                    )
+                    sent += 1
+                except WebPushException as exc:
+                    status = getattr(exc.response, "status_code", None)
+                    if status in (404, 410):
+                        db.delete_push_subscription_by_endpoint(sub["endpoint"])
+                    else:
+                        log.warning(f"digest webpush failed ({status}): {exc}")
+                    failed += 1
+                except Exception as exc:
+                    failed += 1
+                    log.warning(f"digest webpush errored: {exc}")
+        # APNs channel
+        if has_apns:
+            for tok in by_user_apns.get(google_id, []):
+                ok, reason = apns_send(tok["token"], title, preview, url=url, tag=tag)
+                if ok:
+                    sent += 1
                 else:
-                    log.warning(f"daily digest push failed ({status}): {exc}")
-                failed += 1
-            except Exception as exc:
-                failed += 1
-                log.warning(f"daily digest push errored: {exc}")
+                    failed += 1
+                    if reason and ("BadDeviceToken" in reason or "Unregistered" in reason or reason.startswith("410")):
+                        db.delete_apns_token(tok["token"])
+                    elif reason:
+                        log.warning(f"digest apns failed: {reason}")
 
     log.info(f"Daily digest: {sent} sent, {skipped} opted-out, {failed} failed (events={n})")
     return {"sent": sent, "skipped": skipped, "failed": failed, "events": n}

@@ -46,4 +46,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // ── APNs registration callbacks ──
+    // Capacitor's PushNotifications plugin listens on NotificationCenter for
+    // these two named notifications. Without these forwarders the plugin's
+    // `register()` call resolves but no token ever fires the
+    // `registration` event on the JS side.
+    //
+    // didRegister: success path — deviceToken is the raw APNs token bytes.
+    // The plugin formats them as hex and emits the JS event our hook
+    // listens to, then we POST the token to the backend.
+    //
+    // didFail: error path — bad provisioning profile, missing aps-environment
+    // entitlement, or no network. Plugin emits `registrationError` in JS.
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(
+            name: .capacitorDidRegisterForRemoteNotifications,
+            object: deviceToken
+        )
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
+    }
+
 }
