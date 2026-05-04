@@ -1170,17 +1170,24 @@ export default function Events() {
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
                     onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
-                    // For recurring events: when a specific day is
-                    // picked from the strip, the card should show THAT
-                    // day, not the rolled-forward "next occurrence"
-                    // dateStart on the event. Range events get the
-                    // same treatment when the picked day falls inside
-                    // their span.
-                    displayDate={
-                      selectedDay && (ev.isRecurring || (ev.dateEnd && ev.dateEnd.slice(0,10) > ev.dateStart.slice(0,10)))
-                        ? selectedDay
-                        : null
-                    }
+                    // Day shown on the card's date column:
+                    //   - When a specific strip day is picked: show that day.
+                    //   - Otherwise: for multi-day or recurring events that
+                    //     cover today, show TODAY (so a programação Maio
+                    //     2026 reads as "happening today" instead of "May 2,
+                    //     past"). One-off events fall through and keep their
+                    //     own dateStart.
+                    displayDate={(() => {
+                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
+                        return selectedDay
+                      }
+                      const todayIso = getAnchorTodayIso()
+                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
+                        return todayIso
+                      }
+                      return null
+                    })()}
                     t={t}
                   />
                 </motion.div>
