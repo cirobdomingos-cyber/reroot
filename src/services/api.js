@@ -81,8 +81,24 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
 // rolls forward to today and yesterday's late events drop off.
 // Evergreen entries (no dateStart) are kept.
 function dropPastEvents(events) {
+  // Cutoff: an event is "past" only if its LAST relevant moment is before
+  // today's anchor. The previous version checked dateStart alone, which
+  // dropped:
+  //   - Multi-day events (festivals / month-long programs) whose
+  //     dateStart was before today but dateEnd was in the future. They
+  //     vanished from the "Tudo" list even though they covered today.
+  //   - Recurring events whose stored dateStart hadn't been rolled
+  //     forward to the next occurrence.
+  // Now: keep when isRecurring (those are evergreen by definition), OR
+  // when dateEnd is in the future, OR when dateStart is in the future.
+  // Evergreen entries (no dateStart) are still kept.
   const cutoff = getAnchorToday().getTime()
   return events.filter(ev => {
+    if (ev.isRecurring) return true
+    if (ev.dateEnd) {
+      const tEnd = Date.parse(ev.dateEnd)
+      if (!Number.isNaN(tEnd) && tEnd >= cutoff) return true
+    }
     if (!ev.dateStart) return true
     const t = Date.parse(ev.dateStart)
     return Number.isNaN(t) || t >= cutoff
