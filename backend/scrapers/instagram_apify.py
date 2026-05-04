@@ -118,6 +118,31 @@ OU amarrada a um período específico (Carnaval, Páscoa, feriado, recesso, \
 
 (C) NÃO É EVENTO — foto pessoal, propaganda genérica, recap, lista de dicas.
 
+⚠️ DEFAULT-NOT-EVENT (regra forte): Se a legenda NÃO contém:
+  (a) uma data absoluta (ex: "25/04", "21 de abril", "sábado 26/04"), NEM
+  (b) uma data relativa concreta (ex: "amanhã", "hoje", "essa quinta", \
+"sábado que vem", "neste sábado"), NEM
+  (c) um marcador EXPLÍCITO de rotina contínua ("toda quinta", "todos \
+os sábados", "sempre às sextas", "diariamente"),
+
+→ classifique como (C) NÃO É EVENTO, mesmo que mencione um dia da semana \
+genérico. Posts que só dizem "venha no nosso sábado", "te esperamos no \
+fim de semana", "rolê de quinta" SEM data específica nem marcador de \
+rotina → propaganda do estabelecimento → NÃO É EVENTO.
+
+Exemplos claros de (C):
+- "Entre um café e outro, a gente resolve seu sábado" → propaganda de \
+brunch sem data específica → NÃO É EVENTO
+- "Te espero no nosso quintal" → propaganda do estabelecimento → \
+NÃO É EVENTO
+- "Domingo de pizza no nosso forno a lenha" → genérico, sem data nem \
+"todo domingo" → NÃO É EVENTO
+- "Vem pro nosso jantar" → sem data → NÃO É EVENTO
+
+Em caso de DÚVIDA entre (A) e (C), prefira (C). É melhor perder um \
+evento real do que poluir o catálogo com propaganda genérica que vira \
+data fantasma.
+
 Para (C) responda {{"is_event": false}}.
 
 Para (A) e (B) responda SOMENTE JSON válido (sem markdown, sem texto extra):
@@ -632,6 +657,69 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
                 f"is >60d after post_date {post_dt.date()} (anchor mismatch?)"
             )
             return None
+
+    # ── Post-LLM validation gates ────────────────────────────────
+    # The prompt asks for date markers but Claude Haiku occasionally
+    # hallucinates a date for venue-promo posts that should have been
+    # classified as (C) NÃO É EVENTO. Drop two failure modes the prompt
+    # alone can't catch reliably:
+    #
+    #  (1) ONE-OFF without a date marker in the caption — every
+    #      legitimate one-off announcement names a specific day
+    #      ("sábado 10/05", "amanhã 19h", "neste sábado", "26/04"
+    #      etc.). If neither a numeric date nor a "next-Saturday-ish"
+    #      relative phrase appears, Claude is guessing.
+    #
+    #  (2) Caption mentions ONE weekday (e.g. "sábado") but the
+    #      extracted date_start lands on a DIFFERENT weekday. That's
+    #      a clear hallucination — drop.
+    #
+    # Logged at WARNING so the founder can spot patterns in Railway
+    # logs ("@letseggs keeps producing one-offs without date markers"
+    # → review the source's content style).
+    caption_lower = (caption or "").lower()
+    if not is_recurring:
+        # (1) Date-marker presence check. Cheap regex set covering the
+        #     concrete patterns the prompt enumerates.
+        DATE_MARKERS = [
+            r"\b\d{1,2}[/.-]\d{1,2}",                             # 25/04, 25.04, 25-04
+            r"\b\d{1,2}\s+de\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)",
+            r"\bamanh[aã]\b",
+            r"\bhoje\b",
+            r"\b(?:nesse|neste|essa|esta|este|nessa)\s+(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\b",
+            r"\b(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\s+que\s+vem\b",
+            r"\b(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\s+\d{1,2}",  # "sábado 10"
+            r"\b\d{1,2}h\b",  # at-least-a-time anchors a same-day post
+        ]
+        if not any(re.search(p, caption_lower) for p in DATE_MARKERS):
+            log.warning(
+                f"IG: dropping @{handle}/{shortcode} — one-off w/o date marker in caption "
+                f"(LLM picked {date_start.date()} {date_start.strftime('%H:%M')} "
+                f"but caption has no concrete date)"
+            )
+            return None
+
+        # (2) Weekday cross-check.
+        WEEKDAY_RE = {
+            0: r"\bsegunda[-\s]?(?:feira)?\b",
+            1: r"\bter[cç]a[-\s]?(?:feira)?\b",
+            2: r"\bquarta[-\s]?(?:feira)?\b",
+            3: r"\bquinta[-\s]?(?:feira)?\b",
+            4: r"\bsexta[-\s]?(?:feira)?\b",
+            5: r"\bs[aá]bado\b",
+            6: r"\bdomingo\b",
+        }
+        mentioned = {wd for wd, pat in WEEKDAY_RE.items() if re.search(pat, caption_lower)}
+        if mentioned:
+            ds_weekday = date_start.weekday()  # 0=Mon..6=Sun
+            if ds_weekday not in mentioned:
+                names = {0: "seg", 1: "ter", 2: "qua", 3: "qui", 4: "sex", 5: "sáb", 6: "dom"}
+                log.warning(
+                    f"IG: dropping @{handle}/{shortcode} — weekday mismatch: caption mentions "
+                    f"{[names[w] for w in sorted(mentioned)]} but LLM extracted "
+                    f"{names[ds_weekday]} ({date_start.date()})"
+                )
+                return None
 
     date_end = _parse_iso(data.get("date_end"))
 
