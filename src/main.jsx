@@ -50,6 +50,28 @@ if (Capacitor.isNativePlatform?.()) {
         // than crash on a malformed deep link.
       }
     })
+
+    // Clear iOS notification badge whenever the app comes to the
+    // foreground (or launches from a tap on a notification). Each
+    // APNs push we send carries badge:1 so the icon shows a dot —
+    // but iOS doesn't auto-clear that count on app open. Without an
+    // explicit reset the badge sticks at 1 forever even after the
+    // user reads the notification.
+    //
+    // removeAllDeliveredNotifications also clears the in-tray
+    // notifications — once the user has the app focused, those are
+    // redundant noise.
+    function clearBadge() {
+      import('@capacitor/push-notifications').then(({ PushNotifications }) => {
+        PushNotifications.removeAllDeliveredNotifications().catch(() => {})
+      }).catch(() => {})
+    }
+    CapApp.addListener('appStateChange', (state) => {
+      if (state?.isActive) clearBadge()
+    })
+    // Cold launch: appStateChange fires on background→foreground transitions
+    // but not on the initial active state, so we also clear once on boot.
+    clearBadge()
   })
 }
 

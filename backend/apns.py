@@ -153,11 +153,19 @@ def send_to_token(device_token: str, title: str, body: str,
     # plus our custom `url`/`tag` fields. The Capacitor plugin emits a JS
     # event with the full payload on tap; the frontend reads `url` and
     # navigates the SPA.
+    #
+    # Deliberately NO `badge` field. We tried badge:1 first, but iOS
+    # doesn't auto-clear the count when the user reads the notification
+    # — and the @capacitor/push-notifications plugin doesn't expose
+    # setBadgeCount, so the icon stuck at "1" forever after the first
+    # push. iOS still shows a discreet dot indicator for unread
+    # notifications (system setting), which is enough signal without
+    # the stale count problem. removeAllDeliveredNotifications on app
+    # foreground clears the notification tray.
     payload = {
         "aps": {
             "alert": {"title": title, "body": body},
             "sound": "default",
-            "badge": 1,
             # Allow the SDK to mutate the notification (e.g., download
             # images) — harmless if we don't, but keeps the door open.
             "mutable-content": 1,
