@@ -42,10 +42,16 @@ export default function Profile() {
           access, friend code, RSVP sync). */}
       {!state.googleUser && <SignInCard dispatch={dispatch} />}
 
-      {/* Hero */}
+      {/* Hero — Neon Boteco palette: dark bg2 base with cyan + magenta
+          radial gradients in opposite corners (mirrors the community
+          card on Home, the event hero in Detail). */}
       <div style={{
-        background: 'linear-gradient(135deg, #2C2C2C 0%, #3d2d25 100%)',
-        padding: '20px 24px 28px', textAlign: 'center', color: 'white',
+        background:
+          'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%),' +
+          ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%),' +
+          ' var(--bg2)',
+        borderBottom: '1px solid var(--line)',
+        padding: '20px 24px 28px', textAlign: 'center', color: 'var(--text)',
       }}>
         <div style={{ margin: '0 auto 12px', width: 72 }}>
           <Avatar
