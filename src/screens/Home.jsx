@@ -229,15 +229,49 @@ export default function Home() {
   // bottom but still surface.
   const profile = state.profile ? PROFILES[state.profile] : null
   const priorityMoods = profile?.priorityMoods ?? []
+  // Sort key clamped to today for events that ALREADY started but cover
+  // today (multi-day "Programação Maio 2026", recurring residencies).
+  // Without this, those events sort by their original April/May 2 start
+  // and lead the list as if they're old. Mirrors the same fix the
+  // Events tab uses (see Events.jsx effectiveStartTs).
+  const sortFloorHome = getAnchorToday().getTime()
+  const todayIsoHome = (() => {
+    const t = getAnchorToday()
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  })()
+  function homeEffectiveStartTs(ev) {
+    const raw = ev.dateStart ? new Date(ev.dateStart).getTime() : NaN
+    if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
+    const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+    const startKey = (ev.dateStart || '').slice(0, 10)
+    const endKey = (ev.dateEnd || '').slice(0, 10) || startKey
+    const coversToday =
+      (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length > 0) ||
+      (isMultiDay && startKey <= todayIsoHome && todayIsoHome <= endKey)
+    if (coversToday) {
+      return sortFloorHome + (raw % 86_400_000)
+    }
+    return Math.max(raw, sortFloorHome)
+  }
+  function homeDisplayDate(ev) {
+    const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+    const startKey = (ev.dateStart || '').slice(0, 10)
+    const endKey = (ev.dateEnd || '').slice(0, 10) || startKey
+    if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length > 0) {
+      return todayIsoHome
+    }
+    if (isMultiDay && startKey <= todayIsoHome && todayIsoHome <= endKey) {
+      return todayIsoHome
+    }
+    return null
+  }
   const suggestedEvents = allEvents
     .filter(ev => !state.rsvps[ev.id])
     .sort((a, b) => {
       const ra = eventPriorityRank(a, priorityMoods)
       const rb = eventPriorityRank(b, priorityMoods)
       if (ra !== rb) return ra - rb
-      const da = a.dateStart ? new Date(a.dateStart).getTime() : 0
-      const db = b.dateStart ? new Date(b.dateStart).getTime() : 0
-      return da - db
+      return homeEffectiveStartTs(a) - homeEffectiveStartTs(b)
     })
     .slice(0, 3)
 
@@ -645,19 +679,30 @@ export default function Home() {
         <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()} · {String(rolandoCount).padStart(2, '0')}</span>
       </div>
       <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {suggestedEvents.map(ev => (
-          <HomeEventRow
-            key={ev.id}
-            name={ev.name}
-            dateStart={ev.dateStart}
-            time={ev.time}
-            venue={ev.venue}
-            isRecurring={!!ev.isRecurring}
-            isGroupEvent={!!ev.isGroupEvent}
-            onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
-            trailing={null}
-          />
-        ))}
+        {suggestedEvents.map(ev => {
+          // For events that visually belong to today (recurring +
+          // multi-day in-progress), override the row's date column to
+          // today so the user sees them as current rolês — same fix
+          // the Events tab card uses. Falls back to the natural
+          // dateStart for one-off future events.
+          const displayDate = homeDisplayDate(ev)
+          const dateForRow = displayDate
+            ? `${displayDate}T${(ev.dateStart || '').slice(11) || '00:00:00'}`
+            : ev.dateStart
+          return (
+            <HomeEventRow
+              key={ev.id}
+              name={ev.name}
+              dateStart={dateForRow}
+              time={ev.time}
+              venue={ev.venue}
+              isRecurring={!!ev.isRecurring}
+              isGroupEvent={!!ev.isGroupEvent}
+              onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
+              trailing={null}
+            />
+          )
+        })}
         <button
           onClick={() => navigate('/events')}
           className="neon-mono"
