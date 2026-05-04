@@ -192,22 +192,29 @@ export default function EventsWeekStrip({
               <div style={{
                 marginTop: 3, height: 14,
                 fontSize: 9, fontWeight: 700,
-                // Count badge readability on dark: magenta wash was too
-                // close to the magenta text. Solid magenta bg + dark
-                // text (or white-on-dark for selected) gives enough
-                // contrast to be glanceable at 9px.
+                // Today always renders the badge — even at 0 — so the
+                // cell looks structurally complete next to the
+                // populated future days. Without this, today looked
+                // visually broken when the catalog had no Sunday
+                // events. Empty state uses muted text on bg2 so it
+                // reads as "0, no events today" rather than competing
+                // with the populated days. Other days hide the badge
+                // when count=0 to keep the strip tight.
                 color: selected ? '#14081E'
                      : hasEvents ? '#14081E'
+                     : today ? 'var(--text3)'
                      : 'transparent',
                 background: selected ? 'rgba(20, 8, 30, 0.25)'
                           : hasEvents ? 'var(--magenta)'
+                          : today ? 'var(--bg2)'
                           : 'transparent',
-                padding: hasEvents ? '1px 6px' : 0,
+                border: today && !hasEvents && !selected ? '1px solid var(--line)' : 'none',
+                padding: (hasEvents || today) ? '1px 6px' : 0,
                 borderRadius: 6,
-                minWidth: hasEvents ? 18 : 0,
+                minWidth: (hasEvents || today) ? 18 : 0,
                 lineHeight: 1.2,
               }}>
-                {hasEvents ? count : ''}
+                {hasEvents ? count : today ? '0' : ''}
               </div>
               {/* Social dots — lime = you RSVPed, cyan = friends going.
                   Reserve the row height even when empty so cells stay
