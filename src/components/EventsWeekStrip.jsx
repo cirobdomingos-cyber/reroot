@@ -153,35 +153,54 @@ export default function EventsWeekStrip({
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 padding: '6px 0 5px', borderRadius: 12, cursor: 'pointer',
-                background: selected ? 'var(--terra)' : today ? 'var(--cream)' : 'transparent',
-                border: today && !selected ? '1.5px solid var(--terra)'
-                      : selected ? '1.5px solid var(--terra)'
+                // On the dark Neon Boteco shell, the previous --cream
+                // highlight for "today" landed on the same color as the
+                // page bg and disappeared — today's cell ended up
+                // looking identical to the rest. Faint magenta wash
+                // makes today readable without competing with the
+                // selected (solid magenta) state.
+                background: selected ? 'var(--magenta)'
+                          : today ? 'rgba(255, 43, 214, 0.10)'
+                          : 'transparent',
+                border: today && !selected ? '1.5px solid var(--magenta)'
+                      : selected ? '1.5px solid var(--magenta)'
                       : '1.5px solid transparent',
                 transition: 'all 0.15s',
               }}
             >
               <div style={{
                 fontSize: 10, fontWeight: 600,
-                color: selected ? 'rgba(255,255,255,0.75)' : 'var(--charcoal-light)',
+                // Selected = dark text on magenta, today = magenta text
+                // on faint wash, neutral = text2 (visible muted on dark).
+                color: selected ? '#14081E'
+                     : today ? 'var(--magenta)'
+                     : 'var(--text2)',
                 marginBottom: 1,
               }}>
                 {DAY_LABELS_PT[day.getDay()]}
               </div>
               <div style={{
                 fontSize: 16, fontWeight: 700,
-                color: selected ? 'white' : today ? 'var(--terra)' : 'var(--charcoal)',
+                color: selected ? '#14081E'
+                     : today ? 'var(--magenta)'
+                     : 'var(--text)',
                 lineHeight: 1.1,
+                textShadow: today && !selected ? '0 0 8px rgba(255, 43, 214, 0.5)' : 'none',
               }}>
                 {day.getDate()}
               </div>
               <div style={{
                 marginTop: 3, height: 14,
                 fontSize: 9, fontWeight: 700,
-                color: selected ? 'white'
-                     : hasEvents ? 'var(--terra)'
+                // Count badge readability on dark: magenta wash was too
+                // close to the magenta text. Solid magenta bg + dark
+                // text (or white-on-dark for selected) gives enough
+                // contrast to be glanceable at 9px.
+                color: selected ? '#14081E'
+                     : hasEvents ? '#14081E'
                      : 'transparent',
-                background: selected ? 'rgba(255,255,255,0.22)'
-                          : hasEvents ? 'var(--terra-pale)'
+                background: selected ? 'rgba(20, 8, 30, 0.25)'
+                          : hasEvents ? 'var(--magenta)'
                           : 'transparent',
                 padding: hasEvents ? '1px 6px' : 0,
                 borderRadius: 6,
@@ -190,20 +209,20 @@ export default function EventsWeekStrip({
               }}>
                 {hasEvents ? count : ''}
               </div>
-              {/* Social dots — sage = you RSVPed, blue = friends going.
+              {/* Social dots — lime = you RSVPed, cyan = friends going.
                   Reserve the row height even when empty so cells stay
-                  aligned. The recurring-routine dot was dropped: the
-                  count badge now includes routines, and users who want
-                  to filter them out toggle "Só únicos" on the price row. */}
+                  aligned. Bumped to 7px with a subtle glow so they stay
+                  glanceable on the Neon Boteco dark shell. */}
               <div style={{
-                display: 'flex', gap: 3, marginTop: 3, height: 6,
+                display: 'flex', gap: 4, marginTop: 4, height: 7,
               }}>
                 {youGoing && (
                   <div
                     title="Você confirmou"
                     style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: selected ? 'var(--sage-light)' : 'var(--sage)',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: 'var(--lime)',
+                      boxShadow: selected ? 'none' : '0 0 6px rgba(198, 255, 0, 0.6)',
                     }}
                   />
                 )}
@@ -211,8 +230,9 @@ export default function EventsWeekStrip({
                   <div
                     title="Amigos vão"
                     style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: selected ? '#B0CCEF' : '#5B8DD9',
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: 'var(--cyan)',
+                      boxShadow: selected ? 'none' : '0 0 6px rgba(0, 229, 255, 0.6)',
                     }}
                   />
                 )}

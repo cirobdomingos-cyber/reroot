@@ -814,7 +814,7 @@ export default function Events() {
                       transition: 'all 0.15s',
                       border: active ? 'none' : '1px solid var(--border)',
                       background: active ? 'var(--magenta)' : 'transparent',
-                      color: active ? 'white' : 'var(--charcoal-light)',
+                      color: active ? '#14081E' : 'var(--text2)',
                     }}
                   >
                     {chip.emoji} {chip.label}{chip.count > 0 ? ` · ${chip.count}` : ''}
@@ -866,7 +866,7 @@ export default function Events() {
                     border: 'none', cursor: 'pointer',
                     fontSize: 12, fontWeight: 600,
                     background: active ? 'var(--terra)' : 'transparent',
-                    color: active ? 'white' : 'var(--charcoal-mid)',
+                    color: active ? '#14081E' : 'var(--text2)',
                     transition: 'all 0.15s',
                   }}
                 >
@@ -902,7 +902,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
                 background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
-                color: venueSubFilter === sub.id ? 'white' : 'var(--charcoal-light)',
+                color: venueSubFilter === sub.id ? '#14081E' : 'var(--text2)',
               }}
             >
               {sub.label}
@@ -939,7 +939,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: isAllActive ? 'none' : '1px solid var(--border)',
                 background: isAllActive ? 'var(--sage)' : 'transparent',
-                color: isAllActive ? 'white' : 'var(--charcoal-light)',
+                color: isAllActive ? '#14081E' : 'var(--text2)',
               }}
             >
               {t.filter_all_prices}
@@ -959,7 +959,7 @@ export default function Events() {
             transition: 'all 0.15s',
             border: oneOffOnly ? 'none' : '1px solid var(--border)',
             background: oneOffOnly ? '#7E57C2' : 'transparent',
-            color: oneOffOnly ? 'white' : 'var(--charcoal-light)',
+            color: oneOffOnly ? '#FFFFFF' : 'var(--text2)',
           }}
         >
           ⚡ Só únicos
@@ -976,7 +976,7 @@ export default function Events() {
             transition: 'all 0.15s',
             border: priceFilter === 'free' ? 'none' : '1px solid var(--border)',
             background: priceFilter === 'free' ? 'var(--sage)' : 'transparent',
-            color: priceFilter === 'free' ? 'white' : 'var(--charcoal-light)',
+            color: priceFilter === 'free' ? '#14081E' : 'var(--text2)',
           }}
         >
           🆓 {t.filter_free}
@@ -993,7 +993,7 @@ export default function Events() {
             // terra orange.
             border: kidsFilter ? 'none' : '1px solid var(--border)',
             background: kidsFilter ? '#EC407A' : 'transparent',
-            color: kidsFilter ? 'white' : 'var(--charcoal-light)',
+            color: kidsFilter ? '#14081E' : 'var(--text2)',
           }}
         >
           👶 {t.filter_kids_welcome}
@@ -1038,7 +1038,7 @@ export default function Events() {
                   transition: 'all 0.15s',
                   border: active ? 'none' : '1px solid var(--border)',
                   background: active ? 'var(--terra)' : 'transparent',
-                  color: active ? 'white' : 'var(--charcoal-light)',
+                  color: active ? '#14081E' : 'var(--text2)',
                 }}
               >
                 {label}
@@ -1735,17 +1735,29 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {ev.name}
         </div>
 
-        {/* Single metadata row: time · venue · bairro. Truncates with
-            ellipsis on narrow screens — venue + bairro can be long.
-            The leading category emoji was dropped since the day-number
-            color + left stripe already convey the event kind. */}
+        {/* Single metadata row: time · 📍 venue · bairro. Truncates
+            with ellipsis on narrow screens. Pin glyph on the venue half
+            makes the location obvious at glance — without it the venue
+            blended into the surrounding time + bairro text and felt
+            buried. Kept on one line for compact density. */}
         <div style={{
-          fontSize: 11, color: 'var(--charcoal-mid)',
+          fontSize: 11,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-          {time}
-          {time && venueLine && <> · </>}
-          {venueLine}
+          {time && (
+            <span style={{ color: 'var(--text2)' }}>{time}</span>
+          )}
+          {time && venueLine && (
+            <span style={{ color: 'var(--text3)' }}> · </span>
+          )}
+          {venueLine && (
+            <>
+              <span style={{ color: 'var(--cyan)' }}>📍 </span>
+              <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+                {venueLine}
+              </span>
+            </>
+          )}
         </div>
 
         {/* Friends going line. Sage (auê's friend color) with ▸ prefix.

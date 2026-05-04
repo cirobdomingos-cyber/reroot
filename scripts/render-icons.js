@@ -1,18 +1,21 @@
 /**
  * One-shot render of the auê app icons from public/icon.svg.
  *
- * Why: PWA manifest references icon-192x192.png, icon-512x512.png, and
- * icon-1024x1024.png. When the SVG changes (rebrand, tweak), those PNGs
- * have to be regenerated — most browsers prefer the SVG on install but
- * Android home-screen icons sometimes still pick the PNG.
+ * Outputs:
+ *   - public/icon-{192,512,1024}x.png (PWA manifest fallbacks)
+ *   - ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+ *     (iOS native app icon — 1024×1024 universal, all sizes derived
+ *      from this single asset since iOS 15+)
  *
- * Run:
- *   npm i -D sharp
+ * Wiring this into the CI workflow's pre-Archive step keeps the
+ * TestFlight icon in sync with the SVG forever — no manual Xcode dance
+ * when we tweak the brand.
+ *
+ * Run locally:
+ *   npm i -D sharp     # one-time
  *   node scripts/render-icons.js
- *
- * Outputs to public/icon-{size}.png.
  */
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -20,6 +23,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 const SVG_PATH = path.join(ROOT, 'public', 'icon.svg')
 const SIZES = [192, 512, 1024]
+
+const IOS_ICON_DIR = path.join(
+  ROOT, 'ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset',
+)
+const IOS_ICON_PATH = path.join(IOS_ICON_DIR, 'AppIcon-512@2x.png')
 
 async function main() {
   let sharp
@@ -38,6 +46,21 @@ async function main() {
       .png()
       .toFile(out)
     console.log(`✓ ${path.relative(ROOT, out)}`)
+  }
+
+  // iOS native app icon — copy the 1024×1024 we just rendered into the
+  // Xcode asset catalog. The iOS folder might not exist on a fresh
+  // checkout that hasn't run `npx cap add ios`, so guard the copy.
+  try {
+    await mkdir(IOS_ICON_DIR, { recursive: true })
+    await copyFile(
+      path.join(ROOT, 'public', 'icon-1024x1024.png'),
+      IOS_ICON_PATH,
+    )
+    console.log(`✓ ${path.relative(ROOT, IOS_ICON_PATH)}`)
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err
+    console.warn(`(skipped iOS icon copy: ${IOS_ICON_DIR} not present)`)
   }
 }
 

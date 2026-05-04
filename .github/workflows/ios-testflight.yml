@@ -50,6 +50,14 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      # Render app icons fresh from public/icon.svg on every CI run.
+      # Writes to public/icon-{N}x{N}.png (PWA manifest) AND directly to
+      # ios/App/App/Assets.xcassets/AppIcon.appiconset/. Without this,
+      # icon updates require the developer to commit re-rendered PNGs
+      # locally, which is the kind of manual step that goes stale.
+      - name: Render app icons from SVG
+        run: node scripts/render-icons.js
+
       # In iOS, Capacitor serves web assets from capacitor://localhost/, so the
       # default same-origin BASE_URL='' breaks every backend fetch. Bake the
       # production Railway URL at build time so the wrapper hits the right host.
