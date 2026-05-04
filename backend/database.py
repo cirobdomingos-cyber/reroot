@@ -100,6 +100,74 @@ def init_db():
                 created_at  TEXT NOT NULL
             )
         """)
+        # Multi-provider auth — added when Apple Sign-In was plumbed
+        # alongside Google. The schema lets a single internal user_id
+        # have entries from multiple providers (future account-linking
+        # flow). For legacy Google-only users, user_id == google_id
+        # (already a stable opaque string), so no data migration is
+        # needed: the backfill below just registers each existing user
+        # with provider='google'.
+        #
+        # Apple users get a fresh user_id (apl_<hex>) since their
+        # provider_id is the Apple `sub` claim, not a Google sub.
+        # Display name + email + picture live on `users` once, instead
+        # of being scattered through user_states.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id           TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL DEFAULT '',
+                email        TEXT NOT NULL DEFAULT '',
+                picture      TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS auth_providers (
+                provider     TEXT NOT NULL,
+                provider_id  TEXT NOT NULL,
+                user_id      TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (provider, provider_id)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auth_providers_user_id "
+            "ON auth_providers (user_id)"
+        )
+        # Backfill: for every legacy user_state row, ensure there's a
+        # matching users + auth_providers row (provider='google').
+        # Idempotent — INSERT OR IGNORE so re-running on each boot is
+        # safe and self-healing if rows get out of sync.
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            existing_states = conn.execute(
+                "SELECT google_id, state_json FROM user_states"
+            ).fetchall()
+            for row in existing_states:
+                gid = row["google_id"]
+                if not gid:
+                    continue
+                try:
+                    state = json.loads(row["state_json"])
+                except (json.JSONDecodeError, TypeError):
+                    state = {}
+                gu = state.get("googleUser") or {}
+                conn.execute(
+                    "INSERT OR IGNORE INTO users (id, display_name, email, picture, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (gid,
+                     state.get("userName") or gu.get("givenName") or gu.get("name") or "",
+                     gu.get("email") or "",
+                     gu.get("picture") or "",
+                     now),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO auth_providers (provider, provider_id, user_id, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    ("google", gid, gid, now),
+                )
+        except sqlite3.OperationalError:
+            pass  # user_states might not have rows yet on a fresh DB
         conn.execute("""
             CREATE TABLE IF NOT EXISTS user_states (
                 google_id   TEXT PRIMARY KEY,
@@ -1968,6 +2036,22 @@ def get_event_by_id(event_id: str) -> Optional[EnrichedEvent]:
     if not row:
         return None
     return EnrichedEvent(**json.loads(row["payload"]))
+
+
+def delete_catalog_event(event_id: str) -> bool:
+    """Hard-delete a catalog event from the events table. Used by the
+    admin "remove this LLM mis-extraction" endpoint when an IG post
+    gets enriched with the wrong date/recurrence/etc.
+
+    Returns True if a row was deleted, False if the id wasn't found.
+    Doesn't touch user RSVPs that pointed at this event — those become
+    orphan rows that the frontend's catalog-not-found fallback handles
+    cleanly. Cleaning them is intentionally separate so we don't
+    cascade-delete real user data on every catalog correction."""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def count_events() -> int:

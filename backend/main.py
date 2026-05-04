@@ -4132,6 +4132,21 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     return {"ok": True}
 
 
+@app.delete("/admin/events/{event_id}")
+def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
+    """Hard-delete a catalog event by id. Used to fix LLM mis-extractions
+    that produced wrong dates / wrong recurrence / duplicated venues etc.
+    Founder-only — this directly mutates the catalog seen by every user.
+    User RSVPs that pointed at this event become orphan rows; the
+    frontend's "evento não está mais no catálogo" fallback handles them
+    cleanly on the next open."""
+    _require_founder(requesting_email)
+    ok = db.delete_catalog_event(event_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+    return {"ok": True, "event_id": event_id}
+
+
 class IgClaimUpdate(BaseModel):
     requesting_email: str
     email: str  # empty string clears the claim
