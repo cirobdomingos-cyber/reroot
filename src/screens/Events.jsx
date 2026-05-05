@@ -225,6 +225,12 @@ export default function Events() {
   // List mode shows BOTH (range pills above, week strip below) so the
   // user can either zoom by range or pick a specific day.
   const [dateRange, setDateRange] = useState('all')  // 'today' | 'weekend' | 'week' | 'all'
+  // Digest filter: when the user taps the daily-digest push, the URL
+  // carries ?new=<id1,id2,...> with up to 12 newly-scraped event IDs.
+  // The Events screen narrows to JUST those rows + shows a small
+  // "X novidades de hoje · Limpar" banner so the user knows they're
+  // in a filtered view. Limpar clears it.
+  const [digestIds, setDigestIds] = useState(null) // null | string[]
   // Map of IG handle → tracked category. Built from /sources on mount so
   // the chip filter on top of the catalog can use the same taxonomy as
   // the Sources page (bar, cafe, restaurante, musica, …).
@@ -310,7 +316,18 @@ export default function Events() {
     const stateId = location.state?.openEventId
     const params = new URLSearchParams(location.search)
     const queryId = params.get('event')
+    const queryNew = params.get('new')
     const openId = stateId || queryId
+
+    // Daily-digest push tap brings the user here with ?new=id1,id2,...
+    // Capture the IDs into state so the list filters down to just those
+    // rows + the banner appears. Stripping the query param afterward
+    // keeps the URL clean if the user navigates away.
+    if (queryNew) {
+      const ids = queryNew.split(',').map(s => s.trim()).filter(Boolean)
+      if (ids.length > 0) setDigestIds(ids)
+    }
+
     // Wait for both the public catalog AND the user's group events to be
     // loaded — group event share links land here too, and matching against
     // local state is more reliable than the round-trip (esp. on flaky
@@ -325,6 +342,10 @@ export default function Events() {
       } else if (stateId) {
         window.history.replaceState({}, '')
       }
+    } else if (queryNew) {
+      // Strip ?new= once consumed — same hygiene as ?event=. The
+      // digestIds state we just set drives the filter from here on.
+      navigate('/events', { replace: true })
     }
   }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
 
@@ -500,6 +521,14 @@ export default function Events() {
 
   // Apply search + source-category + date/venue filter
   let filteredEvents = allDisplayEvents
+  // Digest filter — when the user taps a daily-digest push, narrow
+  // down to ONLY the events from that scrape. Other filters still
+  // compose on top (so the user can search/category-filter within
+  // the digest set). Limpar in the banner clears digestIds.
+  if (digestIds && digestIds.length > 0) {
+    const digestSet = new Set(digestIds)
+    filteredEvents = filteredEvents.filter(ev => digestSet.has(ev.id))
+  }
   // Source-category filter — uses the same taxonomy as the Sources page
   // (bar / cafe / restaurante / musica / …). 'all' bypasses; 'group'
   // narrows to private events from the user's groups + personal plans;
@@ -767,6 +796,55 @@ export default function Events() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Digest filter banner — shows when the user landed here via a
+            daily-digest push tap. Lime accent + "Limpar" link returns
+            them to the full catalog. Sits inside the sticky header so
+            it scrolls with the title chrome and stays visible while
+            the user reviews the filtered list. */}
+        {digestIds && digestIds.length > 0 && (
+          <div style={{
+            margin: '0 16px 8px',
+            padding: '10px 12px',
+            background: 'rgba(198, 255, 0, 0.06)',
+            border: '1px solid rgba(198, 255, 0, 0.35)',
+            borderRadius: 12,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{
+              fontSize: 14, lineHeight: 1, flexShrink: 0,
+              color: 'var(--lime)',
+              filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+            }}>✨</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="neon-mono" style={{
+                fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+                color: 'var(--lime)',
+              }}>
+                {digestIds.length} novidade{digestIds.length === 1 ? '' : 's'} de hoje
+              </div>
+              <div style={{
+                fontSize: 11, color: 'var(--text2)', marginTop: 2, lineHeight: 1.4,
+              }}>
+                Os rolês que apareceram no scrape de hoje.
+              </div>
+            </div>
+            <button
+              onClick={() => setDigestIds(null)}
+              className="neon-mono"
+              style={{
+                flexShrink: 0,
+                padding: '6px 10px', borderRadius: 8,
+                background: 'transparent', border: '1px solid var(--line)',
+                color: 'var(--text2)',
+                fontSize: 10, letterSpacing: '0.18em',
+                textTransform: 'uppercase', cursor: 'pointer',
+              }}
+            >
+              Limpar
+            </button>
+          </div>
+        )}
 
         {/* Category chips — counts are computed from the FULL union
             (catalog + custom + group), independent of the active

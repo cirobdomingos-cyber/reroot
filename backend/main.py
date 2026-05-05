@@ -5318,12 +5318,16 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
     parsed.sort(key=lambda e: e.get("date_start") or "9999")
 
     n = len(parsed)
-    top_event = parsed[0]
     preview = " · ".join(e["name"][:38] for e in parsed[:3])
     if n > 3:
         preview += f" · +{n - 3} mais"
     title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB"
-    url = f"/#/events?event={top_event['id']}"
+    # Tap → land on the Events tab pre-filtered to today's new IDs.
+    # User sees ALL the events in the digest, not just the top one. Cap
+    # at 12 IDs to keep the URL safe across browsers + notification
+    # payload size limits (APNs 4KB, web push ~3KB).
+    digest_ids = [e["id"] for e in parsed[:12]]
+    url = f"/#/events?new={','.join(digest_ids)}"
     tag = "daily-digest"
 
     web_subs = db.get_all_push_subscriptions()
