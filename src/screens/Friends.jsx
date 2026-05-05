@@ -209,11 +209,13 @@ export default function Friends({ embedded = false }) {
             disabled={!myCode}
             style={{
               width: '100%', marginTop: 12,
-              padding: '11px 16px', borderRadius: 12, border: 'none',
-              background: 'rgba(255,255,255,0.95)', color: 'var(--sage)',
+              padding: '11px 16px', borderRadius: 12,
+              border: '1px solid var(--lime)',
+              background: 'rgba(198, 255, 0, 0.10)', color: 'var(--lime)',
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
               opacity: myCode ? 1 : 0.5,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              boxShadow: myCode ? '0 0 12px rgba(198, 255, 0, 0.20)' : 'none',
             }}
           >
             🔗 Compartilhar link de convite
