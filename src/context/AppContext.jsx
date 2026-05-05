@@ -316,6 +316,13 @@ function reducer(state, action) {
     case 'SET_PUSH_OPTED_IN':
       return { ...state, pushOptedIn: true }
 
+    case 'SET_PUSH_OPTED_OUT':
+      // Explicit opt-out from Profile toggle — the device's
+      // subscription was removed, so the next visit shouldn't think
+      // we're still subscribed. pushDismissed stays as-is so the
+      // banner / primer don't re-prompt the same user.
+      return { ...state, pushOptedIn: false }
+
     case 'SET_PUSH_DISMISSED':
       return { ...state, pushDismissed: true }
 

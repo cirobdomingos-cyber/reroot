@@ -48,10 +48,14 @@ export function usePushNotifications() {
   const { state, dispatch } = useApp()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  // Whether THIS device already has an active subscription. Browser perm
-  // alone isn't enough (perm could be granted but the subscription got
-  // dropped server-side or the user used a fresh device).
-  const [subscribed, setSubscribed] = useState(false)
+  // Source of truth for "is this user subscribed" is state.pushOptedIn —
+  // it persists across reloads, syncs across components (Home banner +
+  // Profile toggle), and survives logins. We mirror it into a local
+  // subscribed bool only because the browser SW path can detect a
+  // pre-existing subscription on mount (e.g., user enabled push in a
+  // previous session and we lost the AppContext flag somehow).
+  const [localDetected, setLocalDetected] = useState(false)
+  const subscribed = !!state.pushOptedIn || localDetected
 
   // Native APNs token, captured from the Capacitor plugin's `registration`
   // event so we can re-POST it on retries and DELETE it on unsubscribe.
@@ -63,14 +67,28 @@ export function usePushNotifications() {
   // `registration` once after `register()`. So we treat it as unsubscribed
   // until the user explicitly re-subscribes; backend de-dups on token
   // upsert anyway. Browser: ask the SW.
+  //
+  // If the SW reports an active subscription but state.pushOptedIn is
+  // false (e.g., state was reset on logout but the SW still holds the
+  // sub), reconcile by dispatching SET_PUSH_OPTED_IN. Keeps the UI
+  // honest about what the device actually has registered.
   useEffect(() => {
     if (!isPushSupported() || IS_NATIVE) return
     let cancelled = false
     navigator.serviceWorker.ready
       .then(reg => reg.pushManager.getSubscription())
-      .then(sub => { if (!cancelled) setSubscribed(!!sub) })
+      .then(sub => {
+        if (cancelled) return
+        if (sub) {
+          setLocalDetected(true)
+          if (!state.pushOptedIn) dispatch({ type: 'SET_PUSH_OPTED_IN' })
+        } else {
+          setLocalDetected(false)
+        }
+      })
       .catch(() => {})
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const subscribe = useCallback(async () => {
@@ -157,7 +175,7 @@ export function usePushNotifications() {
 
         setApnsToken(token)
         dispatch({ type: 'SET_PUSH_OPTED_IN' })
-        setSubscribed(true)
+        setLocalDetected(true)
         return true
       }
 
@@ -215,7 +233,7 @@ export function usePushNotifications() {
       if (!res.ok) throw new Error('Falha ao registrar subscription no servidor.')
 
       dispatch({ type: 'SET_PUSH_OPTED_IN' })
-      setSubscribed(true)
+      setLocalDetected(true)
       return true
     } catch (err) {
       setError(err.message)
@@ -243,8 +261,8 @@ export function usePushNotifications() {
           } catch {}
           setApnsToken(null)
         }
-        dispatch({ type: 'SET_PUSH_DISMISSED' })
-        setSubscribed(false)
+        dispatch({ type: 'SET_PUSH_OPTED_OUT' })
+        setLocalDetected(false)
         return true
       }
 
@@ -263,8 +281,8 @@ export function usePushNotifications() {
           })
         } catch {}
       }
-      dispatch({ type: 'SET_PUSH_DISMISSED' })
-      setSubscribed(false)
+      dispatch({ type: 'SET_PUSH_OPTED_OUT' })
+      setLocalDetected(false)
       return true
     } catch (err) {
       setError(err.message)
