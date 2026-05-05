@@ -5322,12 +5322,15 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
     if n > 3:
         preview += f" · +{n - 3} mais"
     title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB"
-    # Tap → land on the Events tab pre-filtered to today's new IDs.
-    # User sees ALL the events in the digest, not just the top one. Cap
-    # at 12 IDs to keep the URL safe across browsers + notification
-    # payload size limits (APNs 4KB, web push ~3KB).
-    digest_ids = [e["id"] for e in parsed[:12]]
-    url = f"/#/events?new={','.join(digest_ids)}"
+    # Persist the full digest set in the daily_digests table and put
+    # only the small digest_id in the push payload. The app fetches
+    # the full list of event_ids on tap via /digests/{id}. This avoids
+    # the APNs 4KB / web push 3KB payload cap that would otherwise
+    # force a hard limit on N (was capped at 12 — too restrictive when
+    # a scrape lands 30+ events).
+    digest_id = f"d_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    db.insert_daily_digest(digest_id, [e["id"] for e in parsed])
+    url = f"/#/events?digest={digest_id}"
     tag = "daily-digest"
 
     web_subs = db.get_all_push_subscriptions()
@@ -5424,6 +5427,19 @@ async def push_send_daily_digest(body: DigestTriggerBody):
 def push_vapid_public_key():
     """Return the VAPID public key so the frontend can subscribe."""
     return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.get("/digests/{digest_id}")
+def get_digest(digest_id: str):
+    """Return the event_ids list for a daily digest. Used by the app
+    when a user taps a digest push — the URL carries only digest_id
+    (kept small to fit the APNs / web push payload), and the app
+    fetches the full list here. 404 if the digest expired (we prune
+    after 30 days) or never existed."""
+    digest = db.get_daily_digest(digest_id)
+    if not digest:
+        raise HTTPException(status_code=404, detail="Digest não encontrado")
+    return digest
 
 
 # ── Apple Sign-In ──

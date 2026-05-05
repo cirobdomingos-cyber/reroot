@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -316,14 +316,23 @@ export default function Events() {
     const stateId = location.state?.openEventId
     const params = new URLSearchParams(location.search)
     const queryId = params.get('event')
-    const queryNew = params.get('new')
+    const queryNew = params.get('new')        // legacy: inline ?new=id1,id2,...
+    const queryDigest = params.get('digest')  // current: ?digest=<digest_id>
     const openId = stateId || queryId
 
-    // Daily-digest push tap brings the user here with ?new=id1,id2,...
-    // Capture the IDs into state so the list filters down to just those
-    // rows + the banner appears. Stripping the query param afterward
-    // keeps the URL clean if the user navigates away.
-    if (queryNew) {
+    // Daily-digest push tap brings the user here with ?digest=<id>.
+    // Fetch the persisted event_ids list from the backend (kept off
+    // the push payload to avoid the APNs / web push size limits that
+    // forced the old ?new=id,id,... approach to cap at 12).
+    if (queryDigest) {
+      fetch(`${BASE_URL}/digests/${encodeURIComponent(queryDigest)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.event_ids?.length) setDigestIds(d.event_ids)
+        })
+        .catch(() => {})
+    } else if (queryNew) {
+      // Backward compat: older builds sent inline ids in the URL.
       const ids = queryNew.split(',').map(s => s.trim()).filter(Boolean)
       if (ids.length > 0) setDigestIds(ids)
     }
@@ -342,9 +351,10 @@ export default function Events() {
       } else if (stateId) {
         window.history.replaceState({}, '')
       }
-    } else if (queryNew) {
-      // Strip ?new= once consumed — same hygiene as ?event=. The
-      // digestIds state we just set drives the filter from here on.
+    } else if (queryNew || queryDigest) {
+      // Strip the digest params once consumed — keeps the URL clean
+      // for navigation back/forward. digestIds state drives the filter
+      // from here on.
       navigate('/events', { replace: true })
     }
   }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
@@ -826,7 +836,8 @@ export default function Events() {
               <div style={{
                 fontSize: 11, color: 'var(--text2)', marginTop: 2, lineHeight: 1.4,
               }}>
-                Os rolês que apareceram no scrape de hoje.
+                Os rolês que apareceram no scrape de hoje. Toque 🔍 acima
+                pra buscar dentro da lista.
               </div>
             </div>
             <button

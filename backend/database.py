@@ -100,6 +100,29 @@ def init_db():
                 created_at  TEXT NOT NULL
             )
         """)
+        # Daily digest snapshots — when the scheduler fires the daily
+        # push, it inserts a row here with the full set of new event ids
+        # for that scrape. The push payload only carries the digest_id
+        # (small, fits in any payload budget); the app fetches the full
+        # list from /digests/{id} on tap. This way the user sees ALL
+        # the events that landed in the digest, not just the top N that
+        # would have fit in the push payload.
+        #
+        # Old digests get pruned after 30 days — they're only useful
+        # for the "tap the recent notification" path.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_digests (
+                id            TEXT PRIMARY KEY,
+                event_ids     TEXT NOT NULL,
+                created_at    TEXT NOT NULL
+            )
+        """)
+        # Lazy prune on boot — keeps the table small without a cron job.
+        try:
+            cutoff_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            conn.execute("DELETE FROM daily_digests WHERE created_at < ?", (cutoff_30d,))
+        except Exception:
+            pass
         # Multi-provider auth — added when Apple Sign-In was plumbed
         # alongside Google. The schema lets a single internal user_id
         # have entries from multiple providers (future account-linking
@@ -2109,6 +2132,44 @@ def get_user_profile(user_id: str) -> Optional[dict]:
     if not row:
         return None
     return dict(row)
+
+
+# ── Daily digest snapshots ──────────────────────────────
+
+def insert_daily_digest(digest_id: str, event_ids: list[str]) -> None:
+    """Persist a digest snapshot. Called once per cron-fired digest;
+    the push payload carries digest_id (small) and the app fetches
+    the full event_ids list via get_daily_digest()."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO daily_digests (id, event_ids, created_at) VALUES (?, ?, ?)",
+            (digest_id, json.dumps(list(event_ids)), now),
+        )
+        conn.commit()
+
+
+def get_daily_digest(digest_id: str) -> Optional[dict]:
+    """Look up a digest by id. Returns {id, event_ids, created_at} or
+    None if the id is unknown (expired, never existed, malformed)."""
+    if not digest_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, event_ids, created_at FROM daily_digests WHERE id = ?",
+            (digest_id,),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        ids = json.loads(row["event_ids"])
+    except (json.JSONDecodeError, TypeError):
+        ids = []
+    return {
+        "id": row["id"],
+        "event_ids": ids,
+        "created_at": row["created_at"],
+    }
 
 
 def delete_catalog_event(event_id: str) -> bool:
