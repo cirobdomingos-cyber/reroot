@@ -436,6 +436,85 @@ export default function Home() {
         </div>
       )}
 
+      {/* Friends activity feed — moved to top of the content stack so
+          social signal leads ("oh, the gang is going to that"). Events
+          the user is already RSVPed to are filtered out — they show
+          under "Seus eventos essa semana" with the same avatar stack
+          via the WeekCalendar below, so surfacing them twice would be
+          noise. Tap a row to open the event; tap the section header to
+          see the full list in Community. */}
+      {(() => {
+        const friendsFeedFiltered = friendsFeed.filter(ev => !state.rsvps[ev.event_id])
+        if (friendsFeedFiltered.length === 0 || state.privacy?.showInFriendSuggestions === false) {
+          return null
+        }
+        return (
+        <>
+          <div
+            className="section-label"
+            onClick={() => navigate('/my-rsvps')}
+            style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              cursor: 'pointer', color: 'var(--magenta)',
+            }}
+          >
+            <span>// {(t.home_friends_going_label ?? 'Amigos vão').toUpperCase()}</span>
+            <span style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.16em' }}>
+              {(t.home_see_all ?? 'Ver tudo').toUpperCase()} →
+            </span>
+          </div>
+          <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {friendsFeedFiltered.slice(0, 3).map(ev => {
+              const userIsGoing = !!state.rsvps[ev.event_id]
+              const time = (ev.event_date || '').slice(11, 16)  // "HH:MM" if present
+              return (
+                <HomeEventRow
+                  key={ev.event_id}
+                  name={ev.event_name}
+                  dateStart={ev.event_date}
+                  time={time}
+                  venue={ev.event_venue || ''}
+                  onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
+                  trailing={
+                    <>
+                      {userIsGoing && (
+                        <span className="neon-pill" style={{
+                          color: 'var(--lime)', background: 'var(--lime-soft)',
+                          marginRight: 8,
+                        }}>
+                          ✓ VOCÊ
+                        </span>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {ev.friends_going.slice(0, 3).map((friend, i) => (
+                          <div
+                            key={friend.name + i}
+                            style={{
+                              marginLeft: i === 0 ? 0 : -8,
+                              boxShadow: '0 0 0 2px var(--bg2)',
+                              borderRadius: '50%',
+                            }}
+                          >
+                            <Avatar name={friend.name} src={friend.picture} size={24} />
+                          </div>
+                        ))}
+                        <span className="neon-mono" style={{
+                          fontSize: 10, color: 'var(--magenta)', marginLeft: 6,
+                          letterSpacing: '0.1em',
+                        }}>
+                          {ev.friends_going.length}
+                        </span>
+                      </div>
+                    </>
+                  }
+                />
+              )
+            })}
+          </div>
+        </>
+        )
+      })()}
+
       {/* Pending invites — surfaces personal plans and group events the
           user was invited to but hasn't RSVP'd yet. Capped to the next 3
           (closest-in-time first) so Home stays a glanceable preview;
@@ -598,85 +677,10 @@ export default function Home() {
         </>
       )}
 
-      {/* Friends activity feed — events friends are going to. Includes
-          events the user hasn't RSVPd to yet, so it works as discovery
-          ("oh, the gang is going to that"). Events the user is already
-          attending are filtered out — those already show under "Seus
-          eventos essa semana" with the same friends avatar stack, so
-          surfacing them twice would just be noise. Tap a row to open
-          the event; tap the section header to see the full list in
-          Community. */}
-      {(() => {
-        const friendsFeedFiltered = friendsFeed.filter(ev => !state.rsvps[ev.event_id])
-        if (friendsFeedFiltered.length === 0 || state.privacy?.showInFriendSuggestions === false) {
-          return null
-        }
-        return (
-        <>
-          <div
-            className="section-label"
-            onClick={() => navigate('/my-rsvps')}
-            style={{
-              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-              cursor: 'pointer', color: 'var(--magenta)',
-            }}
-          >
-            <span>// {(t.home_friends_going_label ?? 'Amigos vão').toUpperCase()}</span>
-            <span style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.16em' }}>
-              {(t.home_see_all ?? 'Ver tudo').toUpperCase()} →
-            </span>
-          </div>
-          <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {friendsFeedFiltered.slice(0, 3).map(ev => {
-              const userIsGoing = !!state.rsvps[ev.event_id]
-              const time = (ev.event_date || '').slice(11, 16)  // "HH:MM" if present
-              return (
-                <HomeEventRow
-                  key={ev.event_id}
-                  name={ev.event_name}
-                  dateStart={ev.event_date}
-                  time={time}
-                  venue={ev.event_venue || ''}
-                  onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
-                  trailing={
-                    <>
-                      {userIsGoing && (
-                        <span className="neon-pill" style={{
-                          color: 'var(--lime)', background: 'var(--lime-soft)',
-                          marginRight: 8,
-                        }}>
-                          ✓ VOCÊ
-                        </span>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {ev.friends_going.slice(0, 3).map((friend, i) => (
-                          <div
-                            key={friend.name + i}
-                            style={{
-                              marginLeft: i === 0 ? 0 : -8,
-                              boxShadow: '0 0 0 2px var(--bg2)',
-                              borderRadius: '50%',
-                            }}
-                          >
-                            <Avatar name={friend.name} src={friend.picture} size={24} />
-                          </div>
-                        ))}
-                        <span className="neon-mono" style={{
-                          fontSize: 10, color: 'var(--magenta)', marginLeft: 6,
-                          letterSpacing: '0.1em',
-                        }}>
-                          {ev.friends_going.length}
-                        </span>
-                      </div>
-                    </>
-                  }
-                />
-              )
-            })}
-          </div>
-        </>
-        )
-      })()}
+      {/* "Amigos vão" relocated to the top of the content stack — see
+          earlier section above the Pending invites block. Original
+          position kept as a comment marker so future surface ordering
+          changes have a paper trail. */}
 
       {/* Suggested events — tap a row to open the full hero on the
           Events tab; RSVP happens there. */}
