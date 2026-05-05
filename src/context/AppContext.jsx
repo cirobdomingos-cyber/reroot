@@ -130,8 +130,10 @@ const INITIAL_STATE = {
   weeklyCheckIns: {},
 
   // Push notifications
-  pushOptedIn: false,   // true once user subscribes to weekly push reminders
-  pushDismissed: false, // true if user explicitly declined the prompt
+  pushOptedIn: false,         // true once the device has an active subscription
+  pushDismissed: false,       // true if user explicitly declined a permission ask
+  pushPrimerSeen: false,      // primer modal at end of onboarding has been shown
+  pushBannerDismissed: false, // user X'd the Home banner reminder (persistent)
 
   // Social feed privacy toggle (legacy — migrated into privacy object)
   shareRsvps: true,     // kept for backward compat; canonical source is privacy.shareRsvps
@@ -316,6 +318,12 @@ function reducer(state, action) {
 
     case 'SET_PUSH_DISMISSED':
       return { ...state, pushDismissed: true }
+
+    case 'MARK_PUSH_PRIMER_SEEN':
+      return { ...state, pushPrimerSeen: true }
+
+    case 'DISMISS_PUSH_BANNER':
+      return { ...state, pushBannerDismissed: true }
 
     case 'SET_SHARE_RSVPS':
       // Backward compat: update both top-level and privacy object

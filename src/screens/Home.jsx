@@ -8,6 +8,7 @@ import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
+import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import { getAnchorToday } from '../lib/dateAnchor'
 
 function getGreetingKey() {
@@ -359,6 +360,13 @@ export default function Home() {
           ● {rolandoCount} rolando
         </span>
       </div>
+
+      {/* Push permission banner — sits between the activity ticker and
+          the greeting for users who haven't opted in (skipped the
+          onboarding primer or are on a fresh device). One-tap subscribe
+          + dismiss X. Hidden permanently after dismiss (via state) or
+          subscribe (real subscription registered). */}
+      <PushBanner state={state} dispatch={dispatch} />
 
       {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
       <div style={{ padding: '24px 18px 14px' }}>
@@ -836,6 +844,96 @@ export default function Home() {
 
 
 // ── Pending invite row — Home page ─────────────────────────
+
+// ── Push opt-in banner ─────────────────────────────────────
+//
+// Catch-net for users who skipped the onboarding push primer (or who
+// were already past onboarding when the primer shipped). Shows a
+// single low-key strip with a lime CTA + dismiss. Hides permanently
+// once the user subscribes OR taps the X.
+function PushBanner({ state, dispatch }) {
+  const { subscribed, subscribe, loading } = usePushNotifications()
+  const [busy, setBusy] = useState(false)
+
+  // Three independent reasons to hide. If any is true, no banner.
+  if (!isPushSupported()) return null
+  if (state.pushOptedIn || subscribed) return null
+  if (state.pushBannerDismissed) return null
+
+  async function handleEnable() {
+    setBusy(true)
+    try {
+      const ok = await subscribe()
+      if (!ok) {
+        // Permission denied or transport unavailable — hide the banner
+        // so we don't keep nagging. User can revisit via Profile toggle.
+        dispatch({ type: 'DISMISS_PUSH_BANNER' })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function handleDismiss() {
+    dispatch({ type: 'DISMISS_PUSH_BANNER' })
+  }
+
+  return (
+    <div style={{
+      margin: '12px 18px 0',
+      padding: '10px 12px',
+      background: 'rgba(198, 255, 0, 0.06)',
+      border: '1px solid rgba(198, 255, 0, 0.35)',
+      borderRadius: 12,
+      display: 'flex', alignItems: 'center', gap: 10,
+    }}>
+      <span style={{
+        fontSize: 16, lineHeight: 1, flexShrink: 0,
+        color: 'var(--lime)',
+        filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+      }}>🔔</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="neon-mono" style={{
+          fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+          color: 'var(--lime)',
+        }}>
+          Ative o push
+        </div>
+        <div style={{
+          fontSize: 11, color: 'var(--text2)', marginTop: 2, lineHeight: 1.4,
+        }}>
+          Receba quando amigos confirmarem rolês perto de você.
+        </div>
+      </div>
+      <button
+        onClick={handleEnable}
+        disabled={loading || busy}
+        className="neon-mono"
+        style={{
+          flexShrink: 0,
+          padding: '6px 10px', borderRadius: 8,
+          background: 'var(--lime)', color: '#14081E',
+          border: 'none',
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.18em',
+          textTransform: 'uppercase', cursor: 'pointer',
+          opacity: (loading || busy) ? 0.6 : 1,
+        }}
+      >
+        {(loading || busy) ? '...' : 'Bora'}
+      </button>
+      <button
+        onClick={handleDismiss}
+        aria-label="Dispensar"
+        style={{
+          flexShrink: 0, width: 24, height: 24, borderRadius: 8,
+          background: 'transparent', border: 'none', color: 'var(--text3)',
+          fontSize: 14, cursor: 'pointer', padding: 0,
+        }}
+      >×</button>
+    </div>
+  )
+}
+
 
 function PendingInviteRow({ event: ev, onOpen, onAccept }) {
   const ds = ev.date_start || ev.dateStart || ''

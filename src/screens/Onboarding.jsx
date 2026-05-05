@@ -5,6 +5,7 @@ import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple } from '../lib/apple-auth'
+import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import { trackEvent } from '../services/api'
 
 // Sample events shown in the welcome teaser. NOT real catalog entries —
@@ -135,8 +136,21 @@ export default function Onboarding() {
     setStep('vibe')
   }
 
-  function finishOnboarding(profileId) {
+  function finishVibePick(profileId) {
     if (profileId) dispatch({ type: 'SET_PROFILE', payload: profileId })
+    // Insert a push-permission primer step BETWEEN vibe pick and home
+    // when push is supported and the user hasn't seen it yet. Skipping
+    // straight to home (no primer needed) when push is unsupported (e.g.
+    // desktop browser without service worker) or the user already saw
+    // the primer in a previous run.
+    if (isPushSupported() && !state.pushPrimerSeen) {
+      setStep('push-primer')
+      return
+    }
+    completeOnboarding(profileId || state.profile)
+  }
+
+  function completeOnboarding(profileId) {
     dispatch({ type: 'JOIN_COHORT' })
     trackEvent('cohort_joined', {
       step_name: 'onboarding',
@@ -174,7 +188,7 @@ export default function Onboarding() {
         <LangToggle language={state.language} dispatch={dispatch} />
       </div>
 
-      {step === 'welcome' ? (
+      {step === 'welcome' && (
         <WelcomeStep
           googleConfigured={googleConfigured}
           googleBtnRef={googleBtnRef}
@@ -183,9 +197,134 @@ export default function Onboarding() {
           onSkip={handleSkipSignin}
           privacyText={t.onboarding_privacy}
         />
-      ) : (
-        <VibeStep onPick={finishOnboarding} />
       )}
+      {step === 'vibe' && <VibeStep onPick={finishVibePick} />}
+      {step === 'push-primer' && (
+        <PushPrimerStep
+          dispatch={dispatch}
+          onDone={() => completeOnboarding(state.profile)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Push primer — pre-permission UI step ──────────────────
+//
+// Shows BEFORE the iOS / browser system permission prompt fires, with
+// concrete examples of what we'd notify the user about. The standard
+// industry pattern: getting the user enthusiastic in custom UI lifts
+// the system-prompt accept rate from ~30% to ~80%, and crucially,
+// "Not now" here doesn't burn the iOS one-shot — they can accept later
+// from the Profile toggle. Whereas a "Don't Allow" on the iOS prompt
+// permanently blocks until they go into iOS Settings → auê.
+function PushPrimerStep({ dispatch, onDone }) {
+  const { subscribe, loading } = usePushNotifications()
+
+  async function handleAllow() {
+    dispatch({ type: 'MARK_PUSH_PRIMER_SEEN' })
+    trackEvent('push_primer_choice', { choice: 'allow' })
+    await subscribe()  // result handled inside the hook (success or denial)
+    onDone()
+  }
+
+  function handleDecline() {
+    dispatch({ type: 'MARK_PUSH_PRIMER_SEEN' })
+    dispatch({ type: 'SET_PUSH_DISMISSED' })
+    trackEvent('push_primer_choice', { choice: 'decline' })
+    onDone()
+  }
+
+  return (
+    <div style={{ flex: 1, padding: '24px 20px 0', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="neon-display" style={{
+          fontSize: 30, color: 'var(--text)', letterSpacing: '-0.025em',
+          marginBottom: 8, lineHeight: 1.1,
+        }}>
+          Quer ficar <span className="neon-glow-cyan">por dentro?</span>
+        </div>
+        <div className="neon-mono" style={{
+          fontSize: 11, color: 'var(--text2)', letterSpacing: '0.04em',
+          lineHeight: 1.6, marginBottom: 24, textTransform: 'none',
+        }}>
+          A gente avisa só quando faz sentido pra você:
+        </div>
+
+        {/* Three concrete example pings — each tile is a real backend
+            push trigger we already ship. Honest preview = higher Allow
+            rate. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
+          {[
+            { glyph: '✨', tone: 'cyan', body: 'Novidade no catálogo da semana' },
+            { glyph: '🎉', tone: 'magenta', body: 'Amigo confirmou rolê que você tá considerando' },
+            { glyph: '🎲', tone: 'lime', body: 'Você foi convidado pra um plano' },
+          ].map((row, i) => {
+            const colorVar = `var(--${row.tone})`
+            return (
+              <div key={i} className="neon-card" style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 14px',
+              }}>
+                <span style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: `rgba(${row.tone === 'cyan' ? '0, 229, 255' : row.tone === 'magenta' ? '255, 43, 214' : '198, 255, 0'}, 0.10)`,
+                  border: `1px solid ${colorVar}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18,
+                }}>{row.glyph}</span>
+                <div className="neon-mono" style={{
+                  fontSize: 12, color: 'var(--text)', letterSpacing: '0.02em',
+                  lineHeight: 1.4, flex: 1,
+                }}>
+                  {row.body}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div style={{
+          fontSize: 11, color: 'var(--text3)',
+          lineHeight: 1.5, textAlign: 'center', marginBottom: 24,
+        }}>
+          Sem spam, prometido. Você pode desativar a qualquer hora no Profile.
+        </div>
+      </div>
+
+      <div style={{
+        background: 'var(--bg2)', borderRadius: '28px 28px 0 0',
+        padding: '20px 20px 32px',
+        borderTop: '1px solid var(--line)',
+      }}>
+        <button
+          onClick={handleAllow}
+          disabled={loading}
+          style={{
+            width: '100%', padding: '14px 16px', borderRadius: 12, border: 'none',
+            background: 'var(--lime)', color: '#14081E',
+            fontSize: 15, fontWeight: 700, cursor: 'pointer',
+            boxShadow: '0 0 18px rgba(198, 255, 0, 0.35)',
+            opacity: loading ? 0.6 : 1, marginBottom: 10,
+          }}
+        >
+          {loading ? '...' : '✓ Pode avisar'}
+        </button>
+        <button
+          onClick={handleDecline}
+          disabled={loading}
+          className="neon-mono"
+          style={{
+            width: '100%', padding: '12px 16px', borderRadius: 12,
+            background: 'transparent', border: '1px solid var(--line)',
+            color: 'var(--text2)',
+            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+            cursor: 'pointer', opacity: loading ? 0.6 : 1,
+          }}
+        >
+          Agora não
+        </button>
+      </div>
     </div>
   )
 }
