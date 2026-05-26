@@ -4327,6 +4327,22 @@ def admin_apify_debug(requesting_email: str = ""):
     return LAST_POST_DEBUG or {"empty": True, "hint": "Run /events/refresh first"}
 
 
+@app.post("/admin/ig-accounts/reset-shortcodes")
+def admin_reset_ig_shortcodes(requesting_email: str = ""):
+    """
+    Founder-only. Clears last_post_shortcode for all enabled accounts so
+    the next scheduled probe treats every handle as "new content" and
+    triggers a full re-scrape. Use when the catalog feels stale and you
+    suspect the probe has been silently skipping accounts (e.g. after
+    Apify rate-limiting or IG bot-detection). Safe to call anytime —
+    worst case is one extra Apify run.
+    """
+    _require_founder(requesting_email)
+    count = db.reset_ig_shortcodes()
+    log.info(f"admin reset_ig_shortcodes: cleared {count} shortcodes by {requesting_email}")
+    return {"reset": count, "message": f"{count} shortcodes resetados — próximo refresh fará full scrape de todos os handles."}
+
+
 @app.post("/admin/ig-accounts/seed-defaults")
 def admin_seed_default_ig_accounts(requesting_email: str = ""):
     """Force-seed the starter list (only inserts missing handles)."""

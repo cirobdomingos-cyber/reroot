@@ -1115,6 +1115,30 @@ def set_ig_account_last_post_shortcode(handle: str, shortcode: str) -> None:
         conn.commit()
 
 
+def reset_ig_shortcodes(handles: Optional[list[str]] = None) -> int:
+    """
+    Reset last_post_shortcode to '' for all (or a subset of) enabled accounts.
+    On the next probe run, every reset handle looks "new" → triggers a full
+    scrape. Use this when you suspect the probe has been skipping handles due
+    to stale/wrong stored shortcodes.
+    Returns the number of rows updated.
+    """
+    with get_conn() as conn:
+        if handles:
+            normalized = [h.strip().lstrip("@").lower() for h in handles if h.strip()]
+            placeholders = ",".join("?" * len(normalized))
+            cur = conn.execute(
+                f"UPDATE tracked_ig_accounts SET last_post_shortcode = '' WHERE handle IN ({placeholders})",
+                normalized,
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE tracked_ig_accounts SET last_post_shortcode = '' WHERE enabled = 1"
+            )
+        conn.commit()
+        return cur.rowcount
+
+
 def mark_ig_account_details_fresh(handle: str) -> None:
     """Stamp last_details_at = now so we throttle profile-metadata calls."""
     handle = handle.strip().lstrip("@").lower()

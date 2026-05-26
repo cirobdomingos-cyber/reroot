@@ -272,9 +272,26 @@ async def fetch_events(
         if sc:
             latest_by_handle[h] = sc
 
+    probe_coverage = len(latest_by_handle) / max(len(accounts), 1)
+    log.info(
+        f"Instagram (Apify): probe retornou dados para {len(latest_by_handle)}/{len(accounts)} "
+        f"handles ({probe_coverage:.0%})"
+    )
+    # When probe resolves fewer than half the accounts, something is wrong
+    # (Apify rate-limit, IG blocking the batch). Force-scrape all unresolved
+    # handles so new posts don't stay invisible for days.
+    probe_rate_limited = probe_coverage < 0.5
+    if probe_rate_limited:
+        log.warning(
+            f"Instagram (Apify): cobertura do probe abaixo de 50% — possível rate limit. "
+            f"Forçando full scrape para handles sem dados."
+        )
+
     # Decide which handles need a full scrape: shortcode changed vs stored,
     # or we never stored one. Forced scrape (manual mode) refetches all.
     handles_to_fetch: list[str] = []
+    skipped_same: int = 0
+    skipped_no_data: int = 0
     for a in accounts:
         h = a["handle"]
         latest = latest_by_handle.get(h)
@@ -283,22 +300,33 @@ async def fetch_events(
             handles_to_fetch.append(h)
             continue
         if not latest:
-            # Probe didn't return anything for this handle (private? rate limit?)
-            # Skip the full fetch but still mark as scraped so the count stays fresh.
-            db.mark_ig_account_scraped(h)
+            if probe_rate_limited:
+                # Probe likely timed out for this handle — scrape anyway
+                handles_to_fetch.append(h)
+            else:
+                # Probe returned data overall but nothing for this handle →
+                # genuinely inaccessible (private, deleted, blocked). Skip.
+                skipped_no_data += 1
+                db.mark_ig_account_scraped(h)
             continue
         if latest != prev:
             handles_to_fetch.append(h)
         else:
+            skipped_same += 1
             db.mark_ig_account_scraped(h)  # nothing new but we did look
+
+    log.info(
+        f"Instagram (Apify): probe → {len(handles_to_fetch)} full-scrape, "
+        f"{skipped_same} sem novidade, {skipped_no_data} sem dados"
+    )
 
     if not handles_to_fetch:
         log.info("Instagram (Apify): probe encontrou 0 handles com novo conteúdo")
         return []
 
     log.info(
-        f"Instagram (Apify): probe → {len(handles_to_fetch)}/{len(accounts)} "
-        f"com posts novos. Buscando {posts_per_account} posts cada..."
+        f"Instagram (Apify): buscando {posts_per_account} posts de "
+        f"{len(handles_to_fetch)} handles..."
     )
 
     full_urls = [f"https://www.instagram.com/{h}/" for h in handles_to_fetch]
