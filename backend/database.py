@@ -645,16 +645,25 @@ def mark_submitted_enriched(submission_id: int, enriched_event_id: str) -> None:
 
 
 def count_upcoming_events(city: str) -> int:
-    """Count events with date_start in the future — used for gap-fill decision."""
-    now = datetime.now(timezone.utc).isoformat()
+    """Count upcoming one-off events — used for gap-fill decision.
+    Mirrors get_events: excludes recurring events so the gap-fill threshold
+    reflects what users actually see, not stale recurring schedules."""
+    today = datetime.now(timezone.utc).date().isoformat()
     with get_conn() as conn:
         row = conn.execute(
             """
             SELECT COUNT(*) as cnt FROM events
             WHERE json_extract(payload, '$.city') = ?
-              AND json_extract(payload, '$.date_start') > ?
+              AND (json_extract(payload, '$.is_recurring') IS NULL
+                   OR json_extract(payload, '$.is_recurring') != 1)
+              AND (
+                  (json_extract(payload, '$.date_end') IS NULL
+                   AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+                  OR (json_extract(payload, '$.date_end') IS NOT NULL
+                      AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+              )
             """,
-            (city, now),
+            (city, today, today),
         ).fetchone()
     return row["cnt"] if row else 0
 
