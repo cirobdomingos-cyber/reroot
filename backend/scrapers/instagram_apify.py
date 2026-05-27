@@ -613,10 +613,12 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
     # IG's CDN 403s Anthropic's URL fetcher, so we proxy: fetch ourselves
     # with a browser UA and send as base64. Falls back to text-only when
     # the image fetch fails.
+    had_image = False
     content_blocks: list = [{"type": "text", "text": prompt}]
     if image_url:
         img = await _fetch_image_b64(image_url)
         if img:
+            had_image = True
             b64, media_type = img
             content_blocks.insert(0, {
                 "type": "image",
@@ -648,6 +650,11 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
         return None
 
     is_recurring = bool(data.get("is_recurring", False))
+    # Recurring programming (toda quinta, happy hour fixo, etc.) is not
+    # actionable for users looking for upcoming one-off events. Skip them —
+    # the catalog is for specific dated events, not venue schedules.
+    if is_recurring:
+        return None
     recurrence_label = data.get("recurrence_label") or None
     raw_days = data.get("recurrence_days") or []
     recurrence_days = [
@@ -707,8 +714,10 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
     # → review the source's content style).
     caption_lower = (caption or "").lower()
     if not is_recurring:
-        # (1) Date-marker presence check. Cheap regex set covering the
-        #     concrete patterns the prompt enumerates.
+        # (1) Date-marker presence check. Posts with images skip this —
+        #     event dates are often printed on the flyer and Claude reads
+        #     them via vision. Text-only posts must have a legible date or
+        #     time so we're not trusting a hallucinated anchor.
         DATE_MARKERS = [
             r"\b\d{1,2}[/.-]\d{1,2}",                             # 25/04, 25.04, 25-04
             r"\b\d{1,2}\s+de\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)",
@@ -717,9 +726,11 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
             r"\b(?:nesse|neste|essa|esta|este|nessa)\s+(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\b",
             r"\b(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\s+que\s+vem\b",
             r"\b(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\s+\d{1,2}",  # "sábado 10"
-            r"\b\d{1,2}h\b",  # at-least-a-time anchors a same-day post
+            r"\b\d{1,2}h\b",                                       # 21h, 19h30
+            r"\b(?:essa|esta|nessa|nesta|pr[oó]xima?)\s+semana\b", # "essa semana", "próxima semana"
+            r"\bpr[oó]xim[oa]\s+(?:s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta)\b",
         ]
-        if not any(re.search(p, caption_lower) for p in DATE_MARKERS):
+        if not had_image and not any(re.search(p, caption_lower) for p in DATE_MARKERS):
             log.warning(
                 f"IG: dropping @{handle}/{shortcode} — one-off w/o date marker in caption "
                 f"(LLM picked {date_start.date()} {date_start.strftime('%H:%M')} "

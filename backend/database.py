@@ -2013,16 +2013,17 @@ def get_events(
     if good_only:
         query += " AND is_curated = 1"
 
-    # date filter — keep events that haven't ended yet. Single-day events (no
-    # date_end) must start today or later. Multi-day events (e.g. MON
-    # exhibitions running for months) stay visible while their end date is in
-    # the future, even if they started long ago.
+    # date filter — keep upcoming one-off events only. Recurring events
+    # (venue schedules, weekly programming) are excluded — the catalog is
+    # for specific dated events. Single-day events must start today or later;
+    # multi-day events stay visible while their end date is in the future.
     today = datetime.now(timezone.utc).date().isoformat()
     query += """
+        AND (json_extract(payload, '$.is_recurring') IS NULL
+             OR json_extract(payload, '$.is_recurring') != 1)
         AND (
-            json_extract(payload, '$.is_recurring') = 1
-            OR (json_extract(payload, '$.date_end') IS NULL
-                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+            (json_extract(payload, '$.date_end') IS NULL
+             AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
             OR (json_extract(payload, '$.date_end') IS NOT NULL
                 AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
         )
