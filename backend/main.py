@@ -105,12 +105,16 @@ _anthropic_key_status: dict = {"valid": None, "checked_at": None, "error": None}
 
 
 def _check_anthropic_key(api_key: str) -> dict:
-    """Return {valid, error}. Uses a cheap GET that doesn't burn tokens."""
+    """Return {valid, error}. Does a 1-token completion to validate both auth AND credits."""
     if not api_key:
         return {"valid": False, "error": "ANTHROPIC_API_KEY ausente"}
     try:
         client = Anthropic(api_key=api_key)
-        client.models.list(limit=1)  # auth-validating call, no completion cost
+        client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1,
+            messages=[{"role": "user", "content": "ok"}],
+        )
         return {"valid": True, "error": None}
     except Exception as e:
         msg = str(e)[:200]

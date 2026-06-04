@@ -643,7 +643,11 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
         log.debug(f"IG: invalid JSON for @{handle}/{shortcode}: {e}")
         return None
     except Exception as e:
-        log.warning(f"IG Claude error for @{handle}/{shortcode}: {e}")
+        msg = str(e)
+        if "credit balance is too low" in msg or "insufficient_quota" in msg:
+            log.error(f"IG: Anthropic credits depleted — all extraction will fail: {msg[:150]}")
+        else:
+            log.warning(f"IG Claude error for @{handle}/{shortcode}: {e}")
         return None
 
     if not data.get("is_event", False):
