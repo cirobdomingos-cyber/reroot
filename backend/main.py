@@ -1,5 +1,5 @@
 """
-auê Backend — FastAPI
+auê Backend — FastAPI (v2)
 Serve eventos reais de Curitiba enriquecidos com Claude.
 
 Local:  uvicorn main:app --reload --port 8000
