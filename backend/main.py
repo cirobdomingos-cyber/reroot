@@ -4327,6 +4327,36 @@ def admin_apify_debug(requesting_email: str = ""):
     return LAST_POST_DEBUG or {"empty": True, "hint": "Run /events/refresh first"}
 
 
+@app.post("/admin/test-extraction")
+async def admin_test_extraction(requesting_email: str = "", caption: str = "", handle: str = "test", post_date: str = ""):
+    """Founder-only: run Claude extraction on a raw caption and return the full response for debugging."""
+    _require_founder(requesting_email)
+    if not caption:
+        raise HTTPException(status_code=400, detail="caption required")
+    from anthropic import AsyncAnthropic
+    import json as _json
+    from scrapers.instagram_apify import EXTRACTION_PROMPT
+    from datetime import datetime, timezone
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    post_date = post_date or today_str
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    prompt = EXTRACTION_PROMPT.format(today=today_str, handle=handle, post_date=post_date, caption=caption[:1500])
+    try:
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        )
+        raw_text = response.content[0].text.strip()
+        try:
+            parsed = _json.loads(raw_text)
+        except Exception:
+            parsed = None
+        return {"raw_response": raw_text, "parsed": parsed, "model": "claude-haiku-4-5-20251001"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.post("/admin/ig-accounts/reset-shortcodes")
 def admin_reset_ig_shortcodes(requesting_email: str = ""):
     """
