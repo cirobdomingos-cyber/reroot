@@ -81,10 +81,11 @@ jobs:
             -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME"
 
-      # Monotonic build number per CI run — TestFlight rejects duplicates.
+      # Monotonic build number — combines run_number + run_attempt so re-runs
+      # of the same workflow always produce a higher version than any prior upload.
       - name: Set CFBundleVersion to run number
         working-directory: ios/App
-        run: xcrun agvtool new-version -all "${{ github.run_number }}"
+        run: xcrun agvtool new-version -all "${{ github.run_number }}${{ github.run_attempt }}"
 
       # Install Apple Distribution certificate into a fresh, ephemeral keychain.
       # Using a temp keychain isolates this run from the runner's default state
