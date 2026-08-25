@@ -1194,6 +1194,16 @@ export async function createPersonalPlan(googleId, { name, description = '', ven
   return res.json()
 }
 
+export async function extractIgEvent(url) {
+  const res = await fetchWithTimeout(`${BASE_URL}/events/extract-ig`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }, 30_000) // Apify cold-starts can be slow
+  if (!res.ok) throw new Error(`Extract failed: ${res.status}`)
+  return res.json()
+}
+
 export async function submitCatalogEvent({ name, description = '', venue_name, date_start, price_min = 0, price_max = 0, url = '', ig_handle = '', submitted_by = null }) {
   const res = await fetchWithTimeout(`${BASE_URL}/events/submit`, {
     method: 'POST',

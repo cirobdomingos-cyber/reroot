@@ -1907,6 +1907,61 @@ def source_detail(source_id: str):
     }
 
 
+class IgExtractRequest(BaseModel):
+    url: str
+
+
+@app.post("/events/extract-ig")
+async def extract_ig_event(req: IgExtractRequest):
+    """
+    Given an Instagram post or profile URL, fetch the post via Apify and run
+    Claude extraction. Returns pre-filled event fields for the submission form.
+    Always returns 200 — missing fields are null so the client can fall back
+    to manual entry gracefully.
+    """
+    url = req.url.strip()
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    result: dict = {"handle": None, "name": None, "date_start": None,
+                    "venue_name": None, "description": None,
+                    "price_min": 0, "price_max": 0,
+                    "image_url": None, "caption": None, "url": url}
+
+    if not settings.apify_api_token:
+        return result
+
+    from scrapers.instagram_apify import _run_apify_scrape, _extract_event
+    from anthropic import AsyncAnthropic
+    from datetime import timezone as tz
+
+    posts = await _run_apify_scrape(settings.apify_api_token, [url], posts_per_account=1)
+    if not posts:
+        return result
+
+    post = posts[0]
+    result["handle"] = (post.get("ownerUsername") or "").lower() or None
+    result["caption"] = (post.get("caption") or "").strip() or None
+    result["image_url"] = post.get("displayUrl") or None
+
+    if not settings.anthropic_api_key:
+        return result
+
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    today_str = __import__("datetime").datetime.now(tz.utc).strftime("%Y-%m-%d")
+    raw_event = await _extract_event(client, post, today_str)
+
+    if raw_event:
+        result["name"] = raw_event.name
+        result["date_start"] = raw_event.date_start.strftime("%Y-%m-%dT%H:%M:%S") if raw_event.date_start else None
+        result["venue_name"] = raw_event.venue_name
+        result["description"] = raw_event.description
+        result["price_min"] = raw_event.price_min or 0
+        result["price_max"] = raw_event.price_max or 0
+
+    return result
+
+
 @app.post("/events/submit", status_code=202)
 async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
     """
