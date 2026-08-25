@@ -1722,6 +1722,7 @@ class EventSubmission(BaseModel):
     price_max: float = 0.0
     url: str = ""
     submitted_by: Optional[str] = None  # google_id
+    ig_handle: str = ""               # if sourced from an IG post — auto-tracked
 
 
 async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
@@ -1920,6 +1921,11 @@ async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Input exceeds maximum length")
     if not req.venue_name or len(req.venue_name.strip()) < 2:
         raise HTTPException(status_code=400, detail="Venue name required")
+
+    handle = re.sub(r"[^A-Za-z0-9._]", "", req.ig_handle.lstrip("@"))[:30]
+    if handle:
+        db.upsert_ig_account(handle=handle, label="", category="", enabled=True,
+                             added_by_email="user_submitted")
 
     submission_id = db.insert_submitted_event(
         name=req.name.strip(),

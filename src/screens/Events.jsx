@@ -21,6 +21,7 @@ import AttendeesRow from '../components/AttendeesRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EventsMap from '../components/EventsMap'
+import SubmitEventSheet from '../components/SubmitEventSheet'
 import { shareLink, appLink, shortEventLink } from '../lib/share'
 
 const VENUE_CATEGORIES = new Set(['bars_cafes', 'parks', 'cinema', 'bookstore'])
@@ -214,6 +215,7 @@ export default function Events() {
   // shows everything; toggle ON when the user wants only the
   // time-sensitive stuff. Off = inclusive. On = exclusive.
   const [oneOffOnly, setOneOffOnly]         = useState(false)
+  const [showSubmitSheet, setShowSubmitSheet] = useState(false)
   // Personal-plan creation sheet — invite friends to a hand-picked event.
   const [showPlanSheet, setShowPlanSheet]   = useState(false)
   // Recurring routines (e.g. "every Thursday MPB") show alongside one-off
@@ -752,6 +754,18 @@ export default function Events() {
               <span style={{ fontSize: 14 }}>📡</span>
               <span>Fontes</span>
             </button>
+            <button
+              onClick={() => setShowSubmitSheet(true)}
+              title="Adicionar evento"
+              style={{
+                width: 36, height: 36, borderRadius: 12,
+                background: 'var(--magenta)', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, cursor: 'pointer',
+                color: '#fff',
+                boxShadow: '0 0 12px rgba(255, 43, 214, 0.35)',
+              }}
+            >+</button>
             <button
               onClick={() => setSearchOpen(o => !o)}
               style={{
@@ -1636,6 +1650,12 @@ export default function Events() {
           const gid = state.googleUser?.id
           if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
         }}
+      />
+
+      <SubmitEventSheet
+        open={showSubmitSheet}
+        onClose={() => setShowSubmitSheet(false)}
+        googleId={state.googleUser?.id}
       />
 
       <PersonalPlanSheet
