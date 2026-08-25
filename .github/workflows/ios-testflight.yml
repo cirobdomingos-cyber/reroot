@@ -34,7 +34,7 @@ jobs:
       PROFILE_NAME: "aue App Store"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # macos-15 default Xcode is 16.x — required by Capacitor 8 for Swift
       # plugin compilation. Letting GHA's default apply rather than pinning,
@@ -42,7 +42,7 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
