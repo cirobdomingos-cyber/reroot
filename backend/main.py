@@ -1725,6 +1725,76 @@ class EventSubmission(BaseModel):
     ig_handle: str = ""               # if sourced from an IG post — auto-tracked
 
 
+async def _save_unenriched_submission(submission_id: int, req: EventSubmission) -> None:
+    """Write a user submission straight to the events table without Claude enrichment.
+    Used when Anthropic credits are unavailable. Enrichment will overwrite on the
+    next scrape cycle once credits are restored."""
+    from models import EnrichedEvent
+    from datetime import timezone as tz
+    import datetime as dt
+
+    ds = None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            ds = dt.datetime.strptime(req.date_start, fmt).replace(tzinfo=tz.utc)
+            break
+        except ValueError:
+            pass
+    if not ds:
+        log.warning(f"Unenriched submission {submission_id}: invalid date_start '{req.date_start}'")
+        return
+
+    price_min = req.price_min or 0.0
+    if price_min == 0:
+        price_tier = "free"
+    elif price_min <= 50:
+        price_tier = "low"
+    elif price_min <= 150:
+        price_tier = "medium"
+    else:
+        price_tier = "high"
+
+    ev = EnrichedEvent(
+        id=f"submitted_sub_{submission_id}",
+        source="submitted",
+        external_id=f"sub_{submission_id}",
+        name=req.name.strip()[:200],
+        description=req.description.strip()[:1000],
+        venue_name=req.venue_name.strip()[:200],
+        venue_address=req.venue_address.strip()[:300],
+        neighborhood="",
+        city=req.city.strip() or settings.city,
+        date_start=ds,
+        date_end=None,
+        price_min=price_min,
+        price_max=req.price_max or 0.0,
+        currency="BRL",
+        capacity=None,
+        attendees_confirmed=0,
+        kind="community",
+        category_label="Evento",
+        category_emoji="🎉",
+        has_food=False,
+        is_low_pressure=False,
+        is_curated=False,
+        pitch=req.description.strip()[:200] or req.name.strip(),
+        kids_welcome=False,
+        price_tier=price_tier,
+        vibe_summary=req.name.strip(),
+        expected_size="medium",
+        header_gradient="linear-gradient(135deg, #FFF3E0, #FFE0B2)",
+        url=req.url.strip()[:500],
+        image_url=None,
+        fetched_at=dt.datetime.now(tz.utc),
+    )
+    try:
+        db.upsert_event(ev)
+        db.mark_submitted_enriched(submission_id, ev.id)
+        log.info(f"Unenriched submission {submission_id} → catalog as {ev.id}")
+    except Exception as e:
+        log.error(f"Unenriched submission {submission_id}: save error: {e}")
+
+
 async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
     """Background task: enrich a submitted event with Claude then upsert into events table."""
     if not settings.anthropic_api_key:
@@ -2091,6 +2161,11 @@ async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
 
     if settings.anthropic_api_key:
         background_tasks.add_task(_enrich_and_save_submission, submission_id, req)
+    else:
+        # No Claude available — write a basic unenriched event directly so it
+        # appears in the catalog immediately. Enrichment will overwrite via
+        # upsert when credits are restored and the next scrape cycle runs.
+        background_tasks.add_task(_save_unenriched_submission, submission_id, req)
 
     return {"ok": True, "submission_id": submission_id, "status": "pending"}
 
