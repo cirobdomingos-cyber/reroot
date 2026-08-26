@@ -1907,6 +1907,94 @@ def source_detail(source_id: str):
     }
 
 
+def _regex_extract_ig_fields(result: dict, caption: str, post: dict) -> None:
+    """
+    Best-effort field extraction from caption when Claude is unavailable.
+    Mutates `result` in place; only sets fields that are still None.
+    """
+    import datetime as dt
+    today = dt.datetime.now(dt.timezone.utc)
+    cl = caption.lower()
+
+    # ── Date ─────────────────────────────────────────────────────────────────
+    # "Neste sábado (29)", "sexta (28/08)", "sábado, 30/08", "30/08", "30 de agosto"
+    MONTHS_PT = {"janeiro":1,"fevereiro":2,"março":3,"abril":4,"maio":5,"junho":6,
+                 "julho":7,"agosto":8,"setembro":9,"outubro":10,"novembro":11,"dezembro":12}
+    WEEKDAYS_PT = {"segunda":0,"terça":1,"quarta":2,"quinta":3,"sexta":4,"sábado":5,"domingo":6}
+
+    date_obj = None
+
+    # DD/MM or DD/MM/YYYY
+    m = re.search(r'\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b', caption)
+    if m:
+        day, mon = int(m.group(1)), int(m.group(2))
+        year = int(m.group(3)) if m.group(3) else today.year
+        if len(str(year)) == 2: year += 2000
+        try: date_obj = dt.date(year, mon, day)
+        except ValueError: pass
+
+    # "dia 29", "sábado (29)", "sexta (28)"
+    if not date_obj:
+        m = re.search(r'(?:dia\s+|(?:' + '|'.join(WEEKDAYS_PT) + r')\s*\()(\d{1,2})\)?', cl)
+        if m:
+            day = int(m.group(1))
+            for delta in range(0, 32):
+                candidate = (today + dt.timedelta(days=delta)).date()
+                if candidate.day == day:
+                    date_obj = candidate
+                    break
+
+    # "30 de agosto"
+    if not date_obj:
+        m = re.search(r'\b(\d{1,2})\s+de\s+(' + '|'.join(MONTHS_PT) + r')\b', cl)
+        if m:
+            day, month = int(m.group(1)), MONTHS_PT[m.group(2)]
+            year = today.year if month >= today.month else today.year + 1
+            try: date_obj = dt.date(year, month, day)
+            except ValueError: pass
+
+    # "neste/próximo sábado/sexta" without explicit day number
+    if not date_obj:
+        for name, wd in WEEKDAYS_PT.items():
+            if re.search(r'\b(?:neste?|nessa?|pr[oó]xim[oa])\s+' + name, cl):
+                days_ahead = (wd - today.weekday()) % 7 or 7
+                date_obj = (today + dt.timedelta(days=days_ahead)).date()
+                break
+
+    # ── Time ─────────────────────────────────────────────────────────────────
+    # "às 19h", "19h30", "19:00", "abre às 21h"
+    time_str = None
+    m = re.search(r'\b(\d{1,2})h(\d{2})?\b', cl)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2) or 0)
+        if 0 <= h <= 23 and 0 <= mi <= 59:
+            time_str = f"{h:02d}:{mi:02d}:00"
+
+    if date_obj and result.get("date_start") is None:
+        t = time_str or "00:00:00"
+        result["date_start"] = f"{date_obj.isoformat()}T{t}"
+
+    # ── Venue from @mentions ──────────────────────────────────────────────────
+    # First @mention in the caption that isn't the poster's own handle
+    if result.get("venue_name") is None:
+        poster = (result.get("handle") or "").lower()
+        mentions = re.findall(r'@([A-Za-z0-9._]{2,30})', caption)
+        for mention in mentions:
+            if mention.lower() != poster:
+                result["venue_name"] = mention
+                break
+
+    # ── Price ────────────────────────────────────────────────────────────────
+    if re.search(r'\b(?:gratuito|entrada\s+franca|rol[eê]\s+livre|sem\s+cobran[cç]a|free)\b', cl):
+        result["price_min"] = 0
+        result["price_max"] = 0
+    else:
+        m = re.search(r'R\$\s*(\d+)', caption)
+        if m and result.get("price_min") == 0:
+            result["price_min"] = int(m.group(1))
+            result["price_max"] = int(m.group(1))
+
+
 class IgExtractRequest(BaseModel):
     url: str
 
@@ -1943,6 +2031,12 @@ async def extract_ig_event(req: IgExtractRequest):
     result["handle"] = (post.get("ownerUsername") or "").lower() or None
     result["caption"] = (post.get("caption") or "").strip() or None
     result["image_url"] = post.get("displayUrl") or None
+
+    # Regex fallback — runs when Anthropic is unavailable. Catches the most
+    # common caption patterns used by Curitiba venues so the form pre-fills
+    # even without Claude. Claude path overwrites these when available.
+    caption = result["caption"] or ""
+    _regex_extract_ig_fields(result, caption, post)
 
     if not settings.anthropic_api_key:
         return result
