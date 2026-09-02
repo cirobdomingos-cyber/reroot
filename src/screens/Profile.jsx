@@ -21,6 +21,11 @@ export default function Profile() {
   const [nameInput, setNameInput] = useState(state.userName)
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
+  // Account deletion has two entry points — next to the email at the top
+  // (where App Review looks for it, per Guideline 5.1.1(v)) and in the
+  // settings footer. Both drive the same confirmation block, so the top
+  // link expands it and scrolls it into view rather than duplicating the UI.
+  const deleteSectionRef = useRef(null)
   // Carried in via navigate('/profile', { state: { openBadge: '...' }})
   // — currently from the badge-unlock toast. BadgesSection auto-opens
   // the matching detail modal and scrolls into view.
@@ -35,6 +40,14 @@ export default function Profile() {
     dispatch({ type: 'RESET' })
     window.location.hash = '/'
     window.location.reload()
+  }
+
+  function openDeleteConfirm() {
+    setDeleteConfirm(true)
+    // Wait for the confirmation block to render before scrolling to it.
+    setTimeout(() => {
+      deleteSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
   }
 
   async function handleDeleteAccount() {
@@ -130,6 +143,17 @@ export default function Profile() {
               }}
             >
               sair
+            </button>
+            <span style={{ color: 'rgba(255,255,255,0.25)' }}>·</span>
+            <button
+              onClick={openDeleteConfirm}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'rgba(255,255,255,0.55)', fontSize: 11, padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              deletar conta
             </button>
           </div>
         )}
@@ -304,10 +328,11 @@ export default function Profile() {
         </button>
 
         {/* Account deletion — required by Apple Guideline 5.1.1(v) */}
+        <div ref={deleteSectionRef} style={{ marginTop: 4 }}>
         {!deleteConfirm ? (
           <button
-            onClick={() => setDeleteConfirm(true)}
-            style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}
+            onClick={openDeleteConfirm}
+            style={{ fontSize: 12, color: 'var(--charcoal-mid)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
           >
             Deletar conta
           </button>
@@ -333,6 +358,7 @@ export default function Profile() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   )
