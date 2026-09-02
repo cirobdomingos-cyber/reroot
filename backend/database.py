@@ -3926,3 +3926,49 @@ def get_badge_tier(google_id: str, badge_id: str) -> int:
             (google_id, badge_id),
         ).fetchone()
     return int(row["tier"]) if row else 0
+
+
+def delete_user_account(google_id: str) -> bool:
+    """Delete all data for a user (GDPR / Apple 5.1.1v requirement).
+    Returns True if the user existed, False if google_id was unknown."""
+    if not google_id:
+        return False
+    with get_conn() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM users WHERE id = ?", (google_id,)
+        ).fetchone()
+        if not exists:
+            # Try legacy path — user may exist only in user_states
+            exists = conn.execute(
+                "SELECT 1 FROM user_states WHERE google_id = ?", (google_id,)
+            ).fetchone()
+        if not exists:
+            return False
+
+        conn.execute("DELETE FROM rsvps WHERE google_id = ?", (google_id,))
+        conn.execute(
+            "DELETE FROM friendships WHERE user_a = ? OR user_b = ?",
+            (google_id, google_id),
+        )
+        conn.execute("DELETE FROM user_states WHERE google_id = ?", (google_id,))
+        conn.execute(
+            "DELETE FROM push_subscriptions WHERE google_id = ?", (google_id,)
+        )
+        conn.execute(
+            "DELETE FROM apns_device_tokens WHERE google_id = ?", (google_id,)
+        )
+        conn.execute(
+            "DELETE FROM group_members WHERE google_id = ?", (google_id,)
+        )
+        try:
+            conn.execute(
+                "DELETE FROM user_badges WHERE google_id = ?", (google_id,)
+            )
+        except Exception:
+            pass
+        conn.execute(
+            "DELETE FROM auth_providers WHERE user_id = ?", (google_id,)
+        )
+        conn.execute("DELETE FROM users WHERE id = ?", (google_id,))
+        conn.commit()
+    return True

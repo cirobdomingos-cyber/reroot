@@ -1293,3 +1293,13 @@ export async function askCompanion({ message, situation, goal, week, language, h
     throw err
   }
 }
+
+export async function deleteUserAccount(googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/user/account?google_id=${encodeURIComponent(googleId)}`,
+    { method: 'DELETE' },
+    10_000,
+  )
+  if (!res.ok) throw new Error(`Delete account error: ${res.status}`)
+  return await res.json()
+}

@@ -7,7 +7,7 @@ import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple } from '../lib/apple-auth'
 import { getPublicOrigin } from '../lib/share'
-import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats } from '../services/api'
+import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
@@ -19,6 +19,8 @@ export default function Profile() {
   const t = useT()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(state.userName)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
   // Carried in via navigate('/profile', { state: { openBadge: '...' }})
   // — currently from the badge-unlock toast. BadgesSection auto-opens
   // the matching detail modal and scrolls into view.
@@ -33,6 +35,23 @@ export default function Profile() {
     dispatch({ type: 'RESET' })
     window.location.hash = '/'
     window.location.reload()
+  }
+
+  async function handleDeleteAccount() {
+    const googleId = state.googleUser?.id
+    if (!googleId) { handleReset(); return }
+    setDeletingAccount(true)
+    try {
+      await deleteUserAccount(googleId)
+    } catch (_) {
+      // Ignore network errors — still wipe local state so user is unblocked
+    } finally {
+      setDeletingAccount(false)
+      setDeleteConfirm(false)
+      dispatch({ type: 'RESET' })
+      window.location.hash = '/'
+      window.location.reload()
+    }
   }
 
   return (
@@ -283,6 +302,37 @@ export default function Profile() {
         >
           {t.profile_reset}
         </button>
+
+        {/* Account deletion — required by Apple Guideline 5.1.1(v) */}
+        {!deleteConfirm ? (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            style={{ fontSize: 11, color: 'var(--charcoal-light)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}
+          >
+            Deletar conta
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--bg2)', borderRadius: 10, border: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4 }}>
+              Apaga teus RSVPs, amigos e histórico permanentemente.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: '1px solid var(--line)', background: 'none', color: 'var(--charcoal-mid)', cursor: 'pointer' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                style={{ fontSize: 12, padding: '6px 14px', borderRadius: 8, border: 'none', background: '#c0392b', color: '#fff', cursor: deletingAccount ? 'default' : 'pointer', opacity: deletingAccount ? 0.6 : 1 }}
+              >
+                {deletingAccount ? 'Deletando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

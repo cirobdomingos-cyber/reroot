@@ -2271,6 +2271,18 @@ def rsvp_delete(event_id: str, google_id: str):
     return {"ok": True}
 
 
+@app.delete("/user/account")
+def delete_account(google_id: str):
+    """Permanently delete all data for a user (Apple 5.1.1v / LGPD).
+    The client signs out locally immediately after calling this."""
+    if not google_id:
+        raise HTTPException(status_code=400, detail="google_id required")
+    deleted = db.delete_user_account(google_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
 # ── Badges ─────────────────────────────────────────────────
 
 @app.get("/badges/catalog")

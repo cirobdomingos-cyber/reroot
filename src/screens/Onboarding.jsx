@@ -449,6 +449,28 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
         background: 'var(--cream)', borderRadius: '28px 28px 0 0',
         padding: '24px 20px 32px', marginTop: 20,
       }}>
+        {/* Apple Sign-In first — Apple HIG requires it be at least as
+            prominent as any other sign-in option (Guideline 4.8). Black
+            button with SVG logo matches the Sign in with Apple identity
+            guidelines exactly. */}
+        <button
+          onClick={onApple}
+          style={{
+            width: '100%', marginBottom: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 8, height: 44, borderRadius: 10,
+            background: '#000', color: '#fff', border: 'none',
+            fontSize: 15, fontWeight: 600,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
+            cursor: 'pointer',
+          }}
+        >
+          <svg aria-hidden width="17" height="20" viewBox="0 0 814 1000" fill="white" xmlns="http://www.w3.org/2000/svg">
+            <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 411.6 0 261.6 0 191.3 0 80.8 69.3 22.3 138.1 22.3c55.6 0 97.7 36.7 130.9 36.7 31.8 0 81.7-38.7 145.3-38.7 22.2 0 108.2 2.6 168.4 95.9zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/>
+          </svg>
+          <span>Continuar com Apple</span>
+        </button>
+
         {googleConfigured ? (
           <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }} />
         ) : (
@@ -456,26 +478,6 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
             Entrar com Google
           </button>
         )}
-
-        {/* Apple Sign-In — Apple HIG specifies black button + system
-            font + Apple logo glyph for both iOS and web. Fixed black
-            even on the dark Neon Boteco shell because that's what
-            Apple's review guidelines accept. */}
-        <button
-          onClick={onApple}
-          style={{
-            width: '100%', marginBottom: 12,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 8, height: 44, borderRadius: 12,
-            background: '#000', color: '#fff', border: '1px solid #000',
-            fontSize: 15, fontWeight: 600,
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
-            cursor: 'pointer',
-          }}
-        >
-          <span aria-hidden style={{ fontSize: 17, lineHeight: 1, marginTop: -2 }}></span>
-          <span>Continuar com Apple</span>
-        </button>
 
         <button
           onClick={onSkip}
