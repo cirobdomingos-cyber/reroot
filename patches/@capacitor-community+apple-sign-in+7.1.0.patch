@@ -11,3 +11,25 @@ index 94246df..f900a1b 100644
      ],
      targets: [
          .target(
+diff --git a/node_modules/@capacitor-community/apple-sign-in/ios/Sources/SignInWithApple/Plugin.swift b/node_modules/@capacitor-community/apple-sign-in/ios/Sources/SignInWithApple/Plugin.swift
+index f53087c..2b80ab2 100644
+--- a/node_modules/@capacitor-community/apple-sign-in/ios/Sources/SignInWithApple/Plugin.swift
++++ b/node_modules/@capacitor-community/apple-sign-in/ios/Sources/SignInWithApple/Plugin.swift
+@@ -24,6 +24,7 @@ public class SignInWithApple: CAPPlugin, CAPBridgedPlugin {
+
+         let authorizationController = ASAuthorizationController(authorizationRequests: [request])
+         authorizationController.delegate = self
++        authorizationController.presentationContextProvider = self
+         authorizationController.performRequests()
+     }
+
+@@ -83,3 +84,9 @@ extension SignInWithApple: ASAuthorizationControllerDelegate {
+         self.bridge?.releaseCall(call)
+     }
+ }
++
++extension SignInWithApple: ASAuthorizationControllerPresentationContextProviding {
++    public func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
++        return self.bridge?.viewController?.view.window ?? ASPresentationAnchor()
++    }
++}
