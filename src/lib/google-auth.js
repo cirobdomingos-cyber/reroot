@@ -271,9 +271,18 @@ function mountWebGoogleButton(containerRef, onSuccess) {
 }
 
 /**
- * Render a "Continue with Google" button matching Google brand guidelines
- * (white bg, official 4-color G logo, Roboto-ish text). Replaces the
- * container's children.
+ * Render a "Continue with Google" button following Google's branding
+ * guidelines, light theme: #FFFFFF fill, #747775 1px border, #1F1F1F
+ * label, official 4-color G logo.
+ *
+ * Light rather than Google's dark variant (#131314) on purpose — this
+ * app's theme is near-black, so the dark variant would sit almost
+ * invisibly on it. That exact problem on the Apple button is what
+ * Apple Review flagged under Guideline 4, and this button previously
+ * had a worse version of it: background was `var(--white)`, which the
+ * Neon Boteco theme remaps to #14081E, under #3C4043 text.
+ *
+ * Replaces the container's children.
  */
 function renderCustomButton(container, onClick) {
   container.innerHTML = ''
@@ -287,11 +296,11 @@ function renderCustomButton(container, onClick) {
     gap: '12px',
     width: '100%',
     minHeight: '44px',
-    padding: '10px 18px',
-    border: '1px solid #DADCE0',
-    borderRadius: '999px',
-    background: 'var(--white)',
-    color: '#3C4043',
+    padding: '10px 12px',
+    border: '1px solid #747775',
+    borderRadius: '10px',
+    background: '#FFFFFF',
+    color: '#1F1F1F',
     fontFamily: '"Roboto", system-ui, -apple-system, sans-serif',
     fontSize: '14px',
     fontWeight: '500',
@@ -317,7 +326,7 @@ function renderCustomButton(container, onClick) {
   })
   btn.addEventListener('mouseleave', () => {
     btn.style.boxShadow = 'none'
-    btn.style.background = 'white'
+    btn.style.background = '#FFFFFF'
   })
 
   container.appendChild(btn)
