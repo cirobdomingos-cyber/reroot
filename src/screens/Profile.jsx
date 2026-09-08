@@ -1490,15 +1490,17 @@ function SignInCard({ dispatch }) {
           Entrar (modo demo)
         </button>
       )}
-      {/* Apple Sign-In — Apple HIG: black button, system font, glyph
-          on the left. Same handler as Onboarding's. */}
+      {/* Apple Sign-In — white button style (one of Apple's three
+          sanctioned variants), matching Onboarding's. This card's own
+          background (--white) resolves to a dark violet in the "Neon
+          Boteco" theme, so the black variant barely stood out from it. */}
       <button
         onClick={handleApple}
         style={{
           width: '100%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: 8, height: 40, borderRadius: 10,
-          background: '#000', color: '#fff', border: '1px solid #000',
+          background: '#fff', color: '#000', border: 'none',
           fontSize: 14, fontWeight: 600,
           fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
           cursor: 'pointer',

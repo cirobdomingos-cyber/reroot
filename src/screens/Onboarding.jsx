@@ -450,16 +450,18 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
         padding: '24px 20px 32px', marginTop: 20,
       }}>
         {/* Apple Sign-In first — Apple HIG requires it be at least as
-            prominent as any other sign-in option (Guideline 4.8). Black
-            button with SVG logo matches the Sign in with Apple identity
-            guidelines exactly. */}
+            prominent as any other sign-in option (Guideline 4.8). White
+            button style (one of Apple's three sanctioned variants) —
+            the app's whole background is near-black ("Neon Boteco" theme,
+            see globals.css), so the black variant had almost no contrast
+            against it and didn't read as a distinct tappable button. */}
         <button
           onClick={onApple}
           style={{
             width: '100%', marginBottom: 10,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: 8, height: 44, borderRadius: 10,
-            background: '#000', color: '#fff', border: 'none',
+            background: '#fff', color: '#000', border: 'none',
             fontSize: 15, fontWeight: 600,
             fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
             cursor: 'pointer',
