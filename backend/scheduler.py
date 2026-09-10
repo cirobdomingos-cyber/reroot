@@ -4,6 +4,7 @@ Roda diariamente às 14:00 (America/Sao_Paulo). No boot do FastAPI, dispara
 um refresh imediato apenas se o último refresh foi há mais de 24h — assim
 deploys frequentes no Railway não detonam o pipeline de scrape + Claude.
 """
+import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -117,7 +118,14 @@ async def run_refresh(settings):
 
     # ── Enriquecimento com Claude ──
     log.info(f"  Enriquecendo {len(all_raws)} eventos com Claude Haiku...")
-    enriched = pipeline.enrich_batch(all_raws, max_events=50)
+    # OFF THE EVENT LOOP. run_refresh is a coroutine — FastAPI background
+    # tasks and APScheduler's AsyncIOScheduler both run it inside the same
+    # loop that serves HTTP. enrich_batch is 50 sequential *synchronous*
+    # Anthropic calls, so awaiting it inline freezes the whole server for
+    # minutes. Railway's healthcheck (30s) then fails, the container is
+    # restarted, and with restartPolicyMaxRetries=3 the service eventually
+    # stays down. That is exactly what took prod down on 2026-09-10.
+    enriched = await asyncio.to_thread(pipeline.enrich_batch, all_raws, 50)
 
     # ── Persistência (com contagem real por fonte) ──
     # Rehost the IG image bytes before upsert so the stored payload
@@ -133,7 +141,8 @@ async def run_refresh(settings):
     for ev in enriched:
         try:
             if ev.image_url and not ev.image_url.startswith("/event-images/"):
-                local_url = rehost_image(ev.id, ev.image_url)
+                # Synchronous httpx download — off the loop (see above).
+                local_url = await asyncio.to_thread(rehost_image, ev.id, ev.image_url)
                 if local_url:
                     ev.image_url = local_url
             was_new = db.upsert_event(ev)
@@ -156,8 +165,12 @@ async def run_refresh(settings):
     if upcoming < 15 and getattr(settings, "ai_gap_fill", False) and settings.anthropic_api_key:
         log.info(f"  Apenas {upcoming} eventos futuros — ativando gap-fill por IA...")
         try:
-            generated_raws = pipeline.generate_events(city=city, count=15)
-            generated_enriched = pipeline.enrich_batch(generated_raws, max_events=15)
+            generated_raws = await asyncio.to_thread(
+                pipeline.generate_events, city, 15
+            )
+            generated_enriched = await asyncio.to_thread(
+                pipeline.enrich_batch, generated_raws, 15
+            )
             for ev in generated_enriched:
                 try:
                     was_new = db.upsert_event(ev)
@@ -201,15 +214,20 @@ async def run_refresh(settings):
         from geocoding import geocode_pending_venues, autofill_pending_with_ai
         # Pass 1: Nominatim. Cheap, fast (well, ≥1s/req), nails address-y
         # venue names. Capped at 50 per scrape to bound the wall time.
-        nom = geocode_pending_venues(limit=50)
+        # geocode_pending_venues contains a literal time.sleep(1.1) per venue
+        # for Nominatim's rate limit — up to ~55s of hard-blocked event loop.
+        nom = await asyncio.to_thread(geocode_pending_venues, 50)
         log.info(f"  Geocode (Nominatim): {nom['ok']} ok / {nom['failed']} fail")
         # Pass 2: Claude + web_search for whatever Nominatim couldn't
         # resolve. Costs ~$0.01/venue with the hosted search tool, so a
         # 20-venue scrape stays under $0.25 worst case.
         if settings.anthropic_api_key:
-            ai = autofill_pending_with_ai(
-                anthropic_api_key=settings.anthropic_api_key,
-                limit=30,
+            # 30 synchronous Sonnet calls with hosted web_search, several
+            # seconds each — the single longest blocking stretch. Off-loop.
+            ai = await asyncio.to_thread(
+                autofill_pending_with_ai,
+                settings.anthropic_api_key,
+                30,
             )
             log.info(f"  Geocode (AI): {ai['ok']} ok / {ai['skipped']} skipped")
     except Exception as e:
@@ -224,8 +242,9 @@ async def run_refresh(settings):
     try:
         from scrapers.sympla import fetch_curitiba_events
         from sympla_match import match_and_enrich
-        sympla_events = fetch_curitiba_events()
-        result = match_and_enrich(sympla_events)
+        # Synchronous HTML scrape + fuzzy match — off-loop.
+        sympla_events = await asyncio.to_thread(fetch_curitiba_events)
+        result = await asyncio.to_thread(match_and_enrich, sympla_events)
         log.info(
             "  Sympla enrich: %d events scraped, %d matched, %d wrote",
             result.get("sympla_events", 0),
