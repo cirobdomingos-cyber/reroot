@@ -4607,8 +4607,14 @@ async def admin_test_extraction(requesting_email: str = "", caption: str = "", h
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
         )
         raw_text = response.content[0].text.strip()
+        # Strip markdown fences exactly as _extract_event does. Without
+        # this the debug endpoint reports "parse failed" on responses the
+        # real pipeline handles fine — which makes it look like extraction
+        # is broken when it isn't.
+        cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
         try:
-            parsed = _json.loads(raw_text)
+            parsed = _json.loads(cleaned)
         except Exception:
             parsed = None
         return {"raw_response": raw_text, "parsed": parsed, "model": "claude-haiku-4-5-20251001"}

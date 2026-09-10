@@ -140,7 +140,17 @@ APIFY_RUN_URL = (
     f"https://api.apify.com/v2/acts/{APIFY_ACTOR_ID}/run-sync-get-dataset-items"
 )
 # Long timeout because Apify cold-starts can take 60s+ on the free tier.
+# This is now a PER-CHUNK budget, not a whole-run one.
 APIFY_TIMEOUT_S = 240
+
+# How many IG profiles go into a single Apify request, and how many such
+# requests run at once. 20 keeps a chunk well inside the timeout even with
+# a cold start (a single-handle run measured ~72s in Sept 2026, most of it
+# cold-start overhead that the whole chunk amortises); 3 concurrent chunks
+# bounds a 122-handle probe to roughly three timeout windows of wall time
+# without tripping the free tier's concurrent-run limit.
+_APIFY_CHUNK_SIZE = 20
+_APIFY_CHUNK_CONCURRENCY = 3
 
 EXTRACTION_PROMPT = """\
 Você está extraindo informações de eventos a partir de posts do Instagram \
@@ -612,7 +622,19 @@ async def _enrich_profiles(apify_token: str, direct_urls: list[str]) -> None:
     Fetch profile-level data (full name, avatar, bio) via the same
     instagram-scraper actor in `details` mode. Persists to the
     tracked_ig_accounts table. Best-effort — silent on failure.
+
+    Chunked for the same reason as _run_apify_scrape: after a long outage
+    every tracked handle is stale at once, and one request carrying all of
+    them is the request most likely to time out.
     """
+    direct_urls = [u for u in direct_urls if u]
+    if not direct_urls:
+        return
+    if len(direct_urls) > _APIFY_CHUNK_SIZE:
+        for i in range(0, len(direct_urls), _APIFY_CHUNK_SIZE):
+            await _enrich_profiles(apify_token, direct_urls[i:i + _APIFY_CHUNK_SIZE])
+        return
+
     payload = {
         "directUrls": direct_urls,
         "resultsType": "details",  # one item per profile, no posts
@@ -691,6 +713,68 @@ async def _enrich_profiles(apify_token: str, direct_urls: list[str]) -> None:
 
 
 async def _run_apify_scrape(
+    apify_token: str,
+    direct_urls: list[str],
+    posts_per_account: int,
+) -> list[dict]:
+    """
+    Fetch posts for many profiles, in chunks.
+
+    This used to be a single run-sync POST carrying every tracked handle —
+    122 of them by September 2026. One request that big has two problems:
+    it can exceed APIFY_TIMEOUT_S outright, and when it does, the whole
+    scrape returns nothing. That is an all-or-nothing dependency on the
+    slowest possible request, and when Apify got slower in early September
+    the daily cron silently produced zero posts for eight days.
+
+    Chunking bounds each request's work and isolates failure: a chunk that
+    times out costs its own handles, not the entire catalog. Chunks run a
+    few at a time — Apify's free tier limits concurrent actor runs, so
+    firing all seven at once trades one timeout for a queue of them.
+    """
+    urls = [u for u in direct_urls if u]
+    if not urls:
+        return []
+
+    chunks = [
+        urls[i:i + _APIFY_CHUNK_SIZE]
+        for i in range(0, len(urls), _APIFY_CHUNK_SIZE)
+    ]
+    if len(chunks) == 1:
+        return await _run_apify_chunk(apify_token, chunks[0], posts_per_account)
+
+    sem = asyncio.Semaphore(_APIFY_CHUNK_CONCURRENCY)
+
+    async def _bounded(idx: int, chunk: list[str]) -> list[dict]:
+        async with sem:
+            items = await _run_apify_chunk(apify_token, chunk, posts_per_account)
+            log.info(
+                f"Apify chunk {idx + 1}/{len(chunks)}: {len(chunk)} perfis "
+                f"-> {len(items)} posts"
+            )
+            return items
+
+    results = await asyncio.gather(
+        *[_bounded(i, c) for i, c in enumerate(chunks)],
+        return_exceptions=True,
+    )
+    posts: list[dict] = []
+    failed = 0
+    for res in results:
+        if isinstance(res, Exception):
+            failed += 1
+            log.warning(f"Apify chunk falhou: {res}")
+            continue
+        posts.extend(res)
+    if failed:
+        log.warning(
+            f"Apify: {failed}/{len(chunks)} chunks falharam — "
+            f"resultado parcial ({len(posts)} posts)"
+        )
+    return posts
+
+
+async def _run_apify_chunk(
     apify_token: str,
     direct_urls: list[str],
     posts_per_account: int,
