@@ -10,3 +10,6 @@ pydantic-settings==2.3.4
 instaloader==4.15.1
 pywebpush==2.0.0
 resend==2.4.0
+# Downscales IG post images before they reach Claude vision. Image tokens
+# scale with pixel area, so this is the pipeline's biggest cost lever.
+pillow==12.2.0

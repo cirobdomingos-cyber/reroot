@@ -47,11 +47,63 @@ _IMAGE_FETCH_HEADERS = {
 }
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # Anthropic limit-friendly cap
 
+# Longest edge we send to Claude, in pixels.
+#
+# Vision input is billed by pixel area (~width*height/750 tokens), not by
+# information content, so full-resolution IG images are the single biggest
+# line item in this pipeline. Measured on a sample of 12 live catalog
+# images: IG serves 1080x1350 typically and 1440x1800 for some venues,
+# averaging ~2,230 tokens each. Capping the long edge at 1024 puts every
+# one of them at ~1,120 tokens regardless of source size — roughly half.
+#
+# 1024 is chosen to stay comfortably legible: the job is reading a date
+# and time off an event poster, which is the same task a person does on a
+# phone screen at similar pixel dimensions. Lower it further only with an
+# accuracy check — date-on-flyer extraction is the thing this image is
+# here for, and it is exactly what degrades first.
+_MAX_IMAGE_EDGE = 1024
+_JPEG_QUALITY = 85
+
+
+def _downscale_image(raw: bytes) -> Optional[tuple[bytes, str]]:
+    """
+    Shrink an image so its longest edge is at most _MAX_IMAGE_EDGE and
+    re-encode as JPEG. Returns (bytes, media_type), or None if the image
+    couldn't be decoded — callers fall back to the original bytes.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        import io as _io
+        with Image.open(_io.BytesIO(raw)) as im:
+            im.load()
+            # Animated/paletted/transparent sources need a flat RGB canvas
+            # before JPEG encoding, or Pillow raises.
+            if im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            w, h = im.size
+            longest = max(w, h)
+            if longest > _MAX_IMAGE_EDGE:
+                scale = _MAX_IMAGE_EDGE / float(longest)
+                im = im.resize(
+                    (max(1, int(w * scale)), max(1, int(h * scale))),
+                    Image.LANCZOS,
+                )
+            out = _io.BytesIO()
+            im.save(out, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
+            return out.getvalue(), "image/jpeg"
+    except Exception:
+        return None
+
 
 async def _fetch_image_b64(image_url: str) -> Optional[tuple[str, str]]:
     """
     Download an IG image so we can pass it to Claude as base64. Returns
     (base64_data, media_type) on success, None on any failure.
+
+    Downscales before encoding — see _MAX_IMAGE_EDGE for why.
     """
     if not image_url or not image_url.startswith("http"):
         return None
@@ -65,7 +117,13 @@ async def _fetch_image_b64(image_url: str) -> Optional[tuple[str, str]]:
         media_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
         if not media_type.startswith("image/"):
             media_type = "image/jpeg"
-        return base64.b64encode(r.content).decode("ascii"), media_type
+        data = r.content
+        # Resize off the event loop — Lanczos on a 1440x1800 JPEG is tens
+        # of milliseconds, and 8 of these run concurrently.
+        shrunk = await asyncio.to_thread(_downscale_image, data)
+        if shrunk:
+            data, media_type = shrunk
+        return base64.b64encode(data).decode("ascii"), media_type
     except Exception:
         return None
 
@@ -335,7 +393,51 @@ async def fetch_events(
         log.warning("Instagram (Apify): full scrape retornou 0 posts")
         return []
 
-    log.info(f"Instagram (Apify): {len(posts)} posts coletados, extraindo eventos...")
+    # ── Dedup against the extraction ledger ──
+    # Apify hands back the latest `posts_per_account` posts every time,
+    # but a venue rarely posts that many between runs — so most of this
+    # batch was already extracted on an earlier day. Re-sending them
+    # costs a full Claude call each (caption + a ~2.2k-token image) to
+    # re-derive a result we already have, and re-rolls the dice on a
+    # result that was previously correct.
+    #
+    # Manual mode (`handles` given) deliberately bypasses the ledger:
+    # /admin/ig-accounts/{handle}/scrape is a "rebuild this handle"
+    # action and must re-evaluate every post it fetches.
+    # NOTE: `posts` stays the full Apify result — the handle bookkeeping
+    # below (last_scraped_at, last_post_shortcode, profile metadata) must
+    # see every handle that returned data, or handles whose posts were all
+    # already-extracted would look unscraped and freeze their shortcode.
+    # Only `posts_to_extract` is narrowed.
+    posts_to_extract = posts
+    skipped_seen = 0
+    if not handles:
+        all_codes = [
+            _extract_shortcode(p.get("url") or "") or (p.get("id") or "")
+            for p in posts
+        ]
+        try:
+            fresh = db.filter_unprocessed_shortcodes(all_codes)
+        except Exception as e:
+            # A ledger failure must never block the scrape — fall back to
+            # extracting everything, which is just the old behaviour.
+            log.warning(f"IG: ledger lookup falhou ({e}) — extraindo todos os posts")
+            fresh = None
+        if fresh is not None:
+            posts_to_extract = [
+                p for p, sc in zip(posts, all_codes) if (not sc) or sc in fresh
+            ]
+            skipped_seen = len(posts) - len(posts_to_extract)
+        if skipped_seen:
+            log.info(
+                f"Instagram (Apify): {skipped_seen}/{len(posts)} posts já extraídos "
+                f"antes — pulando ({skipped_seen} chamadas Claude economizadas)"
+            )
+
+    log.info(
+        f"Instagram (Apify): {len(posts)} posts coletados, "
+        f"{len(posts_to_extract)} a extrair..."
+    )
 
     # Debug capture: stash a redacted view of the first post so we can
     # introspect actor schema via /admin/apify-debug. Strings are
@@ -424,17 +526,50 @@ async def fetch_events(
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     sem = asyncio.Semaphore(_CLAUDE_CONCURRENCY)
 
+    # Shortcodes whose extraction never got an answer from the model
+    # (credit exhaustion, rate limit, network). Local to this run so a
+    # concurrent manual scrape can't clobber it.
+    failed_shortcodes: set[str] = set()
+
     async def _bounded_extract(post):
         async with sem:
-            return await _extract_event(client, post, today_str)
+            return await _extract_event(
+                client, post, today_str, failed_out=failed_shortcodes
+            )
 
     results = await asyncio.gather(
-        *[_bounded_extract(p) for p in posts],
+        *[_bounded_extract(p) for p in posts_to_extract],
         return_exceptions=False,
     )
     events: list[RawEvent] = [ev for ev in results if ev is not None]
 
-    log.info(f"Instagram (Apify): {len(events)} eventos extraídos de {len(posts)} posts")
+    log.info(
+        f"Instagram (Apify): {len(events)} eventos extraídos de "
+        f"{len(posts_to_extract)} posts"
+    )
+
+    # ── Record the ledger ──
+    # Only mark posts we actually got a verdict on. `_extract_event`
+    # returns None both for "not an event" (a real verdict, worth
+    # remembering) and for a transient API failure (must NOT be
+    # remembered, or a credit outage would permanently burn every post
+    # it touched — exactly the failure mode that froze this pipeline in
+    # September). `_LAST_EXTRACT_FAILED` carries that distinction.
+    ledger_rows: list[tuple[str, str, bool]] = []
+    for post, ev in zip(posts_to_extract, results):
+        sc = _extract_shortcode(post.get("url") or "") or (post.get("id") or "")
+        if not sc or sc in failed_shortcodes:
+            continue
+        ledger_rows.append((sc, (post.get("ownerUsername") or "").lower(), ev is not None))
+    if failed_shortcodes:
+        log.warning(
+            f"IG: {len(failed_shortcodes)} posts falharam na extração — "
+            f"não marcados no ledger, serão reprocessados no próximo run"
+        )
+    try:
+        db.mark_ig_posts_processed(ledger_rows)
+    except Exception as e:
+        log.warning(f"IG: falha ao gravar ledger de posts ({e})")
 
     # Update event-yield stats per account so the admin UI can show which
     # handles are producing real events vs. just consuming Apify quota.
@@ -455,7 +590,18 @@ async def fetch_events(
             if tail.startswith(f"{h}_"):
                 yields_by_handle[h] = yields_by_handle.get(h, 0) + 1
                 break
-    for handle in handles_with_data:
+    # Only refresh the yield stat for handles we actually extracted this
+    # run. With the ledger in play most handles contribute zero new posts,
+    # and blindly writing 0 for them would report every established venue
+    # as producing nothing. Handles with no new posts keep their last
+    # meaningful count; the admin UI's `future_events` column is the live
+    # figure either way.
+    extracted_handles = {
+        (p.get("ownerUsername") or "").lower()
+        for p in posts_to_extract
+        if p.get("ownerUsername")
+    }
+    for handle in handles_with_data & extracted_handles:
         db.set_ig_account_last_event_count(handle, yields_by_handle.get(handle, 0))
 
     return events
@@ -583,11 +729,23 @@ async def _run_apify_scrape(
         return []
 
 
-async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> Optional[RawEvent]:
+async def _extract_event(
+    client: AsyncAnthropic,
+    post: dict,
+    today_str: str,
+    failed_out: Optional[set] = None,
+) -> Optional[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
     Returns None if Claude judges it not an event, or on any error. Async so
     the calling fan-out (asyncio.gather) can run many in parallel.
+
+    `failed_out`: when given, shortcodes whose extraction never got an
+    answer from the model (API error, credits, rate limit) are added to it.
+    The caller uses this to keep such posts OUT of the processed ledger so
+    they're retried later. A malformed-JSON response does NOT count — the
+    model did answer, so re-asking is unlikely to help and would re-bill
+    the same post on every future run.
     """
     caption = (post.get("caption") or "").strip()
     if len(caption) < 30:
@@ -635,14 +793,26 @@ async def _extract_event(client: AsyncAnthropic, post: dict, today_str: str) -> 
             max_tokens=512,
             messages=[{"role": "user", "content": content_blocks}],
         )
+        try:
+            import token_meter
+            token_meter.record("extraction", "claude-haiku-4-5", response.usage)
+        except Exception:
+            pass
         raw_text = response.content[0].text.strip()
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)
         data = json.loads(raw_text)
     except json.JSONDecodeError as e:
+        # The model answered, we just couldn't parse it. Treated as a
+        # verdict so the post doesn't re-bill on every future run.
         log.debug(f"IG: invalid JSON for @{handle}/{shortcode}: {e}")
         return None
     except Exception as e:
+        # No answer from the model — do not let the caller record this
+        # post as processed, or a credit outage silently burns every post
+        # it touches (this is what happened in September 2026).
+        if failed_out is not None and shortcode:
+            failed_out.add(shortcode)
         msg = str(e)
         if "credit balance is too low" in msg or "insufficient_quota" in msg:
             log.error(f"IG: Anthropic credits depleted — all extraction will fail: {msg[:150]}")

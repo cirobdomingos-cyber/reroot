@@ -313,6 +313,30 @@ def init_db():
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
             except sqlite3.OperationalError:
                 pass  # column already present
+        # Ledger of IG posts already sent through Claude extraction.
+        #
+        # Apify returns the latest N posts per handle on every full scrape,
+        # but a venue rarely posts N times between runs — so most of what
+        # comes back was already extracted on a previous day. Without this
+        # ledger every one of those posts pays full price again (caption
+        # tokens + a ~2.2k-token image) to re-derive a result we already
+        # have. Worse, most posts are not events at all, so they leave no
+        # row in `events` and would be re-extracted forever.
+        #
+        # `was_event` is informational (yield stats / debugging); the skip
+        # decision only needs the shortcode's presence.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS processed_ig_posts (
+                shortcode       TEXT PRIMARY KEY,
+                handle          TEXT NOT NULL DEFAULT '',
+                processed_at    TEXT NOT NULL,
+                was_event       INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_processed_ig_posts_handle "
+            "ON processed_ig_posts(handle)"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS curators (
                 email           TEXT PRIMARY KEY,            -- lowercased email
@@ -1146,6 +1170,105 @@ def reset_ig_shortcodes(handles: Optional[list[str]] = None) -> int:
             )
         conn.commit()
         return cur.rowcount
+
+
+# ── Processed-post ledger (Claude extraction dedup) ────────────
+
+def filter_unprocessed_shortcodes(shortcodes: list[str]) -> set[str]:
+    """
+    Given the shortcodes Apify just returned, return only those that have
+    never been through Claude extraction. Chunked to stay under SQLite's
+    999-variable limit on large scrapes.
+    """
+    codes = [s for s in {(c or "").strip() for c in shortcodes} if s]
+    if not codes:
+        return set()
+    seen: set[str] = set()
+    with get_conn() as conn:
+        for i in range(0, len(codes), 500):
+            chunk = codes[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            rows = conn.execute(
+                f"SELECT shortcode FROM processed_ig_posts WHERE shortcode IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            seen.update(r[0] for r in rows)
+    return set(codes) - seen
+
+
+def mark_ig_posts_processed(rows: list[tuple[str, str, bool]]) -> int:
+    """
+    Record (shortcode, handle, was_event) for every post we just spent a
+    Claude call on — including the ones that turned out not to be events,
+    which is the whole point: those are the majority and would otherwise
+    be re-extracted on every run forever.
+
+    INSERT OR REPLACE so a forced re-scrape refreshes the timestamp
+    instead of raising on the primary key.
+    """
+    cleaned = [
+        ((sc or "").strip(), (h or "").strip().lower(), 1 if ev else 0)
+        for sc, h, ev in rows
+        if (sc or "").strip()
+    ]
+    if not cleaned:
+        return 0
+    now = datetime.now().isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT OR REPLACE INTO processed_ig_posts "
+            "(shortcode, handle, processed_at, was_event) VALUES (?, ?, ?, ?)",
+            [(sc, h, now, ev) for sc, h, ev in cleaned],
+        )
+        conn.commit()
+    return len(cleaned)
+
+
+def reset_processed_ig_posts(handles: Optional[list[str]] = None) -> int:
+    """
+    Forget the extraction ledger so the next scrape re-processes posts.
+    Use after a prompt change that should re-evaluate existing posts, or
+    alongside reset_ig_shortcodes() when recovering from a broken run.
+    Costs a full re-extraction — that's the point, so call it knowingly.
+    """
+    with get_conn() as conn:
+        if handles:
+            normalized = [h.strip().lstrip("@").lower() for h in handles if h.strip()]
+            if not normalized:
+                return 0
+            placeholders = ",".join("?" * len(normalized))
+            cur = conn.execute(
+                f"DELETE FROM processed_ig_posts WHERE handle IN ({placeholders})",
+                normalized,
+            )
+        else:
+            cur = conn.execute("DELETE FROM processed_ig_posts")
+        conn.commit()
+        return cur.rowcount
+
+
+def prune_processed_ig_posts(older_than_days: int = 120) -> int:
+    """
+    Drop ledger rows older than the window Apify can still hand back. We
+    only ever fetch the latest few posts per handle, so a months-old
+    shortcode can never reappear and its row is dead weight.
+    """
+    cutoff = (datetime.now() - timedelta(days=older_than_days)).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM processed_ig_posts WHERE processed_at < ?", (cutoff,)
+        )
+        conn.commit()
+        return cur.rowcount
+
+
+def count_processed_ig_posts() -> dict:
+    """Ledger size + event yield, for the admin/debug surface."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(was_event), 0) FROM processed_ig_posts"
+        ).fetchone()
+    return {"total": row[0] or 0, "was_event": row[1] or 0}
 
 
 def mark_ig_account_details_fresh(handle: str) -> None:

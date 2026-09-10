@@ -46,6 +46,14 @@ async def run_refresh(settings):
     # refresh_log query to rows produced by THIS run.
     run_started_iso = datetime.now().isoformat()
 
+    # Zero the token meter so the summary at the end of this run reports
+    # this run's spend, not a cumulative total across the process lifetime.
+    try:
+        import token_meter
+        token_meter.reset()
+    except Exception:
+        pass
+
     city = settings.city
     log.info(f"🔄 Iniciando refresh de eventos para {city}...")
     pipeline = EnrichmentPipeline(api_key=settings.anthropic_api_key)
@@ -77,6 +85,34 @@ async def run_refresh(settings):
         # without a finished_at.
         for log_id in pending_log_ids.values():
             db.log_refresh_finish(log_id, events_new=0, events_updated=0)
+        # Total failure used to be the ONE case that sent no email: this
+        # branch returned before send_scrape_summary, so a dead pipeline was
+        # quieter than a healthy one. That is backwards, and it is why the
+        # September 2026 outage ran for eight days unnoticed. Alert instead.
+        try:
+            from notifications import send_email
+            await send_email(
+                settings=settings,
+                to=settings.founder_email,
+                subject="[auê] ALERTA — scrape retornou 0 eventos",
+                html=(
+                    "<h2>Scrape sem resultados</h2>"
+                    "<p>O refresh rodou e não extraiu nenhum evento bruto. "
+                    "Causas prováveis, em ordem:</p><ol>"
+                    "<li>Créditos da Anthropic esgotados (veja <code>/health</code> "
+                    "&rarr; <code>anthropic_error</code>)</li>"
+                    "<li>Token do Apify inválido ou sem créditos</li>"
+                    "<li>Instagram bloqueando o actor</li></ol>"
+                    f"<p>Início do run: {run_started_iso}</p>"
+                ),
+                text=(
+                    "auê: o refresh rodou e nao extraiu nenhum evento.\n"
+                    "Verifique: creditos Anthropic (/health), token Apify, "
+                    f"bloqueio do IG.\nInicio do run: {run_started_iso}\n"
+                ),
+            )
+        except Exception as e:
+            log.warning(f"Alerta de scrape vazio falhou: {e}")
         return
 
     # ── Enriquecimento com Claude ──
@@ -112,7 +148,12 @@ async def run_refresh(settings):
 
     # ── AI gap-fill: generate synthetic events when DB is sparse ──
     upcoming = db.count_upcoming_events(city)
-    if upcoming < 15 and settings.anthropic_api_key:
+    if upcoming < 15 and not getattr(settings, "ai_gap_fill", False):
+        log.info(
+            f"  Apenas {upcoming} eventos futuros — gap-fill por IA está "
+            f"desligado (AI_GAP_FILL=false); catálogo curto porém real."
+        )
+    if upcoming < 15 and getattr(settings, "ai_gap_fill", False) and settings.anthropic_api_key:
         log.info(f"  Apenas {upcoming} eventos futuros — ativando gap-fill por IA...")
         try:
             generated_raws = pipeline.generate_events(city=city, count=15)
@@ -193,6 +234,23 @@ async def run_refresh(settings):
         )
     except Exception as e:
         log.warning(f"  sympla enrich pipeline falhou: {e}")
+
+    # Costed token rollup for this run — the only spend signal we have
+    # (no Admin API on an individual account). Grep Railway logs for
+    # "Claude token usage".
+    try:
+        import token_meter
+        token_meter.log_summary(prefix="  ")
+    except Exception as e:
+        log.warning(f"  token meter summary falhou: {e}")
+
+    # Drop extraction-ledger rows too old for Apify to ever hand back.
+    try:
+        pruned = db.prune_processed_ig_posts()
+        if pruned:
+            log.info(f"  Ledger de posts: {pruned} linhas antigas removidas")
+    except Exception as e:
+        log.warning(f"  prune_processed_ig_posts falhou: {e}")
 
     # Best-effort summary email (silent if RESEND_API_KEY isn't set).
     try:

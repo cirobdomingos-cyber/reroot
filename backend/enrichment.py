@@ -140,6 +140,11 @@ class EnrichmentPipeline:
                 max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
+            try:
+                import token_meter
+                token_meter.record("enrichment", "claude-haiku-4-5", response.usage)
+            except Exception:
+                pass
             raw_json = response.content[0].text.strip()
             # Strip markdown fences if Claude wrapped the JSON
             raw_json = re.sub(r"^```(?:json)?\s*", "", raw_json)

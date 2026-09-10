@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     instagram_pass: str = ""
     apify_api_token: str = ""
     city: str = "Curitiba"
+    # AI gap-fill: when the catalog is thin, ask Claude to invent plausible
+    # events to pad it out. Off by default since Sept 2026.
+    #
+    # These events are fabricated — real venue names, real-looking dates,
+    # but nothing actually scheduled. That is a catalog whose entries a user
+    # can show up for and find nothing, which costs more trust than an
+    # honestly short list. It also spends tokens producing rows we'd rather
+    # not have. Set AI_GAP_FILL=true to re-enable.
+    ai_gap_fill: bool = False
     # Founder is auto-seeded as a curator at startup. Override via env var if
     # the app changes hands.
     founder_email: str = "ciro.b.domingos@gmail.com"
@@ -883,7 +892,11 @@ def health():
         "anthropic_checked_at": _anthropic_key_status.get("checked_at"),
         "instagram_configured": bool(settings.apify_api_token),
         "apify_configured": bool(settings.apify_api_token),
-        "ai_gap_fill_configured": bool(_anthropic_key_status.get("valid")),
+        # Reflects the AI_GAP_FILL switch, not just key validity — the
+        # feature is off by default (it fabricates events).
+        "ai_gap_fill_configured": bool(
+            settings.ai_gap_fill and _anthropic_key_status.get("valid")
+        ),
         # SMTP shows whether scrape-summary emails will fire. Both vars
         # required — missing either silently skips email send.
         "smtp_configured": bool(settings.smtp_user and settings.smtp_password),
@@ -4617,6 +4630,51 @@ def admin_reset_ig_shortcodes(requesting_email: str = ""):
     count = db.reset_ig_shortcodes()
     log.info(f"admin reset_ig_shortcodes: cleared {count} shortcodes by {requesting_email}")
     return {"reset": count, "message": f"{count} shortcodes resetados — próximo refresh fará full scrape de todos os handles."}
+
+
+@app.post("/admin/ig-accounts/reset-extraction-ledger")
+def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = ""):
+    """
+    Founder-only. Forgets which IG posts have already been through Claude
+    extraction, so the next scrape re-evaluates them.
+
+    Costs a full re-extraction of everything Apify hands back (roughly one
+    Claude call with an image per post) — call it knowingly. The reasons
+    that justify it: the extraction prompt changed and old posts should be
+    re-judged, or a bad run wrote wrong verdicts.
+
+    Pass `handle` to scope it to one account; omit for the whole ledger.
+    Usually paired with /admin/ig-accounts/reset-shortcodes, which is what
+    makes the probe re-fetch the posts in the first place.
+    """
+    _require_founder(requesting_email)
+    handles = [handle] if handle.strip() else None
+    removed = db.reset_processed_ig_posts(handles)
+    log.info(f"admin reset_extraction_ledger: {removed} rows by {requesting_email}")
+    return {
+        "removed": removed,
+        "scope": handle.strip().lower() or "all",
+        "message": (
+            f"{removed} posts esquecidos — o próximo scrape vai reextraí-los "
+            f"(custa uma chamada Claude por post)."
+        ),
+    }
+
+
+@app.get("/admin/extraction-ledger")
+def admin_extraction_ledger(requesting_email: str = ""):
+    """Ledger size + how many of those posts turned out to be events.
+
+    A low was_event ratio is normal and is exactly why the ledger pays:
+    the non-events are the bulk of what Apify returns, and without this
+    table every one of them would be re-sent to Claude on every run."""
+    _require_founder(requesting_email)
+    stats = db.count_processed_ig_posts()
+    total = stats["total"] or 0
+    return {
+        **stats,
+        "event_rate": round(stats["was_event"] / total, 3) if total else None,
+    }
 
 
 @app.post("/admin/ig-accounts/seed-defaults")
