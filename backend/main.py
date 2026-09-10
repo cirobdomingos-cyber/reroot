@@ -4667,6 +4667,26 @@ def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = ""):
     }
 
 
+@app.get("/admin/token-usage")
+def admin_token_usage(requesting_email: str = ""):
+    """
+    Claude token spend for the most recent refresh in this process.
+
+    In-memory and reset at the start of each run, so it reports the last
+    completed (or in-flight) refresh and is wiped by a redeploy. It exists
+    because an individual Anthropic account has no Admin API — without it
+    the only way to read spend is grepping Railway logs for
+    "Claude token usage", and the only signal that spend is wrong is the
+    balance reaching zero.
+    """
+    _require_founder(requesting_email)
+    try:
+        import token_meter
+        return token_meter.snapshot()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/admin/extraction-ledger")
 def admin_extraction_ledger(requesting_email: str = ""):
     """Ledger size + how many of those posts turned out to be events.
