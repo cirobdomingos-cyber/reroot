@@ -6,6 +6,7 @@ import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
+import { Capacitor } from '@capacitor/core'
 import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
@@ -164,6 +165,9 @@ export default function Profile() {
 
       {/* Compartilhar / Instalar — drives PWA distribution to friends */}
       <ShareInstallSection />
+
+      {/* Running-bundle diagnostic (native only) */}
+      <BundleInfo />
 
       {/* Notifications — placed right above Conquistas so the push opt-in
           is the first decision after the share card. Earlier we had it
@@ -699,6 +703,49 @@ function VibeSection({ state, dispatch }) {
 //     beforeinstallprompt event (Chrome/Edge/Brave on Android+desktop).
 //     iOS Safari never fires it — those users go to /install for the
 //     manual Add to Home Screen walkthrough.
+// Which JS bundle is actually running, on native only.
+//
+// Doubles as the live-update test: the TestFlight binary was built before
+// this component existed, so if it appears on the phone at all, a bundle
+// was downloaded and applied. After that it stays useful — "which version
+// is this person actually on" is otherwise unanswerable once updates stop
+// going through the App Store, and "did my fix reach them?" becomes the
+// most common question to ask about a bug report.
+function BundleInfo() {
+  const [info, setInfo] = useState(null)
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform?.()) return
+    let cancelled = false
+    import('@capgo/capacitor-updater')
+      .then(({ CapacitorUpdater }) => CapacitorUpdater.current())
+      .then(res => { if (!cancelled) setInfo(res) })
+      .catch(err => { if (!cancelled) setInfo({ error: String(err?.message || err) }) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!info) return null
+  // bundle.id === 'builtin' means no update has been applied and the app
+  // is running the JS compiled into the binary.
+  const onBuiltin = !info.error && (info.bundle?.id === 'builtin' || !info.bundle?.id)
+  return (
+    <div style={{
+      margin: '14px 16px 0', padding: '10px 14px', borderRadius: 12,
+      background: 'var(--bg2)', border: '1px solid var(--line)',
+      fontSize: 11, color: 'var(--text3)', lineHeight: 1.5,
+    }}>
+      <span className="neon-mono" style={{ letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+        Bundle
+      </span>{' '}
+      {info.error
+        ? `indisponível (${info.error})`
+        : onBuiltin
+          ? `nativo ${info.native || ''} (sem atualização aplicada)`
+          : `${info.bundle?.version || info.bundle?.id} · nativo ${info.native || ''}`}
+    </div>
+  )
+}
+
 function ShareInstallSection() {
   const [canInstall, setCanInstall] = useState(
     typeof window !== 'undefined' && !!window.__aueDeferredInstallPrompt
