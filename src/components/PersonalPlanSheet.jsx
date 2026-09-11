@@ -20,6 +20,13 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [dateStart, setDateStart] = useState('')
+  // Multi-day runs (Carnaval, a long weekend, a festival). Empty means a
+  // one-off, which is the overwhelming majority — so the field stays
+  // behind a toggle instead of adding a second date picker everyone has
+  // to scroll past. Backend and payload have carried date_end all along;
+  // this form was the last thing not asking for it.
+  const [multiDay, setMultiDay] = useState(false)
+  const [dateEnd, setDateEnd] = useState('')
   const [note, setNote] = useState('')
   const [friends, setFriends] = useState([])
   const [selected, setSelected] = useState(new Set())
@@ -61,6 +68,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   useEffect(() => {
     if (open) {
       setName(''); setVenue(''); setDateStart(''); setNote('')
+      setMultiDay(false); setDateEnd('')
       setSelected(new Set()); setSearch(''); setError(null)
       setConnectedGroup(null); setShowGroupPicker(false); setConnectingGroupId(null)
     }
@@ -119,6 +127,14 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
     const trimmedName = name.trim()
     if (trimmedName.length < 3) { setError('Dá um nome pro plano (mín 3 letras)'); return }
     if (!dateStart) { setError('Escolhe uma data'); return }
+    // Only send an end date when the user actually opted into a range and
+    // filled it in — an empty or backwards value degrades to a one-off
+    // rather than blocking the create.
+    const endValue = multiDay && dateEnd ? dateEnd : null
+    if (endValue && endValue < dateStart) {
+      setError('O fim não pode ser antes do começo')
+      return
+    }
     if (totalInviteeCount === 0) { setError('Convida pelo menos um amigo'); return }
     setSubmitting(true)
     try {
@@ -133,6 +149,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
           name: trimmedName,
           venue: venue.trim(),
           date_start: dateStart,
+          date_end: endValue,
           note: note.trim(),
           invitee_google_ids: inviteeIds,
         })
@@ -141,6 +158,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
           name: trimmedName,
           venue: venue.trim(),
           date_start: dateStart,
+          date_end: endValue,
           note: note.trim(),
           invitee_google_ids: [...selected],
         })
@@ -190,13 +208,40 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
               />
             </Field>
 
-            <Field label="Quando?">
+            <Field label={multiDay ? 'Começa quando?' : 'Quando?'}>
               <input
                 type="datetime-local"
                 value={dateStart} onChange={e => setDateStart(e.target.value)}
                 style={inputStyle}
               />
             </Field>
+
+            {multiDay ? (
+              <Field label="Vai até quando?">
+                <input
+                  type="datetime-local"
+                  value={dateEnd} onChange={e => setDateEnd(e.target.value)}
+                  // Can't end before it starts. The submit handler checks
+                  // this too — min= is advisory on some mobile browsers.
+                  min={dateStart || undefined}
+                  style={inputStyle}
+                />
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, lineHeight: 1.45 }}>
+                  O evento aparece em todos os dias entre as duas datas.
+                </div>
+              </Field>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setMultiDay(true)}
+                style={{
+                  background: 'none', border: 'none', padding: 0, marginBottom: 10,
+                  fontSize: 12, fontWeight: 600, color: 'var(--cyan)', cursor: 'pointer',
+                }}
+              >
+                + Dura mais de um dia
+              </button>
+            )}
 
             <Field label="Onde? (opcional)">
               <input
