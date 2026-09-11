@@ -3644,7 +3644,8 @@ def get_groups_with_source(source_event_id: str, google_id: str):
 
 
 @app.post("/groups/{group_id}/events")
-def create_group_event(group_id: str, req: GroupEventCreateRequest):
+def create_group_event(group_id: str, req: GroupEventCreateRequest,
+                       background_tasks: BackgroundTasks):
     """Create an event tagged to a group. Any member can create.
 
     Visibility is the unified rule (creator OR in invitee list); the
@@ -3662,6 +3663,13 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")
+
+    # Same floor as create_personal_plan. Both endpoints write the same
+    # group_events row, so a name accepted by one and rejected by the
+    # other is pure drift — the HTML `required` attribute was the only
+    # thing standing between this path and a 1-char event name.
+    if len((req.name or "").strip()) < 3:
+        raise HTTPException(status_code=400, detail="Dá um nome pro evento (mín 3 letras)")
 
     # Dedup: if this catalog event has already been added to this group,
     # return the existing row instead of creating a second one. Without
@@ -3776,14 +3784,26 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest):
         if note else
         f"{creator_name} adicionou: {req.name.strip()}"
     )
-    for invitee_id in invitees:
-        _send_push_to_user(
-            invitee_id,
-            title=f"🎲 {group_name}",
-            body=body,
-            url=f"/#/groups/{group_id}",
-            tag=tag,
-        )
+    # Fan out in a BackgroundTask, not inline. create_personal_plan already
+    # learned this: N serial webpush + APNs calls before responding blew past
+    # the frontend's 5s fetch timeout on a Railway cold start, so the UI
+    # showed "Failed to fetch" for an event that had in fact been created.
+    # This path kept the inline loop — a group of 8 meant 8 serial sends
+    # holding the response open. Same fix, backported.
+    def _fanout_pushes():
+        for invitee_id in invitees:
+            try:
+                _send_push_to_user(
+                    invitee_id,
+                    title=f"🎲 {group_name}",
+                    body=body,
+                    url=f"/#/groups/{group_id}",
+                    tag=tag,
+                )
+            except Exception as exc:
+                log.warning(f"Group event {event['id']}: push to {invitee_id} failed: {exc}")
+
+    background_tasks.add_task(_fanout_pushes)
     # Run badge eval on the creator so curador progression surfaces on
     # the next /user/state load. Other members get crew_quente tier-ups
     # on their own next interaction (cheaper than evaluating N members

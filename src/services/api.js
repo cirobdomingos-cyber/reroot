@@ -905,6 +905,10 @@ export async function deleteGroup(groupId, googleId) {
 }
 
 export async function createGroupEvent(groupId, googleId, eventData) {
+  // 15s timeout, matching createPersonalPlan — the two endpoints write the
+  // same row and should fail the same way. Push fan-out is a BackgroundTask
+  // on the backend now, so the response is fast; this is headroom for a
+  // Railway cold start, not for the sends.
   const res = await fetchWithTimeout(
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events`,
     {
@@ -912,6 +916,7 @@ export async function createGroupEvent(groupId, googleId, eventData) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ google_id: googleId, ...eventData }),
     },
+    15_000,
   )
   if (!res.ok) throw new Error(`Create group event failed: ${res.status}`)
   return res.json()
