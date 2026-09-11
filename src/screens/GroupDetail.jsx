@@ -17,6 +17,7 @@ import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
   setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed,
+  getFriends, addFriendById,
   uploadEventImage, deleteEventImage, BASE_URL,
 } from '../services/api'
 
@@ -1380,6 +1381,47 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
   })
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState(null)
+  // Who the viewer is already friends with, so the list can offer
+  // "+ amigo" only where it means something. Fetched when the sheet
+  // opens rather than lifted into GroupDetail — nothing else on the
+  // screen needs it.
+  const [friendIds, setFriendIds] = useState(new Set())
+  const [addingId, setAddingId] = useState(null)
+
+  useEffect(() => {
+    if (!open || !viewerGoogleId) return
+    let cancelled = false
+    getFriends(viewerGoogleId).then(list => {
+      if (cancelled) return
+      setFriendIds(new Set((Array.isArray(list) ? list : []).map(f => f.google_id)))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [open, viewerGoogleId])
+
+  // POST /friends/add-by-id auto-accepts, same as the invite-code flow —
+  // adding someone you're already in a group with is a deliberate act, so
+  // there's no request to wait on. Optimistic: flip the row immediately
+  // and put it back if the call fails.
+  async function handleAddFriend(member) {
+    setError(null)
+    setAddingId(member.google_id)
+    setFriendIds(prev => new Set([...prev, member.google_id]))
+    try {
+      const res = await addFriendById(viewerGoogleId, member.google_id)
+      if (res?.status && !['ok', 'already_friends'].includes(res.status)) {
+        throw new Error('Não consegui adicionar')
+      }
+    } catch (e) {
+      setFriendIds(prev => {
+        const next = new Set(prev)
+        next.delete(member.google_id)
+        return next
+      })
+      setError(e?.message || 'Não consegui adicionar como amigo')
+    } finally {
+      setAddingId(null)
+    }
+  }
 
   function fmtJoinedAt(iso) {
     if (!iso) return ''
@@ -1458,6 +1500,38 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                 }}>
                   Admin
                 </span>
+              )}
+              {/* Add as friend, straight from the member list. The backend
+                  has had /friends/add-by-id (auto-accepting, built for
+                  exactly this "someone you saw in the app" case) all
+                  along — the group list just never offered it, so being
+                  in a group with someone told you nothing and you both
+                  still had to trade invite codes. Hidden for yourself and
+                  for people you already know. */}
+              {m.google_id && m.google_id !== viewerGoogleId && (
+                friendIds.has(m.google_id) ? (
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, color: 'var(--text3)',
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                  }}>
+                    ✓ amigos
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleAddFriend(m)}
+                    disabled={addingId === m.google_id}
+                    style={{
+                      padding: '6px 10px', borderRadius: 8, flexShrink: 0,
+                      border: '1px solid var(--cyan)', background: 'transparent',
+                      fontSize: 11, fontWeight: 700, color: 'var(--cyan)',
+                      cursor: addingId === m.google_id ? 'wait' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`Adicionar ${m.name || 'essa pessoa'} como amigo`}
+                  >
+                    {addingId === m.google_id ? '…' : '+ amigo'}
+                  </button>
+                )
               )}
               {canActOnMember && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
