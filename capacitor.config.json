@@ -12,6 +12,17 @@
       "showSpinner": false,
       "androidSpinnerStyle": "small",
       "spinnerColor": "#7A9E7E"
+    },
+    "CapacitorUpdater": {
+      "autoUpdate": true,
+      "updateUrl": "https://reroot-production.up.railway.app/updates/check",
+      "statsUrl": "",
+      "allowModifyUrl": true,
+      "appReadyTimeout": 15000,
+      "responseTimeout": 30,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true,
+      "resetWhenUpdate": true
     }
   }
 }

@@ -5950,6 +5950,118 @@ async def push_send_daily_digest(body: DigestTriggerBody):
     return await send_daily_digest_to_all_subscribers(body.new_event_ids)
 
 
+# ── Live updates (Capgo self-hosted) ─────────────────────────────────
+# Ships the web bundle this container is already serving to installed
+# native apps, so a JS-only fix reaches phones in minutes instead of an
+# App Review cycle.
+#
+# DORMANT BY DEFAULT. With OTA_BUNDLE_VERSION unset, /updates/check tells
+# every device "nothing new" — which is what the first build ships with.
+# The plugin and notifyAppReady() get validated on real hardware through
+# TestFlight before a single update is ever offered, and if OTA ever
+# misbehaves, unsetting one Railway variable stops it instantly without a
+# deploy of the app.
+#
+# Publishing an update is therefore deliberate: deploy as usual, confirm
+# the web build is good, then bump OTA_BUNDLE_VERSION. The bundle served
+# is whatever /app/static holds right now, so "publish" means "bless the
+# current deploy", and the version is a human decision rather than a
+# timestamp that fires on every push.
+_OTA_ZIP_CACHE: dict[str, object] = {}
+
+
+def _ota_bundle_zip() -> Optional[bytes]:
+    """Zip of the static dir, built once per process and memoized.
+
+    Keyed on the configured version so a redeploy (fresh process) always
+    rebuilds, while repeated downloads from many devices don't re-zip.
+    """
+    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
+    if not version or not STATIC_DIR.exists():
+        return None
+    if _OTA_ZIP_CACHE.get("version") == version:
+        return _OTA_ZIP_CACHE.get("data")  # type: ignore[return-value]
+    import io as _io
+    import zipfile
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(STATIC_DIR.rglob("*")):
+            if path.is_file():
+                # Paths must be relative to the bundle root — the plugin
+                # unpacks this over the webview's document root.
+                zf.write(path, path.relative_to(STATIC_DIR).as_posix())
+    data = buf.getvalue()
+    _OTA_ZIP_CACHE.clear()
+    _OTA_ZIP_CACHE["version"] = version
+    _OTA_ZIP_CACHE["data"] = data
+    log.info(f"OTA bundle {version} packed: {len(data)} bytes")
+    return data
+
+
+@app.post("/updates/check")
+async def ota_check(request: Request):
+    """Capgo update endpoint. Returns {} when there is nothing to offer.
+
+    The plugin posts its current bundle version and device metadata; we
+    only look at the version. No checksum is returned because the bundle
+    is unencrypted (the plugin only requires one for encrypted bundles),
+    and no stats are collected — statsUrl is "" in capacitor.config.json
+    so nothing about our users reaches a third party.
+    """
+    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
+    if not version:
+        return {"message": "Live updates disabled", "error": "disabled"}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    current = str(body.get("version_name") or body.get("version") or "").strip()
+    if current == version:
+        return {"message": "Up to date"}
+    if _ota_bundle_zip() is None:
+        return {"message": "No bundle packed", "error": "no_bundle"}
+    base = str(request.base_url).rstrip("/")
+    log.info(f"OTA: offering {version} to a device on '{current or 'unknown'}'")
+    return {"version": version, "url": f"{base}/updates/bundle/{version}.zip"}
+
+
+@app.get("/updates/bundle/{version}.zip")
+def ota_bundle(version: str):
+    """Serve the packed bundle. Version in the path must match the one
+    currently published — a device holding a stale URL gets a 404 rather
+    than whatever happens to be on disk now."""
+    from fastapi.responses import Response
+    configured = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
+    if not configured or version != configured:
+        raise HTTPException(status_code=404, detail="Unknown bundle version")
+    data = _ota_bundle_zip()
+    if data is None:
+        raise HTTPException(status_code=404, detail="Bundle not available")
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{version}.zip"'},
+    )
+
+
+@app.get("/updates/status")
+def ota_status(requesting_email: str = ""):
+    """Is OTA on, and what would be served? Founder-only."""
+    _require_founder(requesting_email)
+    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
+    data = _ota_bundle_zip()
+    return {
+        "enabled": bool(version),
+        "published_version": version or None,
+        "bundle_bytes": len(data) if data else 0,
+        "static_dir_present": STATIC_DIR.exists(),
+        "hint": (
+            "Set OTA_BUNDLE_VERSION on Railway to publish the current deploy. "
+            "It must sort ABOVE the native app version the devices are running."
+        ),
+    }
+
+
 @app.post("/push/send-reminders")
 async def push_send_reminders(requesting_email: str = "", dry_run: bool = True):
     """Manual trigger for the day-before reminders — the scheduler runs

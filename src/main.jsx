@@ -20,6 +20,29 @@ import './styles/globals.css'
 // OAuth callbacks (custom scheme com.googleusercontent.apps.*) are a
 // different listener entirely (in google-auth.js); we skip them here so
 // the universal link handler doesn't fight the auth flow.
+// ── Live updates (Capgo) — MUST confirm the bundle booted ─────────────
+// The updater treats a bundle as failed unless notifyAppReady() runs
+// within appReadyTimeout, and rolls back to the previous one. That is the
+// safety net that makes shipping JS outside App Review sane: a bundle
+// that white-screens gets reverted on its own instead of bricking the app
+// for everyone until a new build clears review.
+//
+// It follows that this call must be as close to unconditional as
+// possible. It sits before the deep-link wiring (which lazy-imports and
+// could plausibly throw) and inside its own try/catch, so no later
+// failure can stop the bundle being marked healthy. On web the import
+// resolves to a no-op shim, hence the native guard.
+if (Capacitor.isNativePlatform?.()) {
+  import('@capgo/capacitor-updater')
+    .then(({ CapacitorUpdater }) => CapacitorUpdater.notifyAppReady())
+    .catch((err) => {
+      // Losing the confirmation means this bundle gets rolled back on the
+      // next launch. Noisy on purpose — silent rollback loops are miserable
+      // to diagnose from a user saying "it went back to the old version".
+      console.error('CapacitorUpdater.notifyAppReady failed', err)
+    })
+}
+
 if (Capacitor.isNativePlatform?.()) {
   import('@capacitor/app').then(({ App: CapApp }) => {
     CapApp.addListener('appUrlOpen', (event) => {
