@@ -17,6 +17,8 @@ DAILY_REFRESH_MINUTE = 0
 # Janela de "frescor" para decidir se o boot dispara um refresh imediato.
 # Se o último refresh foi há menos disso, o boot é silencioso.
 BOOT_REFRESH_SKIP_HOURS = 24
+# Hora do lembrete "amanhã tem" (America/Sao_Paulo).
+REMINDER_HOUR = 18
 
 log = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone=SCHEDULER_TZ)
@@ -288,6 +290,19 @@ async def run_refresh(settings):
         log.warning(f"Daily digest push failed: {e}")
 
 
+async def run_event_reminders():
+    """Fire the day-before reminders. Never raises — a push transport
+    hiccup must not kill the scheduler, same contract as the weekly
+    summary. The work itself is idempotent (sent_reminders), so a retry
+    or a redeploy mid-run cannot double-notify."""
+    try:
+        from main import send_event_reminders_for_tomorrow
+        result = await send_event_reminders_for_tomorrow()
+        log.info(f"Lembretes do dia seguinte: {result}")
+    except Exception as exc:
+        log.error(f"Falha ao enviar lembretes: {exc}")
+
+
 async def run_weekly_summary(settings):
     """Email the founder the past-7-days activity summary. Idempotent —
     re-running on the same day just sends a second email; the snapshot
@@ -475,11 +490,24 @@ def start_scheduler(settings, run_immediately: bool = True):
         id="weekly_summary",
         replace_existing=True,
     )
+    # Day-before reminders — 18:00 America/Sao_Paulo. Evening is when
+    # people look at tomorrow: late enough that the day is winding down,
+    # early enough to still arrange a ride or bail politely. Well clear of
+    # the 14:00 refresh so a slow scrape can't delay it.
+    scheduler.add_job(
+        run_event_reminders,
+        trigger="cron",
+        hour=REMINDER_HOUR,
+        minute=0,
+        id="event_reminders",
+        replace_existing=True,
+    )
     scheduler.start()
     log.info(
         f"Scheduler iniciado — refresh diário às "
         f"{DAILY_REFRESH_HOUR:02d}:{DAILY_REFRESH_MINUTE:02d} ({SCHEDULER_TZ}); "
-        f"resumo semanal às segundas 10:00 ({SCHEDULER_TZ})"
+        f"resumo semanal às segundas 10:00 ({SCHEDULER_TZ}); "
+        f"lembretes diários às {REMINDER_HOUR:02d}:00 ({SCHEDULER_TZ})"
     )
 
     if not run_immediately:

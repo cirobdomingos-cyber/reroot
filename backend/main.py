@@ -5719,6 +5719,81 @@ def _user_daily_digest_opted_in(google_id: str) -> bool:
     return True
 
 
+async def send_event_reminders_for_tomorrow() -> dict:
+    """Day-before reminder for everything you've RSVP'd to.
+
+    The README has promised this since launch and it never existed — the
+    app notified you when a friend RSVP'd, when you were invited, when
+    the catalog found something new, but never that the thing you already
+    committed to is happening. For a group of friends coordinating a
+    night out, that is the notification that actually earns its place.
+
+    A day before rather than hours before, deliberately: the useful
+    window is while you can still move something in your calendar, buy a
+    ticket, or arrange a ride — not ninety minutes out when the answer is
+    already yes or no.
+
+    Runs once daily and covers every event dated tomorrow, so a single
+    cron tick handles a whole day. Reuses the digest opt-out — someone
+    who muted notifications shouldn't get these either — and the
+    sent_reminders table makes the whole thing idempotent.
+    """
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Sao_Paulo")
+    tomorrow = (datetime.now(tz).date() + timedelta(days=1)).isoformat()
+
+    rows = db.get_rsvps_for_day(tomorrow)
+    if not rows:
+        log.info(f"Reminders: nothing on {tomorrow}")
+        return {"date": tomorrow, "candidates": 0, "sent": 0}
+
+    sent = skipped = 0
+    for r in rows:
+        gid, eid = r.get("google_id"), r.get("event_id")
+        if not gid or not eid:
+            continue
+        if db.reminder_already_sent(gid, eid):
+            skipped += 1
+            continue
+        if not _user_daily_digest_opted_in(gid):
+            skipped += 1
+            continue
+        name = (r.get("event_name") or "seu rolê").strip()
+        venue = (r.get("event_venue") or "").strip()
+        when = _reminder_time_label(r.get("event_date") or "")
+        body = name + (f" · {venue}" if venue else "") + (f" · {when}" if when else "")
+        try:
+            _send_push_to_user(
+                gid,
+                title="⏰ Amanhã!",
+                body=body,
+                url=_event_deep_link(eid),
+                tag=f"reminder-{eid}",
+            )
+            # Mark even when zero devices were reached: the user has no
+            # push channel registered, and re-trying tomorrow would send
+            # a "tomorrow!" for an event happening today.
+            db.mark_reminder_sent(gid, eid)
+            sent += 1
+        except Exception as exc:
+            log.warning(f"Reminder for {eid} → {gid} failed: {exc}")
+
+    log.info(f"Reminders for {tomorrow}: {sent} sent, {skipped} skipped")
+    return {"date": tomorrow, "candidates": len(rows), "sent": sent, "skipped": skipped}
+
+
+def _reminder_time_label(date_iso: str) -> str:
+    """"21:00" from an ISO timestamp; empty when the row has date only."""
+    raw = (date_iso or "").strip()
+    if "T" not in raw:
+        return ""
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return ""
+    return dt.strftime("%H:%M")
+
+
 async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) -> dict:
     """Fanout the daily "novidades hoje" push after the catalog refresh,
     across both push channels:
@@ -5873,6 +5948,48 @@ async def push_send_daily_digest(body: DigestTriggerBody):
     re-firing on a scrape where the cron didn't catch the event ids."""
     _require_founder(body.requesting_email)
     return await send_daily_digest_to_all_subscribers(body.new_event_ids)
+
+
+@app.post("/push/send-reminders")
+async def push_send_reminders(requesting_email: str = "", dry_run: bool = True):
+    """Manual trigger for the day-before reminders — the scheduler runs
+    this at 18:00 America/Sao_Paulo daily. Exists so the job can be
+    verified without waiting for the cron, and re-fired if a deploy
+    happened to land on top of it.
+
+    Defaults to dry_run: reports who WOULD be reminded and why, without
+    sending or marking anything. Safe to hit in production."""
+    _require_founder(requesting_email)
+    if not dry_run:
+        return await send_event_reminders_for_tomorrow()
+
+    from zoneinfo import ZoneInfo
+    tomorrow = (datetime.now(ZoneInfo("America/Sao_Paulo")).date() + timedelta(days=1)).isoformat()
+    rows = db.get_rsvps_for_day(tomorrow)
+    preview = []
+    for r in rows:
+        gid, eid = r.get("google_id"), r.get("event_id")
+        if not gid or not eid:
+            continue
+        if db.reminder_already_sent(gid, eid):
+            state = "already_sent"
+        elif not _user_daily_digest_opted_in(gid):
+            state = "opted_out"
+        else:
+            state = "would_send"
+        preview.append({
+            "event": r.get("event_name"),
+            "event_id": eid,
+            "at": r.get("event_date"),
+            "state": state,
+        })
+    return {
+        "dry_run": True,
+        "date": tomorrow,
+        "candidates": len(preview),
+        "would_send": sum(1 for p in preview if p["state"] == "would_send"),
+        "detail": preview[:50],
+    }
 
 
 @app.get("/push/vapid-public-key")

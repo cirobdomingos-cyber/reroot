@@ -232,6 +232,18 @@ def init_db():
         # The DEFAULT on the column above stays 'pending'; every insert
         # path today passes an explicit status, so the default only
         # applies to rows written by a future request flow.
+        # Day-before reminders already delivered. Exists purely so the
+        # scheduler is idempotent — see reminder_already_sent(). Rows are
+        # never cleaned up: one row per (person, event) they attended is
+        # a rounding error next to the events table itself.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sent_reminders (
+                google_id    TEXT NOT NULL,
+                event_id     TEXT NOT NULL,
+                sent_at      TEXT NOT NULL,
+                PRIMARY KEY (google_id, event_id)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS submitted_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3554,8 +3566,67 @@ def update_group_event(event_id: str, fields: dict) -> Optional[dict]:
     params = list(updates.values()) + [event_id]
     with get_conn() as conn:
         conn.execute(f"UPDATE group_events SET {set_clauses} WHERE id = ?", params)
+        # Keep the denormalized copy on rsvps in sync. Those columns are
+        # what get_rsvps_for_day() reads, so without this a host who moves
+        # an event leaves every attendee scheduled to be reminded on the
+        # old date — and never on the new one.
+        mirror = {k: v for k, v in updates.items() if k in ("name", "venue", "date_start")}
+        if mirror:
+            cols, vals = [], []
+            if "name" in mirror:       cols.append("event_name = ?");  vals.append(mirror["name"])
+            if "venue" in mirror:      cols.append("event_venue = ?"); vals.append(mirror["venue"])
+            if "date_start" in mirror: cols.append("event_date = ?");  vals.append(mirror["date_start"])
+            conn.execute(
+                f"UPDATE rsvps SET {', '.join(cols)} WHERE event_id = ?",
+                vals + [event_id],
+            )
         conn.commit()
     return get_group_event(event_id)
+
+
+def get_rsvps_for_day(day_iso: str) -> list[dict]:
+    """Every RSVP whose event falls on `day_iso` (YYYY-MM-DD).
+
+    Reads the denormalized name/venue/date the rsvps row already carries,
+    so the day-before reminder needs one query instead of a join across
+    the catalog and group_events tables. update_group_event() keeps that
+    copy in sync when a host moves the date, so a rescheduled event
+    reminds on the right day."""
+    if not day_iso:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT google_id, event_id, event_name, event_venue, event_date "
+            "FROM rsvps WHERE substr(event_date, 1, 10) = ?",
+            (day_iso,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def reminder_already_sent(google_id: str, event_id: str) -> bool:
+    """True when this user has already been reminded about this event.
+
+    The scheduler is at-least-once: a Railway redeploy mid-run, or a
+    retry, would otherwise re-notify everyone. The push `tag` collapses
+    duplicates on the device but does not stop us from sending them, and
+    an APNs send that arrives twice still buzzes twice."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM sent_reminders WHERE google_id = ? AND event_id = ?",
+            (google_id, event_id),
+        ).fetchone()
+    return row is not None
+
+
+def mark_reminder_sent(google_id: str, event_id: str) -> None:
+    """Record that the day-before reminder went out for this pair."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO sent_reminders (google_id, event_id, sent_at) "
+            "VALUES (?, ?, ?)",
+            (google_id, event_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
 
 
 def is_event_co_host(event_id: str, google_id: str) -> bool:
