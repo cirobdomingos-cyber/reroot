@@ -12,6 +12,7 @@ import functools
 import json
 import logging
 import os
+import hashlib
 import re
 import unicodedata
 from contextlib import asynccontextmanager
@@ -5980,6 +5981,21 @@ async def push_send_daily_digest(body: DigestTriggerBody):
 _OTA_ZIP_CACHE: dict[str, object] = {}
 
 
+def _ota_main_chunk_name() -> Optional[str]:
+    """Filename of the largest JS chunk in the static dir — the main
+    bundle. Its hash is content-derived, so comparing it against what
+    the site serves confirms a deploy actually landed."""
+    if not STATIC_DIR.exists():
+        return None
+    assets = STATIC_DIR / "assets"
+    if not assets.exists():
+        return None
+    js = [p for p in assets.glob("index-*.js") if p.is_file()]
+    if not js:
+        return None
+    return max(js, key=lambda p: p.stat().st_size).name
+
+
 def _ota_bundle_zip() -> Optional[bytes]:
     """Zip of the static dir, built once per process and memoized.
 
@@ -6001,10 +6017,21 @@ def _ota_bundle_zip() -> Optional[bytes]:
                 # unpacks this over the webview's document root.
                 zf.write(path, path.relative_to(STATIC_DIR).as_posix())
     data = buf.getvalue()
+    # Content hash of the packed bundle. A published version is supposed to
+    # be IMMUTABLE — the version string is the content's identity, and a
+    # device that already has it is told "up to date" and never refetches.
+    # But the zip is packed from whatever is in /app/static at the time, so
+    # bumping the version before a deploy lands publishes the OLD build
+    # under the NEW number, and the device is then stranded on it with no
+    # way to be offered the same version again. That happened on 1.1.2.
+    # Logging the hash makes "is the published bundle the build I think it
+    # is?" answerable instead of assumed.
+    digest = hashlib.sha256(data).hexdigest()[:12]
     _OTA_ZIP_CACHE.clear()
     _OTA_ZIP_CACHE["version"] = version
     _OTA_ZIP_CACHE["data"] = data
-    log.info(f"OTA bundle {version} packed: {len(data)} bytes")
+    _OTA_ZIP_CACHE["sha256"] = digest
+    log.info(f"OTA bundle {version} packed: {len(data)} bytes, sha256:{digest}")
     return data
 
 
@@ -6076,6 +6103,11 @@ def ota_status(requesting_email: str = ""):
         "enabled": bool(version),
         "published_version": version or None,
         "bundle_bytes": len(data) if data else 0,
+        # Verify this against the deployed web build before telling anyone
+        # to test — it is the only way to know the published version holds
+        # the code you think it does.
+        "bundle_sha256": _OTA_ZIP_CACHE.get("sha256") if data else None,
+        "main_chunk": _ota_main_chunk_name(),
         "static_dir_present": STATIC_DIR.exists(),
         "hint": (
             "Set OTA_BUNDLE_VERSION on Railway to publish the current deploy. "
