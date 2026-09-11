@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
-import { signInWithApple } from '../lib/apple-auth'
+import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import { trackEvent } from '../services/api'
 
@@ -68,8 +68,13 @@ function LangToggle({ language, dispatch }) {
           style={{
             padding: '4px 12px', borderRadius: 16, fontSize: 11, fontWeight: 700,
             cursor: 'pointer', border: 'none', transition: 'all 0.15s',
-            background: language === lang ? 'white' : 'transparent',
-            color: language === lang ? 'var(--charcoal)' : 'rgba(255,255,255,0.5)',
+            // Selected pill was `background: white` + `color: var(--charcoal)`.
+            // The Neon Boteco rebrand remapped --charcoal to var(--text)
+            // (#F4ECFF, near-white), so the selected language rendered
+            // white-on-white — invisible. Both sides come from tokens now,
+            // so a future palette change can't invert them again.
+            background: language === lang ? 'var(--text)' : 'transparent',
+            color: language === lang ? 'var(--bg)' : 'rgba(255,255,255,0.5)',
             textTransform: 'uppercase', letterSpacing: 0.5,
           }}
         >
@@ -86,8 +91,13 @@ export default function Onboarding() {
   const t = useT()
   const googleBtnRef = useRef(null)
   const googleConfigured = isGoogleConfigured()
+  // Only render the Apple button where the flow can actually complete —
+  // native iOS, or a web build that has the Service ID baked in. See
+  // isAppleSignInAvailable() for why this gate exists.
+  const appleAvailable = isAppleSignInAvailable()
   // 'welcome' = step 1 (sign-in/visitor), 'vibe' = step 2 (profile picker)
   const [step, setStep] = useState('welcome')
+  const [signInError, setSignInError] = useState('')
 
   useEffect(() => { trackEvent('onboarding_started') }, [])
 
@@ -111,11 +121,13 @@ export default function Onboarding() {
 
   // Apple Sign-In — same shape as Google: drop the resolved user into
   // state.googleUser (legacy field name; covers any provider). The
-  // hook handles platform detection (Capacitor native vs web JS SDK)
-  // and surfaces a Portuguese error string we just alert() since the
-  // failure modes are mostly "user cancelled" / "config missing" /
-  // network — none worth a custom UI surface yet.
+  // hook handles platform detection (Capacitor native vs web JS SDK).
+  //
+  // Errors render inline instead of alert(): a system dialog on the very
+  // first screen reads as "the app is broken", and the message can carry
+  // config detail no user should be shown. Cancelling is not an error.
   async function handleApple() {
+    setSignInError('')
     try {
       const user = await signInWithApple()
       dispatch({ type: 'SET_GOOGLE_USER', payload: user })
@@ -126,7 +138,7 @@ export default function Onboarding() {
       setStep('vibe')
     } catch (err) {
       if (err?.message && err.message !== 'Login cancelado.') {
-        alert(err.message)
+        setSignInError('Não consegui entrar com a Apple agora. Tenta com o Google ou entra como visitante.')
       }
     }
   }
@@ -194,6 +206,8 @@ export default function Onboarding() {
           googleBtnRef={googleBtnRef}
           onMockGoogle={handleMockGoogle}
           onApple={handleApple}
+          appleAvailable={appleAvailable}
+          signInError={signInError}
           onSkip={handleSkipSignin}
           privacyText={t.onboarding_privacy}
         />
@@ -421,7 +435,7 @@ function TeaserCard() {
 }
 
 // ── Step 1: welcome / sign-in ─────────────────────────────
-function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, onSkip, privacyText }) {
+function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, appleAvailable, signInError, onSkip, privacyText }) {
   return (
     <>
       <div style={{ flex: 1, padding: '24px 20px 0', color: 'white' }}>
@@ -454,7 +468,14 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
             button style (one of Apple's three sanctioned variants) —
             the app's whole background is near-black ("Neon Boteco" theme,
             see globals.css), so the black variant had almost no contrast
-            against it and didn't read as a distinct tappable button. */}
+            against it and didn't read as a distinct tappable button.
+
+            Hidden where the flow cannot complete (Android, desktop, any
+            web build without the Service ID baked in) — it used to render
+            as the most prominent button on the screen and then throw a
+            config error into an alert(). HIG 4.8 governs the iOS app,
+            which always takes the native branch and still shows it. */}
+        {appleAvailable && (
         <button
           onClick={onApple}
           style={{
@@ -473,6 +494,7 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
           <span aria-hidden style={{ fontSize: 18, lineHeight: 1 }}>{'\uF8FF'}</span>
           <span>Continuar com Apple</span>
         </button>
+        )}
 
         {googleConfigured ? (
           <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }} />
@@ -480,6 +502,17 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, on
           <button className="btn btn--primary" onClick={onMockGoogle} style={{ marginBottom: 10 }}>
             Entrar com Google
           </button>
+        )}
+
+        {signInError && (
+          <div role="alert" style={{
+            marginBottom: 10, padding: '9px 12px', borderRadius: 10,
+            background: 'var(--magenta-soft)', border: '1px solid var(--line)',
+            color: 'var(--text2)', fontSize: 12, lineHeight: 1.45,
+            textAlign: 'center',
+          }}>
+            {signInError}
+          </div>
         )}
 
         <button

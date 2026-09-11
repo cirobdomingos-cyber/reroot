@@ -57,7 +57,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
         name: event.name,
         venue: event.venue || '',
         date_start: event.dateStart,
-        date_end: null,
+        // Carry the range across the fork. Hardcoding null here collapsed
+        // every multi-day catalog event (Carnaval, a week-long exhibition)
+        // to its opening day the moment someone added it to a group.
+        date_end: event.dateEnd || null,
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
         note: note.trim().slice(0, 280),

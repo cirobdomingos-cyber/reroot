@@ -807,6 +807,23 @@ _INSTALL_HTML = """<!DOCTYPE html>
 """
 
 
+def _event_deep_link(event_id: str) -> str:
+    """The one in-app URL that opens an event.
+
+    There is NO `/events/:id` route — App.jsx routes `/events` and the
+    screen reads `?event=` on mount to open the detail drawer. Anything
+    shaped `/#/events/<id>` falls through to the `path="*"` catch-all and
+    redirects to the root, so the recipient lands on the start screen
+    instead of the event.
+
+    Three push triggers (event invite, co-host promotion, personal-plan
+    invite) shipped with that broken shape — the most socially important
+    notifications in the app, each dumping the user at the front door.
+    Build every event link through here so the shape lives in one place.
+    """
+    return f"/#/events?event={event_id}"
+
+
 @app.get("/e/{event_id}")
 def short_event_link(event_id: str):
     """Short-link redirect for share URLs. Tradeoff: shorter copy at
@@ -823,7 +840,7 @@ def short_event_link(event_id: str):
     if not event_id:
         return RedirectResponse(url="/", status_code=302)
     return RedirectResponse(
-        url=f"/#/events?event={event_id}",
+        url=_event_deep_link(event_id),
         status_code=302,
     )
 
@@ -1555,6 +1572,13 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         "source": "group",
         "igHandle": None,
         "dateStart": ds,
+        # Multi-day ranges (Carnaval, a weekend trip, a 3-day festival).
+        # The column and the create endpoint have always accepted this;
+        # the payload used to drop it, which silently collapsed every
+        # private event to a single day. The frontend's eventCoversDay()
+        # needs it to light the event up on each day of the range in the
+        # week strip and the per-day filter.
+        "dateEnd": ge.get("date_end") or None,
         "venueAddress": "",
         "city": "Curitiba",
         # User-uploaded images live on the same /event-images/ mount as
@@ -1731,6 +1755,11 @@ class EventSubmission(BaseModel):
     venue_address: str = ""
     city: str = "Curitiba"
     date_start: str                   # ISO 8601 string from frontend
+    # Last day of a multi-day run (festival, exhibition, Carnaval). Optional
+    # — a one-off event leaves it None and renders on its start day only.
+    # EnrichmentPipeline already carries date_end from RawEvent through to
+    # the enriched row, so both submission paths below just pass it along.
+    date_end: Optional[str] = None
     price_min: float = 0.0
     price_max: float = 0.0
     url: str = ""
@@ -1738,24 +1767,35 @@ class EventSubmission(BaseModel):
     ig_handle: str = ""               # if sourced from an IG post — auto-tracked
 
 
+def _parse_submission_date(value: str):
+    """Parse the frontend's date string in any of the three shapes an
+    <input type="datetime-local"> / type="date" pair can produce. Returns
+    a UTC-aware datetime, or None when the string is unusable."""
+    import datetime as _dt
+    from datetime import timezone as _tz
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return _dt.datetime.strptime(value, fmt).replace(tzinfo=_tz.utc)
+        except ValueError:
+            pass
+    return None
+
+
 async def _save_unenriched_submission(submission_id: int, req: EventSubmission) -> None:
     """Write a user submission straight to the events table without Claude enrichment.
     Used when Anthropic credits are unavailable. Enrichment will overwrite on the
     next scrape cycle once credits are restored."""
     from models import EnrichedEvent
-    from datetime import timezone as tz
-    import datetime as dt
 
-    ds = None
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
-        try:
-            ds = dt.datetime.strptime(req.date_start, fmt).replace(tzinfo=tz.utc)
-            break
-        except ValueError:
-            pass
+    ds = _parse_submission_date(req.date_start)
     if not ds:
         log.warning(f"Unenriched submission {submission_id}: invalid date_start '{req.date_start}'")
         return
+    # A malformed end date degrades to "one-off event" rather than
+    # rejecting the whole submission — the start date is what matters.
+    de = _parse_submission_date(req.date_end or "")
 
     price_min = req.price_min or 0.0
     if price_min == 0:
@@ -1778,7 +1818,7 @@ async def _save_unenriched_submission(submission_id: int, req: EventSubmission) 
         neighborhood="",
         city=req.city.strip() or settings.city,
         date_start=ds,
-        date_end=None,
+        date_end=de,
         price_min=price_min,
         price_max=req.price_max or 0.0,
         currency="BRL",
@@ -1815,15 +1855,8 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
 
     from enrichment import EnrichmentPipeline
     from models import RawEvent
-    from datetime import timezone as tz
 
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
-        try:
-            ds = __import__("datetime").datetime.strptime(req.date_start, fmt).replace(tzinfo=tz.utc)
-            break
-        except ValueError:
-            ds = None
-
+    ds = _parse_submission_date(req.date_start)
     if not ds:
         log.warning(f"Submission {submission_id}: invalid date_start '{req.date_start}'")
         return
@@ -1837,6 +1870,7 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
         venue_address=req.venue_address[:300],
         city=req.city,
         date_start=ds,
+        date_end=_parse_submission_date(req.date_end or ""),
         price_min=req.price_min,
         price_max=req.price_max,
         url=req.url[:500],
@@ -2270,7 +2304,7 @@ def rsvp_upsert(req: RsvpUpsertRequest):
                 friend["google_id"],
                 title=f"🎉 {user_name} vai",
                 body=req.event_name,
-                url=f"/#/events?event={req.event_id}",
+                url=_event_deep_link(req.event_id),
                 tag=tag,
             )
 
@@ -3457,7 +3491,7 @@ def request_event_invite(event_id: str, google_id: str, background_tasks: Backgr
             try:
                 _send_push_to_user(
                     tgt, title=title, body=body,
-                    url=f"/#/events?event={event_id}", tag=tag,
+                    url=_event_deep_link(event_id), tag=tag,
                 )
             except Exception as exc:
                 log.warning(f"invite-request push to {tgt} failed: {exc}")
@@ -3516,7 +3550,7 @@ def accept_invite_request(
                 requester_google_id,
                 title="🎉 Você foi convidado",
                 body=body,
-                url=f"/#/events?event={event_id}",
+                url=_event_deep_link(event_id),
                 tag=f"invite-accepted-{event_id}",
             )
         except Exception as exc:
@@ -3897,7 +3931,7 @@ def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks:
                         invitee,
                         title="🎲 Convite",
                         body=body,
-                        url=f"/#/events/{event_id}",
+                        url=_event_deep_link(event_id),
                         tag=tag,
                     )
                 except Exception as exc:
@@ -3952,7 +3986,7 @@ def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: Ba
                     target,
                     title="🎲 Co-organizador",
                     body=body,
-                    url=f"/#/events/{event_id}",
+                    url=_event_deep_link(event_id),
                     tag=tag,
                 )
             except Exception as exc:
@@ -4115,7 +4149,7 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
                     invitee,
                     title="🎲 Convite",
                     body=body,
-                    url=f"/#/events/{event_id}",
+                    url=_event_deep_link(event_id),
                     tag=tag,
                 )
             except Exception as exc:

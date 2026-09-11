@@ -1043,7 +1043,8 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
         name: ev.name,
         venue: ev.venue || '',
         date_start: ev.dateStart,
-        date_end: null,
+        // Preserve multi-day ranges across the fork — see AddToGroupSheet.
+        date_end: ev.dateEnd || null,
         description: (desc + urlSuffix).slice(0, 1000),
       })
       onClose()

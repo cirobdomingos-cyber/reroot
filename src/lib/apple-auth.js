@@ -111,6 +111,30 @@ async function signInWeb() {
 // ── Public entrypoint ─────────────────────────────────────
 
 /**
+ * True when Sign in with Apple can actually complete on this platform.
+ *
+ * Callers MUST gate the button on this. Until they did, the web build
+ * rendered "Continuar com Apple" as the most prominent button on the
+ * onboarding screen — on Android and desktop, where tapping it threw
+ * "Apple Sign-In na web não configurado (VITE_APPLE_WEB_SERVICE_ID)"
+ * straight into an alert(). The Dockerfile only bakes
+ * VITE_GOOGLE_CLIENT_ID and VITE_API_URL, so WEB_SERVICE_ID is empty in
+ * every non-iOS build we ship.
+ *
+ * Apple's HIG 4.8 (offer Sign in with Apple at least as prominently as
+ * other providers) applies to the iOS app, which is the native branch —
+ * hiding a button that cannot work on Android is not a compliance risk.
+ *
+ * Self-correcting: bake VITE_APPLE_WEB_SERVICE_ID into the web build and
+ * the button comes back on its own, no code change.
+ */
+export function isAppleSignInAvailable() {
+  if (typeof window === 'undefined') return false
+  if (IS_NATIVE) return Capacitor.getPlatform() === 'ios'
+  return !!WEB_SERVICE_ID
+}
+
+/**
  * Run the full Apple Sign-In flow on the current platform.
  * Returns the canonical user shape AppContext stores in state.googleUser:
  *   { id, email, name, givenName, familyName, picture: '' }

@@ -220,10 +220,18 @@ def init_db():
                 PRIMARY KEY (user_a, user_b)
             )
         """)
-        # One-shot migration: flip any legacy 'pending' friendships to 'accepted'.
-        conn.execute(
-            "UPDATE friendships SET status = 'accepted' WHERE status = 'pending'"
-        )
+        # NOTE: this used to run `UPDATE friendships SET status='accepted'
+        # WHERE status='pending'` on every boot — billed as a "one-shot
+        # migration" for legacy rows, but it executes on each start. It is
+        # removed now that a real request/accept flow is coming: left in
+        # place it would silently accept every pending friend request on
+        # the next deploy. The legacy rows it was meant to fix have long
+        # since been flipped (it ran on every boot for months), so there is
+        # nothing left for it to migrate.
+        #
+        # The DEFAULT on the column above stays 'pending'; every insert
+        # path today passes an explicit status, so the default only
+        # applies to rows written by a future request flow.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS submitted_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,

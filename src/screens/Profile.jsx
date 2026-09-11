@@ -5,7 +5,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useApp, PROFILES } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
-import { signInWithApple } from '../lib/apple-auth'
+import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
@@ -1494,6 +1494,7 @@ function SignInCard({ dispatch }) {
           sanctioned variants), matching Onboarding's. This card's own
           background (--white) resolves to a dark violet in the "Neon
           Boteco" theme, so the black variant barely stood out from it. */}
+      {isAppleSignInAvailable() && (
       <button
         onClick={handleApple}
         style={{
@@ -1512,6 +1513,7 @@ function SignInCard({ dispatch }) {
         <span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>{'\uF8FF'}</span>
         <span>Continuar com Apple</span>
       </button>
+      )}
     </div>
   )
 }
