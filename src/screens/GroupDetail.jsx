@@ -10,12 +10,13 @@ import HomeEventRow from '../components/HomeEventRow'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EditEventSheet from '../components/EditEventSheet'
+import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { compressImageForUpload } from '../lib/image-compress'
 import { shareLink, appLink, shortEventLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
-  setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed, getFriends,
+  setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed,
   uploadEventImage, deleteEventImage, BASE_URL,
 } from '../services/api'
 
@@ -68,10 +69,27 @@ export default function GroupDetail() {
     })
   }, [groupId, googleId])
 
+  // Catalog picker path: the user picked an existing catalog event to
+  // fork into this group, so this screen still does the create. Distinct
+  // from handleEventCreated below, where the shared sheet has already
+  // created the row and just hands it back.
   async function handleAddEvent(eventData) {
     const newEvent = await createGroupEvent(groupId, googleId, eventData)
-    setGroup(prev => ({ ...prev, events: [...prev.events, newEvent] }))
-    setShowAddEvent(false)
+    setGroup(prev => ({ ...prev, events: [...(prev?.events || []), newEvent] }))
+    fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
+  }
+
+  // The shared sheet creates the event itself and hands back the row.
+  // It also lets the user disconnect the group mid-flow (the subset
+  // escape hatch), in which case what comes back is a standalone plan
+  // that does NOT belong to this group — so only splice it into the
+  // group's list when it actually carries this group's id.
+  function handleEventCreated(newEvent) {
+    const belongsHere = newEvent?.group_id === groupId ||
+      (newEvent?.group_ids || []).includes(groupId)
+    if (belongsHere) {
+      setGroup(prev => ({ ...prev, events: [...(prev?.events || []), newEvent] }))
+    }
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
   }
 
@@ -361,7 +379,17 @@ export default function GroupDetail() {
       {/* Sheets */}
       <InviteSheet open={showInvite} onClose={() => setShowInvite(false)} group={group} t={t} />
       <CalendarSheet open={showCalendar} onClose={() => setShowCalendar(false)} group={group} feedUrl={feedUrl} t={t} />
-      <AddEventSheet open={showAddEvent} onClose={() => setShowAddEvent(false)} onSave={handleAddEvent} group={group} googleId={googleId} t={t} />
+      {/* Same sheet as the Home CTA, with this group pre-connected.
+          GroupDetail used to ship its own near-duplicate (AddEventSheet),
+          which drifted: no "recado" field, and no warning that invited
+          outsiders can't see the group. One sheet, one place to fix. */}
+      <PersonalPlanSheet
+        open={showAddEvent}
+        onClose={() => setShowAddEvent(false)}
+        googleId={googleId}
+        initialGroupId={groupId}
+        onCreated={handleEventCreated}
+      />
       <CatalogPickerSheet open={showCatalog} onClose={() => setShowCatalog(false)} onPick={handleAddEvent} />
       <MembersSheet
         open={showMembers}
@@ -772,228 +800,6 @@ function CalendarSheet({ open, onClose, group, feedUrl, t }) {
 }
 
 
-function AddEventSheet({ open, onClose, onSave, group, googleId, t }) {
-  const [name, setName] = useState('')
-  const [venue, setVenue] = useState('')
-  const [dateStart, setDateStart] = useState('')
-  const [dateEnd, setDateEnd] = useState('')
-  const [description, setDescription] = useState('')
-  const [saving, setSaving] = useState(false)
-  // Friends-of-creator who aren't in the group, for the "Convidar amigos
-  // de fora" picker. Lazy-fetched when the sheet opens.
-  const [friends, setFriends] = useState([])
-  const [extras, setExtras] = useState(new Set())
-  const [showExtras, setShowExtras] = useState(false)
-  const [extraSearch, setExtraSearch] = useState('')
-
-  useEffect(() => {
-    if (!open || !googleId) return
-    let cancelled = false
-    getFriends(googleId).then(list => {
-      if (!cancelled) setFriends(Array.isArray(list) ? list : [])
-    })
-    return () => { cancelled = true }
-  }, [open, googleId])
-
-  // Reset draft state on open so a stale form doesn't haunt next time.
-  useEffect(() => {
-    if (open) {
-      setName(''); setVenue(''); setDateStart(''); setDateEnd(''); setDescription('')
-      setExtras(new Set()); setShowExtras(false); setExtraSearch('')
-    }
-  }, [open])
-
-  // Group members minus the creator — these are atomically invited as
-  // part of "everyone in [group]." They render as a passive display, not
-  // an editable list (per the model rule: connecting a group is atomic;
-  // excluding a member would have to disconnect the group, which is a
-  // future affordance).
-  const memberInviteeIds = (group?.members || [])
-    .map(m => m.google_id)
-    .filter(gid => gid && gid !== googleId)
-
-  // Friends not already in the group, eligible for the extras picker.
-  const memberSet = new Set((group?.members || []).map(m => m.google_id))
-  const eligibleFriends = friends.filter(f => !memberSet.has(f.google_id))
-  const q = extraSearch.trim().toLowerCase()
-  const visibleFriends = q
-    ? eligibleFriends.filter(f => (f.name || '').toLowerCase().includes(q))
-    : eligibleFriends
-
-  function toggleExtra(gid) {
-    setExtras(prev => {
-      const next = new Set(prev)
-      if (next.has(gid)) next.delete(gid); else next.add(gid)
-      return next
-    })
-  }
-
-  // Visibility is intentionally not user-selectable. auê group events
-  // are members-only, full stop — see backend create endpoint, which
-  // hardcodes 'members' regardless of what the client sends.
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!name.trim() || !dateStart) return
-    setSaving(true)
-    try {
-      // Final invitee list = all current group members (minus creator)
-      // plus any extras the user picked. Sent as a snapshot — late
-      // joiners and never-invited extras don't see this event.
-      const inviteeIds = Array.from(new Set([...memberInviteeIds, ...extras]))
-      await onSave({
-        name: name.trim(),
-        venue: venue.trim(),
-        date_start: dateStart,
-        date_end: dateEnd || null,
-        description: description.trim(),
-        invitee_google_ids: inviteeIds,
-      })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <BottomSheet open={open} onClose={onClose} title={t.groups_add_event}>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <label style={labelStyle}>{t.groups_event_name}</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} required />
-
-        <label style={labelStyle}>{t.groups_event_venue}</label>
-        <input value={venue} onChange={e => setVenue(e.target.value)} style={inputStyle} />
-
-        <label style={labelStyle}>{t.groups_event_date}</label>
-        <input type="datetime-local" value={dateStart} onChange={e => setDateStart(e.target.value)} style={inputStyle} required />
-
-        <label style={labelStyle}>{t.groups_event_end}</label>
-        <input type="datetime-local" value={dateEnd} onChange={e => setDateEnd(e.target.value)} style={inputStyle} />
-
-        <label style={labelStyle}>{t.groups_event_desc}</label>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'none' }} />
-
-        {/* Atomic group invitee block — informational. The whole crew
-            comes as a unit; to exclude someone you'd need to disconnect
-            the group (future affordance). */}
-        {group && (
-          <div style={{
-            marginTop: 8, padding: '10px 12px', borderRadius: 12,
-            background: 'var(--sage-pale)',
-            border: '1px solid var(--sage)',
-          }}>
-            <div style={{
-              fontSize: 11, fontWeight: 700, letterSpacing: 0.4,
-              color: 'var(--sage)', textTransform: 'uppercase',
-              marginBottom: 6,
-            }}>
-              🔗 {group.name} — todos os membros
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {(group.members || []).map(m => (
-                <div
-                  key={m.google_id}
-                  title={m.name}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                >
-                  <Avatar name={m.name} src={m.picture} size={22} />
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 6 }}>
-              {memberInviteeIds.length + 1} pessoas — você + crew
-            </div>
-          </div>
-        )}
-
-        {/* Extras picker — invite friends from outside the group. They
-            see the event without the source group label leaking through
-            (backend strips groupId/groupName for non-member viewers). */}
-        <button
-          type="button"
-          onClick={() => setShowExtras(v => !v)}
-          style={{
-            marginTop: 4, padding: '10px 12px', borderRadius: 12,
-            background: 'transparent',
-            border: '1.5px dashed var(--border)',
-            color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}
-        >
-          <span>👥 Convidar amigos de fora{extras.size ? ` · ${extras.size}` : ''}</span>
-          <span style={{ fontSize: 11 }}>{showExtras ? '▲' : '▼'}</span>
-        </button>
-        {showExtras && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {eligibleFriends.length === 0 ? (
-              <div style={{
-                padding: '10px 12px', borderRadius: 10,
-                background: 'var(--cream)', fontSize: 12,
-                color: 'var(--charcoal-mid)', textAlign: 'center',
-              }}>
-                Sem amigos de fora pra convidar. Adicione amigos na aba Comunidade.
-              </div>
-            ) : (
-              <>
-                <input
-                  type="search"
-                  placeholder="Buscar amigo…"
-                  value={extraSearch}
-                  onChange={e => setExtraSearch(e.target.value)}
-                  style={inputStyle}
-                />
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 2,
-                  maxHeight: 180, overflowY: 'auto',
-                  border: '1px solid var(--border)', borderRadius: 10, padding: 4,
-                }}>
-                  {visibleFriends.length === 0 ? (
-                    <div style={{ padding: 10, fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center' }}>
-                      Ninguém com "{extraSearch}".
-                    </div>
-                  ) : visibleFriends.map(f => {
-                    const isSel = extras.has(f.google_id)
-                    return (
-                      <button
-                        key={f.google_id}
-                        type="button"
-                        onClick={() => toggleExtra(f.google_id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '7px 9px', borderRadius: 8,
-                          border: 'none', cursor: 'pointer',
-                          background: isSel ? 'var(--sage-pale)' : 'transparent',
-                          textAlign: 'left',
-                        }}
-                      >
-                        <Avatar name={f.name} src={f.picture} size={28} />
-                        <span style={{
-                          flex: 1, minWidth: 0, fontSize: 13,
-                          fontWeight: isSel ? 600 : 500,
-                          color: isSel ? 'var(--sage)' : 'var(--charcoal)',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
-                          {f.name || f.google_id}
-                        </span>
-                        {isSel && <span style={{ color: 'var(--sage)', fontSize: 13 }}>✓</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        <button type="submit" disabled={saving || !name.trim() || !dateStart} style={{
-          padding: '13px 0', borderRadius: 14, border: 'none',
-          background: 'var(--sage)', color: '#14081E', fontSize: 14, fontWeight: 600, cursor: 'pointer', marginTop: 4,
-        }}>
-          {saving ? '...' : t.groups_event_save}
-        </button>
-      </form>
-    </BottomSheet>
-  )
-}
 
 
 // ── Catalog picker — import a public Curitiba event into this group ──

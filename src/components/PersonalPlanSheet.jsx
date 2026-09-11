@@ -5,22 +5,32 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Avatar from './Avatar'
 import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGroupDetail } from '../services/api'
 
-// Plan creation sheet. Two modes share the same form:
-//   - **Standalone plan** (no group connected): hand-picked invitee
-//     list, posts to /events/private. The creator auto-RSVPs.
-//   - **Connected to a group**: "🔗 Conectar a Grupo" pulls all current
-//     members (atomic), then the user can add extras. Posts to
-//     /groups/{id}/events so the event shows up in the group's feed
-//     and inherits the group label for members.
+// The single event-creation sheet. Both entry points use it — the Home
+// "criar evento com amigos" CTA and "+ Novo Evento" inside a group, the
+// latter passing initialGroupId so the group arrives pre-connected.
+// GroupDetail used to carry its own AddEventSheet — a near-duplicate that
+// drifted: it had no "recado" field and, though it could invite outsiders,
+// never warned that those people can't see the group. Same action, two
+// behaviors depending on which button you pressed.
 //
-// Connecting a group is atomic: all current members come as a unit. To
-// exclude someone, you'd need to disconnect (resets to standalone plan
-// with the members as individual invitees) — wired as a follow-up.
+// Two modes, one form:
+//   - **No group connected**: hand-picked invitee list, POSTs to
+//     /events/private. The creator auto-RSVPs.
+//   - **Group connected**: all current members come as a unit, plus any
+//     extras you add. POSTs to /groups/{id}/events so the event shows in
+//     the group's feed and carries the group label — for members only.
+//     Outsiders never learn the group exists (see the note in the UI).
+//
+// Connecting a group is ATOMIC on purpose: everyone comes together, so
+// nobody is quietly left off a group event. Need a subset? Disconnect —
+// that expands the members into the individual picker so you can drop
+// whoever, rather than starting from an empty list.
 
-export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }) {
+export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, initialGroupId = null }) {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
+  const [description, setDescription] = useState('')
   const [dateStart, setDateStart] = useState('')
   // Multi-day runs (Carnaval, a long weekend, a festival). Empty means a
   // one-off, which is the overwhelming majority — so the field stays
@@ -40,6 +50,11 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   // the group_id tag. The members snapshot lives in connectedGroup.members.
   const [userGroups, setUserGroups] = useState([])
   const [connectedGroup, setConnectedGroup] = useState(null)
+  // People who are invitable but aren't in the friends list — group
+  // members dropped here by disconnectGroup(). Without this they'd be
+  // unreachable: the picker only renders `friends`, so a member who
+  // isn't your friend could never be re-added after a disconnect.
+  const [extraPeople, setExtraPeople] = useState([])
   const [showGroupPicker, setShowGroupPicker] = useState(false)
   const [connectingGroupId, setConnectingGroupId] = useState(null)
 
@@ -78,12 +93,28 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   // creation.
   useEffect(() => {
     if (open) {
-      setName(''); setVenue(''); setDateStart(''); setNote('')
+      setName(''); setVenue(''); setDateStart(''); setNote(''); setDescription('')
       setMultiDay(false); setDateEnd('')
-      setSelected(new Set()); setSearch(''); setError(null)
+      setSelected(new Set()); setSearch(''); setError(null); setExtraPeople([])
       setConnectedGroup(null); setShowGroupPicker(false); setConnectingGroupId(null)
     }
   }, [open])
+
+  // Opened from inside a group: pre-connect it, so this is the same sheet
+  // as the Home CTA with one field already filled. Declared after the
+  // reset effect so it wins — reset clears connectedGroup on open, then
+  // this puts the group back.
+  useEffect(() => {
+    if (!open || !googleId || !initialGroupId) return
+    let cancelled = false
+    fetchGroupDetail(initialGroupId, googleId).then(detail => {
+      if (cancelled) return
+      setConnectedGroup({ id: detail.id, name: detail.name, members: detail.members || [] })
+    }).catch(err => {
+      console.warn('PersonalPlanSheet: could not pre-connect group', err)
+    })
+    return () => { cancelled = true }
+  }, [open, googleId, initialGroupId])
 
   async function connectGroup(group) {
     setConnectingGroupId(group.id)
@@ -103,7 +134,21 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
     }
   }
 
+  // Disconnecting expands the group into individual invitees instead of
+  // dropping them. Connecting a group is deliberately atomic — everyone
+  // comes as a unit, so nobody gets quietly left off a group event — and
+  // this is the escape hatch for when you genuinely want a subset (a
+  // surprise for one of them, say). The file has promised this behavior
+  // in a comment since it was written; it was never wired, so "atomic"
+  // in practice meant "all of them or start over from an empty list".
   function disconnectGroup() {
+    const members = connectedGroup?.members || []
+    const invitable = members.filter(m => m.google_id && m.google_id !== googleId)
+    setSelected(prev => new Set([...prev, ...invitable.map(m => m.google_id)]))
+    setExtraPeople(prev => {
+      const known = new Set(prev.map(p => p.google_id))
+      return [...prev, ...invitable.filter(m => !known.has(m.google_id))]
+    })
     setConnectedGroup(null)
   }
 
@@ -112,9 +157,18 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   const connectedMemberIds = (connectedGroup?.members || [])
     .map(m => m.google_id)
     .filter(gid => gid && gid !== googleId)
-  // Friends not already covered by the connected group.
+  // Invitable pool = friends + anyone carried over from a disconnect.
+  // Deduped by google_id, friends winning (their row has the fresher
+  // name/picture).
+  const peoplePool = (() => {
+    const byId = new Map()
+    for (const f of friends) if (f.google_id) byId.set(f.google_id, f)
+    for (const p of extraPeople) if (p.google_id && !byId.has(p.google_id)) byId.set(p.google_id, p)
+    return [...byId.values()]
+  })()
+  // People not already covered by the connected group.
   const memberSet = new Set((connectedGroup?.members || []).map(m => m.google_id))
-  const eligibleFriends = friends.filter(f => !memberSet.has(f.google_id))
+  const eligibleFriends = peoplePool.filter(f => !memberSet.has(f.google_id))
 
   const q = search.trim().toLowerCase()
   const visibleFriends = q
@@ -136,7 +190,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
   async function submit() {
     setError(null)
     const trimmedName = name.trim()
-    if (trimmedName.length < 3) { setError('Dá um nome pro plano (mín 3 letras)'); return }
+    if (trimmedName.length < 3) { setError('Dá um nome pro evento (mín 3 letras)'); return }
     if (!dateStart) { setError('Escolhe uma data'); return }
     // Only send an end date when the user actually opted into a range and
     // filled it in — an empty or backwards value degrades to a one-off
@@ -161,6 +215,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
           venue: venue.trim(),
           date_start: dateStart,
           date_end: endValue,
+          description: description.trim(),
           note: note.trim(),
           invitee_google_ids: inviteeIds,
         })
@@ -170,6 +225,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
           venue: venue.trim(),
           date_start: dateStart,
           date_end: endValue,
+          description: description.trim(),
           note: note.trim(),
           invitee_google_ids: [...selected],
         })
@@ -177,7 +233,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
       onCreated?.(event)
       onClose()
     } catch (e) {
-      setError(e?.message || 'Erro ao criar plano')
+      setError(e?.message || 'Erro ao criar o evento')
     } finally {
       setSubmitting(false)
     }
@@ -207,8 +263,8 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
             </div>
             <h3 style={{ fontSize: 17, fontWeight: 700, textAlign: 'center', marginBottom: 14, color: 'var(--charcoal)' }}>
               {connectedGroup
-                ? `🎲 Plano em ${connectedGroup.name}`
-                : '🎲 Convidar amigos pra um plano'}
+                ? `🎲 Novo evento em ${connectedGroup.name}`
+                : '🎲 Criar um evento com amigos'}
             </h3>
 
             <Field label="O que vai rolar?">
@@ -253,6 +309,16 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
                 + Dura mais de um dia
               </button>
             )}
+
+            <Field label="Detalhes (opcional)">
+              <textarea
+                value={description} onChange={e => setDescription(e.target.value)}
+                placeholder="Ex: leva uma garrafa, começa 20h em ponto"
+                rows={2}
+                style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+                maxLength={1000}
+              />
+            </Field>
 
             <Field label="Onde? (opcional)">
               <input

@@ -426,7 +426,7 @@ export default function Home() {
                 letterSpacing: '0.16em', textTransform: 'uppercase',
                 marginTop: 4,
               }}>
-                Plano privado · convide a galera
+                Evento privado · convide a galera
               </div>
             </div>
             <span className="neon-mono" style={{
