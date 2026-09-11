@@ -1261,11 +1261,11 @@ export async function fetchUserGroupEvents(googleId) {
     )
     if (!res.ok) return []
     const { events } = await res.json()
-    // /events/group returns events through _group_event_to_frontend which
-    // emits camelCase keys (imageUrl). The /groups/{id} endpoint returns
-    // raw DB rows (snake_case image_url) — see fetchGroupDetail. Both
-    // need their respective key resolved so the iOS wrapper can load
-    // them; previous version read e.image_url here and silently no-op'd.
+    // Both /events/group and /groups/{id} now return events through the
+    // backend'''s _group_event_to_frontend, so every event source emits
+    // camelCase imageUrl. Resolve relative to absolute so the iOS wrapper
+    // can load it; an earlier version read e.image_url and silently
+    // no-op'''d, which is what the two shapes used to cost us.
     return (events || []).map(e => ({
       ...e,
       imageUrl: resolveImageUrl(e.imageUrl),
