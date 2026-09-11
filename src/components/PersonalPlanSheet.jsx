@@ -309,6 +309,25 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
                 <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 6 }}>
                   {connectedMemberIds.length + 1} pessoas — você + crew
                 </div>
+                {/* Privacy contract, stated where the decision is made.
+                    Outsiders on the invitee list never learn the group
+                    exists: the payload gates groupId/groupName on
+                    membership, /groups/{id} refuses non-members, and the
+                    push drops the group framing for them. Saying so here
+                    is what makes people comfortable mixing the two —
+                    otherwise you either don't invite outsiders, or you
+                    do and quietly worry about what they can see. */}
+                {selected.size > 0 && (
+                  <div style={{
+                    marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line)',
+                    fontSize: 11, color: 'var(--text3)', lineHeight: 1.5,
+                  }}>
+                    🔒 {selected.size === 1 ? 'A pessoa convidada de fora' : `As ${selected.size} pessoas convidadas de fora`}
+                    {' '}não {selected.size === 1 ? 'faz' : 'fazem'} parte de{' '}
+                    <strong style={{ color: 'var(--text2)' }}>{connectedGroup.name}</strong>
+                    {' '}— {selected.size === 1 ? 'ela vê' : 'elas veem'} só este evento, sem saber que o grupo existe.
+                  </div>
+                )}
               </div>
             ) : userGroups.length > 0 ? (
               <>

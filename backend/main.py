@@ -3784,20 +3784,42 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         if note else
         f"{creator_name} adicionou: {req.name.strip()}"
     )
+    # "adicionou" only makes sense if you know what it was added TO.
+    # An outsider has no group context, so they get the same phrasing
+    # create_personal_plan uses. Neither string names the group.
+    outsider_body = (
+        f'{creator_name}: "{note[:80]}" — {req.name.strip()}'
+        if note else
+        f"{creator_name} te convidou pra {req.name.strip()}"
+    )
     # Fan out in a BackgroundTask, not inline. create_personal_plan already
     # learned this: N serial webpush + APNs calls before responding blew past
     # the frontend's 5s fetch timeout on a Railway cold start, so the UI
     # showed "Failed to fetch" for an event that had in fact been created.
     # This path kept the inline loop — a group of 8 meant 8 serial sends
     # holding the response open. Same fix, backported.
+    # Outsiders must not learn the group exists. _group_event_to_frontend
+    # already gates groupId/groupName on membership, and GET /groups/{id}
+    # 403s non-members — but the push bypassed both: it put the private
+    # group's NAME in the title and deep-linked every recipient to
+    # /#/groups/{id}, a page outsiders are then refused. So the one
+    # channel that reaches you before you open the app was the one
+    # leaking. Members get the group framing; outsiders get the creator's
+    # name and a link to the event itself.
+    member_ids = {
+        m["google_id"] for m in db.get_group_members(group_id)
+        if m.get("google_id")
+    }
+
     def _fanout_pushes():
         for invitee_id in invitees:
+            is_member = invitee_id in member_ids
             try:
                 _send_push_to_user(
                     invitee_id,
-                    title=f"🎲 {group_name}",
-                    body=body,
-                    url=f"/#/groups/{group_id}",
+                    title=f"🎲 {group_name}" if is_member else "🎲 Convite",
+                    body=body if is_member else outsider_body,
+                    url=f"/#/groups/{group_id}" if is_member else _event_deep_link(event["id"]),
                     tag=tag,
                 )
             except Exception as exc:
