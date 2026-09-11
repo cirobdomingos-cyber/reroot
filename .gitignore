@@ -43,3 +43,7 @@ dev-dist/
 # Local design references / handed-off mocks — keep on disk for
 # reference, don't ship to the repo.
 neon_boteco_rebrand/
+
+# scratch files from local debugging
+b.tmp
+*.tmp
