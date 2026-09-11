@@ -25,7 +25,17 @@ import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
 // API call in the wrapper is pointed at capacitor://localhost. Deciding at
 // runtime means one bundle is correct on both platforms.
 // VITE_API_URL still wins when set, so dev and CI can override.
-export const BASE_URL = import.meta.env.VITE_API_URL ??
+// `||`, NOT `??`. The Dockerfile declares `ARG VITE_API_URL` and
+// `ENV VITE_API_URL=$VITE_API_URL`, so when Railway supplies no build arg
+// the variable exists as an EMPTY STRING rather than being absent. `??`
+// only falls through on null/undefined, so it kept the '' and the whole
+// platform branch below was dead in exactly the build that needed it —
+// the OTA bundle. On device that meant every API call resolved against
+// capacitor://localhost and the app reported "Salvamento na nuvem
+// falhou". An explicit empty value means "not configured", same as absent.
+const CONFIGURED_API_URL = (import.meta.env.VITE_API_URL || '').trim()
+
+export const BASE_URL = CONFIGURED_API_URL ||
   (import.meta.env.DEV
     ? 'http://localhost:8000'
     : (Capacitor.isNativePlatform?.() ? NATIVE_PUBLIC_ORIGIN : ''))
