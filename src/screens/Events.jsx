@@ -457,6 +457,20 @@ export default function Events() {
     setDetailEvent(null)
   }
 
+  // Esc closes the drawer. It is portalled to document.body and isn't a
+  // route, so without this there is no keyboard way out on desktop and no
+  // browser-back either — the same dead end the sticky nav strip fixes for
+  // touch. Bound only while a drawer is open so it can't swallow Esc from
+  // any other surface.
+  useEffect(() => {
+    if (!selectedEventId) return
+    function onKey(e) {
+      if (e.key === 'Escape') closeDetail()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedEventId])
+
   function handleCategoryChange(id) {
     setActiveFilter(id)
     setSearchQuery('')
@@ -1362,27 +1376,42 @@ export default function Events() {
               overflowY: 'auto', scrollbarWidth: 'none',
             }}
           >
-            {/* Drag handle */}
-            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 8 }}>
-              <div style={{ width: 36, height: 3, borderRadius: 2, background: 'var(--line)' }}/>
-            </div>
-
-            {/* In-app nav strip — mono '← BACK' on the left, EVT.id on the
-                right. Mirrors the Neon Boteco direction. Hidden when an
-                image hero is in play — those have their own back button
-                pinned to the photo. */}
-            {detailEvent && !detailEvent._forbidden && !detailEvent._networkError && !detailEvent.imageUrl && (
+            {/* Nav strip — STICKY, and always rendered.
+                Two bugs lived here. First, the drawer is portalled to
+                document.body, outside .phone-shell, which is where the
+                `padding-top: env(safe-area-inset-top)` lives — so on a
+                notched iPhone this strip started at y=0, underneath the
+                Dynamic Island, and "← BACK" was physically untappable.
+                The image-hero back button had already been hand-patched
+                with env(safe-area-inset-top); this one never was, which
+                is exactly why closing worked on some events and not
+                others.
+                Second, it scrolled away with the content. On a long event
+                there was then no way out at all — the drawer isn't a
+                route, so the iOS back-swipe does nothing either.
+                position:sticky keeps it in reach at any scroll depth, and
+                it now covers the image case too (that hero's duplicate
+                button is gone), so there is one close affordance in one
+                place on every event. */}
+            {detailEvent && !detailEvent._forbidden && !detailEvent._networkError && (
               <div className="neon-mono" style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '14px 18px',
+                position: 'sticky', top: 0, zIndex: 3,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px',
+                background: 'linear-gradient(180deg, var(--bg) 70%, transparent)',
+                backdropFilter: 'blur(6px)',
               }}>
                 <button
                   onClick={closeDetail}
+                  aria-label="Fechar"
                   style={{
                     background: 'transparent', border: 'none', cursor: 'pointer',
                     fontSize: 10, letterSpacing: '0.16em',
                     color: 'var(--cyan)', textTransform: 'uppercase',
-                    padding: 0,
+                    // Padding, not just text: 10px mono type is a ~30px
+                    // wide tap target otherwise. Negative margin keeps the
+                    // glyph optically aligned with the content below.
+                    padding: '10px 14px', margin: '-10px -14px',
                   }}
                 >
                   ← BACK
@@ -2482,27 +2511,11 @@ function DetailPanel({ event: ev, googleId, viewerName, viewerPicture, rsvped, f
             }} />
           </>
         )}
-        {/* Photo back button — only when an image hero is in play. The
-            no-image case has its own mono '← BACK' rendered above the
-            hero (in the drawer's nav strip), so this button would
-            duplicate it. */}
-        {showImage && (
-          <button onClick={(e) => { e.stopPropagation(); onClose() }} style={{
-            position: 'absolute',
-            // Push below iPhone notch / Dynamic Island. env() degrades to
-            // 0 on browsers that don't define the safe-area-inset, so this
-            // is also correct on web.
-            top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-            left: 12,
-            width: 32, height: 32, borderRadius: '50%',
-            background: 'rgba(10, 5, 16, 0.7)', backdropFilter: 'blur(8px)',
-            border: '1px solid var(--line)',
-            color: 'var(--cyan)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.6)',
-            zIndex: 1,
-          }}>←</button>
-        )}
+        {/* The hero used to carry its own back button, because the
+            drawer's nav strip was hidden whenever there was an image.
+            The strip is always rendered and sticky now, so a second
+            control here would just be two ways to do one thing — and the
+            hero one scrolled out of reach anyway. */}
         {/* Category emoji removed — collided with the back/upload buttons
             on short heroes and the surrounding chips already convey
             "type of event" (Grupo / Plano / Música / etc.) without it. */}
