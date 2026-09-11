@@ -427,7 +427,7 @@ function PostBreakdownRow({ event: e, rank, fmtDate }) {
           position: 'absolute', top: 4, left: 4,
           width: 18, height: 18, borderRadius: '50%',
           background: rank === 1 ? 'var(--honey)' : 'rgba(255,255,255,0.92)',
-          color: rank === 1 ? 'white' : 'var(--charcoal-mid)',
+          color: rank === 1 ? 'var(--on-cyan)' : 'var(--on-light)',
           fontSize: 9, fontWeight: 800,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 1px 3px rgba(0,0,0,0.2)',

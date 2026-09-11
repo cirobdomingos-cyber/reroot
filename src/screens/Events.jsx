@@ -1321,7 +1321,7 @@ export default function Events() {
             exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
             style={{
               position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 100,
-              background: 'var(--charcoal)', color: 'white',
+              background: 'var(--charcoal)', color: 'var(--on-light)',
               borderRadius: 14, padding: '12px 16px',
               display: 'flex', alignItems: 'center', gap: 10,
               boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
@@ -1330,7 +1330,7 @@ export default function Events() {
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>✓ Confirmado</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 1 }}>{notifToast}</div>
+              <div style={{ fontSize: 11, color: 'rgba(10, 5, 16, 0.65)', marginTop: 1 }}>{notifToast}</div>
             </div>
           </motion.div>
         )}

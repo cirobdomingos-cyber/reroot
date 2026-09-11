@@ -194,7 +194,8 @@ function CreateEventForm({ suggestion, onSubmit, onCancel, lang }) {
               flex: 2, padding: '10px 0', borderRadius: 10,
               border: 'none', fontSize: 13, fontWeight: 700,
               background: name.trim() && date ? 'var(--sage)' : 'var(--border)',
-              color: 'white', cursor: name.trim() && date ? 'pointer' : 'default',
+              color: name.trim() && date ? 'var(--on-lime)' : 'var(--text3)',
+              cursor: name.trim() && date ? 'pointer' : 'default',
               transition: 'all 0.15s',
             }}
           >
@@ -276,7 +277,7 @@ function CompanionMessage({ msg, onEventClick, onRsvp, rsvps, onCreateEvent, lan
                         flex: 1, padding: '8px 0', borderRadius: 10,
                         border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
                         background: isRsvped ? 'var(--sage-pale)' : 'var(--sage)',
-                        color: isRsvped ? 'var(--sage)' : 'white',
+                        color: isRsvped ? 'var(--sage)' : 'var(--on-lime)',
                         transition: 'all 0.15s',
                       }}
                     >
@@ -327,7 +328,7 @@ function UserMessage({ text }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 16px' }}>
       <div style={{
-        background: 'var(--charcoal)', color: 'white',
+        background: 'var(--charcoal)', color: 'var(--on-light)',
         borderRadius: '18px 18px 4px 18px',
         padding: '10px 14px', fontSize: 14, lineHeight: 1.5,
         maxWidth: '80%',
@@ -664,7 +665,8 @@ export default function CompanionChat({ open, onClose }) {
                 style={{
                   width: 36, height: 36, borderRadius: '50%', border: 'none',
                   background: input.trim() && !loading ? 'var(--sage)' : 'var(--border)',
-                  color: 'white', cursor: input.trim() && !loading ? 'pointer' : 'default',
+                  color: input.trim() && !loading ? 'var(--on-lime)' : 'var(--text3)',
+                  cursor: input.trim() && !loading ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 16, transition: 'background 0.15s', flexShrink: 0,
                 }}

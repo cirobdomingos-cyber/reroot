@@ -201,7 +201,7 @@ export default function Profile() {
                 cursor: 'pointer', transition: 'all 0.15s',
                 border: state.language === code ? 'none' : '1.5px solid var(--border)',
                 background: state.language === code ? 'var(--charcoal)' : 'transparent',
-                color: state.language === code ? 'white' : 'var(--charcoal-mid)',
+                color: state.language === code ? 'var(--on-light)' : 'var(--charcoal-mid)',
               }}
             >
               {label}
@@ -656,7 +656,7 @@ function VibeSection({ state, dispatch }) {
                 key={p.id}
                 onClick={() => pick(p.id)}
                 style={{
-                  background: selected ? 'var(--sage-pale)' : 'white',
+                  background: selected ? 'var(--sage-pale)' : 'var(--white)',
                   border: `1.5px solid ${selected ? 'var(--sage)' : 'var(--border)'}`,
                   borderRadius: 12, padding: '12px 10px',
                   textAlign: 'left', cursor: 'pointer',
@@ -1483,7 +1483,7 @@ function SignInCard({ dispatch }) {
           style={{
             width: '100%', padding: '10px 16px', marginBottom: 8,
             border: 'none', borderRadius: 10,
-            background: 'var(--charcoal)', color: 'white',
+            background: 'var(--charcoal)', color: 'var(--on-light)',
             fontWeight: 700, fontSize: 13, cursor: 'pointer',
           }}
         >

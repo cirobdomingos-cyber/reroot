@@ -62,6 +62,20 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
 
+  /* Text on a FILLED accent surface.
+     The rebrand remapped --sage from a muted green to lime (#C6FF00) and
+     --charcoal from near-black to near-white (#F4ECFF), but call sites
+     kept their `color: 'white'` from the old palette — so every filled
+     accent button became white-on-light. Pair the surface with its text
+     through these instead of hardcoding, and a future palette swap can't
+     invert them again.
+     lime and cyan are bright: they carry near-black. magenta is dark
+     enough to carry white. */
+  --on-lime:    var(--bg);
+  --on-cyan:    var(--bg);
+  --on-light:   var(--bg);   /* --text / --charcoal used AS a surface */
+  --on-magenta: #FFFFFF;
+
   /* Glow */
   --glow-magenta: 0 0 14px rgba(255, 43, 214, 0.6);
   --glow-cyan:    0 0 14px rgba(0, 229, 255, 0.6);

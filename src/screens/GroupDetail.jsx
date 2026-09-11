@@ -524,7 +524,7 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
           padding: '6px 12px', borderRadius: 10, border: 'none',
           fontSize: 11, fontWeight: 700, cursor: 'pointer',
           background: isRsvped ? 'var(--sage)' : 'var(--cream)',
-          color: isRsvped ? 'white' : 'var(--charcoal)',
+          color: isRsvped ? 'var(--on-lime)' : 'var(--charcoal)',
         }}
       >
         {isRsvped ? t.events_rsvped : t.events_rsvp}
@@ -594,7 +594,7 @@ function ActionBtn({ label, onClick, accent }) {
   return (
     <button onClick={onClick} style={{
       padding: '8px 14px', borderRadius: 10, border: accent ? 'none' : '1.5px solid var(--border)',
-      background: accent ? 'var(--sage)' : 'none', color: accent ? 'white' : 'var(--charcoal)',
+      background: accent ? 'var(--sage)' : 'none', color: accent ? 'var(--on-lime)' : 'var(--charcoal)',
       fontSize: 12, fontWeight: 600, cursor: 'pointer',
     }}>
       {label}
@@ -1457,7 +1457,7 @@ function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite
                 <button onClick={onRsvp} style={{
                   padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
                   background: isRsvped ? 'var(--sage)' : 'var(--cream)',
-                  color: isRsvped ? 'white' : 'var(--charcoal)',
+                  color: isRsvped ? 'var(--on-lime)' : 'var(--charcoal)',
                   fontSize: 14, fontWeight: 700,
                 }}>
                   {isRsvped ? `✓ ${t.events_rsvped}` : t.events_rsvp}

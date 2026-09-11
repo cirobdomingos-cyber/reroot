@@ -218,7 +218,7 @@ function CreateGroupSheet({ open, onClose, onCreate, t }) {
                       style={{
                         flex: 1, padding: '10px 12px', borderRadius: 12, border: 'none', cursor: 'pointer',
                         background: visibility === v ? 'var(--sage)' : 'var(--cream)',
-                        color: visibility === v ? 'white' : 'var(--charcoal)',
+                        color: visibility === v ? 'var(--on-lime)' : 'var(--charcoal)',
                         fontWeight: 600, fontSize: 13,
                       }}>
                       {v === 'private' ? `🔒 ${t.groups_private}` : `🌍 ${t.groups_public}`}

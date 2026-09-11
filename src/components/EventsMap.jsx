@@ -289,7 +289,7 @@ export default function EventsMap({ events, onPinTap }) {
           position: 'absolute', top: 12, left: 12, right: 12,
           padding: '10px 14px', background: 'rgba(255,255,255,0.95)',
           borderRadius: 10, boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-          fontSize: 12, color: 'var(--charcoal-mid)', textAlign: 'center',
+          fontSize: 12, color: 'var(--on-light)', textAlign: 'center',
           zIndex: 500,
         }}>
           Nenhum evento mapeado com esse filtro. Tenta outra categoria

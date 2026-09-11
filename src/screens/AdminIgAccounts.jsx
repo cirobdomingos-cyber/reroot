@@ -1050,7 +1050,7 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
       <div style={{
         width: 22, height: 22, borderRadius: '50%',
         background: rank === 1 ? 'var(--honey)' : 'var(--cream)',
-        color: rank === 1 ? 'white' : 'var(--charcoal-mid)',
+        color: rank === 1 ? 'var(--on-cyan)' : 'var(--charcoal-mid)',
         fontSize: 10, fontWeight: 800, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>{rank}</div>
