@@ -6030,8 +6030,20 @@ async def ota_check(request: Request):
         return {"message": "Up to date"}
     if _ota_bundle_zip() is None:
         return {"message": "No bundle packed", "error": "no_bundle"}
-    base = str(request.base_url).rstrip("/")
-    log.info(f"OTA: offering {version} to a device on '{current or 'unknown'}'")
+    # Build the URL from the proxy's forwarded headers, not request.base_url.
+    # Railway terminates TLS in front of uvicorn, so base_url reports
+    # http:// — and iOS App Transport Security refuses a plain-HTTP
+    # download. The update would be offered, fail silently on the device,
+    # and look exactly like "live updates don't work".
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        host = request.url.netloc
+    if not proto:
+        # Anything that isn't a local dev host is behind TLS in practice.
+        proto = "http" if host.split(":")[0] in ("localhost", "127.0.0.1") else "https"
+    base = f"{proto}://{host}"
+    log.info(f"OTA: offering {version} to a device on '{current or 'unknown'}' via {base}")
     return {"version": version, "url": f"{base}/updates/bundle/{version}.zip"}
 
 
