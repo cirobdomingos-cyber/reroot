@@ -138,7 +138,22 @@ jobs:
           printf '%s' "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
-      - name: Archive (manual signing)
+      # Signing settings live in the App target's Release config in
+      # project.pbxproj, NOT here. A build setting passed on the xcodebuild
+      # command line applies to EVERY target in the build, including the
+      # Swift Package targets Capacitor plugins pull in — and those reject
+      # a provisioning profile outright:
+      #
+      #   error: ZIPFoundation_ZIPFoundation does not support provisioning
+      #   profiles, but provisioning profile aue App Store has been
+      #   manually specified.
+      #
+      # That surfaced the moment @capgo/capacitor-updater added ZIPFoundation
+      # and Alamofire; before that the app had no SPM dependencies, so the
+      # global override happened to hit only the one target that wanted it.
+      # Keeping the profile in the project scopes it to the App target and
+      # leaves package targets to sign themselves.
+      - name: Archive (manual signing — configured in the project)
         run: |
           xcodebuild \
             -project "$XCODE_PROJECT" \
@@ -146,10 +161,6 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/aue.xcarchive" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             archive
 
       - name: Export IPA
