@@ -18,7 +18,7 @@ import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
-import EventDetail from '../components/EventDetail'
+import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
 import InvitePeopleSheet from '../components/InvitePeopleSheet'
 import CoHostsSheet from '../components/CoHostsSheet'
 import EventsMap from '../components/EventsMap'
@@ -440,19 +440,7 @@ export default function Events() {
     setDetailEvent(null)
   }
 
-  // Esc closes the drawer. It is portalled to document.body and isn't a
-  // route, so without this there is no keyboard way out on desktop and no
-  // browser-back either — the same dead end the sticky nav strip fixes for
-  // touch. Bound only while a drawer is open so it can't swallow Esc from
-  // any other surface.
-  useEffect(() => {
-    if (!selectedEventId) return
-    function onKey(e) {
-      if (e.key === 'Escape') closeDetail()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEventId])
+  // Esc-to-close lives in EventDetailDrawer now — shared with GroupDetail.
 
   function handleCategoryChange(id) {
     setActiveFilter(id)
@@ -1333,81 +1321,14 @@ export default function Events() {
         )}
       </AnimatePresence>
 
-      {/* ── Detail drawer ──
-          Portaled to document.body so it escapes the AnimatedPage's
-          framer-motion transform stacking context — without that, the
-          BottomNav (sibling to AnimatedPage) renders ON TOP of this
-          fullscreen drawer no matter how high its z-index. */}
-      {createPortal(
-      <AnimatePresence>
-        {selectedEventId && (
-          <motion.div
-            key="drawer"
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            style={{
-              position: 'fixed', inset: 0,
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              // Above Leaflet's panes (popup pane is z-index 700 by
-              // default) AND any framer-motion page transform that
-              // re-localizes z-index. 9999 is the conventional max-
-              // window mark and stays under modals (10000+) elsewhere.
-              zIndex: 9999,
-              overflowY: 'auto', scrollbarWidth: 'none',
-            }}
-          >
-            {/* Nav strip — STICKY, and always rendered.
-                Two bugs lived here. First, the drawer is portalled to
-                document.body, outside .phone-shell, which is where the
-                `padding-top: env(safe-area-inset-top)` lives — so on a
-                notched iPhone this strip started at y=0, underneath the
-                Dynamic Island, and "← BACK" was physically untappable.
-                The image-hero back button had already been hand-patched
-                with env(safe-area-inset-top); this one never was, which
-                is exactly why closing worked on some events and not
-                others.
-                Second, it scrolled away with the content. On a long event
-                there was then no way out at all — the drawer isn't a
-                route, so the iOS back-swipe does nothing either.
-                position:sticky keeps it in reach at any scroll depth, and
-                it now covers the image case too (that hero's duplicate
-                button is gone), so there is one close affordance in one
-                place on every event. */}
-            {detailEvent && !detailEvent._forbidden && !detailEvent._networkError && (
-              <div className="neon-mono" style={{
-                position: 'sticky', top: 0, zIndex: 3,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px',
-                background: 'linear-gradient(180deg, var(--bg) 70%, transparent)',
-                backdropFilter: 'blur(6px)',
-              }}>
-                <button
-                  onClick={closeDetail}
-                  aria-label="Fechar"
-                  style={{
-                    background: 'transparent', border: 'none', cursor: 'pointer',
-                    fontSize: 10, letterSpacing: '0.16em',
-                    color: 'var(--cyan)', textTransform: 'uppercase',
-                    // Padding, not just text: 10px mono type is a ~30px
-                    // wide tap target otherwise. Negative margin keeps the
-                    // glyph optically aligned with the content below.
-                    padding: '10px 14px', margin: '-10px -14px',
-                  }}
-                >
-                  ← BACK
-                </button>
-                <span style={{
-                  fontSize: 10, letterSpacing: '0.16em',
-                  color: 'var(--text3)', textTransform: 'uppercase',
-                }}>
-                  EVT.{String(detailEvent.id || '').slice(-4).toUpperCase()}
-                </span>
-              </div>
-            )}
-
+      {/* Shared drawer shell — portal, overlay and the sticky nav strip
+          all live in components/EventDetail.jsx so GroupDetail renders
+          the identical chrome instead of a second copy. */}
+      <EventDetailDrawer
+        open={!!selectedEventId}
+        onClose={closeDetail}
+        idLabel={detailEvent ? String(detailEvent.id || '').slice(-4).toUpperCase() : ''}
+      >
             {detailLoading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80%' }}>
                 <div style={{ fontSize: 14, color: 'var(--charcoal-mid)' }}>{t.events_loading}</div>
@@ -1628,11 +1549,7 @@ export default function Events() {
                 t={t}
               />
             )}
-          </motion.div>
-        )}
-      </AnimatePresence>,
-      document.body,
-      )}
+      </EventDetailDrawer>
 
       <AddToGroupSheet
         open={!!addToGroupEvent}

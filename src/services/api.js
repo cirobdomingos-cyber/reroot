@@ -833,10 +833,12 @@ export async function fetchGroupDetail(groupId, googleId) {
   )
   if (!res.ok) throw new Error(`Group detail failed: ${res.status}`)
   const data = await res.json()
-  // Backend returns event image_url as a relative path; resolve to
-  // absolute so the iOS wrapper can actually load them.
+  // /groups/{id} now returns events in the same camelCase shape as
+  // /events/group and the catalog (both go through the backend's
+  // _group_event_to_frontend), so this resolves imageUrl like every other
+  // event source. Relative → absolute so the iOS wrapper can load them.
   if (Array.isArray(data?.events)) {
-    data.events = data.events.map(e => ({ ...e, image_url: resolveImageUrl(e.image_url) }))
+    data.events = data.events.map(e => ({ ...e, imageUrl: resolveImageUrl(e.imageUrl) }))
   }
   return data
 }

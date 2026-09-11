@@ -5,20 +5,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
-import AttendeesRow from '../components/AttendeesRow'
 import HomeEventRow from '../components/HomeEventRow'
-import InvitePeopleSheet from '../components/InvitePeopleSheet'
-import CoHostsSheet from '../components/CoHostsSheet'
 import EditEventSheet from '../components/EditEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
-import { compressImageForUpload } from '../lib/image-compress'
-import { shareLink, appLink, shortEventLink } from '../lib/share'
+import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
+import { shareLink, appLink } from '../lib/share'
 import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
   setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed,
-  getFriends, addFriendById,
-  uploadEventImage, deleteEventImage, BASE_URL,
+  getFriends, addFriendById, BASE_URL,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -162,14 +158,14 @@ export default function GroupDetail() {
       type: 'TOGGLE_RSVP',
       payload: {
         eventId,
-        dateStart: event.date_start || event.dateStart || '',
+        dateStart: event.dateStart || event.dateStart || '',
         name: event.name,
         venue: event.venue || '',
       },
     })
     syncRsvp(googleId, {
       id: eventId, name: event.name, venue: event.venue || '',
-      date: event.date_start || '', url: '',
+      date: event.dateStart || '', url: '',
     }, willBeRsvped)
   }
 
@@ -179,8 +175,8 @@ export default function GroupDetail() {
   const isAdmin = group.role === 'admin'
   const feedUrl = getGroupCalendarFeedUrl(group.feed_token)
   const now = new Date().toISOString()
-  const upcomingEvents = (group.events || []).filter(e => e.date_start >= now.slice(0, 10))
-  const pastEvents = (group.events || []).filter(e => e.date_start < now.slice(0, 10))
+  const upcomingEvents = (group.events || []).filter(e => e.dateStart >= now.slice(0, 10))
+  const pastEvents = (group.events || []).filter(e => e.dateStart < now.slice(0, 10))
 
   return (
     <div style={{ padding: '16px 16px 100px' }}>
@@ -344,7 +340,7 @@ export default function GroupDetail() {
             <EventCard key={ev.id} event={ev} isRsvped={!!state.rsvps[ev.id]}
               friends={friendsByEventId[ev.id] || []}
               onOpen={() => setSelectedEvent(ev)}
-              onRsvp={() => handleRsvp(ev)} onDelete={isAdmin || ev.created_by === googleId ? () => handleDeleteEvent(ev.id) : null}
+              onRsvp={() => handleRsvp(ev)} onDelete={isAdmin || ev.createdBy === googleId ? () => handleDeleteEvent(ev.id) : null}
               members={group.members} t={t} />
           ))}
         </div>
@@ -405,31 +401,38 @@ export default function GroupDetail() {
           fetchGroupDetail(groupId, googleId).then(setGroup).catch(() => {})
         }}
       />
-      <GroupEventHero
+      {/* Same detail view AND the same chrome as the Events feed — see
+          components/EventDetail.jsx for why the group copy is gone. */}
+      <EventDetailDrawer
+        open={!!selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        idLabel={selectedEvent ? String(selectedEvent.id || '').slice(-4).toUpperCase() : ''}
+      >
+      {selectedEvent && (
+      <EventDetail
         event={selectedEvent}
-        group={group}
         googleId={googleId}
-        isRsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
-        canDelete={selectedEvent ? (
-          isAdmin
-          || selectedEvent.created_by === googleId
-          || (selectedEvent.co_host_ids || []).includes(googleId)
-        ) : false}
+        viewerName={state.userName}
+        viewerPicture={state.googleUser?.picture}
+        rsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
         canInvite={selectedEvent ? (
-          selectedEvent.created_by === googleId
-          || (selectedEvent.co_host_ids || []).includes(googleId)
+          selectedEvent.createdBy === googleId
+          || (selectedEvent.coHostIds || []).includes(googleId)
         ) : false}
         canEdit={selectedEvent ? (
-          selectedEvent.created_by === googleId
-          || (selectedEvent.co_host_ids || []).includes(googleId)
+          selectedEvent.createdBy === googleId
+          || (selectedEvent.coHostIds || []).includes(googleId)
         ) : false}
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
-        onDelete={async () => {
-          if (!selectedEvent) return
+        onDelete={selectedEvent && (
+          isAdmin
+          || selectedEvent.createdBy === googleId
+          || (selectedEvent.coHostIds || []).includes(googleId)
+        ) ? async () => {
           await handleDeleteEvent(selectedEvent.id)
           setSelectedEvent(null)
-        }}
+        } : null}
         onInvited={({ invitee_google_ids }) => {
           // Mirror the new invitee list into the group's events array so
           // the next time the hero opens (or the user re-renders), the
@@ -439,12 +442,12 @@ export default function GroupDetail() {
             ...prev,
             events: prev.events.map(e =>
               e.id === selectedEvent?.id
-                ? { ...e, extra_invitee_ids: invitee_google_ids }
+                ? { ...e, extraInviteeIds: invitee_google_ids }
                 : e
             ),
           } : prev)
           setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
-            ? { ...prev, extra_invitee_ids: invitee_google_ids }
+            ? { ...prev, extraInviteeIds: invitee_google_ids }
             : prev)
         }}
         onCoHostsChanged={(newCoHostIds) => {
@@ -452,12 +455,12 @@ export default function GroupDetail() {
             ...prev,
             events: prev.events.map(e =>
               e.id === selectedEvent?.id
-                ? { ...e, co_host_ids: newCoHostIds }
+                ? { ...e, coHostIds: newCoHostIds }
                 : e
             ),
           } : prev)
           setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
-            ? { ...prev, co_host_ids: newCoHostIds }
+            ? { ...prev, coHostIds: newCoHostIds }
             : prev)
         }}
         onImageChanged={(newImageUrl) => {
@@ -468,20 +471,22 @@ export default function GroupDetail() {
             ...prev,
             events: prev.events.map(e =>
               e.id === selectedEvent?.id
-                ? { ...e, image_url: newImageUrl || '' }
+                ? { ...e, imageUrl: newImageUrl || null }
                 : e
             ),
           } : prev)
           setSelectedEvent(prev => prev && prev.id === selectedEvent?.id
-            ? { ...prev, image_url: newImageUrl || '' }
+            ? { ...prev, imageUrl: newImageUrl || null }
             : prev)
         }}
         onEdit={selectedEvent && (
-          selectedEvent.created_by === googleId
-          || (selectedEvent.co_host_ids || []).includes(googleId)
+          selectedEvent.createdBy === googleId
+          || (selectedEvent.coHostIds || []).includes(googleId)
         ) ? () => setEditingEvent(selectedEvent) : null}
         t={t}
       />
+      )}
+      </EventDetailDrawer>
 
       <EditEventSheet
         open={!!editingEvent}
@@ -509,14 +514,14 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
   // Find who added the event using the group's member list — the same
   // payload `created_by` that the backend stamps. Fallback: hide if we
   // can't resolve (member left the group, etc.).
-  const creator = (members || []).find(m => m.google_id === event.created_by)
+  const creator = (members || []).find(m => m.google_id === event.createdBy)
 
   // Date column + ribbon come from the shared HomeEventRow so groups
   // read the same as Home and RSVPs. The trailing slot carries the
   // RSVP toggle (or "Já foi" pill for past). The note callout +
   // creator attribution + delete control sit below the row inside
   // the same outer container.
-  const time = (event.date_start || '').slice(11, 16)
+  const time = (event.dateStart || '').slice(11, 16)
   const friendsStack = friends.length > 0 ? (
     <div style={{ display: 'flex', alignItems: 'center' }}>
       {friends.slice(0, 3).map((f, i) => (
@@ -573,7 +578,7 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
     <div>
       <HomeEventRow
         name={event.name}
-        dateStart={event.date_start}
+        dateStart={event.dateStart}
         time={time}
         venue={event.venue}
         isGroupEvent
@@ -939,427 +944,6 @@ function CatalogPickerSheet({ open, onClose, onPick }) {
 // the event is a user-created one or a catalog import; the catalog
 // "Ver original" footer is parsed out of description and surfaced as
 // a button.
-function GroupEventHero({ event, group, googleId, isRsvped, canDelete, canInvite, canEdit, onClose, onRsvp, onDelete, onInvited, onCoHostsChanged, onImageChanged, onEdit, t }) {
-  const { state } = useApp()
-  const open = !!event
-  const [shareStatus, setShareStatus] = useState(null)
-  const [showInvite, setShowInvite] = useState(false)
-  const [showCoHosts, setShowCoHosts] = useState(false)
-  // Bumped after a successful add-invitees so the AttendeesRow re-fetches
-  // and the new pending entries surface immediately.
-  const [invitedTick, setInvitedTick] = useState(0)
-  const [imageUploading, setImageUploading] = useState(false)
-  const [imageError, setImageError] = useState(null)
-  const fileInputRef = useRef(null)
-
-  async function handleImagePicked(e) {
-    const picked = e.target.files?.[0]
-    e.target.value = ''  // reset so picking the same file again re-fires
-    if (!picked || !event?.id) return
-    setImageError(null); setImageUploading(true)
-    try {
-      // Client-side compress — converts iPhone HEIC to JPEG (decoded
-      // on Safari) and shrinks oversize photos below the 8MB cap.
-      const file = await compressImageForUpload(picked)
-      const result = await uploadEventImage(event.id, googleId, file)
-      onImageChanged?.(result.image_url)
-    } catch (err) {
-      setImageError(err?.message || 'Não consegui enviar a foto')
-    } finally {
-      setImageUploading(false)
-    }
-  }
-
-  async function handleImageRemove() {
-    if (!event?.id) return
-    if (!confirm('Remover a foto do evento?')) return
-    setImageError(null); setImageUploading(true)
-    try {
-      await deleteEventImage(event.id, googleId)
-      onImageChanged?.('')
-    } catch (err) {
-      setImageError(err?.message || 'Não consegui remover a foto')
-    } finally {
-      setImageUploading(false)
-    }
-  }
-
-  // Hide the Companion FAB while the hero is up, same pattern as BottomSheet.
-  useEffect(() => {
-    if (!open) return
-    window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: 1 } }))
-    return () => window.dispatchEvent(new CustomEvent('aue-modal', { detail: { delta: -1 } }))
-  }, [open])
-
-  if (typeof document === 'undefined') return null
-
-  // Pull "Ver original: <url>" out of description (catalog imports add it).
-  const urlMatch = (event?.description || '').match(/Ver original:\s*(\S+)/)
-  const sourceUrl = urlMatch ? urlMatch[1] : null
-  const cleanDesc = (event?.description || '').replace(/\n*Ver original:.*$/, '').trim()
-  const creator = event && (group?.members || []).find(m => m.google_id === event.created_by)
-
-  const dateLabel = event?.date_start
-    ? `${event.date_start.slice(0, 10)}${event.date_start.length > 10 ? ` · ${event.date_start.slice(11, 16)}` : ''}`
-    : ''
-
-  async function handleShare() {
-    if (!event) return
-    // Always share the in-app deep link — keeps recipients in auê (and
-    // reachable even when they're not in the group). The Events tab
-    // reads `?event=<id>` and opens the hero drawer for both catalog
-    // events and group events (backend's /events/{id} handles both
-    // shapes; group ids are prefixed `grp_ev_`).
-    const url = shortEventLink(event.id)
-    const venueStr = event.venue ? ` no ${event.venue}` : ''
-    const dateStr = dateLabel ? ` · ${dateLabel}` : ''
-    const text = `${event.name}${venueStr}${dateStr}`
-    const result = await shareLink({ url, title: event.name, text })
-    setShareStatus(result)
-    setTimeout(() => setShareStatus(null), 2200)
-  }
-
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          key="group-event-hero"
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          style={{
-            position: 'fixed', inset: 0,
-            background: 'var(--cream)', zIndex: 1000,
-            overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-            // Pad the bottom so the last action ("Excluir evento" etc.)
-            // clears the iOS home-bar gesture zone — without this, the
-            // bottom 30-40px of content sits underneath the home bar
-            // and the user can't reach it without aggressive scrolling.
-            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
-          }}
-        >
-          {/* Hero band — user-uploaded image if set, else sage gradient
-              (or terra gradient for catalog imports). canEdit = creator
-              or co-host can pick/replace/remove the image. */}
-          {(() => {
-            const rawImg = event?.image_url || ''
-            const imgSrc = rawImg && rawImg.startsWith('/event-images/') && BASE_URL
-              ? `${BASE_URL}${rawImg}`
-              : rawImg
-            const hasImage = !!rawImg
-            return (
-              <div style={{
-                height: hasImage ? 180 : 130,
-                background: hasImage
-                  ? '#222'
-                  : sourceUrl
-                    ? 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)'
-                    : 'linear-gradient(135deg, var(--sage) 0%, #9ec0a0 100%)',
-                position: 'relative', overflow: 'hidden',
-              }}>
-                {hasImage && (
-                  <img
-                    src={imgSrc}
-                    alt=""
-                    style={{
-                      position: 'absolute', inset: 0,
-                      width: '100%', height: '100%',
-                      objectFit: 'cover',
-                    }}
-                  />
-                )}
-                {hasImage && (
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    background: 'linear-gradient(180deg, rgba(0,0,0,0.30) 0%, rgba(0,0,0,0) 35%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.30) 100%)',
-                    pointerEvents: 'none',
-                  }} />
-                )}
-                <button onClick={onClose} aria-label="Fechar" style={{
-                  position: 'absolute',
-                  // Below iPhone notch / Dynamic Island.
-                  top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-                  left: 12,
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.92)', border: 'none', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-                }}>←</button>
-                {/* Emoji removed for visual cleanup — surrounding labels
-                    already convey "this is a group event from a source"
-                    without needing a globe/calendar icon overlay. */}
-                {canEdit && (
-                  <div style={{
-                    position: 'absolute',
-                    top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
-                    right: 12,
-                    display: 'flex', gap: 6,
-                  }}>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={imageUploading}
-                      aria-label={hasImage ? 'Trocar foto' : 'Adicionar foto'}
-                      style={{
-                        padding: '6px 12px', borderRadius: 16,
-                        background: 'rgba(255,255,255,0.92)', border: 'none',
-                        fontSize: 12, fontWeight: 700, cursor: imageUploading ? 'wait' : 'pointer',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-                        opacity: imageUploading ? 0.7 : 1,
-                      }}
-                    >
-                      {imageUploading ? '...' : hasImage ? '📷 Trocar' : '📷 Adicionar foto'}
-                    </button>
-                    {hasImage && !imageUploading && (
-                      <button
-                        onClick={handleImageRemove}
-                        aria-label="Remover foto"
-                        style={{
-                          width: 32, height: 32, borderRadius: '50%',
-                          background: 'rgba(255,255,255,0.92)', border: 'none',
-                          cursor: 'pointer', fontSize: 14,
-                          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-                        }}
-                      >
-                        🗑
-                      </button>
-                    )}
-                  </div>
-                )}
-                {imageError && (
-                  <div style={{
-                    position: 'absolute', bottom: 8, left: 12, right: 12,
-                    padding: '6px 10px', borderRadius: 8,
-                    background: '#FFEBEE', color: '#B71C1C', fontSize: 11,
-                  }}>
-                    {imageError}
-                  </div>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
-                  // Layout-present (not display:none) so iOS WKWebView
-                  // fires the picker reliably on programmatic .click().
-                  style={{
-                    position: 'absolute', width: 0, height: 0, opacity: 0,
-                    pointerEvents: 'none',
-                  }}
-                  onChange={handleImagePicked}
-                />
-              </div>
-            )
-          })()}
-
-          {/* Content */}
-          <div style={{ padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 28px)' }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 8 }}>
-              {event?.name}
-            </div>
-
-            {/* Source pill — auê group events are always members-only,
-                so we no longer show a visibility pill here. */}
-            {sourceUrl && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '4px 10px', borderRadius: 8,
-                  background: 'rgba(255, 43, 214, 0.10)',
-                  fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-                  color: 'var(--terra)', textTransform: 'uppercase',
-                }}>
-                  🌐 Do catálogo
-                </span>
-              </div>
-            )}
-
-            {/* Date + venue */}
-            {dateLabel && (
-              <div style={{ fontSize: 14, color: 'var(--charcoal)', marginBottom: 4 }}>
-                📅 {dateLabel}
-              </div>
-            )}
-            {event?.venue && (
-              <div style={{ fontSize: 14, color: 'var(--charcoal)', marginBottom: 4 }}>
-                📍 {event.venue}
-              </div>
-            )}
-
-            {/* Description */}
-            {cleanDesc && (
-              <p style={{
-                fontSize: 14, color: 'var(--charcoal-mid)',
-                lineHeight: 1.5, marginTop: 12, whiteSpace: 'pre-wrap',
-              }}>
-                {cleanDesc}
-              </p>
-            )}
-
-            {/* Free-text note from whoever added the event — shown
-                prominently in the drawer so the crew sees the framing */}
-            {event?.note && (
-              <div style={{
-                marginTop: 14, padding: '12px 14px',
-                background: 'var(--cream)',
-                borderLeft: '4px solid var(--terra)',
-                borderRadius: 10,
-                fontSize: 14, color: 'var(--charcoal)',
-                lineHeight: 1.5,
-                fontStyle: 'italic',
-              }}>
-                💬 {event.note}
-              </div>
-            )}
-
-            {/* Adicionado por — also the entry point for the co-host
-                management sheet. Tapping opens CoHostsSheet, which gates
-                actions by viewer role (creator promotes, co-host self-
-                demotes, others read-only). The chip surfaces co-host
-                count when there's at least one. */}
-            {creator && (() => {
-              const coHostCount = (event?.co_host_ids || []).length
-              return (
-                <button
-                  onClick={() => setShowCoHosts(true)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginTop: 16,
-                    padding: '8px 12px', borderRadius: 12, background: 'var(--white)',
-                    border: '1px solid var(--border)', cursor: 'pointer',
-                    width: '100%', textAlign: 'left',
-                  }}
-                >
-                  <Avatar name={creator.name} src={creator.picture} size={28} />
-                  <span style={{ flex: 1, fontSize: 12, color: 'var(--charcoal-mid)' }}>
-                    Adicionado por <strong style={{ color: 'var(--charcoal)' }}>{creator.name}</strong>
-                    {coHostCount > 0 && (
-                      <span> · {coHostCount} co-organizador{coHostCount === 1 ? '' : 'es'}</span>
-                    )}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>›</span>
-                </button>
-              )
-            })()}
-
-            {/* Quem vai — RSVP roster. Includes the viewer (if RSVPed) plus
-                everyone else the backend will reveal (friends always, plus
-                strangers who opted into showProfileToStrangers). Tap to
-                expand the per-attendee list inside the row itself. */}
-            <AttendeesRow
-              eventId={event?.id}
-              googleId={googleId}
-              isRsvped={isRsvped}
-              refreshKey={`${isRsvped ? 'rsvp-on' : 'rsvp-off'}-${invitedTick}`}
-              viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
-              viewerPicture={state.googleUser?.picture}
-              onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
-              canManage={
-                event?.created_by === googleId ||
-                (event?.co_host_ids || []).includes(googleId)
-              }
-            />
-
-            {/* Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 20 }}>
-              {onRsvp && (
-                <button onClick={onRsvp} style={{
-                  padding: '13px', borderRadius: 14, border: 'none', cursor: 'pointer',
-                  background: isRsvped ? 'var(--sage)' : 'var(--cream)',
-                  color: isRsvped ? 'var(--on-lime)' : 'var(--charcoal)',
-                  fontSize: 14, fontWeight: 700,
-                }}>
-                  {isRsvped ? `✓ ${t.events_rsvped}` : t.events_rsvp}
-                </button>
-              )}
-
-              {canInvite && (
-                <button
-                  onClick={() => setShowInvite(true)}
-                  style={{
-                    padding: '13px', borderRadius: 14,
-                    border: '1.5px solid var(--border)',
-                    background: 'var(--white)', color: 'var(--charcoal)',
-                    fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                  }}
-                >
-                  👥 Convidar mais gente
-                </button>
-              )}
-
-              <button onClick={handleShare} style={{
-                padding: '13px', borderRadius: 14, border: '1.5px solid var(--border)',
-                background: 'var(--white)', color: 'var(--charcoal)',
-                fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>
-                {shareStatus === 'shared' ? '✓ Compartilhado'
-                  : shareStatus === 'copied' ? '✓ Link copiado'
-                  : shareStatus === 'failed' ? '✕ Não consegui compartilhar'
-                  : '📤 Compartilhar'}
-              </button>
-
-              {sourceUrl && (
-                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" style={{
-                  padding: '13px', borderRadius: 14,
-                  background: 'var(--white)', border: '1.5px solid var(--border)',
-                  fontSize: 14, fontWeight: 600,
-                  color: 'var(--terra)', textAlign: 'center',
-                  textDecoration: 'none',
-                }}>
-                  🔗 Ver original
-                </a>
-              )}
-
-              {onEdit && (
-                <button onClick={onEdit} style={{
-                  padding: '12px', borderRadius: 14,
-                  background: 'transparent', border: '1.5px solid var(--border)',
-                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer',
-                }}>
-                  ✏️ Editar evento
-                </button>
-              )}
-
-              {canDelete && (
-                <button onClick={onDelete} style={{
-                  padding: '11px', borderRadius: 14, border: 'none',
-                  background: 'none', color: '#e74c3c',
-                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                }}>
-                  Excluir evento
-                </button>
-              )}
-            </div>
-          </div>
-          <InvitePeopleSheet
-            open={showInvite}
-            onClose={() => setShowInvite(false)}
-            eventId={event?.id}
-            googleId={googleId}
-            eventName={event?.name}
-            existingInviteeIds={event?.extra_invitee_ids || []}
-            onInvited={(result) => {
-              setInvitedTick(t => t + 1)
-              onInvited?.(result)
-            }}
-          />
-          <CoHostsSheet
-            open={showCoHosts}
-            onClose={() => setShowCoHosts(false)}
-            eventId={event?.id}
-            googleId={googleId}
-            creatorId={event?.created_by}
-            creatorName={creator?.name}
-            creatorPicture={creator?.picture}
-            coHostIds={event?.co_host_ids || []}
-            inviteeIds={event?.extra_invitee_ids || []}
-            onChange={(newCoHostIds) => onCoHostsChanged?.(newCoHostIds)}
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>,
-    document.body,
-  )
-}
 
 // Portaled to document.body so the sheet anchors to the real viewport
 // instead of being clipped by AnimatedPage's stacking context (framer-

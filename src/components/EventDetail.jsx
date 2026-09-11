@@ -18,6 +18,8 @@
  * call site — see toDetailShape there.
  */
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import AddToCalendar from './AddToCalendar'
 import PostEventAttendees from './PostEventAttendees'
 import Avatar from './Avatar'
@@ -181,6 +183,92 @@ function PromoCodeBlock({ ev }) {
         local — auê só conecta.
       </div>
     </div>
+  )
+}
+
+/**
+ * The fullscreen drawer the detail view lives in.
+ *
+ * Portaled to document.body so it escapes AnimatedPage's framer-motion
+ * transform stacking context — without that the BottomNav renders on top
+ * of it whatever its z-index.
+ *
+ * Shared so the sticky nav strip exists once. That strip is load-bearing:
+ * the drawer sits outside .phone-shell, which is where
+ * `padding-top: env(safe-area-inset-top)` lives, so without the inset
+ * here "← BACK" renders under the Dynamic Island and cannot be tapped.
+ * It is sticky because the drawer is not a route — once it scrolled away
+ * there was no way out at all, since the iOS back-swipe does nothing.
+ *
+ * `children` is the body, so callers can render their own loading /
+ * forbidden / offline states in the same chrome instead of rebuilding it.
+ */
+export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
+  useEffect(() => {
+    if (!open) return
+    function onKey(e) { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="event-drawer"
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'var(--bg)',
+            color: 'var(--text)',
+            // Above Leaflet's panes (popup pane is 700) and any
+            // framer-motion transform that re-localizes z-index. Stays
+            // under the 10000+ modals.
+            zIndex: 9999,
+            overflowY: 'auto', scrollbarWidth: 'none',
+          }}
+        >
+          <div className="neon-mono" style={{
+            position: 'sticky', top: 0, zIndex: 3,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px',
+            background: 'linear-gradient(180deg, var(--bg) 70%, transparent)',
+            backdropFilter: 'blur(6px)',
+          }}>
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              style={{
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: 10, letterSpacing: '0.16em',
+                color: 'var(--cyan)', textTransform: 'uppercase',
+                // Padded out: 10px mono type is a ~30px tap target
+                // otherwise. Negative margin keeps the glyph optically
+                // aligned with the content below.
+                padding: '10px 14px', margin: '-10px -14px',
+              }}
+            >
+              ← BACK
+            </button>
+            {idLabel && (
+              <span style={{
+                fontSize: 10, letterSpacing: '0.16em',
+                color: 'var(--text3)', textTransform: 'uppercase',
+              }}>
+                EVT.{idLabel}
+              </span>
+            )}
+          </div>
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
   )
 }
 

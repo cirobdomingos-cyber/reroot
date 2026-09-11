@@ -3271,12 +3271,22 @@ def get_group(group_id: str, google_id: str):
     # weren't on a specific event's invite list (e.g. excluded for a
     # subset event before the create flow auto-disconnects the group)
     # won't see it here. Non-members see no events.
-    events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
-    # Cache-bust image URLs so iOS WKWebView refetches when a user
-    # replaces an event photo. See image_store.cache_busted().
-    for e in events:
-        if e.get("image_url"):
-            e["image_url"] = image_store.cache_busted(e["image_url"])
+    raw_events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
+    # Shaped exactly like /events/group and the catalog, rather than
+    # handed over as raw DB rows. The frontend renders group events with
+    # the same component as everything else, and it should not need a
+    # per-endpoint translation layer to do it — that is how GroupDetail
+    # ended up with its own near-copy of the detail view in the first
+    # place. _group_event_to_frontend is the one mapping; it also handles
+    # the image cache-busting that used to be done inline here.
+    events = [
+        _group_event_to_frontend(
+            e,
+            group_name=group.get("name") or "",
+            viewer_google_id=google_id,
+        )
+        for e in raw_events
+    ]
 
     return {
         **group,
