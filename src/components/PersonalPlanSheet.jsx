@@ -59,9 +59,18 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
     getFriends(googleId).then(list => {
       if (!cancelled) setFriends(Array.isArray(list) ? list : [])
     })
-    fetchGroups(googleId).then(({ groups }) => {
-      if (!cancelled) setUserGroups(Array.isArray(groups) ? groups : [])
-    }).catch(() => {})
+    // fetchGroups resolves to the ARRAY of groups, not { groups: [...] }.
+    // This destructured `{ groups }` off an array, got undefined every
+    // time, and fell through to []. Net effect: the "Conectar a um grupo"
+    // control never rendered for anyone, for any account — so every event
+    // created from Home has silently been a standalone plan, never
+    // group-tagged. The .catch(() => {}) hid it from the console too.
+    // Groups.jsx and AddToGroupSheet.jsx both read it correctly.
+    fetchGroups(googleId).then(list => {
+      if (!cancelled) setUserGroups(Array.isArray(list) ? list : [])
+    }).catch(err => {
+      console.warn('PersonalPlanSheet: could not load groups', err)
+    })
     return () => { cancelled = true }
   }, [open, googleId])
 
