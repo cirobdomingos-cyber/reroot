@@ -30,6 +30,7 @@ import CoHostsSheet from './CoHostsSheet'
 import { compressImageForUpload } from '../lib/image-compress'
 import { shareLink, shortEventLink } from '../lib/share'
 import { trackEvent, uploadEventImage, deleteEventImage } from '../services/api'
+import { VENUE_CATEGORIES, SOURCE_CONFIG } from '../data/eventSources'
 
 function cleanDescription(raw) {
   if (!raw || typeof raw !== 'string') return ''
