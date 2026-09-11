@@ -7,12 +7,28 @@
  */
 import { EVENTS } from '../data/events'
 import { getAnchorToday } from '../lib/dateAnchor'
-import { getPublicOrigin } from '../lib/share'
+import { Capacitor } from '@capacitor/core'
+import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
 
-// In production (single-service deploy), API is same-origin → empty string.
-// In local dev, frontend runs on :5173 and backend on :8000.
+// Where the API lives, resolved at RUNTIME rather than baked at build time.
+//
+//   - Native (Capacitor): the page is served from capacitor://localhost, so a
+//     relative '/events' resolves against that scheme and never reaches us.
+//     Must be the absolute public origin.
+//   - Web / PWA: same-origin single-service deploy → '' keeps calls relative.
+//   - Local dev: Vite on :5173, backend on :8000.
+//
+// This used to depend on VITE_API_URL being baked in, which the iOS workflow
+// sets and the Dockerfile does not. That was survivable while the two builds
+// were shipped separately — but OTA sends the Railway-built bundle to native
+// devices, and that bundle has BASE_URL=''. One relative fetch later, every
+// API call in the wrapper is pointed at capacitor://localhost. Deciding at
+// runtime means one bundle is correct on both platforms.
+// VITE_API_URL still wins when set, so dev and CI can override.
 export const BASE_URL = import.meta.env.VITE_API_URL ??
-  (import.meta.env.DEV ? 'http://localhost:8000' : '')
+  (import.meta.env.DEV
+    ? 'http://localhost:8000'
+    : (Capacitor.isNativePlatform?.() ? NATIVE_PUBLIC_ORIGIN : ''))
 const TIMEOUT_MS = 5000
 
 // ── Client error reporter ─────────────────────────────────

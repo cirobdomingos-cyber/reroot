@@ -17,7 +17,7 @@ import { Capacitor } from '@capacitor/core'
 // or https://localhost (Android default) — meaningless to anyone receiving a
 // shared link. Force the canonical public URL on native. Web keeps using
 // window.location.origin so dev / staging / prod each share their own host.
-const NATIVE_PUBLIC_ORIGIN = 'https://reroot-production.up.railway.app'
+export const NATIVE_PUBLIC_ORIGIN = 'https://reroot-production.up.railway.app'
 
 export function getPublicOrigin() {
   if (Capacitor.isNativePlatform?.()) return NATIVE_PUBLIC_ORIGIN
