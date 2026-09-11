@@ -22,6 +22,29 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Purpose strings for the capabilities the WEBVIEW reaches for.
+	     These are native-only (Info.plist is compiled into the binary),
+	     so they cannot be added by a live update — they have to ride a
+	     build, which is why they are going in now.
+
+	     Camera: the event-photo <input type="file"> offers "Take Photo"
+	     in WKWebView's picker. iOS TERMINATES the app when that is tapped
+	     and NSCameraUsageDescription is absent — a crash on a normal tap
+	     in the shipped build, not a degraded feature.
+
+	     Photo library: WKWebView uses PHPicker on modern iOS, which does
+	     not strictly require this, but the key is free and covers the
+	     UIImagePickerController path on older routes.
+
+	     Location: EventsMap's "usar minha localização" calls
+	     navigator.geolocation, which WKWebView refuses outright without
+	     this key. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Pra tirar foto do evento na hora e usar como capa.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Pra escolher uma foto da sua galeria como capa do evento.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Pra mostrar no mapa os eventos perto de você.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
