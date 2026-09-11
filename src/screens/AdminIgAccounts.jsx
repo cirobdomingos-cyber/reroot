@@ -14,8 +14,7 @@ import Avatar from '../components/Avatar'
 // All mutating endpoints take a `requesting_email` so the backend can verify
 // the role.
 
-const API_BASE = import.meta.env.VITE_API_URL ??
-  (import.meta.env.DEV ? 'http://localhost:8000' : '')
+import { API_BASE } from '../lib/apiBase'
 
 function withEmail(url, email) {
   const sep = url.includes('?') ? '&' : '?'

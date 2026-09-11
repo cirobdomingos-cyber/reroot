@@ -3,8 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 
-const API_BASE = import.meta.env.VITE_API_URL ??
-  (import.meta.env.DEV ? 'http://localhost:8000' : '')
+import { API_BASE } from '../lib/apiBase'
 
 export default function BottomNav() {
   const navigate = useNavigate()

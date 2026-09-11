@@ -7,6 +7,7 @@ import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { Capacitor } from '@capacitor/core'
+import { API_BASE } from '../lib/apiBase'
 import { getPublicOrigin } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
@@ -510,8 +511,7 @@ function FeedbackSection({ state }) {
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState(null) // 'sent' | 'error' | null
-  const API_BASE = import.meta.env.VITE_API_URL ??
-    (import.meta.env.DEV ? 'http://localhost:8000' : '')
+  // API_BASE imported at module scope — see lib/apiBase.js
 
   async function submit() {
     if (text.trim().length < 5 || submitting) return

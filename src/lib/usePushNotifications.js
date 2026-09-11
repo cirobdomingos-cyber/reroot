@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useApp } from '../context/AppContext'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+import { API_BASE } from './apiBase'
 const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 
 // VAPID public key arrives URL-safe base64 from the backend; pushManager.subscribe()

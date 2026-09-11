@@ -5,8 +5,7 @@ import { useApp } from '../context/AppContext'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import Avatar from '../components/Avatar'
 
-const API_BASE = import.meta.env.VITE_API_URL ??
-  (import.meta.env.DEV ? 'http://localhost:8000' : '')
+import { API_BASE } from '../lib/apiBase'
 
 // Add-handle form preset list: same taxonomy as CATEGORY_META, ordered.
 // Kept in sync automatically since both come from the shared module.

@@ -25,7 +25,7 @@
  */
 import { Capacitor } from '@capacitor/core'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
+import { API_BASE } from './apiBase'
 const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 
 // Bundle id (native) and Service ID (web) match what the backend's
