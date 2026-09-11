@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Avatar from './Avatar'
 import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGroupDetail } from '../services/api'
@@ -17,6 +18,7 @@ import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGro
 // with the members as individual invitees) — wired as a follow-up.
 
 export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }) {
+  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [dateStart, setDateStart] = useState('')
@@ -299,7 +301,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
                   {connectedMemberIds.length + 1} pessoas — você + crew
                 </div>
               </div>
-            ) : userGroups.length > 0 && (
+            ) : userGroups.length > 0 ? (
               <>
                 <button
                   type="button"
@@ -345,6 +347,38 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated }
                   </div>
                 )}
               </>
+            ) : (
+              /* No groups yet — say so instead of hiding the control.
+                 This branch used to be `userGroups.length > 0 && (...)`,
+                 so someone with zero groups just saw the option missing
+                 with no explanation and reasonably concluded the feature
+                 didn't exist. Signed-out users land here too, since the
+                 fetch effect bails without a googleId. */
+              <div style={{
+                marginBottom: 10, padding: '10px 12px', borderRadius: 12,
+                border: '1.5px dashed var(--line)',
+                fontSize: 12, color: 'var(--text3)', lineHeight: 1.5,
+              }}>
+                {googleId ? (
+                  <>
+                    🔗 Você ainda não tem grupos.{' '}
+                    <button
+                      type="button"
+                      onClick={() => { onClose?.(); navigate('/community') }}
+                      style={{
+                        background: 'none', border: 'none', padding: 0,
+                        font: 'inherit', color: 'var(--cyan)', fontWeight: 600,
+                        cursor: 'pointer', textDecoration: 'underline',
+                      }}
+                    >
+                      Criar um grupo
+                    </button>{' '}
+                    pra convidar a galera toda de uma vez.
+                  </>
+                ) : (
+                  <>🔗 Entra com o Google pra convidar amigos e conectar grupos.</>
+                )}
+              </div>
             )}
 
             {/* Friend picker — when a group is connected, this picks
