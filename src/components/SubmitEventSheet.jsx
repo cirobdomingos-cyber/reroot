@@ -44,6 +44,9 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
   const [description, setDesc]    = useState('')
   const [priceMin, setPriceMin]   = useState('')
   const [priceMax, setPriceMax]   = useState('')
+  // Post image from the extraction. The API always returned it; the form
+  // never kept it, so every submitted event was saved without a picture.
+  const [imageUrl, setImageUrl]   = useState('')
 
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone]             = useState(false)
@@ -54,7 +57,7 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
   function reset() {
     setIgUrl(''); setExtracting(false); setExtracted(null); setExtractErr('')
     setIgHandle(''); setName(''); setDate(''); setTime('')
-    setVenue(''); setDesc(''); setPriceMin(''); setPriceMax('')
+    setVenue(''); setDesc(''); setPriceMin(''); setPriceMax(''); setImageUrl('')
     setSubmitting(false); setDone(false); setSubmitErr('')
   }
 
@@ -62,6 +65,7 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
 
   function applyExtraction(data) {
     setExtracted(data)
+    setImageUrl(data.image_url || '')
     if (data.handle) setIgHandle(data.handle)
     if (data.name) setName(data.name)
     if (data.venue_name) setVenue(data.venue_name)
@@ -98,6 +102,7 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
         const h = parseIgHandle(val)
         if (h) setIgHandle(h)
         setExtracted({}) // mark as attempted
+        setImageUrl('')
       } finally {
         setExtracting(false)
       }
@@ -123,6 +128,7 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
         price_max: parseFloat(priceMax) || 0,
         url: igUrl.trim(),
         ig_handle: igHandle.trim(),
+        image_url: imageUrl,
         submitted_by: googleId || null,
       })
       setDone(true)
@@ -203,6 +209,19 @@ export default function SubmitEventSheet({ open, onClose, googleId }) {
                 )}
                 {extractErr && (
                   <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text2)' }}>{extractErr}</div>
+                )}
+                {/* Shows the picture that will be saved, so a missing one is
+                    visible here instead of after it lands in the catalog.
+                    no-referrer: Instagram's CDN refuses some hotlinked
+                    requests that carry our origin as referrer. */}
+                {!extracting && imageUrl && (
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    onError={() => setImageUrl('')}
+                    style={{ marginTop: 10, width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--line)', display: 'block' }}
+                  />
                 )}
               </div>
 

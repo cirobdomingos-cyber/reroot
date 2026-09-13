@@ -1213,11 +1213,11 @@ export async function extractIgEvent(url) {
   return res.json()
 }
 
-export async function submitCatalogEvent({ name, description = '', venue_name, date_start, price_min = 0, price_max = 0, url = '', ig_handle = '', submitted_by = null }) {
+export async function submitCatalogEvent({ name, description = '', venue_name, date_start, price_min = 0, price_max = 0, url = '', ig_handle = '', image_url = '', submitted_by = null }) {
   const res = await fetchWithTimeout(`${BASE_URL}/events/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, venue_name, date_start, price_min, price_max, url, ig_handle, submitted_by }),
+    body: JSON.stringify({ name, description, venue_name, date_start, price_min, price_max, url, ig_handle, image_url, submitted_by }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))

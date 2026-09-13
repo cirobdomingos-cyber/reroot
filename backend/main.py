@@ -11,6 +11,7 @@ branding já migraram pra auê.)
 import functools
 import json
 import logging
+import asyncio
 import os
 import sqlite3
 import hashlib
@@ -1777,6 +1778,11 @@ class EventSubmission(BaseModel):
     url: str = ""
     submitted_by: Optional[str] = None  # google_id
     ig_handle: str = ""               # if sourced from an IG post — auto-tracked
+    # Post image from /events/extract-ig (Apify displayUrl). Until this
+    # existed the form received the image and dropped it, and neither save
+    # path had anywhere to put it — every submitted event rendered with the
+    # gradient fallback. Rehosted on save; see _rehost_submission_image.
+    image_url: str = ""
 
 
 def _parse_submission_date(value: str):
@@ -1795,6 +1801,40 @@ def _parse_submission_date(value: str):
     return None
 
 
+# Hosts a submitted image may be fetched from. The server downloads this
+# URL, and the URL comes from the client, so an open fetch would let anyone
+# point our backend at internal addresses (SSRF). Instagram serves post
+# images from these CDNs, which is the only source the submit form offers.
+_SUBMISSION_IMAGE_HOSTS = ("cdninstagram.com", "fbcdn.net")
+
+
+async def _rehost_submission_image(event_id: str, source_url: str) -> Optional[str]:
+    """Copy a submitted post image into our own store and return the URL to
+    save on the event.
+
+    IG CDN links are signed and expire within weeks, so storing the raw link
+    would blank the card later — the scraper rehosts for the same reason.
+    Falls back to the original CDN link when the download fails (it still
+    works until it rots), and returns None for anything that isn't an https
+    Instagram CDN URL.
+    """
+    from urllib.parse import urlparse
+    url = (source_url or "").strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not any(
+        host == h or host.endswith("." + h) for h in _SUBMISSION_IMAGE_HOSTS
+    ):
+        log.warning(f"Submission image for {event_id} rejected: host '{host}' not allowed")
+        return None
+    # rehost_image is synchronous httpx — keep it off the event loop, same
+    # as the scrape pipeline does.
+    rehosted = await asyncio.to_thread(image_store.rehost_image, event_id, url)
+    return rehosted or url
+
+
 async def _save_unenriched_submission(submission_id: int, req: EventSubmission) -> None:
     """Write a user submission straight to the events table without Claude enrichment.
     Used when Anthropic credits are unavailable. Enrichment will overwrite on the
@@ -1808,6 +1848,7 @@ async def _save_unenriched_submission(submission_id: int, req: EventSubmission) 
     # A malformed end date degrades to "one-off event" rather than
     # rejecting the whole submission — the start date is what matters.
     de = _parse_submission_date(req.date_end or "")
+    image_url = await _rehost_submission_image(f"submitted_sub_{submission_id}", req.image_url)
 
     price_min = req.price_min or 0.0
     if price_min == 0:
@@ -1849,7 +1890,7 @@ async def _save_unenriched_submission(submission_id: int, req: EventSubmission) 
         expected_size="medium",
         header_gradient="linear-gradient(135deg, #FFF3E0, #FFE0B2)",
         url=req.url.strip()[:500],
-        image_url=None,
+        image_url=image_url,
         fetched_at=datetime.now(timezone.utc),
     )
     try:
@@ -1893,6 +1934,8 @@ async def _enrich_and_save_submission(submission_id: int, req: EventSubmission):
     if not enriched:
         log.warning(f"Submission {submission_id}: enrichment failed")
         return
+
+    enriched.image_url = await _rehost_submission_image(enriched.id, req.image_url)
 
     try:
         db.upsert_event(enriched)
@@ -5170,6 +5213,61 @@ def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
         )
         conn.commit()
     return {"ok": True, "handle": handle, "stored_at": local}
+
+
+@app.post("/admin/submissions/backfill-images")
+async def admin_backfill_submission_images(requesting_email: str = "", dry_run: bool = True):
+    """Give already-saved submitted events the post image they should have
+    had. Submissions never carried an image until the form started sending
+    one, so existing rows only have the Instagram post link.
+
+    For each submitted event with no image and an instagram.com/p|reel link,
+    re-reads the post via Apify (one call per distinct link — duplicate
+    submissions of the same post share it) and rehosts displayUrl. Founder-
+    only: it spends Apify credit and rewrites payloads. dry_run (default)
+    reports candidates without scraping or writing.
+    """
+    _require_founder(requesting_email)
+    candidates: dict[str, list[tuple[str, dict]]] = {}
+    with db.get_conn() as conn:
+        rows = conn.execute("SELECT id, payload FROM events WHERE source = 'submitted'").fetchall()
+    for r in rows:
+        try:
+            payload = json.loads(r["payload"])
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if payload.get("image_url"):
+            continue
+        link = (payload.get("url") or "").split("?")[0].rstrip("/")
+        if not re.search(r"instagram\.com/(p|reel)/[A-Za-z0-9_-]+$", link):
+            continue
+        candidates.setdefault(link, []).append((r["id"], payload))
+
+    report = {
+        "dry_run": dry_run,
+        "posts": len(candidates),
+        "events": sum(len(v) for v in candidates.values()),
+        "results": [],
+    }
+    if dry_run or not candidates:
+        report["results"] = [{"url": u, "event_ids": [e for e, _ in evs]} for u, evs in candidates.items()]
+        return report
+    if not settings.apify_api_token:
+        raise HTTPException(status_code=503, detail="Apify not configured")
+
+    from scrapers.instagram_apify import _run_apify_scrape
+    for link, evs in candidates.items():
+        posts = await _run_apify_scrape(settings.apify_api_token, [link + "/"], posts_per_account=1)
+        display = (posts[0].get("displayUrl") if posts else None) or ""
+        for event_id, payload in evs:
+            image = await _rehost_submission_image(event_id, display) if display else None
+            if image:
+                payload["image_url"] = image
+                with db.get_conn() as conn:
+                    conn.execute("UPDATE events SET payload = ? WHERE id = ?", (json.dumps(payload), event_id))
+                    conn.commit()
+            report["results"].append({"event_id": event_id, "image_url": image, "found_post": bool(posts)})
+    return report
 
 
 @app.post("/admin/images/rehost")
