@@ -1178,7 +1178,7 @@ export async function deleteEventImage(eventId, googleId) {
 // Backend stores it in group_events with group_id NULL + extra_invitee_ids.
 // Returns the created event row (not the frontend-shaped catalog event —
 // the next /events/group fetch will surface it shaped properly).
-export async function createPersonalPlan(googleId, { name, description = '', venue = '', date_start, date_end = null, note = '', invitee_google_ids = [] }) {
+export async function createPersonalPlan(googleId, { name, description = '', venue = '', date_start, date_end = null, note = '', invitee_google_ids = [], image_url = '', source_url = '', source_ig_handle = '' }) {
   // 15s timeout (vs the 5s default) so cold-start + the brief synchronous
   // DB writes have headroom. Push fan-out is BackgroundTask on the backend
   // so the response itself is fast; this is just defense in depth.
@@ -1190,7 +1190,7 @@ export async function createPersonalPlan(googleId, { name, description = '', ven
       body: JSON.stringify({
         google_id: googleId,
         name, description, venue, date_start, date_end, note,
-        invitee_google_ids,
+        invitee_google_ids, image_url, source_url, source_ig_handle,
       }),
     },
     15000,

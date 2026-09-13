@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Avatar from './Avatar'
-import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGroupDetail } from '../services/api'
+import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGroupDetail, extractIgEvent } from '../services/api'
 
 // The single event-creation sheet. Both entry points use it — the Home
 // "criar evento com amigos" CTA and "+ Novo Evento" inside a group, the
@@ -31,6 +31,18 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [description, setDescription] = useState('')
+  // Instagram post link. Pasting it pre-fills the rest from the post, so an
+  // event the scraper never picked up can still be created in seconds — and
+  // it's the only creation path now that the Events tab "+" is gone.
+  const [igUrl, setIgUrl] = useState('')
+  const [igHandle, setIgHandle] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+  const [extracting, setExtracting] = useState(false)
+  const [extractMsg, setExtractMsg] = useState('')
+  const extractTimer = useRef(null)
+  // Guards against a slow extraction for an old link landing after the
+  // user pasted a different one.
+  const extractSeq = useRef(0)
   const [dateStart, setDateStart] = useState('')
   // Multi-day runs (Carnaval, a long weekend, a festival). Empty means a
   // one-off, which is the overwhelming majority — so the field stays
@@ -94,6 +106,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
   useEffect(() => {
     if (open) {
       setName(''); setVenue(''); setDateStart(''); setNote(''); setDescription('')
+      setIgUrl(''); setIgHandle(''); setImageUrl(''); setExtracting(false); setExtractMsg('')
       setMultiDay(false); setDateEnd('')
       setSelected(new Set()); setSearch(''); setError(null); setExtraPeople([])
       setConnectedGroup(null); setShowGroupPicker(false); setConnectingGroupId(null)
@@ -115,6 +128,43 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
     })
     return () => { cancelled = true }
   }, [open, googleId, initialGroupId])
+
+  useEffect(() => () => clearTimeout(extractTimer.current), [])
+
+  function handleLinkChange(val) {
+    setIgUrl(val)
+    setExtractMsg('')
+    clearTimeout(extractTimer.current)
+    if (!val.trim()) { setImageUrl(''); setIgHandle(''); return }
+    if (!/instagram\.com\/(p|reel)\//i.test(val)) return
+    // Debounced: fires once the user stops typing/pasting. Apify can take
+    // several seconds on a cold start, so the fields fill in when it lands.
+    extractTimer.current = setTimeout(async () => {
+      const seq = ++extractSeq.current
+      setExtracting(true)
+      try {
+        const data = await extractIgEvent(val.trim())
+        if (seq !== extractSeq.current) return
+        // Fill only what's still empty — never overwrite something typed.
+        if (data.name) setName(prev => prev || data.name)
+        if (data.venue_name) setVenue(prev => prev || data.venue_name)
+        if (data.description) setDescription(prev => prev || data.description)
+        // datetime-local wants YYYY-MM-DDTHH:MM.
+        if (data.date_start) setDateStart(prev => prev || String(data.date_start).slice(0, 16))
+        setImageUrl(data.image_url || '')
+        setIgHandle(data.handle || '')
+        const filled = data.name || data.date_start || data.venue_name
+        setExtractMsg(filled
+          ? '✓ Preenchido pelo post — confere e ajusta se precisar'
+          : 'Não achei os detalhes no post. Preenche aqui embaixo.')
+      } catch {
+        if (seq !== extractSeq.current) return
+        setExtractMsg('Não consegui ler o post. Preenche aqui embaixo.')
+      } finally {
+        if (seq === extractSeq.current) setExtracting(false)
+      }
+    }, 800)
+  }
 
   async function connectGroup(group) {
     setConnectingGroupId(group.id)
@@ -218,6 +268,9 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
           description: description.trim(),
           note: note.trim(),
           invitee_google_ids: inviteeIds,
+          image_url: imageUrl,
+          source_url: igUrl.trim(),
+          source_ig_handle: igHandle,
         })
       } else {
         event = await createPersonalPlan(googleId, {
@@ -228,6 +281,9 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
           description: description.trim(),
           note: note.trim(),
           invitee_google_ids: [...selected],
+          image_url: imageUrl,
+          source_url: igUrl.trim(),
+          source_ig_handle: igHandle,
         })
       }
       onCreated?.(event)
@@ -266,6 +322,44 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                 ? `🎲 Novo evento em ${connectedGroup.name}`
                 : '🎲 Criar um evento com amigos'}
             </h3>
+
+            {/* First field on purpose: when the event came from Instagram,
+                the link fills in everything below it. */}
+            <Field label="Link do post no Instagram (opcional)">
+              <input
+                type="url" inputMode="url"
+                value={igUrl} onChange={e => handleLinkChange(e.target.value)}
+                placeholder="https://www.instagram.com/p/..."
+                style={inputStyle}
+              />
+              {extracting && (
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>Lendo o post…</div>
+              )}
+              {!extracting && extractMsg && (
+                <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6, lineHeight: 1.4 }}>{extractMsg}</div>
+              )}
+              {!extracting && imageUrl && (
+                <div style={{ position: 'relative', width: 96, marginTop: 10 }}>
+                  <img
+                    src={imageUrl} alt=""
+                    // Instagram's CDN refuses some hotlinked requests that
+                    // carry our origin as referrer.
+                    referrerPolicy="no-referrer"
+                    onError={() => setImageUrl('')}
+                    style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '1px solid var(--line)', display: 'block' }}
+                  />
+                  <button
+                    type="button" aria-label="Remover imagem"
+                    onClick={() => setImageUrl('')}
+                    style={{
+                      position: 'absolute', top: -8, right: -8, width: 24, height: 24,
+                      borderRadius: '50%', border: '1px solid var(--line)', background: 'var(--bg2)',
+                      color: 'var(--text)', fontSize: 12, cursor: 'pointer', lineHeight: 1,
+                    }}
+                  >✕</button>
+                </div>
+              )}
+            </Field>
 
             <Field label="O que vai rolar?">
               <input

@@ -1818,21 +1818,59 @@ async def _rehost_submission_image(event_id: str, source_url: str) -> Optional[s
     works until it rots), and returns None for anything that isn't an https
     Instagram CDN URL.
     """
-    from urllib.parse import urlparse
     url = (source_url or "").strip()
-    if not url:
-        return None
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not any(
-        host == h or host.endswith("." + h) for h in _SUBMISSION_IMAGE_HOSTS
-    ):
-        log.warning(f"Submission image for {event_id} rejected: host '{host}' not allowed")
+    if not _is_allowed_submission_image(event_id, url):
         return None
     # rehost_image is synchronous httpx — keep it off the event loop, same
     # as the scrape pipeline does.
     rehosted = await asyncio.to_thread(image_store.rehost_image, event_id, url)
     return rehosted or url
+
+
+def _is_allowed_submission_image(event_id: str, url: str) -> bool:
+    """https + Instagram CDN host only. See _SUBMISSION_IMAGE_HOSTS."""
+    from urllib.parse import urlparse
+    if not url:
+        return False
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not any(
+        host == h or host.endswith("." + h) for h in _SUBMISSION_IMAGE_HOSTS
+    ):
+        log.warning(f"Image for {event_id} rejected: host '{host}' not allowed")
+        return False
+    return True
+
+
+def _attach_instagram_post(event: dict, image_url: str, source_url: str) -> dict:
+    """Store the cover image for a private event created from an Instagram
+    link. Called from the sync create endpoints, which FastAPI already runs
+    in a worker thread, so the download can block here.
+
+    Rehosted under the event id — the same filename a manual photo upload
+    uses — so the existing delete cascade and cache-busting cover it. Keeps
+    the CDN link as a fallback when the download fails, like the scraper.
+    """
+    url = (image_url or "").strip()
+    if not url or not _is_allowed_submission_image(event["id"], url):
+        return event
+    stored = image_store.rehost_image(event["id"], url) or url
+    if db.set_event_image_url(event["id"], stored):
+        event["image_url"] = stored
+    return event
+
+
+def _description_with_source(description: str, source_url: str) -> str:
+    """Append "Ver original: <link>" for an Instagram post link.
+    _group_event_to_frontend already extracts that suffix into the event's
+    `url` (the "Ver no Instagram" button) and strips it from the visible
+    description — the same convention catalog forks use — so a private
+    event can carry its source link without a schema change."""
+    desc = (description or "").strip()
+    link = (source_url or "").strip()
+    if not link or not re.match(r"https://(www\.)?instagram\.com/", link) or "Ver original:" in desc:
+        return desc
+    return f"{desc}\n\nVer original: {link}".strip()
 
 
 async def _save_unenriched_submission(submission_id: int, req: EventSubmission) -> None:
@@ -3260,6 +3298,11 @@ class GroupEventCreateRequest(BaseModel):
     # IG handle so views/RSVPs on the group copy still attribute to
     # the source venue's Painel. Empty for plans-from-scratch.
     source_event_id: str = ""
+    # Created from an Instagram post link (the link field at the top of the
+    # creation sheet): the post image, the post link, and its account.
+    image_url: str = ""
+    source_url: str = ""
+    source_ig_handle: str = ""
 
 
 class PersonalPlanCreateRequest(BaseModel):
@@ -3275,6 +3318,11 @@ class PersonalPlanCreateRequest(BaseModel):
     note: str = ""
     invitee_google_ids: list[str] = []   # everyone invited (excluding creator)
     source_event_id: str = ""            # see GroupEventCreateRequest
+    # Created from an Instagram post link (the link field at the top of the
+    # creation sheet): the post image, the post link, and its account.
+    image_url: str = ""
+    source_url: str = ""
+    source_ig_handle: str = ""
 
 
 @app.post("/groups")
@@ -3805,7 +3853,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         group_id=group_id,
         google_id=req.google_id,
         name=req.name.strip(),
-        description=req.description.strip(),
+        description=_description_with_source(req.description, req.source_url),
         venue=req.venue.strip(),
         date_start=req.date_start,
         date_end=req.date_end,
@@ -3815,9 +3863,13 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         visibility="members",
         note=req.note.strip(),
         extra_invitee_ids=invitees,
-        source_ig_handle=_handle_from_event_id(req.source_event_id),
+        # Credit the venue's Painel for views/RSVPs: a catalog fork carries
+        # the handle in its event id; a link-created event sends it directly.
+        source_ig_handle=_handle_from_event_id(req.source_event_id)
+            or re.sub(r"[^A-Za-z0-9._]", "", (req.source_ig_handle or "").lstrip("@"))[:30],
         source_event_id=(req.source_event_id or "").strip(),
     )
+    event = _attach_instagram_post(event, req.image_url, req.source_url)
 
     # Auto-RSVP the creator — same contract as create_personal_plan.
     # Without this, "Adicionar a um grupo" leaves the creator showing
@@ -4207,16 +4259,20 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
         group_id=None,
         google_id=req.google_id,
         name=name,
-        description=(req.description or "").strip(),
+        description=_description_with_source(req.description, req.source_url),
         venue=(req.venue or "").strip(),
         date_start=req.date_start,
         date_end=req.date_end,
         visibility="members",  # not used when group_id is null, but keep the column happy
         note=(req.note or "").strip(),
         extra_invitee_ids=invitees,
-        source_ig_handle=_handle_from_event_id(req.source_event_id),
+        # Credit the venue's Painel for views/RSVPs: a catalog fork carries
+        # the handle in its event id; a link-created event sends it directly.
+        source_ig_handle=_handle_from_event_id(req.source_event_id)
+            or re.sub(r"[^A-Za-z0-9._]", "", (req.source_ig_handle or "").lstrip("@"))[:30],
         source_event_id=(req.source_event_id or "").strip(),
     )
+    event = _attach_instagram_post(event, req.image_url, req.source_url)
 
     # Auto-RSVP the creator. Mirrors the contract from POST /rsvp so the
     # event shows up in the creator's RSVPs immediately.
