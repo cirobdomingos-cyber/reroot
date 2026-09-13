@@ -426,7 +426,10 @@ export default function Home() {
                 letterSpacing: '0.16em', textTransform: 'uppercase',
                 marginTop: 4,
               }}>
-                Evento privado · convide a galera
+                {/* Points at the new shortcut rather than labelling the event
+                    "privado". Not "adicione ao catálogo": events made here stay
+                    visible only to the people invited, never the public catalog. */}
+                Cole o link do Insta · chama a galera
               </div>
             </div>
             <span className="neon-mono" style={{
