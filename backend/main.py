@@ -12,6 +12,7 @@ import functools
 import json
 import logging
 import os
+import sqlite3
 import hashlib
 import re
 import unicodedata
@@ -1349,6 +1350,16 @@ def _is_active_source(ev) -> bool:
     source = (ev.source or "").lower()
     if source == "aue_original":
         return True
+    # User submissions ("Adicionar ao catálogo" / SubmitEventSheet). Not a
+    # scraper, so there is nothing to deactivate — but this function was
+    # written during the April scraper cleanup as an allowlist of the two
+    # sources still running, and "submitted" fell into the "no longer run"
+    # bucket below. Every submission was saved and then silently dropped
+    # from /events while the app told the user it would appear "em
+    # instantes"; the only ones that ever reached the DB came in duplicate
+    # pairs, i.e. people resubmitting because the first never showed up.
+    if source == "submitted":
+        return True
     if source == "instagram":
         ext = ev.external_id or ""
         if not ext.startswith("ig_"):
@@ -1839,7 +1850,7 @@ async def _save_unenriched_submission(submission_id: int, req: EventSubmission) 
         header_gradient="linear-gradient(135deg, #FFF3E0, #FFE0B2)",
         url=req.url.strip()[:500],
         image_url=None,
-        fetched_at=dt.datetime.now(tz.utc),
+        fetched_at=datetime.now(timezone.utc),
     )
     try:
         db.upsert_event(ev)
