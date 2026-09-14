@@ -2967,6 +2967,22 @@ def get_event_attendees(event_id: str, requesting_google_id: str) -> list[dict]:
     return _resolve_attendee_users(rsvp_ids, requesting_google_id)
 
 
+def get_event_rsvp_ids(event_id: str) -> list[str]:
+    """Raw google_ids of everyone who RSVPed to an event — no privacy
+    filtering, no exclusions.
+
+    get_event_attendees() is the *display* roster: it hides users who
+    opted out of discovery from non-friends. That is right for a roster
+    and wrong for notifications and counts, where hiding someone means
+    they silently stop hearing about their own event.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT google_id FROM rsvps WHERE event_id = ?", (event_id,),
+        ).fetchall()
+    return [r["google_id"] for r in rows]
+
+
 def get_event_invitees_pending(event_id: str, requesting_google_id: str) -> list[dict]:
     """For private events (rows in group_events), return the named
     invitees who haven't RSVPed yet — the "convidados aguardando" list

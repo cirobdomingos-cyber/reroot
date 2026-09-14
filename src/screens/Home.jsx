@@ -231,7 +231,17 @@ export default function Home() {
       type: 'TOGGLE_RSVP',
       payload: { eventId: ev.id, dateStart: ds, name: ev.name, venue },
     })
-    if (state.googleUser?.id && (state.privacy?.shareRsvps ?? true)) {
+    // Sync unconditionally — these are private events you were invited
+    // to, and the sync is what puts you on the host's "Quem vai" roster
+    // and tells the other guests you're in. It used to be gated on
+    // privacy.shareRsvps, which meant accepting from Home silently
+    // never reached the backend: the host saw you as "aguardando"
+    // forever. That toggle is about the friends feed ("seus amigos
+    // podem ver os eventos que você confirmou") and the backend still
+    // applies it there. GroupDetail already syncs unconditionally, so
+    // the same accept behaved differently depending on which screen
+    // you tapped it from.
+    if (state.googleUser?.id) {
       syncRsvp(state.googleUser.id, {
         id: ev.id, name: ev.name, venue, dateStart: ds, url: '',
       }, true)

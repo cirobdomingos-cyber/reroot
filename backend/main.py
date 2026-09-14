@@ -2510,12 +2510,102 @@ class RsvpUpsertRequest(BaseModel):
     event_url: str = ""
 
 
+def _event_rsvp_audience(event_id: str, actor_id: str) -> list[str]:
+    """Who to tell when someone confirms a PRIVATE event: the people
+    planning it (creator, co-hosts) and the people invited to it — both
+    those who already said yes and those still deciding.
+
+    Catalog events return [] — they have no invitee list, and announcing
+    a public RSVP to everyone else going would be spam. Friends are the
+    high-signal cut there, and they're handled separately.
+
+    Built from raw ids rather than get_event_attendees(), which is the
+    display roster: that one hides users who opted out of discovery from
+    non-friends. Right for a roster, wrong here — they'd silently stop
+    hearing about their own event.
+
+    declined_ids needs no subtracting: "Não vou" already takes you off
+    extra_invitee_ids and deletes your RSVP (see db.decline_event_invite),
+    so a decliner only reappears here by being re-invited or by
+    confirming after all.
+    """
+    ge = db.get_group_event(event_id)
+    if not ge:
+        return []
+    audience = set(ge.get("extra_invitee_ids") or [])
+    audience |= set(ge.get("co_host_ids") or [])
+    audience |= set(db.get_event_rsvp_ids(event_id))
+    if ge.get("created_by"):
+        audience.add(ge["created_by"])
+    audience.discard(actor_id)
+    audience.discard("")
+    return sorted(audience)
+
+
+def _fanout_rsvp_pushes(req: RsvpUpsertRequest) -> None:
+    """Tell the people who care that someone confirmed. Two audiences,
+    at most one push each — a friend who is also on the invitee list
+    must not get two notifications for the same RSVP:
+
+      1. Friends already invested in this event. Gated by the user's
+         "compartilhar RSVPs com amigos" toggle, and unchanged.
+      2. For a private event, everyone planning or invited to it. NOT
+         gated by that toggle: it is about the friends feed, while
+         these people see the same confirmation on the event's "Quem
+         vai" roster either way — and a host who can't tell who
+         accepted can't plan the thing.
+
+    Runs in the background: both lists fan out to serial webpush + APNs
+    calls, so on a 20-guest event the RSVP tap would otherwise wait on
+    20 round trips before the UI could respond.
+    """
+    actor, event_id = req.google_id, req.event_id
+    user_name = _user_display_name(actor)
+    title = f"🎉 {user_name} vai"
+    notified: set[str] = set()
+
+    if _user_share_rsvps(actor):
+        for friend in db.get_friends(actor):
+            fid = friend["google_id"]
+            if friend.get("status") != "accepted":
+                continue
+            if not _friend_cares_about_event(fid, event_id):
+                continue
+            notified.add(fid)
+            try:
+                _send_push_to_user(
+                    fid, title=title, body=req.event_name,
+                    url=_event_deep_link(event_id),
+                    tag=f"friend-rsvp-{actor}-{event_id}",
+                )
+            except Exception as exc:
+                log.warning(f"friend-rsvp push to {fid} failed: {exc}")
+
+    guests = [g for g in _event_rsvp_audience(event_id, actor) if g not in notified]
+    if not guests:
+        return
+    # One tag per event, so a burst of confirmations collapses into a
+    # single slot instead of stacking. The running count keeps that
+    # honest — replacing "Ana vai" with "Bia vai" would lose Ana.
+    going = len(db.get_event_rsvp_ids(event_id))
+    body = req.event_name if going <= 1 else f"{req.event_name} · {going} confirmados"
+    for gid in guests:
+        try:
+            _send_push_to_user(
+                gid, title=title, body=body,
+                url=_event_deep_link(event_id),
+                tag=f"event-rsvp-{event_id}",
+            )
+        except Exception as exc:
+            log.warning(f"event-rsvp push to {gid} failed: {exc}")
+
+
 @app.post("/rsvp")
-def rsvp_upsert(req: RsvpUpsertRequest):
+def rsvp_upsert(req: RsvpUpsertRequest, background_tasks: BackgroundTasks):
     """Record that a user is going to an event (normalized, queryable).
-    Side-effects: evaluates the badge engine + (when this is a NEW
-    RSVP, not a re-confirm) pushes a notification to friends with
-    privacy.shareRsvps = true."""
+    Side-effects: evaluates the badge engine + (when this is a NEW RSVP,
+    not a re-confirm) notifies friends and, on a private event, the
+    people planning or invited to it. See _fanout_rsvp_pushes."""
     is_new = not db.rsvp_exists(req.google_id, req.event_id)
     db.upsert_rsvp(
         google_id=req.google_id,
@@ -2527,28 +2617,9 @@ def rsvp_upsert(req: RsvpUpsertRequest):
     )
     new_badges = badges.evaluate(req.google_id)
 
-    # Notify friends — only on a fresh RSVP (toggle off→on cycles
-    # don't re-spam), only if the user opted in to sharing, AND only
-    # when the friend is *also* relevant to this event (already RSVPed,
-    # invited, creator, or co-host). Without this filter every popular
-    # friend's RSVPs would fan out to their whole friend list and turn
-    # into push spam — the rule "tell me my friend confirmed something
-    # I was already considering" is the high-signal cut.
-    if is_new and _user_share_rsvps(req.google_id):
-        user_name = _user_display_name(req.google_id)
-        tag = f"friend-rsvp-{req.google_id}-{req.event_id}"
-        for friend in db.get_friends(req.google_id):
-            if friend.get("status") != "accepted":
-                continue
-            if not _friend_cares_about_event(friend["google_id"], req.event_id):
-                continue
-            _send_push_to_user(
-                friend["google_id"],
-                title=f"🎉 {user_name} vai",
-                body=req.event_name,
-                url=_event_deep_link(req.event_id),
-                tag=tag,
-            )
+    # Only on a fresh RSVP — toggling off→on shouldn't re-spam anyone.
+    if is_new:
+        background_tasks.add_task(_fanout_rsvp_pushes, req)
 
     return {"ok": True, "new_badges": new_badges}
 
