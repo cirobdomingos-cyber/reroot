@@ -268,3 +268,16 @@ def test_debug_carries_the_caption_and_whether_the_flyer_was_sent():
     assert debug["caption"].startswith("Semana sem tempo ruim")
     # These fixtures have no displayUrl, so no image reaches the model.
     assert debug.get("image_sent_to_model") is None
+
+
+def test_the_city_is_not_a_neighbourhood():
+    """The model answers "Curitiba" in the neighbourhood field often enough,
+    and a Curitiba-only catalog rendering a "Curitiba" chip is noise."""
+    payload = _event_payload("Show", _next(QUI))
+    payload["neighborhood"] = "Curitiba"
+    events, _ = _run({"is_event": True, "events": [payload]}, caption=SINGLE_CAPTION)
+    assert events[0].neighborhood is None
+
+    payload["neighborhood"] = "São Francisco"
+    events, _ = _run({"is_event": True, "events": [payload]}, caption=SINGLE_CAPTION)
+    assert events[0].neighborhood == "São Francisco", "a real bairro survives"

@@ -865,6 +865,15 @@ function PostDebugSection({ email }) {
           )}
 
           {result && <PostDebugResult result={result} />}
+          {result?.ok && (result.extracted || []).length > 0 && (
+            <div style={{
+              padding: '9px 12px', background: 'var(--cream)', borderRadius: 8,
+              fontSize: 11, color: 'var(--charcoal-mid)', lineHeight: 1.5,
+            }}>
+              Isso é só um teste — nada foi salvo. Pra colocar no catálogo,
+              roda o 🔄 na linha do @{result.handle}.
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -891,7 +900,7 @@ function PostDebugResult({ result }) {
 
       <div>
         <div style={{ ...muted, fontWeight: 700, marginBottom: 4 }}>
-          ✅ Entraram no catálogo · {extracted.length}
+          ✅ Passaram nas travas · {extracted.length}
         </div>
         {extracted.length === 0 ? (
           <div style={muted}>nenhum</div>

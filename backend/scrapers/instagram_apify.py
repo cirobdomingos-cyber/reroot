@@ -1166,6 +1166,13 @@ def _raw_event_from(
     venue_name = (data.get("venue_name") or "").strip() or handle.title()
     venue_address = (data.get("venue_address") or "").strip()
     neighborhood = (data.get("neighborhood") or "").strip() or None
+    # The model sometimes answers the CITY here ("Curitiba"), which then
+    # renders as a neighbourhood chip saying Curitiba on a Curitiba-only
+    # catalog. Empty is more honest than wrong.
+    if neighborhood and neighborhood.strip().lower().rstrip("/-pr ") in (
+        "curitiba", "cwb", "curitiba pr", "curitiba - pr", "curitiba/pr", "brasil", "brazil",
+    ):
+        neighborhood = None
 
     return RawEvent(
         source="instagram",
