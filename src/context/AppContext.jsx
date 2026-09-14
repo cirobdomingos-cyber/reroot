@@ -156,6 +156,10 @@ const INITIAL_STATE = {
 
   // Profile photo the user uploaded ('' = use the account picture).
   customPicture: '',
+
+  // Instagram handles (lowercase) the user stopped following in Fontes.
+  // Empty = follows everything. See lib/follows.js.
+  unfollowedSources: [],
 }
 
 // The avatar URL to show for the signed-in user.
@@ -200,6 +204,22 @@ function reducer(state, action) {
     // which SET_GOOGLE_USER overwrites on every login.
     case 'SET_CUSTOM_PICTURE':
       return { ...state, customPicture: action.payload || '' }
+
+    // Followed catalog accounts — opt-out list, see lib/follows.js.
+    case 'TOGGLE_FOLLOW_SOURCE': {
+      const handle = String(action.payload || '').toLowerCase()
+      if (!handle) return state
+      const current = state.unfollowedSources || []
+      return {
+        ...state,
+        unfollowedSources: current.includes(handle)
+          ? current.filter(h => h !== handle)
+          : [...current, handle],
+      }
+    }
+
+    case 'SET_UNFOLLOWED_SOURCES':
+      return { ...state, unfollowedSources: action.payload || [] }
 
     case 'SET_NEIGHBORHOOD':
       return { ...state, neighborhood: action.payload }
@@ -402,6 +422,7 @@ function reducer(state, action) {
         language:     state.language     || remote.language,
         userName:     state.userName     || remote.userName,
         customPicture: state.customPicture || remote.customPicture || '',
+        unfollowedSources: remote.unfollowedSources ?? state.unfollowedSources ?? [],
         neighborhood: state.neighborhood || remote.neighborhood,
         // Merge privacy settings: remote wins, with migration from legacy shareRsvps
         privacy: remote.privacy

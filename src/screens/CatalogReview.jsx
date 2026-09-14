@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
+import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 
 // Curator review queue for the public catalog.
 //
@@ -90,7 +91,173 @@ export default function CatalogReview() {
       {role === 'not_curator' && <Muted>Essa área é só pra curadores do auê.</Muted>}
       {role === 'curator' && (requestId
         ? <RequestDetail key={requestId} id={requestId} email={email} />
-        : <RequestList email={email} />)}
+        : <ReviewTabs email={email} />)}
+    </div>
+  )
+}
+
+// Two queues on one screen: events (from Instagram links) and accounts
+// (suggested in Fontes). The tab lives in the URL so the "📡 Conta
+// sugerida" push can open straight onto Contas.
+function ReviewTabs({ email }) {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'contas' ? 'contas' : 'eventos'
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {[['eventos', 'Eventos'], ['contas', 'Contas']].map(([key, text]) => (
+          <button
+            key={key}
+            onClick={() => setParams(key === 'contas' ? { tab: 'contas' } : {}, { replace: true })}
+            style={{
+              flex: 1, padding: '9px 0', borderRadius: 10, cursor: 'pointer',
+              border: tab === key ? 'none' : '1px solid var(--line)',
+              background: tab === key ? 'var(--magenta)' : 'transparent',
+              color: tab === key ? 'var(--bg)' : 'var(--text2)',
+              fontSize: 13, fontWeight: 700,
+            }}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+      {tab === 'contas' ? <AccountRequestList email={email} /> : <RequestList email={email} />}
+    </>
+  )
+}
+
+function AccountRequestList({ email }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(withEmail(`${API_BASE}/admin/account-requests?status=review`, email))
+      .then(readJson)
+      .then(d => { if (!cancelled) setItems(d.requests || []) })
+      .catch(e => { if (!cancelled) setError(e.message) })
+    return () => { cancelled = true }
+  }, [email])
+
+  if (error) return <Muted>{error}</Muted>
+  if (!items) return <Muted>Carregando sugestões…</Muted>
+  if (!items.length) return <Muted>Nenhuma conta sugerida esperando. 🎉</Muted>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <Muted>
+        {items.length} {items.length === 1 ? 'conta sugerida' : 'contas sugeridas'}. Aprovar começa a acompanhar a conta no próximo scrape diário.
+      </Muted>
+      {items.map(r => <AccountRequestCard key={r.id} request={r} email={email} />)}
+    </div>
+  )
+}
+
+function AccountRequestCard({ request: r, email }) {
+  const [category, setCategory] = useState('')
+  const [labelText, setLabelText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [outcome, setOutcome] = useState(null) // { kind, msg }
+
+  async function decide(action) {
+    if (action === 'approve' && !category) {
+      setOutcome({ kind: 'err', msg: 'Escolhe uma categoria antes de aprovar.' })
+      return
+    }
+    setBusy(true)
+    setOutcome(null)
+    try {
+      const res = await fetch(`${API_BASE}/admin/account-requests/${r.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ requesting_email: email, category, label: labelText.trim() }),
+      })
+      const d = await readJson(res)
+      if (!d.ok) {
+        const who = d.reviewed_by_name ? ` por ${d.reviewed_by_name}` : ''
+        setOutcome({ kind: 'done', msg: `Já foi ${d.status === 'approved' ? 'aprovada' : 'recusada'}${who}.` })
+      } else {
+        setOutcome({
+          kind: 'done',
+          msg: action === 'approve' ? `✓ @${r.handle} entrou nas fontes.` : `@${r.handle} recusada.`,
+        })
+      }
+    } catch (e) {
+      setOutcome({ kind: 'err', msg: e.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const done = outcome?.kind === 'done'
+  return (
+    <div style={{ ...card, flexDirection: 'column', alignItems: 'stretch', gap: 8, opacity: done ? 0.6 : 1 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <a
+          href={`https://www.instagram.com/${encodeURIComponent(r.handle)}/`}
+          target="_blank" rel="noopener noreferrer"
+          style={{ fontWeight: 800, fontSize: 16, color: 'var(--cyan)', textDecoration: 'none' }}
+        >
+          @{r.handle} ↗
+        </a>
+        <span style={{ fontSize: 11, color: 'var(--text3)' }}>{fmtStamp(r.created_at)}</span>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+        {r.requested_by_name ? `${r.requested_by_name} sugeriu` : 'Sugestão'}
+        {r.request_count > 1 ? ` · ${r.request_count} pedidos` : ''}
+      </div>
+      {r.note && (
+        <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.45, whiteSpace: 'pre-line' }}>“{r.note}”</div>
+      )}
+      {r.previously_tracked && (
+        <div style={{ fontSize: 12, color: 'var(--text3)' }}>Já foi acompanhada antes e está desativada — aprovar reativa.</div>
+      )}
+      {!done && (
+        <>
+          <select value={category} onChange={e => setCategory(e.target.value)} style={input}>
+            <option value="">Categoria…</option>
+            {CATEGORY_ORDER.map(c => (
+              <option key={c} value={c}>{CATEGORY_META[c]?.emoji} {CATEGORY_META[c]?.label || c}</option>
+            ))}
+          </select>
+          <input
+            value={labelText}
+            onChange={e => setLabelText(e.target.value)}
+            placeholder="Nome (opcional — o scrape preenche do perfil)"
+            style={input}
+          />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => decide('approve')}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                background: 'var(--lime)', color: 'var(--on-lime)',
+                fontSize: 14, fontWeight: 800, cursor: busy ? 'wait' : 'pointer',
+              }}
+            >
+              Aprovar
+            </button>
+            <button
+              onClick={() => decide('reject')}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10,
+                border: '1px solid var(--line)', background: 'transparent',
+                color: 'var(--text2)', fontSize: 14, fontWeight: 700,
+                cursor: busy ? 'wait' : 'pointer',
+              }}
+            >
+              Recusar
+            </button>
+          </div>
+        </>
+      )}
+      {outcome && (
+        <div style={{ fontSize: 13, fontWeight: 600, color: outcome.kind === 'err' ? '#FF6B6B' : 'var(--text2)' }}>
+          {outcome.msg}
+        </div>
+      )}
     </div>
   )
 }

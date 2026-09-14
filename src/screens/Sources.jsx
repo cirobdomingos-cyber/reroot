@@ -23,8 +23,16 @@ function categoryFor(source, isIg) {
 
 export default function Sources() {
   const navigate = useNavigate()
-  const { state } = useApp()
+  const { state, dispatch } = useApp()
   const email = state.googleUser?.email || ''
+  // Opt-out follow list (lib/follows.js) — handles the user hid.
+  const unfollowed = useMemo(
+    () => new Set((state.unfollowedSources || []).map(h => h.toLowerCase())),
+    [state.unfollowedSources],
+  )
+  function toggleFollow(handle) {
+    dispatch({ type: 'TOGGLE_FOLLOW_SOURCE', payload: handle })
+  }
   const [data, setData] = useState({ institutional: [], instagram: [] })
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -190,6 +198,26 @@ export default function Sources() {
             <>{totalSources} {totalSources === 1 ? 'fonte' : 'fontes'} · {totalEvents} evento{totalEvents === 1 ? '' : 's'} próximo{totalEvents === 1 ? '' : 's'}</>
           )}
         </div>
+        {!loading && (
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginTop: 6, lineHeight: 1.45 }}>
+            {unfollowed.size === 0 ? (
+              'Você segue todas. Toque em "Seguindo" pra tirar uma conta do seu feed.'
+            ) : (
+              <>
+                Você deixou de seguir {unfollowed.size} conta{unfollowed.size === 1 ? '' : 's'} ·{' '}
+                <button
+                  onClick={() => dispatch({ type: 'SET_UNFOLLOWED_SOURCES', payload: [] })}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: 'var(--cyan)', fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  seguir todas de novo
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Curator add-handle form — only renders when the user is a
@@ -205,6 +233,12 @@ export default function Sources() {
 
       {!loading && canCurate && (
         <AddHandleForm email={email} onAdded={refreshSources} />
+      )}
+
+      {/* Anyone signed in can suggest an account; curators approve it in
+          /curadoria. Curators add directly with the form above instead. */}
+      {!loading && !canCurate && state.googleUser?.id && (
+        <SuggestAccountForm googleId={state.googleUser.id} />
       )}
 
       {/* Search */}
@@ -318,6 +352,8 @@ export default function Sources() {
                   <SourceRow
                     key={s.id}
                     source={s}
+                    following={!s.handle || !unfollowed.has(s.handle.toLowerCase())}
+                    onToggleFollow={s.handle ? () => toggleFollow(s.handle) : null}
                     onOpen={() => navigate(`/sources/${encodeURIComponent(s.id)}`)}
                   />
                 ))}
@@ -337,6 +373,8 @@ export default function Sources() {
                 <SourceRow
                   key={s.id}
                   source={s}
+                  following={!s.handle || !unfollowed.has(s.handle.toLowerCase())}
+                  onToggleFollow={s.handle ? () => toggleFollow(s.handle) : null}
                   onOpen={() => navigate(`/sources/${encodeURIComponent(s.id)}`)}
                 />
               ))}
@@ -353,12 +391,22 @@ export default function Sources() {
 function CatalogQueueLink({ email, onOpen }) {
   const [count, setCount] = useState(null)
 
+  // Both queues: events suggested from Instagram links and accounts
+  // suggested in Fontes.
   useEffect(() => {
     let cancelled = false
-    fetch(`${API_BASE}/admin/catalog-requests?status=review&requesting_email=${encodeURIComponent(email)}`)
+    const q = `status=review&requesting_email=${encodeURIComponent(email)}`
+    const countOf = url => fetch(url)
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (!cancelled) setCount(Array.isArray(d?.requests) ? d.requests.length : null) })
-      .catch(() => { if (!cancelled) setCount(null) })
+      .then(d => (Array.isArray(d?.requests) ? d.requests.length : null))
+      .catch(() => null)
+    Promise.all([
+      countOf(`${API_BASE}/admin/catalog-requests?${q}`),
+      countOf(`${API_BASE}/admin/account-requests?${q}`),
+    ]).then(([events, accounts]) => {
+      if (cancelled) return
+      setCount(events === null && accounts === null ? null : (events || 0) + (accounts || 0))
+    })
     return () => { cancelled = true }
   }, [email])
 
@@ -383,6 +431,136 @@ function CatalogQueueLink({ email, onOpen }) {
         {count === null ? '→' : waiting ? `${count} esperando` : 'nenhum'}
       </span>
     </button>
+  )
+}
+
+
+// "Sugerir uma conta" — for everyone who isn't a curator. Goes to the
+// curator queue (/curadoria?tab=contas) instead of straight into tracking:
+// every tracked account costs an Apify + Claude pass each day.
+function SuggestAccountForm({ googleId }) {
+  const [open, setOpen] = useState(false)
+  const [handle, setHandle] = useState('')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [feedback, setFeedback] = useState(null)
+
+  async function submit(e) {
+    e.preventDefault()
+    const clean = handle.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?].*$/, '')
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(clean)) {
+      setFeedback({ kind: 'err', msg: 'Confere o @ (letras, números, "." ou "_")' })
+      return
+    }
+    setSubmitting(true)
+    setFeedback(null)
+    try {
+      const r = await fetch(`${API_BASE}/accounts/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ google_id: googleId, handle: clean, note: note.trim() }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setFeedback({ kind: 'err', msg: d.detail || `Erro ${r.status}` })
+      } else if (d.status === 'already_tracked') {
+        setFeedback({ kind: 'ok', msg: `@${d.handle} já está nas fontes do auê.` })
+      } else {
+        setFeedback({ kind: 'ok', msg: `Valeu! A curadoria vai dar uma olhada em @${d.handle}.` })
+        setHandle(''); setNote('')
+      }
+    } catch (err) {
+      setFeedback({ kind: 'err', msg: err?.message || 'Não deu pra enviar agora' })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <div style={{ padding: '0 16px 12px' }}>
+        <button
+          onClick={() => setOpen(true)}
+          style={{
+            width: '100%', padding: '10px 14px',
+            background: 'transparent', color: 'var(--cyan)',
+            border: '1.5px dashed var(--cyan)',
+            borderRadius: 12, cursor: 'pointer',
+            fontSize: 13, fontWeight: 700, letterSpacing: 0.3,
+          }}
+        >
+          💡 Sugerir uma conta do Instagram
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      style={{
+        margin: '0 16px 14px', padding: '14px',
+        background: 'var(--white)', borderRadius: 14,
+        border: '1px solid var(--border)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+          Sugerir uma conta
+        </div>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); setFeedback(null) }}
+          aria-label="Fechar"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--charcoal-light)', fontSize: 16, padding: 4,
+          }}
+        >✕</button>
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 10, lineHeight: 1.45 }}>
+        Um bar, uma casa de show, um coletivo que posta a agenda no Insta. A curadoria confere e, se rolar, os eventos começam a aparecer no auê.
+      </div>
+      <input
+        value={handle}
+        onChange={e => setHandle(e.target.value)}
+        placeholder="@conta ou link do perfil"
+        autoCapitalize="none"
+        autoCorrect="off"
+        style={inputStyle}
+      />
+      <input
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        placeholder="O que rola lá? (opcional)"
+        maxLength={300}
+        style={{ ...inputStyle, marginTop: 8 }}
+      />
+      {feedback && (
+        <div style={{
+          marginTop: 10, padding: '7px 10px',
+          background: feedback.kind === 'ok' ? 'var(--sage-pale)' : '#FFF3E0',
+          color: feedback.kind === 'ok' ? 'var(--sage)' : '#BF360C',
+          borderRadius: 8, fontSize: 12, textAlign: 'center',
+        }}>
+          {feedback.msg}
+        </div>
+      )}
+      <button
+        type="submit"
+        disabled={submitting || !handle.trim()}
+        style={{
+          width: '100%', marginTop: 10, padding: '11px',
+          background: 'var(--cyan)', color: '#14081E',
+          border: 'none', borderRadius: 12,
+          fontSize: 13, fontWeight: 700,
+          cursor: submitting ? 'wait' : 'pointer',
+          opacity: (submitting || !handle.trim()) ? 0.55 : 1,
+        }}
+      >
+        {submitting ? 'Enviando…' : 'Enviar sugestão'}
+      </button>
+    </form>
   )
 }
 
@@ -577,7 +755,7 @@ function Section({ title, sub, children }) {
 }
 
 
-function SourceRow({ source: s, onOpen }) {
+function SourceRow({ source: s, onOpen, following = true, onToggleFollow = null }) {
   const isIg = s.kind === 'ig'
   // Featured-handle treatment mirrors the EventCard: a honey 1.5px
   // border instead of the default neutral, plus a star pill near the
@@ -592,6 +770,9 @@ function SourceRow({ source: s, onOpen }) {
         border: isFeatured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
         padding: '12px 14px', cursor: 'pointer',
         display: 'flex', alignItems: 'center', gap: 12,
+        // Unfollowed accounts stay listed (so you can follow them back)
+        // but read as switched off.
+        opacity: following ? 1 : 0.6,
       }}
     >
       {isIg ? (
@@ -645,6 +826,22 @@ function SourceRow({ source: s, onOpen }) {
         }}>
           {s.future_events}
         </span>
+        {onToggleFollow && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFollow() }}
+            aria-pressed={following}
+            title={following ? 'Deixar de seguir' : 'Seguir'}
+            style={{
+              padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+              fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+              border: following ? '1px solid var(--border)' : '1px solid var(--cyan)',
+              background: following ? 'transparent' : 'var(--cyan)',
+              color: following ? 'var(--charcoal-light)' : '#14081E',
+            }}
+          >
+            {following ? 'Seguindo' : 'Seguir'}
+          </button>
+        )}
         {s.url && (
           <button
             onClick={(e) => {

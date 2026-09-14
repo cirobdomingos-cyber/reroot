@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, myPicture } from '../context/AppContext'
+import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
@@ -612,6 +613,13 @@ export default function Events() {
   // reserved for a separate discovery surface (chatbot or dedicated tab,
   // TBD). The Events tab is the catalog of real, scraped Curitiba events.
   filteredEvents = filteredEvents.filter(ev => !ev.isCurated)
+  // Accounts the user stopped following in Fontes. Counted after the
+  // other filters so the banner below says how many events *this view*
+  // is hiding — an emptier feed should never be a mystery.
+  const hiddenSources = unfollowedSet(state)
+  const beforeFollowFilter = filteredEvents.length
+  filteredEvents = filteredEvents.filter(ev => !hiddenByFollows(ev, hiddenSources))
+  const hiddenByFollowCount = beforeFollowFilter - filteredEvents.length
   // Snapshot for the week strip's count badges — reflects every active
   // filter *except* the per-day pick, so picking a day doesn't zero out
   // the other days' counts.
@@ -1159,6 +1167,29 @@ export default function Events() {
       {/* ── Map view ── */}
       {!loading && !isVenueMode && viewMode === 'map' && (
         <EventsMap events={filteredEvents} onPinTap={(ev) => openDetail(ev.id)} />
+      )}
+
+      {/* Events hidden because the user unfollowed their account. */}
+      {!loading && viewMode === 'list' && hiddenByFollowCount > 0 && (
+        <div style={{
+          margin: '0 16px 10px', padding: '9px 12px', borderRadius: 12,
+          border: '1px dashed var(--line)', color: 'var(--text2)', fontSize: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        }}>
+          <span>
+            {hiddenByFollowCount} evento{hiddenByFollowCount === 1 ? '' : 's'} escondido{hiddenByFollowCount === 1 ? '' : 's'} de
+            {' '}contas que você não segue
+          </span>
+          <button
+            onClick={() => navigate('/sources')}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              color: 'var(--cyan)', fontSize: 12, fontWeight: 700, flexShrink: 0,
+            }}
+          >
+            Gerenciar
+          </button>
+        </div>
       )}
 
       {/* ── List ── */}

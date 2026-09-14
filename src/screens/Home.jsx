@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES, myPicture } from '../context/AppContext'
+import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useT } from '../i18n'
 import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
@@ -266,7 +267,12 @@ export default function Home() {
     }
     return null
   }
+  // Suggestions and the "rolando" count skip accounts the user unfollowed
+  // in Fontes. RSVP-driven lists above keep the full catalog — an event
+  // you said you'd go to stays yours.
+  const hiddenSources = unfollowedSet(state)
   const suggestedEvents = allEvents
+    .filter(ev => !hiddenByFollows(ev, hiddenSources))
     .filter(ev => !state.rsvps[ev.id])
     .sort((a, b) => {
       const ra = eventPriorityRank(a, priorityMoods)
@@ -279,7 +285,7 @@ export default function Home() {
   // Activity ticker counts — replaces the previous stat tiles.
   // "rolando" = total events in the live catalog; falls back to a
   // skeleton zero while the fetch resolves.
-  const rolandoCount = allEvents.length
+  const rolandoCount = allEvents.filter(ev => !hiddenByFollows(ev, hiddenSources)).length
   // CWB.NIGHT.LOG version stamp. ISO week of year, padded — matches the
   // mockup's `V.207` format. Live so it stays current without a deploy.
   const _now = new Date()

@@ -4845,6 +4845,144 @@ def admin_delete_ig_account(handle: str, requesting_email: str = ""):
     return {"ok": True}
 
 
+# ── Account suggestions ────────────────────────────────────
+# Anyone signed in can suggest an Instagram account in Fontes; curators
+# approve it in /curadoria?tab=contas. Not added straight to tracking:
+# each tracked account costs a daily Apify + Claude pass, and the catalog
+# only works if the accounts post Curitiba events.
+
+_IG_HANDLE_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+_MAX_OPEN_ACCOUNT_SUGGESTIONS = 10
+
+
+class AccountSuggestion(BaseModel):
+    google_id: str
+    handle: str
+    note: str = ""
+
+
+@app.post("/accounts/requests")
+def suggest_account(req: AccountSuggestion):
+    """Returns {status, handle}: 'requested' | 'already_requested' (someone
+    already suggested it — counted, not re-queued) | 'already_tracked'."""
+    handle = req.handle.strip().lstrip("@").lower()
+    if not _IG_HANDLE_RE.match(handle):
+        raise HTTPException(status_code=400, detail="Handle inválido (use letras, números, '.' ou '_')")
+    if not req.google_id or db.get_user_state(req.google_id) is None:
+        raise HTTPException(status_code=401, detail="Entra na sua conta pra sugerir")
+    tracked = db.find_ig_account_ci(handle)
+    if tracked and tracked.get("enabled"):
+        return {"status": "already_tracked", "handle": tracked["handle"]}
+    if db.count_open_account_requests_by(req.google_id) >= _MAX_OPEN_ACCOUNT_SUGGESTIONS:
+        raise HTTPException(
+            status_code=429,
+            detail="Você já tem várias sugestões esperando — a curadoria olha essas primeiro 🙏",
+        )
+    request, created = db.insert_account_request(handle, req.note.strip()[:300], req.google_id)
+    if created:
+        body = f"{_user_display_name(req.google_id)} sugeriu @{handle}"
+        if request.get("note"):
+            body += f": {request['note']}"
+        for uid in db.user_ids_for_emails(db.list_curator_emails()):
+            try:
+                _send_push_to_user(
+                    uid,
+                    title="📡 Conta sugerida",
+                    body=body[:180],
+                    url="/#/curadoria?tab=contas",
+                    tag=f"account-request-{request['id']}",
+                )
+            except Exception as exc:
+                log.warning(f"Account request {request['id']}: push to {uid} failed: {exc}")
+    return {"status": "requested" if created else "already_requested", "handle": handle}
+
+
+class AccountRequestDecision(BaseModel):
+    requesting_email: str
+    category: str = ""
+    label: str = ""
+
+
+def _account_request_out(r: dict) -> dict:
+    tracked = db.find_ig_account_ci(r["handle"])
+    return {
+        **r,
+        "requested_by_name": _user_display_name(r["requested_by"]),
+        "reviewed_by_name": _reviewer_name(r["reviewed_by"]) if r.get("reviewed_by") else "",
+        "previously_tracked": bool(tracked and not tracked.get("enabled")),
+    }
+
+
+def _already_resolved(request_id: int) -> dict:
+    current = db.get_account_request(request_id) or {}
+    return {
+        "ok": False,
+        "status": current.get("status", ""),
+        "reviewed_by_name": _reviewer_name(current["reviewed_by"]) if current.get("reviewed_by") else "",
+    }
+
+
+@app.get("/admin/account-requests")
+def admin_list_account_requests(requesting_email: str = "", status: str = "review"):
+    _require_curator(requesting_email)
+    if status not in ("review", "approved", "rejected", "all"):
+        raise HTTPException(status_code=400, detail="status inválido")
+    return {"requests": [_account_request_out(r) for r in db.list_account_requests(status)]}
+
+
+@app.post("/admin/account-requests/{request_id}/approve")
+def admin_approve_account_request(request_id: int, req: AccountRequestDecision):
+    """Claim the request, then start tracking the account. If adding the
+    account fails the claim is undone, so the request doesn't end up
+    'approved' with nothing tracked."""
+    email = _require_curator(req.requesting_email)
+    request = db.get_account_request(request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Sugestão não encontrada")
+    category = req.category.strip()
+    if not category:
+        raise HTTPException(status_code=400, detail="Escolhe uma categoria")
+    if not db.resolve_account_request(request_id, "approved", email):
+        return _already_resolved(request_id)
+    existing = db.find_ig_account_ci(request["handle"])
+    try:
+        account = db.upsert_ig_account(
+            handle=existing["handle"] if existing else request["handle"],
+            label=req.label.strip() or ((existing or {}).get("label") or ""),
+            category=category,
+            enabled=True,
+            notes=f"Sugerida por {_user_display_name(request['requested_by'])}",
+            added_by_email=email,
+        )
+    except Exception:
+        db.reopen_account_request(request_id)
+        raise
+    _bust_handle_cache()
+    try:
+        _send_push_to_user(
+            request["requested_by"],
+            title="📡 Sugestão aceita",
+            body=f"@{request['handle']} entrou nas fontes do auê — os eventos aparecem depois do próximo scrape",
+            url="/#/sources",
+            tag=f"account-request-{request_id}",
+        )
+    except Exception as exc:
+        log.warning(f"Account request {request_id}: requester push failed: {exc}")
+    return {"ok": True, "status": "approved", "account": account}
+
+
+@app.post("/admin/account-requests/{request_id}/reject")
+def admin_reject_account_request(request_id: int, req: AccountRequestDecision):
+    """Silent for the person who suggested it — same as declining a
+    friend request."""
+    email = _require_curator(req.requesting_email)
+    if not db.get_account_request(request_id):
+        raise HTTPException(status_code=404, detail="Sugestão não encontrada")
+    if not db.resolve_account_request(request_id, "rejected", email):
+        return _already_resolved(request_id)
+    return {"ok": True, "status": "rejected"}
+
+
 @app.delete("/admin/events/{event_id}")
 def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
     """Hard-delete a catalog event by id. Used to fix LLM mis-extractions

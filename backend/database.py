@@ -126,6 +126,28 @@ def init_db():
                 queued_at  TEXT NOT NULL
             )
         """)
+        # Instagram accounts suggested by users in Fontes, waiting for a
+        # curator. One open ('review') row per handle — enforced by the
+        # partial unique index so two people suggesting the same account at
+        # once can't create two queue entries; later suggesters bump
+        # request_count instead.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS account_requests (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                handle         TEXT NOT NULL,
+                note           TEXT NOT NULL DEFAULT '',
+                requested_by   TEXT NOT NULL,
+                request_count  INTEGER NOT NULL DEFAULT 1,
+                status         TEXT NOT NULL DEFAULT 'review',
+                reviewed_by    TEXT NOT NULL DEFAULT '',
+                reviewed_at    TEXT NOT NULL DEFAULT '',
+                created_at     TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_account_requests_open
+            ON account_requests(handle) WHERE status = 'review'
+        """)
         # Lazy prune on boot — keeps the table small without a cron job.
         try:
             cutoff_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -2539,6 +2561,109 @@ def take_deferred_digest_events() -> list[str]:
         conn.execute("DELETE FROM deferred_digest_events")
         conn.commit()
     return [r["event_id"] for r in rows]
+
+
+# ── Account suggestions (Fontes → curator queue) ───────────
+
+def find_ig_account_ci(handle: str) -> Optional[dict]:
+    """Tracked account by handle, case-insensitively — users type
+    @SociedadeBeneficente, the table stores whatever the curator typed."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM tracked_ig_accounts WHERE lower(handle) = lower(?)", (handle,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def insert_account_request(handle: str, note: str, requested_by: str) -> tuple[dict, bool]:
+    """Queue a suggestion. Returns (request, created). A handle already
+    waiting isn't queued twice: the open row's request_count goes up (and
+    the note is kept if the first one was blank)."""
+    handle = handle.lower()
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT * FROM account_requests WHERE handle = ? AND status = 'review'", (handle,),
+        ).fetchone()
+        if existing is None:
+            try:
+                cur = conn.execute(
+                    "INSERT INTO account_requests (handle, note, requested_by, created_at) VALUES (?, ?, ?, ?)",
+                    (handle, note, requested_by, now),
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM account_requests WHERE id = ?", (cur.lastrowid,)).fetchone()
+                return dict(row), True
+            except sqlite3.IntegrityError:
+                # Lost a race with another suggester — fall through to bump.
+                existing = conn.execute(
+                    "SELECT * FROM account_requests WHERE handle = ? AND status = 'review'", (handle,),
+                ).fetchone()
+        conn.execute(
+            """UPDATE account_requests
+               SET request_count = request_count + 1,
+                   note = CASE WHEN note = '' THEN ? ELSE note END
+               WHERE id = ?""",
+            (note, existing["id"]),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM account_requests WHERE id = ?", (existing["id"],)).fetchone()
+    return dict(row), False
+
+
+def count_open_account_requests_by(google_id: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM account_requests WHERE requested_by = ? AND status = 'review'",
+            (google_id,),
+        ).fetchone()
+    return int(row["c"] if row else 0)
+
+
+def list_account_requests(status: str = "review") -> list[dict]:
+    """Oldest first for the open queue; newest first for history."""
+    with get_conn() as conn:
+        if status == "all":
+            rows = conn.execute("SELECT * FROM account_requests ORDER BY created_at DESC").fetchall()
+        elif status == "review":
+            rows = conn.execute(
+                "SELECT * FROM account_requests WHERE status = 'review' ORDER BY created_at ASC",
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM account_requests WHERE status = ? ORDER BY reviewed_at DESC", (status,),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_account_request(request_id: int) -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM account_requests WHERE id = ?", (request_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def resolve_account_request(request_id: int, status: str, reviewer_email: str) -> bool:
+    """Move a request out of review. Conditional on it still being in
+    review, so when two curators act at once exactly one wins."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE account_requests SET status = ?, reviewed_by = ?, reviewed_at = ?
+               WHERE id = ? AND status = 'review'""",
+            (status, reviewer_email, now, request_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def reopen_account_request(request_id: int) -> None:
+    """Undo a claim when the follow-up (adding the account) failed."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE account_requests SET status = 'review', reviewed_by = '', reviewed_at = '' WHERE id = ?",
+            (request_id,),
+        )
+        conn.commit()
 
 
 def get_daily_digest(digest_id: str) -> Optional[dict]:
