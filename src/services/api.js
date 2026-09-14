@@ -987,6 +987,34 @@ export async function getFriendRequests(googleId) {
   return { incoming: [], outgoing_ids: [] }
 }
 
+// Everything waiting on the user, for the Pendências block on Home:
+// { friend_requests: [...], curation: { is_curator, events, accounts } }.
+// Curation counts come back zeroed for non-curators (the queues 403),
+// so callers can render the result without checking the role first.
+export async function getMyPending(googleId, email = '') {
+  const empty = {
+    friend_requests: [],
+    curation: { is_curator: false, events: 0, accounts: 0 },
+  }
+  if (!googleId) return empty
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/me/pending?google_id=${encodeURIComponent(googleId)}`
+      + `&email=${encodeURIComponent(email || '')}`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      return {
+        friend_requests: data.friend_requests ?? [],
+        curation: { ...empty.curation, ...(data.curation ?? {}) },
+      }
+    }
+  } catch {
+    // Backend unavailable — Home just renders no pendências.
+  }
+  return empty
+}
+
 async function answerFriendRequest(googleId, fromGoogleId, action) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/friends/requests/${encodeURIComponent(fromGoogleId)}/${action}`,

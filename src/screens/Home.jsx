@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useT } from '../i18n'
-import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, getFriendRequests, syncRsvp } from '../services/api'
+import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, getMyPending, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
@@ -67,9 +67,8 @@ export default function Home() {
   const [notifToast, setNotifToast] = useState(null)
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [friendsFeed, setFriendsFeed] = useState([])
-  // Incoming friend requests (in-app adds wait on the other person).
-  // Home only shows the aviso — accepting/declining lives in
-  // Community > Amigos, which already owns that flow.
+  // Incoming friend requests, from /me/pending. Home shows the aviso —
+  // accepting/declining lives in Community > Amigos, which owns that flow.
   const [friendRequests, setFriendRequests] = useState([])
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
@@ -91,11 +90,15 @@ export default function Home() {
 
   useEffect(() => {
     const googleId = state.googleUser?.id
+    const email = state.googleUser?.email || ''
     if (!googleId) { setFriendRequests([]); return }
     fetchFriendsFeed(googleId).then(events => {
       setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
     })
-    getFriendRequests(googleId).then(r => setFriendRequests(r?.incoming || []))
+    function loadPending() {
+      getMyPending(googleId, email).then(p => setFriendRequests(p.friend_requests))
+    }
+    loadPending()
     // Fetch every private event the user can see (classic group events,
     // personal plans where they're the creator or an invitee, plus
     // group+extras events). Split into pending vs accepted by checking
@@ -126,12 +129,12 @@ export default function Home() {
         fetchFriendsFeed(googleId).then(events => {
           setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
         })
-        getFriendRequests(googleId).then(r => setFriendRequests(r?.incoming || []))
+        loadPending()
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [state.googleUser?.id])
+  }, [state.googleUser?.id, state.googleUser?.email])
 
   // "Amigos vão" tile — counts (friend, event) pairs across all
   // upcoming events. One friend going to three different events = 3.

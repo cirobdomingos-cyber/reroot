@@ -2745,14 +2745,25 @@ def _notify_friend_request(requester_id: str, target_id: str) -> None:
         log.warning(f"friend request push failed: {exc}")
 
 
-def _on_friendship_accepted(acceptor_id: str, requester_id: str) -> list:
+def _on_friendship_accepted(acceptor_id: str, requester_id: str,
+                            via_code: bool = False) -> list:
     """Tell the requester, award badges on both sides. Returns the
-    acceptor's new badges for the toast."""
+    acceptor's new badges for the toast.
+
+    via_code is the invite-code/link path: the "requester" never sent a
+    pedido, they shared their code and someone claimed it. Same push,
+    honest wording — "aceitou seu pedido" would name something that
+    never happened."""
+    name = _user_display_name(acceptor_id)
+    title = "🤝 Novo amigo" if via_code else "🤝 Pedido aceito"
+    body = (f"{name} entrou pelo seu link — vocês são amigos no auê"
+            if via_code else
+            f"{name} aceitou seu pedido de amizade")
     try:
         _send_push_to_user(
             requester_id,
-            "🤝 Pedido aceito",
-            f"{_user_display_name(acceptor_id)} aceitou seu pedido de amizade",
+            title,
+            body,
             url=f"/#/friends/{quote(acceptor_id, safe='')}",
             tag=f"friend-accepted-{acceptor_id}",
         )
@@ -2808,6 +2819,33 @@ def friends_request_accept(from_google_id: str, req: FriendRequestAction):
             "new_badges": _on_friendship_accepted(req.google_id, from_google_id)}
 
 
+@app.get("/me/pending")
+def me_pending(google_id: str = "", email: str = ""):
+    """Everything waiting on this user — powers the Pendências block on Home.
+
+    One call instead of three: the curation queues are curator-only and
+    would 403 for everyone else, and Home can't know the role up front.
+    Non-curators get zeros rather than an error — from Home, "nothing
+    pending" and "not yours to see" should look identical, so the block
+    never hints the área exists.
+
+    Event invites are deliberately NOT here: Home already pulls those
+    from /events/user-groups with the dates and RSVP state it needs to
+    split pending from accepted.
+    """
+    out = {
+        "friend_requests": db.get_incoming_friend_requests(google_id) if google_id else [],
+        "curation": {"is_curator": False, "events": 0, "accounts": 0},
+    }
+    if email and db.is_curator(email):
+        out["curation"] = {
+            "is_curator": True,
+            "events": len(db.list_catalog_requests("review")),
+            "accounts": len(db.list_account_requests("review")),
+        }
+    return out
+
+
 @app.post("/friends/requests/{from_google_id}/decline")
 def friends_request_decline(from_google_id: str, req: FriendRequestAction):
     return {"ok": db.decline_friend_request(req.google_id, from_google_id)}
@@ -2831,11 +2869,18 @@ def friends_add(req: FriendAddRequest):
             state = db.get_user_state(friend_id)
             if state:
                 result["friend_name"] = state.get("userName") or friend_id
-        # Award the "Galera junto" badge for first accepted friend.
-        # Run for both sides so whoever crosses the threshold sees the toast.
-        result["new_badges"] = badges.evaluate(req.google_id)
+        # Tell the code owner someone claimed their link, and award the
+        # "Galera junto" badge on both sides (whoever crosses the
+        # threshold sees the toast). This path used to be silent: you
+        # shared your link and never learned it worked, while the
+        # request/accept path has always pushed. Same event, so it gets
+        # the same push.
         if friend_id:
-            badges.evaluate(friend_id)  # silent on the other side; they'll see it next load
+            result["new_badges"] = _on_friendship_accepted(
+                req.google_id, friend_id, via_code=True,
+            )
+        else:
+            result["new_badges"] = badges.evaluate(req.google_id)
     return result
 
 
