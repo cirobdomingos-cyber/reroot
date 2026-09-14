@@ -194,7 +194,7 @@ OU amarrada a um período específico (Carnaval, Páscoa, feriado, recesso, \
 
 (C) NÃO É EVENTO — foto pessoal, propaganda genérica, recap, lista de dicas.
 
-⚠️ DEFAULT-NOT-EVENT (regra forte): Se a legenda NÃO contém:
+⚠️ DEFAULT-NOT-EVENT (regra forte): Se NEM a legenda NEM A IMAGEM contêm:
   (a) uma data absoluta (ex: "25/04", "21 de abril", "sábado 26/04"), NEM
   (b) uma data relativa concreta (ex: "amanhã", "hoje", "essa quinta", \
 "sábado que vem", "neste sábado"), NEM
@@ -205,6 +205,18 @@ os sábados", "sempre às sextas", "diariamente"),
 genérico. Posts que só dizem "venha no nosso sábado", "te esperamos no \
 fim de semana", "rolê de quinta" SEM data específica nem marcador de \
 rotina → propaganda do estabelecimento → NÃO É EVENTO.
+
+⚠️ A IMAGEM VALE COMO DATA. Flyer é o formato padrão de divulgação: a \
+data fica na arte e a legenda fica solta. Se o flyer anexado mostra a \
+data ("QUINTA 17/09", "SEXTA 18/09"), isso satisfaz (a) — é EVENTO, \
+mesmo que a legenda diga só "quinta tem show". Olhe a imagem ANTES de \
+decidir que não é evento.
+
+Exemplo de (A) que parece (C) mas NÃO é:
+- Legenda: "Semana sem tempo ruim! Quinta tem Live Transmission. Sexta \
+é com Drive True. Sábado, especial nu metal. Portas às 21h." + flyer \
+com "Quinta 17/09" e "Sexta 18/09" → TRÊS EVENTOS, datas vindas da \
+imagem. A legenda sozinha pareceria propaganda; com o flyer, não é.
 
 Exemplos claros de (C):
 - "Entre um café e outro, a gente resolve seu sábado" → propaganda de \
@@ -846,6 +858,7 @@ async def _extract_events(
     post: dict,
     today_str: str,
     failed_out: Optional[set] = None,
+    debug_out: Optional[dict] = None,
 ) -> list[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
@@ -865,7 +878,13 @@ async def _extract_events(
     the same post on every future run.
     """
     caption = (post.get("caption") or "").strip()
+    if debug_out is not None:
+        debug_out["caption"] = caption
     if len(caption) < 30:
+        if debug_out is not None:
+            debug_out.setdefault("drops", []).append({
+                "name": "—", "reason": f"legenda com {len(caption)} caracteres (mínimo 30)",
+            })
         return []  # selfies, emoji posts, etc. — not events
 
     # The tracked profile the post was fetched from, not necessarily its
@@ -898,6 +917,8 @@ async def _extract_events(
         img = await _fetch_image_b64(image_url)
         if img:
             had_image = True
+            if debug_out is not None:
+                debug_out["image_sent_to_model"] = True
             b64, media_type = img
             content_blocks.insert(0, {
                 "type": "image",
@@ -925,6 +946,8 @@ async def _extract_events(
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)
         data = json.loads(raw_text)
+        if debug_out is not None:
+            debug_out["model_answer"] = data
     except json.JSONDecodeError as e:
         # The model answered, we just couldn't parse it. Treated as a
         # verdict so the post doesn't re-bill on every future run.
@@ -944,6 +967,11 @@ async def _extract_events(
         return []
 
     if not data.get("is_event", False):
+        if debug_out is not None:
+            debug_out.setdefault("drops", []).append({
+                "name": "—",
+                "reason": "o modelo classificou o post como NÃO É EVENTO",
+            })
         return []
 
     # "events": [...] is the current shape; a bare object is what the model
@@ -962,6 +990,7 @@ async def _extract_events(
             caption_lower=caption.lower(), post_date=post_date,
             post_url=post_url, image_url=image_url, likes=likes,
             had_image=had_image,
+            drops=None if debug_out is None else debug_out.setdefault("drops", []),
         )
         if ev is not None:
             out.append(ev)
@@ -990,20 +1019,31 @@ async def _extract_events(
 def _raw_event_from(
     data: dict, *, handle: str, shortcode: str, caption: str, caption_lower: str,
     post_date: str, post_url: str, image_url, likes: int, had_image: bool,
+    drops: Optional[list] = None,
 ) -> Optional[RawEvent]:
     """One extracted payload -> one validated RawEvent, or None.
 
     Every gate below used to live inline in the extractor, which worked
     while a post meant exactly one event. Split out so each event in a
     lineup post is judged on its own — one bad date shouldn't cost you the
-    other two nights."""
+    other two nights.
+
+    `drops`: when given, the reason this payload was rejected is appended
+    to it. "The post produced nothing" is otherwise only answerable by
+    reading Railway logs, and the gates below are exactly where a real
+    event quietly disappears."""
+
+    def _drop(reason: str) -> None:
+        if drops is not None:
+            drops.append({"name": (data.get("name") or "?")[:80], "reason": reason})
+        return None
 
     is_recurring = bool(data.get("is_recurring", False))
     # Recurring programming (toda quinta, happy hour fixo, etc.) is not
     # actionable for users looking for upcoming one-off events. Skip them —
     # the catalog is for specific dated events, not venue schedules.
     if is_recurring:
-        return None
+        return _drop("rotina recorrente — o catálogo é só de eventos datados")
     recurrence_label = data.get("recurrence_label") or None
     raw_days = data.get("recurrence_days") or []
     recurrence_days = [
@@ -1020,13 +1060,13 @@ def _raw_event_from(
 
     date_start = _parse_iso(data.get("date_start"))
     if not date_start:
-        return None
+        return _drop(f"date_start ausente ou ilegível: {data.get('date_start')!r}")
     # Only future events (allowing 12h grace for "happening now" posts).
     # Recurring routines need a future-or-today next-occurrence by definition,
     # so the same filter is correct for both.
     from datetime import timedelta
     if date_start < datetime.now(timezone.utc) - timedelta(hours=12):
-        return None
+        return _drop(f"data no passado: {date_start.isoformat()}")
 
     # Sanity bound: for ONE-OFF events, a post almost never announces something
     # more than ~2 months out. Drop on anchor-mismatch suspicion. Recurring
@@ -1040,7 +1080,10 @@ def _raw_event_from(
                 f"IG: dropping @{handle}/{shortcode} — date_start {date_start.date()} "
                 f"is >60d after post_date {post_dt.date()} (anchor mismatch?)"
             )
-            return None
+            return _drop(
+                f"data {date_start.date()} está a mais de 60 dias do post "
+                f"({post_dt.date()}) — provável âncora errada"
+            )
 
     # ── Post-LLM validation gates ────────────────────────────────
     # The prompt asks for date markers but Claude Haiku occasionally
@@ -1084,7 +1127,10 @@ def _raw_event_from(
                 f"(LLM picked {date_start.date()} {date_start.strftime('%H:%M')} "
                 f"but caption has no concrete date)"
             )
-            return None
+            return _drop(
+                "post sem imagem e sem data concreta na legenda — "
+                "o modelo chutou a data"
+            )
 
         # (2) Weekday cross-check.
         WEEKDAY_RE = {
@@ -1106,13 +1152,16 @@ def _raw_event_from(
                     f"{[names[w] for w in sorted(mentioned)]} but LLM extracted "
                     f"{names[ds_weekday]} ({date_start.date()})"
                 )
-                return None
+                return _drop(
+                    f"legenda cita {[names[w] for w in sorted(mentioned)]} mas a "
+                    f"data extraída cai numa {names[ds_weekday]} ({date_start.date()})"
+                )
 
     date_end = _parse_iso(data.get("date_end"))
 
     name = (data.get("name") or "").strip()[:200]
     if not name:
-        return None
+        return _drop("evento sem nome")
 
     venue_name = (data.get("venue_name") or "").strip() or handle.title()
     venue_address = (data.get("venue_address") or "").strip()

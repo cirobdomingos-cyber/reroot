@@ -215,3 +215,56 @@ def test_output_budget_fits_a_lineup(monkeypatch):
     _, client = _run({"is_event": True, "events": [_event_payload("Show", _next(QUI))]},
                      caption=SINGLE_CAPTION)
     assert client.last_kwargs["max_tokens"] >= 2048
+
+
+# ── Why did this post produce nothing? ─────────────────────
+# Until now that was answerable only by reading Railway logs, so every
+# investigation started with a guess. debug_out records the model's raw
+# answer and the reason each event was rejected.
+
+
+def _run_debug(body, caption=LINEUP_CAPTION):
+    client = _FakeClient(body)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    debug: dict = {}
+    events = asyncio.run(
+        ig._extract_events(client, _post(caption), today, debug_out=debug)
+    )
+    return events, debug
+
+
+def test_debug_reports_a_not_an_event_verdict():
+    events, debug = _run_debug({"is_event": False})
+    assert events == []
+    assert debug["drops"], "a silent zero is the thing this exists to prevent"
+    assert "NÃO É EVENTO" in debug["drops"][0]["reason"]
+    assert debug["model_answer"] == {"is_event": False}
+
+
+def test_debug_names_the_gate_that_dropped_each_event():
+    events, debug = _run_debug({"is_event": True, "events": [
+        _event_payload("Ja passou", _past(SAB)),
+        _event_payload("Quinta", _next(QUI)),
+    ]})
+    assert [e.name for e in events] == ["Quinta"]
+    dropped = {d["name"]: d["reason"] for d in debug["drops"]}
+    assert "Ja passou" in dropped
+    assert "passado" in dropped["Ja passou"]
+
+
+def test_debug_reports_a_weekday_mismatch():
+    """The gate that would silently eat a lineup post if the model read the
+    flyer wrong — it should say so, not just vanish."""
+    events, debug = _run_debug({"is_event": True, "events": [
+        # Caption says quinta/sexta/sábado; this lands on a Monday.
+        _event_payload("Segunda estranha", _next(0)),
+    ]})
+    assert events == []
+    assert "legenda cita" in debug["drops"][0]["reason"]
+
+
+def test_debug_carries_the_caption_and_whether_the_flyer_was_sent():
+    _, debug = _run_debug({"is_event": True, "events": [_event_payload("X", _next(QUI))]})
+    assert debug["caption"].startswith("Semana sem tempo ruim")
+    # These fixtures have no displayUrl, so no image reaches the model.
+    assert debug.get("image_sent_to_model") is None

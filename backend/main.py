@@ -5353,6 +5353,57 @@ def admin_set_ig_featured(handle: str, req: IgFeaturedToggle):
     return {"ok": True, "featured": req.featured}
 
 
+@app.get("/admin/ig-extract-debug")
+async def admin_ig_extract_debug(url: str, requesting_email: str = ""):
+    """Run the extractor on ONE Instagram post and report what happened.
+
+    "That post didn't become an event" has been answerable only by reading
+    Railway logs, so every investigation started with a guess. This returns
+    the caption we sent, whether the flyer reached the model, the model's
+    raw answer, every event that survived, and the reason each rejected one
+    was dropped — the gates are exactly where a real event quietly
+    disappears.
+
+    Costs one Apify fetch + one Claude call per call. Curator-only.
+    """
+    _require_curator(requesting_email)
+    if not re.match(r"https?://(www\.)?instagram\.com/(p|reel)/", url.strip()):
+        raise HTTPException(status_code=400, detail="Cole o link de um post do Instagram")
+    if not (settings.apify_api_token and settings.anthropic_api_key):
+        raise HTTPException(status_code=503, detail="Apify ou Anthropic não configurados")
+
+    from scrapers.instagram_apify import _run_apify_scrape, _extract_events
+    from anthropic import AsyncAnthropic
+
+    posts = await _run_apify_scrape(settings.apify_api_token, [url.strip()], posts_per_account=1)
+    if not posts:
+        return {"ok": False, "stage": "apify", "detail": "Apify não devolveu o post"}
+
+    debug: dict = {}
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    events = await _extract_events(client, posts[0], today_str, debug_out=debug)
+
+    return {
+        "ok": True,
+        "handle": (posts[0].get("ownerUsername") or "").lower(),
+        "posted_at": (posts[0].get("timestamp") or "")[:10],
+        "caption": debug.get("caption", "")[:1500],
+        "image_sent_to_model": bool(debug.get("image_sent_to_model")),
+        "model_answer": debug.get("model_answer"),
+        "extracted": [
+            {
+                "external_id": e.external_id,
+                "name": e.name,
+                "date_start": e.date_start.isoformat() if e.date_start else None,
+                "venue_name": e.venue_name,
+            }
+            for e in events
+        ],
+        "dropped": debug.get("drops", []),
+    }
+
+
 @app.post("/admin/ig-accounts/{handle}/scrape")
 async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
     """
