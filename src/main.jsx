@@ -8,9 +8,13 @@ import App from './App'
 import './styles/globals.css'
 
 // ── iOS / Android Universal Link handler ──────────────────
-// When iOS hands a tapped reroot-production.up.railway.app/... URL to the
-// installed app (because the AASA file declares this domain belongs to
-// app.aue), Capacitor fires an `appUrlOpen` event with the full URL.
+// When iOS hands a tapped auecuritiba.com/... URL to the installed app
+// (because App.entitlements lists the domain and the AASA file served
+// there declares it belongs to app.aue), Capacitor fires an `appUrlOpen`
+// event with the full URL.
+//
+// The handler below never looks at the host — it reads the hash and the
+// path — so it works for any domain the entitlement happens to list.
 // We extract the hash fragment and apply it to window.location so
 // HashRouter picks up the deep route.
 //

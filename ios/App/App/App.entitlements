@@ -10,6 +10,16 @@
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<!-- auecuritiba.com is where every shared link points now. Without
+		     it here, iOS never intercepts those URLs and a tapped invite
+		     opens the browser instead of the app.
+
+		     The old Railway host stays: links shared by builds already in
+		     the wild still name it, and Railway keeps serving both. The
+		     AASA file itself needs nothing — it is domain-agnostic
+		     (appIDs + path components) and the same backend answers on
+		     both hosts. -->
+		<string>applinks:auecuritiba.com</string>
 		<string>applinks:reroot-production.up.railway.app</string>
 	</array>
 </dict>

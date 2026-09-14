@@ -63,13 +63,15 @@ jobs:
       # production Railway URL at build time so the wrapper hits the right host.
       - name: Build web app (Vite)
         env:
-          VITE_API_URL: https://reroot-production.up.railway.app
+          VITE_API_URL: https://auecuritiba.com
+          # What shared links say out loud, baked into the binary's bundle.
+          VITE_PUBLIC_ORIGIN: https://auecuritiba.com
           # Apple Sign-In web fallback — only used when the wrapper
           # somehow falls back to a browser context. Native iOS uses
           # the bundle id (app.aue) directly via the Capacitor plugin
           # and ignores the Service ID. Safe to set both.
           VITE_APPLE_WEB_SERVICE_ID: app.aue.web
-          VITE_APPLE_WEB_REDIRECT_URI: https://reroot-production.up.railway.app/
+          VITE_APPLE_WEB_REDIRECT_URI: https://auecuritiba.com/
         run: npm run build
 
       - name: Capacitor sync (copies dist/ into iOS bundle)
