@@ -4,7 +4,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useT } from '../i18n'
-import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, getMyPending, syncRsvp } from '../services/api'
+import {
+  fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents,
+  getMyPending, acceptFriendRequest, declineFriendRequest,
+  declineEventInvite, syncRsvp, trackEvent,
+} from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
@@ -67,9 +71,12 @@ export default function Home() {
   const [notifToast, setNotifToast] = useState(null)
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [friendsFeed, setFriendsFeed] = useState([])
-  // Incoming friend requests, from /me/pending. Home shows the aviso —
-  // accepting/declining lives in Community > Amigos, which owns that flow.
+  // Everything waiting on the user, from /me/pending: incoming friend
+  // requests plus (for curators) the review queues. Event invites come
+  // from fetchUserGroupEvents below instead — that call already carries
+  // the dates and RSVP state needed to split pending from accepted.
   const [friendRequests, setFriendRequests] = useState([])
+  const [curation, setCuration] = useState({ is_curator: false, events: 0, accounts: 0 })
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
   // Live event catalog — fetched from backend instead of using the stale
@@ -91,12 +98,19 @@ export default function Home() {
   useEffect(() => {
     const googleId = state.googleUser?.id
     const email = state.googleUser?.email || ''
-    if (!googleId) { setFriendRequests([]); return }
+    if (!googleId) {
+      setFriendRequests([])
+      setCuration({ is_curator: false, events: 0, accounts: 0 })
+      return
+    }
     fetchFriendsFeed(googleId).then(events => {
       setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
     })
     function loadPending() {
-      getMyPending(googleId, email).then(p => setFriendRequests(p.friend_requests))
+      getMyPending(googleId, email).then(p => {
+        setFriendRequests(p.friend_requests)
+        setCuration(p.curation)
+      })
     }
     loadPending()
     // Fetch every private event the user can see (classic group events,
@@ -145,12 +159,6 @@ export default function Home() {
     (sum, ev) => sum + (ev.friends_going?.length || 0),
     0,
   )
-
-  // Aviso headline. One request names the person (more inviting than a
-  // bare count); several collapse into "N pessoas querem te adicionar".
-  const friendRequestHeadline = friendRequests.length === 1
-    ? `${friendRequests[0]?.name || 'Alguém'} ${t.home_friend_requests_one ?? 'quer te adicionar'}`
-    : `${friendRequests.length} ${t.home_friend_requests_many ?? 'pessoas querem te adicionar'}`
 
   // event_id → [{ name, picture, google_id }, ...] for the WeekCalendar
   // rows to render the same avatar stack the "Amigos vão" section
@@ -223,7 +231,7 @@ export default function Home() {
 
   // Accept a pending invite — local RSVP + backend sync + move from
   // pending to accepted bucket. Used by both the WeekCalendar's invite
-  // button and the new "Convites pendentes" section above the calendar.
+  // button and the Pendências section above it.
   function handleAcceptInvite(ev) {
     const ds = ev.date_start || ev.dateStart || ''
     const venue = ev.group_name || ev.groupName || ev.venue || ''
@@ -248,6 +256,44 @@ export default function Home() {
     }
     setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
     setGroupEventsAccepted(prev => [...prev, ev])
+  }
+
+  // "Não vou" — takes you off the invitee list, so the event stops
+  // asking. Optimistic: the row goes away on tap and comes back if the
+  // call fails, because the alternative is a row that sits there
+  // looking ignored while the request is in flight.
+  async function handleDeclineInvite(ev) {
+    const googleId = state.googleUser?.id
+    if (!googleId) return
+    setGroupEventsPending(prev => prev.filter(e => e.id !== ev.id))
+    try {
+      await declineEventInvite(ev.id, googleId)
+      trackEvent('invite_declined_from_home')
+    } catch {
+      setGroupEventsPending(prev => (
+        prev.some(e => e.id === ev.id) ? prev : [...prev, ev]
+      ))
+      alert('Não deu pra recusar agora. Tenta de novo.')
+    }
+  }
+
+  // Answer a friend request without leaving Home. Same two calls
+  // Community > Amigos makes; that screen re-fetches on mount, so the
+  // two never disagree for long.
+  async function handleAnswerFriendRequest(req, accept) {
+    const googleId = state.googleUser?.id
+    if (!googleId) return
+    setFriendRequests(prev => prev.filter(r => r.google_id !== req.google_id))
+    try {
+      if (accept) await acceptFriendRequest(googleId, req.google_id)
+      else await declineFriendRequest(googleId, req.google_id)
+      trackEvent(accept ? 'friend_request_accepted' : 'friend_request_declined')
+    } catch {
+      setFriendRequests(prev => (
+        prev.some(r => r.google_id === req.google_id) ? prev : [...prev, req]
+      ))
+      alert('Não deu certo agora. Tenta de novo.')
+    }
   }
 
   // Suggested events — events the user hasn't RSVPd to, ordered by the
@@ -400,64 +446,6 @@ export default function Home() {
           subscribe (real subscription registered). */}
       <PushBanner state={state} dispatch={dispatch} />
 
-      {/* Pedidos de amizade — sits with the push banner, above the
-          greeting, because it's the only thing on Home that another
-          person is waiting on. Tap goes straight to Comunidade > Amigos,
-          which owns Aceitar/Recusar. Hidden when there are none, and
-          when logged out (the list is cleared on logout). */}
-      {friendRequests.length > 0 && (
-        <div style={{ padding: '14px 18px 0' }}>
-          <button
-            onClick={() => navigate('/community', { state: { tab: 'friends' } })}
-            style={{
-              width: '100%',
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '14px 16px',
-              background: 'transparent',
-              border: '1px solid var(--magenta)',
-              borderRadius: 14, cursor: 'pointer',
-              boxShadow: '0 0 18px rgba(255, 43, 214, 0.18)',
-              textAlign: 'left',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-              {friendRequests.slice(0, 3).map((r, i) => (
-                <div
-                  key={r.google_id}
-                  style={{
-                    marginLeft: i === 0 ? 0 : -8,
-                    boxShadow: '0 0 0 2px var(--bg2)',
-                    borderRadius: '50%',
-                  }}
-                >
-                  <Avatar name={r.name} src={r.picture} size={32} />
-                </div>
-              ))}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="neon-display" style={{
-                fontSize: 15, color: 'var(--magenta)',
-                letterSpacing: '-0.01em',
-                textShadow: '0 0 8px rgba(255, 43, 214, 0.4)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {friendRequestHeadline}
-              </div>
-              <div className="neon-mono" style={{
-                fontSize: 10, color: 'var(--text2)',
-                letterSpacing: '0.16em', textTransform: 'uppercase',
-                marginTop: 4,
-              }}>
-                {t.home_friend_requests_cta ?? 'Aceitar em Comunidade'}
-              </div>
-            </div>
-            <span className="neon-mono" style={{
-              fontSize: 18, color: 'var(--magenta)', flexShrink: 0,
-            }}>→</span>
-          </button>
-        </div>
-      )}
-
       {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
       <div style={{ padding: '24px 18px 14px' }}>
         <div className="neon-mono" style={{
@@ -528,6 +516,33 @@ export default function Home() {
           </button>
         </div>
       )}
+
+      {/* Pendências — one place for everything waiting on the user:
+          event invites, friend requests, and (for curators) the review
+          queues. Before this they were scattered — invites here, friend
+          requests in Comunidade, curation only reachable by URL or by
+          catching the push — so whether you dealt with something
+          depended on which screen you happened to open.
+
+          Sits above the friends feed: what needs you comes before what
+          might interest you. Renders nothing at all when there's
+          nothing pending, no empty state and no "0 pendências". */}
+      <PendingSection
+        invites={groupEventsPending}
+        onOpenInvite={ev => {
+          if (ev.group_id || ev.groupId) navigate(`/groups/${ev.group_id || ev.groupId}`)
+          else navigate('/events', { state: { openEventId: ev.id } })
+        }}
+        onAcceptInvite={handleAcceptInvite}
+        onDeclineInvite={handleDeclineInvite}
+        onSeeAllInvites={() => navigate('/my-rsvps')}
+        friendRequests={friendRequests}
+        onOpenFriendRequest={r => navigate(`/friends/${encodeURIComponent(r.google_id)}`)}
+        onAnswerFriendRequest={handleAnswerFriendRequest}
+        onSeeAllFriendRequests={() => navigate('/community', { state: { tab: 'friends' } })}
+        curation={curation}
+        onOpenCuration={tab => navigate(tab === 'contas' ? '/curadoria?tab=contas' : '/curadoria')}
+      />
 
       {/* Friends activity feed — moved to top of the content stack so
           social signal leads ("oh, the gang is going to that"). Events
@@ -605,68 +620,6 @@ export default function Home() {
             })}
           </div>
         </>
-        )
-      })()}
-
-      {/* Pending invites — surfaces personal plans and group events the
-          user was invited to but hasn't RSVP'd yet. Capped to the next 3
-          (closest-in-time first) so Home stays a glanceable preview;
-          full list lives in My RSVPs > Pendentes. */}
-      {groupEventsPending.length > 0 && (() => {
-        const sortedPending = [...groupEventsPending].sort((a, b) => {
-          const ta = Date.parse(a.dateStart || a.date_start || '') || Infinity
-          const tb = Date.parse(b.dateStart || b.date_start || '') || Infinity
-          return ta - tb
-        })
-        const visible = sortedPending.slice(0, 3)
-        const hidden = sortedPending.length - visible.length
-        return (
-          <>
-            <div
-              className="section-label"
-              onClick={() => navigate('/my-rsvps')}
-              style={{
-                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-                cursor: 'pointer', color: 'var(--magenta)',
-              }}
-            >
-              <span>// {(t.home_pending_label ?? 'Convites pendentes').toUpperCase()} · {String(groupEventsPending.length).padStart(2, '0')}</span>
-              <span style={{ fontSize: 10, color: 'var(--text3)', letterSpacing: '0.16em' }}>
-                {(t.home_see_all ?? 'Ver tudo').toUpperCase()} →
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 18px', marginBottom: 14 }}>
-              {visible.map(ev => (
-                <PendingInviteRow
-                  key={ev.id}
-                  event={ev}
-                  onOpen={() => {
-                    if (ev.group_id || ev.groupId) {
-                      navigate(`/groups/${ev.group_id || ev.groupId}`)
-                    } else {
-                      navigate('/events', { state: { openEventId: ev.id } })
-                    }
-                  }}
-                  onAccept={() => handleAcceptInvite(ev)}
-                />
-              ))}
-              {hidden > 0 && (
-                <button
-                  onClick={() => navigate('/my-rsvps')}
-                  className="neon-mono"
-                  style={{
-                    background: 'transparent', border: '1px dashed var(--line)',
-                    borderRadius: 12, padding: '10px 12px',
-                    fontSize: 11, fontWeight: 500,
-                    letterSpacing: '0.18em', textTransform: 'uppercase',
-                    color: 'var(--text2)', cursor: 'pointer',
-                  }}
-                >
-                  + {hidden} {hidden === 1 ? 'outro convite' : 'outros convites'} →
-                </button>
-              )}
-            </div>
-          </>
         )
       })()}
 
@@ -1032,63 +985,251 @@ function PushBanner({ state, dispatch }) {
 }
 
 
-function PendingInviteRow({ event: ev, onOpen, onAccept }) {
-  const ds = ev.date_start || ev.dateStart || ''
-  const dateLabel = formatFriendsFeedDate(ds)
-  const venue = ev.group_name || ev.groupName || ev.venue || ''
-  const isPlan = ev.isPersonalPlan
+// ── Pendências ─────────────────────────────────────────────
+// One section for everything waiting on an action from the user.
+// Each kind keeps its own accent so they read apart at a glance.
+
+const PENDING_KINDS = {
+  invite:   { color: 'var(--magenta)', soft: 'rgba(255, 43, 214, 0.10)', edge: 'rgba(255, 43, 214, 0.30)' },
+  friend:   { color: 'var(--cyan)',    soft: 'rgba(0, 229, 255, 0.10)',  edge: 'rgba(0, 229, 255, 0.30)' },
+  curation: { color: 'var(--lime)',    soft: 'rgba(198, 255, 0, 0.10)',  edge: 'rgba(198, 255, 0, 0.35)' },
+}
+
+// Per kind. Enough to act on without turning Home into an inbox; the
+// rest collapse into a "+N" row that opens the screen that owns them.
+const PENDING_VISIBLE = 3
+
+// Shared row: tap the body to open, act on the buttons underneath.
+// Actions sit on their own line rather than beside the text — at phone
+// width a title, a subtitle and two labelled buttons on one line leaves
+// the title about ten characters, which is how you end up tapping
+// "Recusar" on the wrong event.
+function PendingRow({ kind, icon, avatar, title, subtitle, onOpen, actions = [], chevron }) {
+  const k = PENDING_KINDS[kind]
   return (
     <div
-      onClick={onOpen}
       className="neon-card"
-      style={{
-        boxShadow: 'inset 3px 0 0 var(--magenta)',
-        padding: '12px 14px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}
+      style={{ boxShadow: `inset 3px 0 0 ${k.color}`, padding: '12px 14px' }}
     >
-      <div style={{
-        width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-        background: 'rgba(255, 43, 214, 0.10)',
-        border: '1px solid rgba(255, 43, 214, 0.30)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--magenta)', fontSize: 18,
-        textShadow: '0 0 10px rgba(255, 43, 214, 0.6)',
-      }}>
-        {isPlan ? '◆' : '◌'}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="neon-display" style={{
-          fontSize: 14, color: 'var(--text)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {ev.name}
-        </div>
-        <div className="neon-mono" style={{
-          fontSize: 10, color: 'var(--text3)', marginTop: 4,
-          letterSpacing: '0.06em',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {dateLabel}{venue ? ` · ${venue}` : ''}
-        </div>
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onAccept() }}
-        className="neon-mono"
+      <div
+        onClick={onOpen}
         style={{
-          background: 'transparent', border: '1px solid var(--lime)',
-          color: 'var(--lime)',
-          padding: '6px 12px', borderRadius: 999,
-          fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
-          cursor: 'pointer', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 12,
+          cursor: onOpen ? 'pointer' : 'default',
         }}
       >
-        ✓ ON
-      </button>
+        {avatar || (
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+            background: k.soft, border: `1px solid ${k.edge}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: k.color, fontSize: 18,
+            textShadow: `0 0 10px ${k.color}`,
+          }}>{icon}</div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="neon-display" style={{
+            fontSize: 14, color: 'var(--text)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {title}
+          </div>
+          {subtitle && (
+            <div className="neon-mono" style={{
+              fontSize: 10, color: 'var(--text3)', marginTop: 4,
+              letterSpacing: '0.06em',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {subtitle}
+            </div>
+          )}
+        </div>
+        {chevron && (
+          <span className="neon-mono" style={{
+            fontSize: 18, color: k.color, flexShrink: 0,
+          }}>→</span>
+        )}
+      </div>
+      {actions.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          {actions.map(a => (
+            <button
+              key={a.label}
+              onClick={a.onClick}
+              disabled={a.disabled}
+              className="neon-mono"
+              style={{
+                flex: 1, padding: '8px 6px', borderRadius: 999,
+                cursor: a.disabled ? 'default' : 'pointer',
+                opacity: a.disabled ? 0.45 : 1,
+                fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+                background: 'transparent',
+                border: `1px solid ${a.primary ? 'var(--lime)' : 'var(--line)'}`,
+                color: a.primary ? 'var(--lime)' : 'var(--text2)',
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
+function PendingMoreRow({ label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="neon-mono"
+      style={{
+        background: 'transparent', border: '1px dashed var(--line)',
+        borderRadius: 12, padding: '10px 12px',
+        fontSize: 11, fontWeight: 500,
+        letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: 'var(--text2)', cursor: 'pointer',
+      }}
+    >
+      {label} →
+    </button>
+  )
+}
+
+function PendingSection({
+  invites = [], onOpenInvite, onAcceptInvite, onDeclineInvite, onSeeAllInvites,
+  friendRequests = [], onOpenFriendRequest, onAnswerFriendRequest, onSeeAllFriendRequests,
+  curation, onOpenCuration,
+}) {
+  const t = useT()
+  // A row already answering stops taking input — on a slow connection
+  // the buttons stay tappable long enough to fire the call twice.
+  const [busyId, setBusyId] = useState(null)
+
+  const curationRows = []
+  if (curation?.is_curator) {
+    if (curation.events > 0) {
+      curationRows.push({
+        id: 'curadoria-eventos', tab: 'eventos', count: curation.events,
+        title: curation.events === 1 ? '1 evento pra revisar' : `${curation.events} eventos pra revisar`,
+        subtitle: t.home_pending_curation_events ?? 'Curadoria do catálogo',
+      })
+    }
+    if (curation.accounts > 0) {
+      curationRows.push({
+        id: 'curadoria-contas', tab: 'contas', count: curation.accounts,
+        title: curation.accounts === 1 ? '1 conta sugerida' : `${curation.accounts} contas sugeridas`,
+        subtitle: t.home_pending_curation_accounts ?? 'Curadoria · contas do Instagram',
+      })
+    }
+  }
+
+  const total =
+    invites.length +
+    friendRequests.length +
+    curationRows.reduce((n, r) => n + r.count, 0)
+  // Nothing pending means no section — not an empty state, not a zero.
+  if (total === 0) return null
+
+  // Invites first: they're the only ones with a deadline attached.
+  const sortedInvites = [...invites].sort((a, b) => {
+    const ta = Date.parse(a.dateStart || a.date_start || '') || Infinity
+    const tb = Date.parse(b.dateStart || b.date_start || '') || Infinity
+    return ta - tb
+  })
+  const shownInvites = sortedInvites.slice(0, PENDING_VISIBLE)
+  const hiddenInvites = sortedInvites.length - shownInvites.length
+  const shownRequests = friendRequests.slice(0, PENDING_VISIBLE)
+  const hiddenRequests = friendRequests.length - shownRequests.length
+
+  function answer(id, fn) {
+    setBusyId(id)
+    Promise.resolve(fn()).finally(() => setBusyId(null))
+  }
+
+  return (
+    <>
+      <div className="section-label" style={{ color: 'var(--magenta)' }}>
+        // {t.home_pending_title ?? 'Pendências'} · {String(total).padStart(2, '0')}
+      </div>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 10,
+        padding: '0 18px', marginBottom: 14,
+      }}>
+        {shownInvites.map(ev => (
+          <PendingRow
+            key={ev.id}
+            kind="invite"
+            icon={ev.isPersonalPlan ? '◆' : '◌'}
+            title={ev.name}
+            subtitle={[
+              formatFriendsFeedDate(ev.date_start || ev.dateStart || ''),
+              ev.group_name || ev.groupName || ev.venue || '',
+            ].filter(Boolean).join(' · ')}
+            onOpen={() => onOpenInvite(ev)}
+            actions={[
+              {
+                label: t.home_pending_invite_yes ?? '✓ Vou', primary: true, disabled: busyId === ev.id,
+                onClick: () => answer(ev.id, () => onAcceptInvite(ev)),
+              },
+              {
+                label: t.home_pending_invite_no ?? '✕ Não vou', disabled: busyId === ev.id,
+                onClick: () => answer(ev.id, () => onDeclineInvite(ev)),
+              },
+            ]}
+          />
+        ))}
+        {hiddenInvites > 0 && (
+          <PendingMoreRow
+            label={`+ ${hiddenInvites} ${hiddenInvites === 1 ? 'outro convite' : 'outros convites'}`}
+            onClick={onSeeAllInvites}
+          />
+        )}
+
+        {shownRequests.map(r => (
+          <PendingRow
+            key={r.google_id}
+            kind="friend"
+            avatar={<Avatar name={r.name} src={r.picture} size={40} />}
+            title={r.name || 'Alguém'}
+            subtitle={t.home_pending_friend_sub ?? 'Quer te adicionar'}
+            onOpen={() => onOpenFriendRequest(r)}
+            actions={[
+              {
+                label: t.home_pending_friend_yes ?? '✓ Aceitar', primary: true, disabled: busyId === r.google_id,
+                onClick: () => answer(r.google_id, () => onAnswerFriendRequest(r, true)),
+              },
+              {
+                label: t.home_pending_friend_no ?? '✕ Recusar', disabled: busyId === r.google_id,
+                onClick: () => answer(r.google_id, () => onAnswerFriendRequest(r, false)),
+              },
+            ]}
+          />
+        ))}
+        {hiddenRequests > 0 && (
+          <PendingMoreRow
+            label={`+ ${hiddenRequests} ${hiddenRequests === 1 ? 'outro pedido' : 'outros pedidos'}`}
+            onClick={onSeeAllFriendRequests}
+          />
+        )}
+
+        {/* Curation last: it's the only kind with no deadline, and it
+            only ever renders for curators — /me/pending returns zeros
+            to everyone else, so Home never hints the área exists. */}
+        {curationRows.map(row => (
+          <PendingRow
+            key={row.id}
+            kind="curation"
+            icon="⬡"
+            title={row.title}
+            subtitle={row.subtitle}
+            onOpen={() => onOpenCuration(row.tab)}
+            chevron
+          />
+        ))}
+      </div>
+    </>
+  )
+}
 
 // ── Formatters ─────────────────────────────────────────────
 

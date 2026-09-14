@@ -362,11 +362,15 @@ export const T = {
     home_month_dismiss:    'Entendido',
     home_month_share:      'Compartilhar',
 
-    // Aviso de pedidos de amizade no topo da Home
-    home_friend_requests_label: 'Pedidos de amizade',
-    home_friend_requests_one:   'quer te adicionar',
-    home_friend_requests_many:  'pessoas querem te adicionar',
-    home_friend_requests_cta:   'Aceitar em Comunidade',
+    // Seção de pendências na Home
+    home_pending_title:         'Pendências',
+    home_pending_invite_yes:    '✓ Vou',
+    home_pending_invite_no:     '✕ Não vou',
+    home_pending_friend_sub:    'Quer te adicionar',
+    home_pending_friend_yes:    '✓ Aceitar',
+    home_pending_friend_no:     '✕ Recusar',
+    home_pending_curation_events:   'Curadoria do catálogo',
+    home_pending_curation_accounts: 'Curadoria · contas do Instagram',
 
     // ── Profile additions ─────────────────────────────────
     profile_week_label:    'Esta semana',
