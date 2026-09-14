@@ -35,8 +35,33 @@ const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 // to our domain.
 const NATIVE_CLIENT_ID = 'app.aue'
 const WEB_SERVICE_ID = import.meta.env.VITE_APPLE_WEB_SERVICE_ID || ''
-const WEB_REDIRECT_URI = import.meta.env.VITE_APPLE_WEB_REDIRECT_URI ||
-  (typeof window !== 'undefined' ? `${window.location.origin}/` : '')
+
+/**
+ * The redirect URI Apple validates against the Return URLs registered on
+ * the Services ID.
+ *
+ * Derived from the page, not from a build variable. The only origin that
+ * can be correct is the one that served the page — a baked value can only
+ * be stale, and it is stale on exactly the day it matters: the app moves
+ * to a new domain, the bundle still names the old one, and Apple rejects
+ * the sign-in with an error that says nothing about a build variable.
+ * Register the domain with Apple and it works; nothing to rebuild.
+ *
+ * Reading window.location is safe here because this is only used by
+ * signInWeb(), which only runs on the web — the Capacitor wrapper takes
+ * the native branch, which passes no redirect URI at all. The env var
+ * survives as the fallback for any context without a real http origin.
+ *
+ * Trailing slash is deliberate: it has to match the Return URL string
+ * registered on the portal character for character.
+ */
+function webRedirectUri() {
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin || ''
+    if (origin.startsWith('http')) return `${origin}/`
+  }
+  return (import.meta.env.VITE_APPLE_WEB_REDIRECT_URI || '').trim()
+}
 
 
 // ── Native (Capacitor) ────────────────────────────────────
@@ -91,7 +116,7 @@ async function signInWeb() {
   window.AppleID.auth.init({
     clientId: WEB_SERVICE_ID,
     scope: 'name email',
-    redirectURI: WEB_REDIRECT_URI,
+    redirectURI: webRedirectUri(),
     usePopup: true,
   })
   const response = await window.AppleID.auth.signIn()
@@ -117,9 +142,12 @@ async function signInWeb() {
  * rendered "Continuar com Apple" as the most prominent button on the
  * onboarding screen — on Android and desktop, where tapping it threw
  * "Apple Sign-In na web não configurado (VITE_APPLE_WEB_SERVICE_ID)"
- * straight into an alert(). The Dockerfile only bakes
- * VITE_GOOGLE_CLIENT_ID and VITE_API_URL, so WEB_SERVICE_ID is empty in
- * every non-iOS build we ship.
+ * straight into an alert().
+ *
+ * The Dockerfile does forward VITE_APPLE_WEB_SERVICE_ID (it used to not,
+ * and this comment used to say so — which sent the next person looking in
+ * the wrong file). So the button's absence on the web means the variable
+ * is UNSET IN THE DEPLOY ENVIRONMENT, not missing from the build.
  *
  * Apple's HIG 4.8 (offer Sign in with Apple at least as prominently as
  * other providers) applies to the iOS app, which is the native branch —
