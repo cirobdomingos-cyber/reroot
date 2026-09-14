@@ -195,6 +195,14 @@ export default function Sources() {
       {/* Curator add-handle form — only renders when the user is a
           curator or founder. Mirrors the form on the Curar tab so the
           two paths share the same UX. */}
+      {/* Entry to the catalog review queue. The Admin tab is founder-only,
+          so without this a curator's only way into the queue was tapping
+          the push — dismiss it and pending requests had nowhere to be found.
+          Fontes is already where curators get their own tools. */}
+      {!loading && canCurate && (
+        <CatalogQueueLink email={email} onOpen={() => navigate('/curadoria')} />
+      )}
+
       {!loading && canCurate && (
         <AddHandleForm email={email} onAdded={refreshSources} />
       )}
@@ -338,6 +346,43 @@ export default function Sources() {
         </>
       )}
     </div>
+  )
+}
+
+
+function CatalogQueueLink({ email, onOpen }) {
+  const [count, setCount] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_BASE}/admin/catalog-requests?status=review&requesting_email=${encodeURIComponent(email)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled) setCount(Array.isArray(d?.requests) ? d.requests.length : null) })
+      .catch(() => { if (!cancelled) setCount(null) })
+    return () => { cancelled = true }
+  }, [email])
+
+  const waiting = count > 0
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', margin: '0 0 12px', padding: '12px 14px', borderRadius: 12,
+        border: `1px solid ${waiting ? 'var(--lime)' : 'var(--line)'}`,
+        background: 'var(--bg2)', color: 'var(--text)',
+        fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
+      }}
+    >
+      <span>📋 Pedidos pro catálogo</span>
+      <span style={{
+        fontSize: 12, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+        background: waiting ? 'var(--lime)' : 'transparent',
+        color: waiting ? 'var(--on-lime)' : 'var(--text3)',
+      }}>
+        {count === null ? '→' : waiting ? `${count} esperando` : 'nenhum'}
+      </span>
+    </button>
   )
 }
 
