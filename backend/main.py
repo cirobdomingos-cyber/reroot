@@ -906,15 +906,29 @@ def _preview_html(*, title: str, description: str, image: str, url: str,
 def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
     """Title/description/image for a shared event link, or None.
 
-    PRIVATE events deliberately get no card. Their details are gated —
-    GET /events/{id} answers 403 to anyone not invited — and a preview is
-    fetched by whoever holds the URL, with no account and no invite. A
-    rich card would hand the name, venue and date of a private party to
-    anyone the link was forwarded to. They fall back to the generic auê
-    card below.
+    A PRIVATE event gets its NAME and nothing else. The line to draw is
+    what the app already tells a link holder: GET /events/{id} answers
+    403 to a stranger, but that 403 carries event_name, because the
+    "Pedir convite" screen has to say what you're asking to join. So the
+    name is already public to whoever holds the URL, and a card that
+    omits it just makes a real invite look like spam.
+
+    Venue, date and the photo are NOT in that payload, so they stay out
+    of the card — those are the details that would turn a forwarded link
+    into an address and a time for a private party.
     """
-    if not event_id or event_id.startswith("grp_ev_"):
+    if not event_id:
         return None
+    if event_id.startswith("grp_ev_"):
+        ge = db.get_group_event(event_id)
+        name = (ge or {}).get("name") or ""
+        if not name:
+            return None
+        return {
+            "title": f"{name} · auê",
+            "description": "Você foi convidado. Abra no auê pra ver quem vai e confirmar.",
+            "image": "",
+        }
     ev = db.get_event_by_id(event_id)
     if not ev:
         return None

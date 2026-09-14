@@ -101,9 +101,12 @@ def test_a_crawler_that_is_really_a_person_still_lands_on_the_event(env, client)
     assert "location.replace" in r.text
 
 
-def test_a_private_event_leaks_nothing(env, client):
-    """The whole point: /events/{id} 403s a stranger, so the preview must
-    not be the way around that."""
+def test_a_private_event_shows_its_name_but_not_where_or_when(env, client):
+    """The line is what the app already tells a link holder: the 403 for a
+    stranger carries event_name, so "Pedir convite" can say what they're
+    asking to join. Venue and date are not in that payload and must not
+    leak here — those are what turn a forwarded link into an address and a
+    time for a private party."""
     db, _ = env
     ge = db.create_group_event(
         group_id=None, google_id="host", name="Aniversário surpresa da Ana",
@@ -112,9 +115,10 @@ def test_a_private_event_leaks_nothing(env, client):
     )
     r = client.get(f"/e/{ge['id']}", headers={"user-agent": WHATSAPP_UA})
     assert r.status_code == 200
-    assert "Aniversário" not in r.text, "a private event's name must not preview"
-    assert "Casa do Ciro" not in r.text, "nor its venue"
-    assert "auê — Curitiba que acontece" in r.text, "generic card instead"
+    assert "Aniversário surpresa da Ana" in r.text, "a real invite must not look like spam"
+    assert "Casa do Ciro" not in r.text, "but never the venue"
+    assert "01/12" not in r.text, "nor the date"
+    assert "og:image" not in r.text, "nor a photo"
 
 
 def test_an_unknown_event_gets_the_generic_card(env, client):
