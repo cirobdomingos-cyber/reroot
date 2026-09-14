@@ -129,6 +129,11 @@ export default function Home() {
         // groupName as a property; mirror it as group_name for the
         // existing UpcomingPlans renderer that expects either.
         const norm = { ...ev, group_name: ev.groupName || ev.group_name || '' }
+        // Declined events come back from the backend now (they stay
+        // visible inside the group they belong to), but they are an
+        // answer already given — neither pending nor accepted. Asking
+        // again on Home is exactly the nagging "Não vou" was for.
+        if (ev.youDeclined && !state.rsvps[ev.id]) continue
         if (state.rsvps[ev.id]) accepted.push(norm)
         else pending.push(norm)
       }

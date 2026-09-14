@@ -91,3 +91,72 @@ def test_creator_is_never_recorded_as_declined(db, event):
 def test_stranger_cannot_create_a_decline(db, event):
     assert db.decline_event_invite(event, "stranger") is False
     assert db.get_group_event(event)["declined_ids"] == []
+
+
+# ── Declining inside a group ───────────────────────────────
+# Declining used to erase the event from the guest's app entirely, even
+# when the whole group was organizing it: no way to see what the crew was
+# doing, and no way to change your mind. A direct personal invite still
+# disappears — that one you turned down and it's over.
+
+
+@pytest.fixture()
+def group_event(db):
+    """A group event with ana and bia invited; both are members."""
+    group = db.create_group(google_id="host", name="Crew")
+    for gid in ("ana", "bia"):
+        db.join_group(group["id"], gid)
+    ev = db.create_group_event(
+        group_id=group["id"], google_id="host", name="Churras do grupo",
+        date_start="2026-12-01T20:00:00", extra_invitee_ids=["ana", "bia"],
+    )
+    return {"group_id": group["id"], "event_id": ev["id"]}
+
+
+def _visible_ids(db, gid):
+    return {e["id"] for e in db.get_events_visible_to_user(gid)}
+
+
+def test_declining_a_group_event_keeps_it_for_the_member(db, group_event):
+    ev_id = group_event["event_id"]
+    assert ev_id in _visible_ids(db, "ana")
+    db.decline_event_invite(ev_id, "ana")
+    assert ev_id in _visible_ids(db, "ana"), "the group's event should survive a decline"
+
+
+def test_declining_a_personal_invite_still_removes_it(db, event):
+    assert event in _visible_ids(db, "ana")
+    db.decline_event_invite(event, "ana")
+    assert event not in _visible_ids(db, "ana")
+
+
+def test_outsider_who_declines_a_group_event_does_not_keep_it(db, group_event):
+    """Invited without joining the group — no group to keep it around for.
+    This is the line between "the crew's event" and "someone asked me"."""
+    ev_id = group_event["event_id"]
+    db.add_invitees_to_event(ev_id, ["caio"])
+    assert ev_id in _visible_ids(db, "caio")
+    db.decline_event_invite(ev_id, "caio")
+    assert ev_id not in _visible_ids(db, "caio")
+
+
+def test_declined_event_still_listed_on_the_group_screen(db, group_event):
+    ev_id, gid = group_event["event_id"], group_event["group_id"]
+    db.decline_event_invite(ev_id, "ana")
+    listed = {e["id"] for e in db.get_group_events(gid, viewer_google_id="ana")}
+    assert ev_id in listed
+
+
+def test_changing_your_mind_clears_the_decline(db, group_event):
+    ev_id = group_event["event_id"]
+    db.decline_event_invite(ev_id, "ana")
+    assert db.undecline_event_invite(ev_id, "ana") is True
+    ge = db.get_group_event(ev_id)
+    assert "ana" not in ge["declined_ids"], "no longer declined"
+    assert "ana" in ge["extra_invitee_ids"], "back on the list the host reads"
+
+
+def test_undecline_is_a_noop_for_everyone_else(db, group_event):
+    ev_id = group_event["event_id"]
+    assert db.undecline_event_invite(ev_id, "bia") is False, "never declined"
+    assert db.undecline_event_invite("grp_ev_nope", "ana") is False, "no such event"

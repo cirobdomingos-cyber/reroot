@@ -1630,6 +1630,14 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # delete privileges. Frontend uses this to extend the
         # "Adicionado por" chip and gate the manage sheet.
         "coHostIds": list(ge.get("co_host_ids", []) or []),
+        # Did THIS viewer say "Não vou"? Drives the "você recusou" state
+        # on the event, which replaces the Vou/Não vou pair with a way
+        # back in. Viewer-scoped: who else declined is the host's
+        # business (see the declined list in /attendees), not every
+        # guest's.
+        "youDeclined": bool(
+            viewer_google_id and viewer_google_id in (ge.get("declined_ids") or [])
+        ),
         "note": ge.get("note") or "",
         # Source venue handle when this row was forked from a public IG
         # catalog event. Frontend uses it to fire `event_view` analytics
@@ -1676,6 +1684,22 @@ def list_user_group_events(google_id: str):
     return {"events": out}
 
 
+def _declined_but_in_its_group(ge: dict, google_id: str) -> bool:
+    """A guest who declined keeps access while the event still belongs to
+    a group they're in — the same rule get_events_visible_to_user applies.
+
+    Without it the event listed on the group screen 404s for the one
+    person whose state that screen exists to explain, and "mudei de
+    ideia" has nowhere to happen.
+    """
+    if not google_id or google_id not in (ge.get("declined_ids") or []):
+        return False
+    for gid in {ge.get("group_id"), *(ge.get("group_ids") or [])}:
+        if gid and db.get_group_member_role(gid, google_id):
+            return True
+    return False
+
+
 @app.get("/events/{event_id}")
 def get_event(event_id: str, google_id: str = ""):
     # Catalog events first.
@@ -1698,7 +1722,7 @@ def get_event(event_id: str, google_id: str = ""):
             creator_id = ge.get("created_by")
             is_invitee = bool(google_id and google_id in invitees)
             is_creator = bool(google_id and google_id == creator_id)
-            if is_creator or is_invitee:
+            if is_creator or is_invitee or _declined_but_in_its_group(ge, google_id):
                 group_name = ""
                 if ge.get("group_id"):
                     group = db.get_group(ge["group_id"])
@@ -2607,6 +2631,13 @@ def rsvp_upsert(req: RsvpUpsertRequest, background_tasks: BackgroundTasks):
     not a re-confirm) notifies friends and, on a private event, the
     people planning or invited to it. See _fanout_rsvp_pushes."""
     is_new = not db.rsvp_exists(req.google_id, req.event_id)
+    # Changing your mind: confirming an event you had declined puts you
+    # back on the invitee list and clears the decline. Done here rather
+    # than in a dedicated endpoint so it holds no matter which screen
+    # confirms — the two states are mutually exclusive, and a row that
+    # says both is a roster the host can't trust. No-op for catalog
+    # events and for anyone who never declined.
+    db.undecline_event_invite(req.event_id, req.google_id)
     db.upsert_rsvp(
         google_id=req.google_id,
         event_id=req.event_id,

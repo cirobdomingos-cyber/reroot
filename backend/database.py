@@ -3743,12 +3743,20 @@ def get_group_events(group_id: str, viewer_google_id: Optional[str] = None) -> l
     group_match = "(group_id = ? OR group_ids LIKE ?)"
     group_pattern = f'%"{group_id}"%'
     if viewer_google_id:
+        # declined_ids is in the OR on purpose: saying "Não vou" takes you
+        # off the invitee list, and without this clause the group's own
+        # event vanished from the group screen — no way to see what the
+        # crew is doing, or to change your mind. Callers gate membership
+        # (GET /groups/{id} 403s non-members of a private group), so this
+        # only ever widens what a member sees of their own group.
         query = (
             f"SELECT * FROM group_events "
-            f"WHERE {group_match} AND (created_by = ? OR extra_invitee_ids LIKE ?) "
+            f"WHERE {group_match} AND (created_by = ? OR extra_invitee_ids LIKE ? "
+            f"OR declined_ids LIKE ?) "
             f"ORDER BY date_start ASC"
         )
-        params = (group_id, group_pattern, viewer_google_id, f'%"{viewer_google_id}"%')
+        viewer_pattern = f'%"{viewer_google_id}"%'
+        params = (group_id, group_pattern, viewer_google_id, viewer_pattern, viewer_pattern)
     else:
         query = f"SELECT * FROM group_events WHERE {group_match} ORDER BY date_start ASC"
         params = (group_id, group_pattern)
@@ -3758,21 +3766,89 @@ def get_group_events(group_id: str, viewer_google_id: Optional[str] = None) -> l
 
 
 def get_events_visible_to_user(google_id: str) -> list[dict]:
-    """Return every private event the user can see — group-tagged or
-    not — in one shot. Single rule: creator OR in extra_invitee_ids.
+    """Return every private event the user can see — group-tagged or not.
+
+    Creator, OR on the invitee list, OR they declined an event belonging
+    to one of their groups.
+
+    That last clause is the difference between a personal invite and a
+    group's event. "Não vou" takes you off the invitee list, and for a
+    direct invite that is the whole story — you said no to a private
+    thing and it goes away. But an event your group is organizing stays
+    the group's event: losing it meant you couldn't see what the crew
+    was doing, or change your mind. It comes back marked declined (see
+    youDeclined), never as a fresh invitation.
+
     Caller is responsible for any date filtering. JSON-array LIKE
     matching is safe here because google_ids are numeric strings (no
     substring collisions)."""
     if not google_id:
         return []
+    pattern = f'%"{google_id}"%'
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM group_events "
-            "WHERE created_by = ? OR extra_invitee_ids LIKE ? "
+            "WHERE created_by = ? OR extra_invitee_ids LIKE ? OR declined_ids LIKE ? "
             "ORDER BY date_start ASC",
-            (google_id, f'%"{google_id}"%'),
+            (google_id, pattern, pattern),
         ).fetchall()
-    return [_hydrate_invitees(dict(r)) for r in rows]
+    my_groups = {g["id"] for g in get_groups_for_user(google_id)}
+    out = []
+    for row in rows:
+        ge = _hydrate_invitees(dict(row))
+        on_the_list = (
+            ge.get("created_by") == google_id
+            or google_id in (ge.get("extra_invitee_ids") or [])
+        )
+        if not on_the_list:
+            # Only here because they declined it. Keep it while it still
+            # belongs to a group they're in; an outsider who declined a
+            # personal invite stays gone.
+            tagged = {ge.get("group_id"), *(ge.get("group_ids") or [])}
+            if not (tagged & my_groups):
+                continue
+        out.append(ge)
+    return out
+
+
+def undecline_event_invite(event_id: str, google_id: str) -> bool:
+    """Reverse a "Não vou": off declined_ids, back onto the invitee list.
+
+    Called when someone RSVPs to an event they had declined — you cannot
+    be going and not going at once, and the host's roster reads the
+    invitee list, so leaving them off it would confirm them into a
+    "Quem vai" nobody can see.
+
+    No-op (False) for catalog events and for anyone who never declined.
+    """
+    if not event_id or not google_id:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT extra_invitee_ids, declined_ids FROM group_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+        if not row:
+            return False
+        try:
+            declined = json.loads(row["declined_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            declined = []
+        if google_id not in declined:
+            return False
+        try:
+            ids = json.loads(row["extra_invitee_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            ids = []
+        declined = [g for g in declined if g != google_id]
+        if google_id not in ids:
+            ids.append(google_id)
+        conn.execute(
+            "UPDATE group_events SET extra_invitee_ids = ?, declined_ids = ? WHERE id = ?",
+            (json.dumps(ids), json.dumps(declined), event_id),
+        )
+        conn.commit()
+    return True
 
 
 def get_group_event(event_id: str) -> Optional[dict]:

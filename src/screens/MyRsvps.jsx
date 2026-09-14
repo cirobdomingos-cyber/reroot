@@ -149,6 +149,10 @@ export default function MyRsvps() {
   // and past events here.
   const pending = groupEvents
     .filter(ev => !state.rsvps[ev.id])
+    // "Não vou" is an answer, not a pending one. The event still comes
+    // back from the backend when it belongs to one of your groups, but
+    // it belongs on the group's screen, not in your to-answer list.
+    .filter(ev => !ev.youDeclined)
     .filter(ev => {
       const t = ev.dateStart ? Date.parse(ev.dateStart) : NaN
       return !Number.isNaN(t) && t > now

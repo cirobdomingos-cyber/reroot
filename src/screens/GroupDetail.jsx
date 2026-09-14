@@ -426,7 +426,16 @@ export default function GroupDetail() {
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
         onDeclined={(eventId) => {
-          setGroup(prev => prev ? { ...prev, events: prev.events.filter(e => e.id !== eventId) } : prev)
+          // Mark it, don't drop it. The group's event stays on the
+          // group's screen after you say no — the backend keeps serving
+          // it, and filtering it out here would make it vanish until
+          // the next load and then reappear, which reads like a bug.
+          setGroup(prev => prev ? {
+            ...prev,
+            events: prev.events.map(e => (
+              e.id === eventId ? { ...e, youDeclined: true } : e
+            )),
+          } : prev)
         }}
         onDelete={selectedEvent && (
           isAdmin
@@ -544,6 +553,10 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
       </span>
     </div>
   ) : null
+  // Declined but still listed — the row says which, so you don't have to
+  // open it to remember you already answered. Tapping through is how you
+  // change your mind.
+  const declined = !!event.youDeclined && !isRsvped
   const statusOrAction = past
     ? (
       <span style={{
@@ -551,6 +564,15 @@ function EventCard({ event, isRsvped, onOpen, onRsvp, onDelete, past, t, members
         background: 'var(--cream)', padding: '4px 8px', borderRadius: 6,
       }}>
         Já foi
+      </span>
+    )
+    : declined
+    ? (
+      <span style={{
+        fontSize: 10, fontWeight: 700, color: 'var(--charcoal-light)',
+        background: 'var(--cream)', padding: '4px 8px', borderRadius: 6,
+      }}>
+        Não vou
       </span>
     )
     : onRsvp

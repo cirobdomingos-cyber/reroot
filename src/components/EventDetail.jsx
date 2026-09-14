@@ -278,14 +278,23 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
   // "Não vou" is offered to invitees of a private event who haven't
   // answered yet. Hosts delete instead of declining.
   const [declining, setDeclining] = useState(false)
+  // Already said no. The event is still here because it belongs to a
+  // group they're in — declining a direct invite still removes it.
+  const youDeclined = !!(ev.isGroupEvent && ev.youDeclined && !rsvped)
   const canDecline = !!(
-    ev.isGroupEvent && googleId && !rsvped
+    ev.isGroupEvent && googleId && !rsvped && !youDeclined
     && ev.createdBy !== googleId
     && !(ev.coHostIds || []).includes(googleId)
     && (ev.extraInviteeIds || []).includes(googleId)
   )
   async function handleDecline() {
-    if (!confirm(`Não vai em "${ev.name}"? O evento sai da sua lista e quem organizou fica sabendo.`)) return
+    // groupId is only set for viewers who are in the tagged group —
+    // exactly the case where the event survives the decline. Outsiders
+    // on a personal invite still lose it, and the copy says so.
+    const msg = ev.groupId
+      ? `Não vai em "${ev.name}"? Quem organizou fica sabendo. O evento continua no grupo, caso você mude de ideia.`
+      : `Não vai em "${ev.name}"? O evento sai da sua lista e quem organizou fica sabendo.`
+    if (!confirm(msg)) return
     setDeclining(true)
     try {
       await declineEventInvite(ev.id, googleId)
@@ -959,7 +968,31 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           />
         )}
 
-        {canDecline ? (
+        {youDeclined ? (
+          // Answered "não vou", event kept because it's the group's.
+          // Says so plainly and leaves one way back — no second
+          // "Não vou" to press, since that's the state they're in.
+          <div style={{
+            padding: '14px 16px', borderRadius: 12,
+            border: '1px solid var(--border)', background: 'var(--cream)',
+          }}>
+            <div style={{
+              fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
+              marginBottom: 4,
+            }}>
+              Você não vai nesse
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5,
+              marginBottom: 12,
+            }}>
+              Continua aparecendo porque é do grupo. Mudou de ideia?
+            </div>
+            <button className="btn btn--primary" onClick={onRsvp} style={{ width: '100%' }}>
+              Mudei de ideia, vou
+            </button>
+          </div>
+        ) : canDecline ? (
           // Invited to a private event and haven't answered: give both
           // answers equal weight. Before, the only way to say no was the
           // trash icon in Meus eventos, and the host never found out.

@@ -1562,8 +1562,8 @@ export default function Events() {
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
                 onDeclined={() => {
-                  // The event is no longer visible to them — refetch so it
-                  // drops out of the feed.
+                  // Refetch: a personal invite drops out of the feed, a
+                  // group's event comes back marked declined.
                   const gid = state.googleUser?.id
                   if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
                 }}
