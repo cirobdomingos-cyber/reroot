@@ -36,13 +36,15 @@ export default function AttendeesRow({
 }) {
   const [attendees, setAttendees] = useState([])
   const [pending, setPending] = useState([])
+  // "Não vou" answers — the backend only sends these to the host/co-hosts.
+  const [declined, setDeclined] = useState([])
   const [expanded, setExpanded] = useState(false)
   const [bumpKey, setBumpKey] = useState(0)
   useEffect(() => {
-    if (!eventId || !googleId) { setAttendees([]); setPending([]); return }
+    if (!eventId || !googleId) { setAttendees([]); setPending([]); setDeclined([]); return }
     let cancelled = false
-    fetchEventAttendees(eventId, googleId).then(({ attendees: a, pending: p }) => {
-      if (!cancelled) { setAttendees(a || []); setPending(p || []) }
+    fetchEventAttendees(eventId, googleId).then(({ attendees: a, pending: p, declined: d }) => {
+      if (!cancelled) { setAttendees(a || []); setPending(p || []); setDeclined(d || []) }
     })
     return () => { cancelled = true }
   }, [eventId, googleId, refreshKey, bumpKey])
@@ -71,7 +73,7 @@ export default function AttendeesRow({
   // Hide the row entirely only when there's nothing to say — no RSVPs
   // and no pending invitees either. Otherwise we still surface the
   // pending list, which is the host's main planning signal.
-  if (total === 0 && pending.length === 0) return null
+  if (total === 0 && pending.length === 0 && declined.length === 0) return null
 
   // First 5 avatars in the stack — beyond that we render a "+N" pill.
   const stack = []
@@ -161,10 +163,19 @@ export default function AttendeesRow({
                   {' '}· {pending.length} aguardando
                 </span>
               )}
+              {declined.length > 0 && (
+                <span style={{ color: 'var(--charcoal-light)' }}>
+                  {' '}· {declined.length} não {declined.length === 1 ? 'vai' : 'vão'}
+                </span>
+              )}
             </>
-          ) : (
+          ) : pending.length > 0 ? (
             <strong style={{ color: 'var(--charcoal)' }}>
               {pending.length} {pending.length === 1 ? 'pessoa convidada' : 'pessoas convidadas'} — ninguém confirmou ainda
+            </strong>
+          ) : (
+            <strong style={{ color: 'var(--charcoal)' }}>
+              {declined.length} não {declined.length === 1 ? 'vai' : 'vão'}
             </strong>
           )}
         </span>
@@ -294,6 +305,43 @@ export default function AttendeesRow({
                     <RemoveBtn onClick={() => handleRemove(a)} />
                   )}
                 </div>
+              ))}
+            </>
+          )}
+          {/* "Não vou" answers — host-only (the endpoint doesn't send them
+              to other guests). No remove button: they already left. */}
+          {declined.length > 0 && (
+            <>
+              <div style={{
+                marginTop: 6, paddingTop: 6,
+                borderTop: '1px dashed var(--border)',
+                fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                color: 'var(--charcoal-light)', textTransform: 'uppercase',
+              }}>
+                Não vão
+              </div>
+              {declined.map(a => (
+                <button
+                  key={`declined-${a.google_id}`}
+                  onClick={() => onFriend?.(a.google_id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: 4,
+                    background: 'none', border: 'none', width: '100%',
+                    cursor: onFriend ? 'pointer' : 'default',
+                    textAlign: 'left', opacity: 0.55,
+                  }}
+                >
+                  <Avatar name={a.name} src={a.picture} size={28} />
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--charcoal)' }}>
+                    {a.name}
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                    color: 'var(--charcoal-light)', textTransform: 'uppercase',
+                  }}>
+                    não vai
+                  </span>
+                </button>
               ))}
             </>
           )}

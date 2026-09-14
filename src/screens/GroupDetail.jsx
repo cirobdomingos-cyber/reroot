@@ -425,6 +425,9 @@ export default function GroupDetail() {
         ) : false}
         onClose={() => setSelectedEvent(null)}
         onRsvp={() => selectedEvent && handleRsvp(selectedEvent)}
+        onDeclined={(eventId) => {
+          setGroup(prev => prev ? { ...prev, events: prev.events.filter(e => e.id !== eventId) } : prev)
+        }}
         onDelete={selectedEvent && (
           isAdmin
           || selectedEvent.createdBy === googleId

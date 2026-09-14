@@ -507,6 +507,17 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `declined_ids` (JSON array of google_ids) — people who
+        # tapped "Não vou". Declining used to just delete you from
+        # extra_invitee_ids, so to the host you vanished: indistinguishable
+        # from never having been invited. Kept on the row for the same
+        # reason as co_host_ids (single-row read, small N).
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN declined_ids TEXT NOT NULL DEFAULT '[]'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         # Migration: `source_event_id` records the catalog event id this
         # row was forked from (when the user used "Adicionar a um grupo"
         # from a catalog event). Drives the dedup check that prevents
@@ -3400,6 +3411,11 @@ def _hydrate_invitees(row: dict) -> dict:
         row["co_host_ids"] = json.loads(raw_ch) if isinstance(raw_ch, str) else (raw_ch or [])
     except (json.JSONDecodeError, TypeError):
         row["co_host_ids"] = []
+    raw_dec = row.get("declined_ids") or "[]"
+    try:
+        row["declined_ids"] = json.loads(raw_dec) if isinstance(raw_dec, str) else (raw_dec or [])
+    except (json.JSONDecodeError, TypeError):
+        row["declined_ids"] = []
     return row
 
 
@@ -3600,17 +3616,19 @@ def reject_invite_request(event_id: str, requester_google_id: str) -> bool:
 
 
 def decline_event_invite(event_id: str, google_id: str) -> bool:
-    """Remove `google_id` from an event's extra_invitee_ids list. Used
-    when a user wants to fully exit an event (drop the pending invite
-    or the past RSVP) — cancelling the RSVP alone leaves them on the
-    invitee list, so the row reappears as "pending" on next render.
-    Returns True if the user was removed, False if they weren't on
-    the list (or the event doesn't exist)."""
+    """"Não vou": take `google_id` off the invitee list, drop any RSVP,
+    and record the decline so the host sees it. Cancelling the RSVP alone
+    left them on the invitee list, so the row bounced back to "pending";
+    removing them from the list alone made them disappear for the host.
+
+    The creator can't decline their own event (they delete it instead),
+    so the creator is never recorded. Returns True if anything changed."""
     if not event_id or not google_id:
         return False
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT extra_invitee_ids FROM group_events WHERE id = ?", (event_id,),
+            "SELECT created_by, extra_invitee_ids, declined_ids FROM group_events WHERE id = ?",
+            (event_id,),
         ).fetchone()
         if not row:
             return False
@@ -3618,15 +3636,44 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
             ids = json.loads(row["extra_invitee_ids"] or "[]")
         except (json.JSONDecodeError, TypeError):
             ids = []
-        if google_id not in ids:
+        try:
+            declined = json.loads(row["declined_ids"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            declined = []
+        was_invited = google_id in ids
+        had_rsvp = conn.execute(
+            "DELETE FROM rsvps WHERE event_id = ? AND google_id = ?", (event_id, google_id),
+        ).rowcount > 0
+        if not (was_invited or had_rsvp):
             return False
         ids = [g for g in ids if g != google_id]
+        if google_id != row["created_by"] and google_id not in declined:
+            declined.append(google_id)
         conn.execute(
-            "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
-            (json.dumps(ids), event_id),
+            "UPDATE group_events SET extra_invitee_ids = ?, declined_ids = ? WHERE id = ?",
+            (json.dumps(ids), json.dumps(declined), event_id),
         )
         conn.commit()
     return True
+
+
+def get_event_declined(event_id: str, requesting_google_id: str) -> list[dict]:
+    """People who said "Não vou", minus anyone who has since come back —
+    re-invited by the host (back in extra_invitee_ids) or RSVPed. Filtering
+    at read time means the re-invite and RSVP paths never have to clear
+    declined_ids themselves. Same privacy rules as attendees."""
+    ge = get_group_event(event_id)
+    if not ge:
+        return []
+    declined = [g for g in (ge.get("declined_ids") or []) if g != requesting_google_id]
+    if not declined:
+        return []
+    back = set(ge.get("extra_invitee_ids") or [])
+    with get_conn() as conn:
+        back |= {r["google_id"] for r in conn.execute(
+            "SELECT google_id FROM rsvps WHERE event_id = ?", (event_id,),
+        ).fetchall()}
+    return _resolve_attendee_users([g for g in declined if g not in back], requesting_google_id)
 
 
 def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:

@@ -2610,7 +2610,13 @@ def event_attendees(event_id: str, google_id: str):
         a["friend_code"] = db.get_friend_code(a["google_id"])
     for p in pending:
         p["friend_code"] = db.get_friend_code(p["google_id"])
-    return {"attendees": attendees, "pending": pending}
+    # Who said "Não vou" — for the people planning the event only. Other
+    # guests don't need to see who bailed.
+    declined: list[dict] = []
+    ge = db.get_group_event(event_id)
+    if ge and (ge.get("created_by") == google_id or google_id in (ge.get("co_host_ids") or [])):
+        declined = db.get_event_declined(event_id, google_id)
+    return {"attendees": attendees, "pending": pending, "declined": declined}
 
 
 # ── Friends ────────────────────────────────────────────────
@@ -4140,11 +4146,10 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
 
 @app.post("/events/{event_id}/decline")
 def decline_event(event_id: str, google_id: str):
-    """Remove the calling user from an event's invitee list. The trash
-    icon in My RSVPs cancels the RSVP, but cancelling alone leaves the
-    user on the invitee list — the row just bounces from Confirmados
-    to Pendentes on the next render. This endpoint is the second half
-    of "fully remove this from my list."
+    """"Não vou" — take the calling user off the invitee list, drop their
+    RSVP and record the decline so the host sees it (see
+    db.decline_event_invite). Called from the event hero and from the
+    trash icon in My RSVPs.
 
     No-op (still 200) if the user wasn't on the invitee list — the
     frontend uses this defensively right after a cancel-RSVP and we

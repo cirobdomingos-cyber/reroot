@@ -29,7 +29,7 @@ import InvitePeopleSheet from './InvitePeopleSheet'
 import CoHostsSheet from './CoHostsSheet'
 import { compressImageForUpload } from '../lib/image-compress'
 import { shareLink, shortEventLink } from '../lib/share'
-import { trackEvent, uploadEventImage, deleteEventImage } from '../services/api'
+import { trackEvent, uploadEventImage, deleteEventImage, declineEventInvite } from '../services/api'
 import { VENUE_CATEGORIES, SOURCE_CONFIG } from '../data/eventSources'
 
 function cleanDescription(raw) {
@@ -273,8 +273,30 @@ export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
   )
 }
 
-export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, userNeighborhood, t }) {
+export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
+  // "Não vou" is offered to invitees of a private event who haven't
+  // answered yet. Hosts delete instead of declining.
+  const [declining, setDeclining] = useState(false)
+  const canDecline = !!(
+    ev.isGroupEvent && googleId && !rsvped
+    && ev.createdBy !== googleId
+    && !(ev.coHostIds || []).includes(googleId)
+    && (ev.extraInviteeIds || []).includes(googleId)
+  )
+  async function handleDecline() {
+    if (!confirm(`Não vai em "${ev.name}"? O evento sai da sua lista e quem organizou fica sabendo.`)) return
+    setDeclining(true)
+    try {
+      await declineEventInvite(ev.id, googleId)
+      onDeclined?.(ev.id)
+      onClose?.()
+    } catch {
+      alert('Não deu pra recusar agora. Tenta de novo.')
+    } finally {
+      setDeclining(false)
+    }
+  }
   const [shareStatus, setShareStatus] = useState(null) // 'shared' | 'copied' | 'failed' | null
   // Post-creation invite sheet — only opens for the creator/co-hosts
   // of a private event. Bumped invitedTick refetches AttendeesRow so
@@ -937,12 +959,35 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           />
         )}
 
-        <button className="btn btn--primary" onClick={onRsvp}>
-          {rsvped
-            ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
-            : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
-          }
-        </button>
+        {canDecline ? (
+          // Invited to a private event and haven't answered: give both
+          // answers equal weight. Before, the only way to say no was the
+          // trash icon in Meus eventos, and the host never found out.
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn--primary" onClick={onRsvp} style={{ flex: 1 }}>
+              Vou
+            </button>
+            <button
+              onClick={handleDecline}
+              disabled={declining}
+              style={{
+                flex: 1, padding: '12px', borderRadius: 12,
+                background: 'transparent', border: '1.5px solid var(--border)',
+                color: 'var(--charcoal-mid)', fontSize: 14, fontWeight: 700,
+                cursor: declining ? 'wait' : 'pointer',
+              }}
+            >
+              {declining ? '…' : 'Não vou'}
+            </button>
+          </div>
+        ) : (
+          <button className="btn btn--primary" onClick={onRsvp}>
+            {rsvped
+              ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
+              : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
+            }
+          </button>
+        )}
 
         {onAddToGroup && !isVenue && (
           <button

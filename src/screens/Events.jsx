@@ -1530,6 +1530,12 @@ export default function Events() {
                 }}
                 onClose={closeDetail}
                 onRsvp={() => handleRsvpToggle(detailEvent)}
+                onDeclined={() => {
+                  // The event is no longer visible to them — refetch so it
+                  // drops out of the feed.
+                  const gid = state.googleUser?.id
+                  if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
+                }}
                 userNeighborhood={state.neighborhood}
                 t={t}
               />

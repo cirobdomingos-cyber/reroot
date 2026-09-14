@@ -571,9 +571,11 @@ export async function fetchEventAttendees(eventId, googleId) {
       // Backend now returns { attendees, pending }. Older shape ({ attendees })
       // still works because pending defaults to []. Callers that only need
       // RSVPed people can read .attendees and ignore .pending.
+      // `declined` ("Não vou") is only filled in for the host/co-hosts.
       return {
         attendees: data.attendees ?? [],
         pending: data.pending ?? [],
+        declined: data.declined ?? [],
       }
     }
   } catch {
