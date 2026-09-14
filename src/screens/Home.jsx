@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp, PROFILES } from '../context/AppContext'
+import { useApp, PROFILES, myPicture } from '../context/AppContext'
 import { useT } from '../i18n'
 import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
@@ -322,7 +322,7 @@ export default function Home() {
             }}
           >
             <Avatar
-              src={state.googleUser?.picture}
+              src={myPicture(state)}
               name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
               size={40}
             />

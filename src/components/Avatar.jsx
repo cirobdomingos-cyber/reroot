@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { API_BASE } from '../lib/apiBase'
 
 /**
  * Reusable avatar with a 3-step fallback chain:
@@ -13,7 +14,12 @@ import { useEffect, useState } from 'react'
 export default function Avatar({ src, name, size = 42, bordered = false }) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?'
   const generatedSrc = name?.trim() ? buildUiAvatarsUrl(name, size * 2) : null
-  const primarySrc = src || generatedSrc
+  // Uploaded profile photos come back from the backend as
+  // "/event-images/…". Same-origin on the web, but the native app runs
+  // from capacitor://localhost, where a relative path doesn't reach the
+  // API — so resolve it here, once, for every avatar in the app.
+  const resolvedSrc = src && src.startsWith('/event-images/') ? `${API_BASE}${src}` : src
+  const primarySrc = resolvedSrc || generatedSrc
 
   const [failed, setFailed] = useState(false)
   // If the source URL changes (e.g., user switches accounts), reset the

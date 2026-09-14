@@ -1209,6 +1209,20 @@ export async function uploadEventImage(eventId, googleId, file) {
   return data
 }
 
+// Upload a profile photo. Returns { picture } — a cache-busted
+// "/event-images/…" path; Avatar resolves it against the API base.
+export async function uploadAvatar(googleId, file) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('google_id', googleId)
+  const res = await fetch(`${BASE_URL}/user/avatar`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
+    throw new Error(detail)
+  }
+  return res.json()
+}
+
 export async function deleteEventImage(eventId, googleId) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/events/${encodeURIComponent(eventId)}/image?google_id=${encodeURIComponent(googleId)}`,

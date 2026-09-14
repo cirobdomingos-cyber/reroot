@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp } from '../context/AppContext'
+import { useApp, myPicture } from '../context/AppContext'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
@@ -1418,7 +1418,7 @@ export default function Events() {
                 event={detailEvent}
                 googleId={state.googleUser?.id || ''}
                 viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
-                viewerPicture={state.googleUser?.picture}
+                viewerPicture={myPicture(state)}
                 rsvped={
                   VENUE_CATEGORIES.has(detailEvent.category)
                     ? !!state.favorites?.[detailEvent.id]

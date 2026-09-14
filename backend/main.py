@@ -1560,7 +1560,7 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         cstate = db.get_user_state(creator_id) or {}
         cgoogle = cstate.get("googleUser") or {}
         creator_name = cstate.get("userName") or cgoogle.get("givenName") or cgoogle.get("name") or ""
-        creator_picture = cgoogle.get("picture") or ""
+        creator_picture = db.user_picture(cstate)
     return {
         "id": ge["id"],
         "name": ge.get("name") or "",
@@ -2569,7 +2569,45 @@ def delete_account(google_id: str):
     deleted = db.delete_user_account(google_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="User not found")
+    image_store.delete_event_image(_avatar_image_id(google_id))
     return {"ok": True}
+
+
+_AVATAR_UPLOAD_CAP = 8 * 1024 * 1024
+
+
+def _avatar_image_id(google_id: str) -> str:
+    """File stem for a user's uploaded photo. Hashed so account ids (Apple
+    ids contain dots) never end up in a public URL or a file name."""
+    import hashlib
+    return "useravatar_" + hashlib.sha256(google_id.encode()).hexdigest()[:24]
+
+
+@app.post("/user/avatar")
+async def upload_user_avatar(
+    file: UploadFile = File(...),
+    google_id: str = Form(...),
+):
+    """Profile photo upload. Stored on the same /event-images/ volume as
+    event covers; replacing overwrites the same file.
+
+    The URL is returned, not written into user_states: the client owns
+    that blob and rewrites it on every change, so it stores the URL as
+    `customPicture` and every picture reader prefers it
+    (db.user_picture). The ?v= stamp busts caches on replace — the file
+    name doesn't change."""
+    if not google_id or db.get_user_state(google_id) is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    content = await file.read()
+    if len(content) > _AVATAR_UPLOAD_CAP:
+        raise HTTPException(status_code=413, detail="Imagem maior que 8MB")
+    public = image_store.save_user_upload(
+        _avatar_image_id(google_id), content, file.content_type or "",
+    )
+    if not public:
+        raise HTTPException(status_code=400, detail="Imagem inválida (use JPG, PNG, WebP, GIF ou HEIC)")
+    stamp = int(datetime.now(timezone.utc).timestamp())
+    return {"ok": True, "picture": f"{public}?v={stamp}"}
 
 
 # ── Badges ─────────────────────────────────────────────────
@@ -2647,7 +2685,7 @@ def friends_lookup(code: str):
     return {
         "google_id": google_id,
         "name": state.get("userName") or "",
-        "picture": (state.get("googleUser") or {}).get("picture") or "",
+        "picture": db.user_picture(state),
     }
 
 
@@ -2672,7 +2710,7 @@ def get_user_profile(target_google_id: str, google_id: str = ""):
     profile = {
         "google_id": target_google_id,
         "name": target_state.get("userName") or gu.get("givenName") or gu.get("name") or "",
-        "picture": gu.get("picture") or "",
+        "picture": db.user_picture(target_state),
         "friend_status": "none",
     }
     if google_id:

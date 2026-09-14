@@ -2,17 +2,25 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react'
-import { useApp, PROFILES } from '../context/AppContext'
+import { useApp, PROFILES, myPicture } from '../context/AppContext'
+import { compressImageForUpload } from '../lib/image-compress'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { Capacitor } from '@capacitor/core'
 import { API_BASE } from '../lib/apiBase'
 import { getPublicOrigin } from '../lib/share'
-import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount } from '../services/api'
+import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount, uploadAvatar } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
+
+const heroPillStyle = {
+  padding: '7px 14px', borderRadius: 999,
+  border: '1px solid rgba(255,255,255,0.35)',
+  background: 'rgba(255,255,255,0.08)', color: 'white',
+  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+}
 
 export default function Profile() {
   const { state, dispatch } = useApp()
@@ -36,6 +44,26 @@ export default function Profile() {
   function saveName() {
     if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
     setEditingName(false)
+  }
+
+  // Profile photo. Compressed on the device first (phone photos are
+  // 3–6MB; the server caps uploads at 5MB after compression).
+  const photoInputRef = useRef(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  async function handlePhotoPicked(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''  // picking the same file again should still fire
+    if (!file || !state.googleUser?.id) return
+    setUploadingPhoto(true)
+    try {
+      const compressed = await compressImageForUpload(file)
+      const { picture } = await uploadAvatar(state.googleUser.id, compressed)
+      dispatch({ type: 'SET_CUSTOM_PICTURE', payload: picture })
+    } catch (err) {
+      alert(err?.message || 'Não deu pra trocar a foto. Tenta de novo.')
+    } finally {
+      setUploadingPhoto(false)
+    }
   }
 
   function handleReset() {
@@ -87,12 +115,49 @@ export default function Profile() {
         borderBottom: '1px solid var(--line)',
         padding: '20px 24px 28px', textAlign: 'center', color: 'var(--text)',
       }}>
-        <div style={{ margin: '0 auto 12px', width: 72 }}>
-          <Avatar
-            src={state.googleUser?.picture}
-            name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
-            size={72}
-            bordered
+        {/* Photo — tap the picture (or the camera badge) to change it.
+            Signed-in only: the upload is tied to the account. */}
+        <div style={{ margin: '0 auto 12px', width: 88, position: 'relative' }}>
+          <button
+            onClick={() => state.googleUser && photoInputRef.current?.click()}
+            disabled={!state.googleUser || uploadingPhoto}
+            aria-label="Trocar foto"
+            style={{
+              background: 'none', border: 'none', padding: 0, borderRadius: '50%',
+              cursor: state.googleUser ? 'pointer' : 'default',
+              opacity: uploadingPhoto ? 0.5 : 1, display: 'block',
+            }}
+          >
+            <Avatar
+              src={myPicture(state)}
+              name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
+              size={88}
+              bordered
+            />
+          </button>
+          {state.googleUser && (
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              aria-label="Trocar foto"
+              style={{
+                position: 'absolute', right: -2, bottom: -2,
+                width: 30, height: 30, borderRadius: '50%',
+                background: 'var(--cyan)', color: '#14081E',
+                border: '2px solid var(--bg2)', fontSize: 14,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', padding: 0,
+              }}
+            >
+              {uploadingPhoto ? '…' : '📷'}
+            </button>
+          )}
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoPicked}
+            style={{ display: 'none' }}
           />
         </div>
 
@@ -101,29 +166,64 @@ export default function Profile() {
             <input
               value={nameInput}
               onChange={e => setNameInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && saveName()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') saveName()
+                if (e.key === 'Escape') setEditingName(false)
+              }}
               autoFocus maxLength={30}
+              placeholder="Seu nome"
               style={{
                 fontSize: 18, fontWeight: 700, color: 'white',
                 background: 'rgba(255,255,255,0.12)',
-                border: '1.5px solid rgba(255,255,255,0.3)',
-                borderRadius: 10, padding: '5px 12px',
-                outline: 'none', textAlign: 'center', width: 160,
+                border: '1.5px solid var(--cyan)',
+                borderRadius: 10, padding: '6px 12px',
+                outline: 'none', textAlign: 'center', width: 180,
               }}
             />
             <button
               onClick={saveName}
-              style={{ fontSize: 18, color: 'var(--sage-light)', background: 'none', border: 'none', cursor: 'pointer' }}
-            >✓</button>
+              style={{
+                padding: '8px 12px', borderRadius: 10, border: 'none',
+                background: 'var(--cyan)', color: '#14081E',
+                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >Salvar</button>
           </div>
         ) : (
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', cursor: 'pointer' }}
-            onClick={() => { setNameInput(state.userName || ''); setEditingName(true) }}
-          >
-            <span style={{ fontSize: 20, fontWeight: 700 }}>{state.userName || '—'}</span>
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>✎</span>
-          </div>
+          <>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{state.userName || '—'}</div>
+            {/* Name is what friends and groups see — the old "✎" was a
+                12px glyph at 35% opacity that nobody found. */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { setNameInput(state.userName || ''); setEditingName(true) }}
+                style={heroPillStyle}
+              >
+                ✎ Editar nome
+              </button>
+              {state.googleUser && (
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  style={heroPillStyle}
+                >
+                  {uploadingPhoto ? 'Enviando…' : '📷 Trocar foto'}
+                </button>
+              )}
+              {state.customPicture && !uploadingPhoto && (
+                <button
+                  onClick={() => {
+                    if (confirm('Voltar pra foto da sua conta?')) {
+                      dispatch({ type: 'SET_CUSTOM_PICTURE', payload: '' })
+                    }
+                  }}
+                  style={{ ...heroPillStyle, borderColor: 'transparent', color: 'rgba(255,255,255,0.55)' }}
+                >
+                  remover foto
+                </button>
+              )}
+            </div>
+          </>
         )}
 
         {state.googleUser?.email && (

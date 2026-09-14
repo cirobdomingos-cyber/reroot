@@ -190,7 +190,7 @@ def init_db():
                     (gid,
                      state.get("userName") or gu.get("givenName") or gu.get("name") or "",
                      gu.get("email") or "",
-                     gu.get("picture") or "",
+                     user_picture(state),
                      now),
                 )
                 conn.execute(
@@ -2066,7 +2066,7 @@ def get_usage_stats(window_days: int = 30) -> dict:
                     "google_id": r["google_id"],
                     "email": gu.get("email", ""),
                     "name": s.get("userName") or gu.get("name") or gu.get("givenName") or "",
-                    "picture": gu.get("picture", ""),
+                    "picture": user_picture(s),
                     "last_seen": r["updated_at"],
                 })
             except Exception:
@@ -2818,7 +2818,7 @@ def _resolve_attendee_users(google_ids: list[str], requesting_google_id: str) ->
                         if not privacy.get("showInFriendSuggestions", True):
                             continue
                     name = state.get("userName") or gid
-                    picture = (state.get("googleUser") or {}).get("picture", "")
+                    picture = user_picture(state)
                 except Exception:
                     pass
             out.append({
@@ -2957,6 +2957,16 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
 # same group as someone isn't their consent to be your friend, and
 # friendship unlocks their RSVPs in your feed.
 
+def user_picture(state: Optional[dict]) -> str:
+    """The avatar to show for a user_states blob: the photo they uploaded
+    in Profile (`customPicture`) when there is one, else the Google/Apple
+    account picture. Every picture reader goes through here so a custom
+    photo shows up everywhere — friends list, attendees, group members."""
+    if not state:
+        return ""
+    return state.get("customPicture") or (state.get("googleUser") or {}).get("picture") or ""
+
+
 def _user_bits(conn, google_id: str) -> tuple[str, str]:
     """(name, picture) from the user_states blob, falling back to the id."""
     row = conn.execute(
@@ -2970,7 +2980,7 @@ def _user_bits(conn, google_id: str) -> tuple[str, str]:
         return google_id, ""
     gu = state.get("googleUser") or {}
     name = state.get("userName") or gu.get("givenName") or gu.get("name") or google_id
-    return name, gu.get("picture") or ""
+    return name, user_picture(state)
 
 
 def friendship_status(viewer_google_id: str, target_google_id: str) -> str:
@@ -3162,7 +3172,7 @@ def get_friends(google_id: str) -> list[dict]:
                 try:
                     state = json.loads(state_row["state_json"])
                     name = state.get("userName") or friend_id
-                    picture = (state.get("googleUser") or {}).get("picture", "")
+                    picture = user_picture(state)
                 except Exception:
                     pass
             friends.append({
@@ -3432,7 +3442,7 @@ def get_group_stats(group_id: str) -> dict:
             try:
                 state = json.loads(us["state_json"])
                 name = state.get("userName") or name
-                picture = (state.get("googleUser") or {}).get("picture", "")
+                picture = user_picture(state)
             except Exception:
                 pass
         top_organizer = {
@@ -3472,7 +3482,7 @@ def get_group_members(group_id: str) -> list[dict]:
                 try:
                     state = json.loads(state_row["state_json"])
                     name = state.get("userName") or gid
-                    picture = (state.get("googleUser") or {}).get("picture", "")
+                    picture = user_picture(state)
                 except Exception:
                     pass
             members.append({
@@ -3708,7 +3718,7 @@ def get_pending_invite_requests(event_id: str) -> list[dict]:
         out.append({
             "google_id": gid,
             "name": state.get("userName") or gu.get("givenName") or gu.get("name") or "Alguém",
-            "picture": gu.get("picture") or "",
+            "picture": user_picture(state),
             "requested_at": r["requested_at"],
         })
     return out

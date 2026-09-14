@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useApp } from '../context/AppContext'
+import { useApp, myPicture } from '../context/AppContext'
 import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
@@ -413,7 +413,7 @@ export default function GroupDetail() {
         event={selectedEvent}
         googleId={googleId}
         viewerName={state.userName}
-        viewerPicture={state.googleUser?.picture}
+        viewerPicture={myPicture(state)}
         rsvped={selectedEvent ? !!state.rsvps[selectedEvent.id] : false}
         canInvite={selectedEvent ? (
           selectedEvent.createdBy === googleId

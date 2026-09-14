@@ -153,6 +153,14 @@ const INITIAL_STATE = {
 
   // Custom events created by the user via companion chat suggestions
   customEvents: [],
+
+  // Profile photo the user uploaded ('' = use the account picture).
+  customPicture: '',
+}
+
+// The avatar URL to show for the signed-in user.
+export function myPicture(state) {
+  return state.customPicture || state.googleUser?.picture || ''
 }
 
 // ── Reducer ────────────────────────────────────────────────
@@ -186,6 +194,12 @@ function reducer(state, action) {
 
     case 'SET_NAME':
       return { ...state, userName: action.payload }
+
+    // Photo uploaded in Profile (URL from POST /user/avatar), or '' to go
+    // back to the account picture. Kept apart from googleUser.picture,
+    // which SET_GOOGLE_USER overwrites on every login.
+    case 'SET_CUSTOM_PICTURE':
+      return { ...state, customPicture: action.payload || '' }
 
     case 'SET_NEIGHBORHOOD':
       return { ...state, neighborhood: action.payload }
@@ -297,7 +311,7 @@ function reducer(state, action) {
       // Without clearing userName, Profile keeps showing the previous
       // user's name and avatar initial after they sign out.
       if (!action.payload) {
-        return { ...state, googleUser: null, userName: '' }
+        return { ...state, googleUser: null, userName: '', customPicture: '' }
       }
       const { id, name, givenName, email, picture } = action.payload
       // If a different Google account is signing in, take their name as the
@@ -387,6 +401,7 @@ function reducer(state, action) {
         diagnosticSeen:           remote.diagnosticSeen           ?? state.diagnosticSeen,
         language:     state.language     || remote.language,
         userName:     state.userName     || remote.userName,
+        customPicture: state.customPicture || remote.customPicture || '',
         neighborhood: state.neighborhood || remote.neighborhood,
         // Merge privacy settings: remote wins, with migration from legacy shareRsvps
         privacy: remote.privacy
