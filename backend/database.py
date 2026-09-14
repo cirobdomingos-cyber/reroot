@@ -1972,6 +1972,13 @@ def get_venue_leaderboard(window_days: int = 30) -> list[dict]:
         out.append({
             "handle": h,
             "label": a["display_name"] or a["label"] or f"@{h}",
+            # The raw stored fields, for editing. "label" above is a
+            # DISPLAY value that falls back to the IG display_name and
+            # then to "@handle", so an editor that round-tripped it
+            # would write the scraped name into the curator's label.
+            "raw_label": a["label"] or "",
+            "notes": a["notes"] or "",
+            "enabled": bool(a["enabled"]),
             "category": a["category"] or "",
             "profile_pic_url": a["profile_pic_url"] or "",
             "featured": bool(a["featured"]),

@@ -945,6 +945,41 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
     setBusy?.(false)
   }
 
+  // Edit name / category / notes straight from the leaderboard. This is
+  // where the founder actually works — the searchable account list with
+  // the same editor sits at the very bottom of the page, under usage,
+  // curators and feedback, which is a long way to scroll to fix a typo.
+  async function saveAccount(v, fields) {
+    setBusy?.(true)
+    try {
+      const r = await fetch(`${API_BASE}/admin/ig-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          handle: v.handle,
+          // raw_label, never the display label — see get_venue_leaderboard.
+          label: fields.label ?? v.raw_label ?? '',
+          category: fields.category ?? v.category ?? '',
+          enabled: v.enabled !== false,
+          notes: fields.notes ?? v.notes ?? '',
+          requesting_email: email,
+        }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      await reload()
+      onMutate?.()
+      return true
+    } catch (e) {
+      setError(`Falha ao salvar: ${e.message}`)
+      return false
+    } finally {
+      setBusy?.(false)
+    }
+  }
+
   async function setPromo(handle, code, perk) {
     setBusy?.(true)
     try {
@@ -1008,6 +1043,7 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
               onScrape={() => scrapeOne(v.handle)}
               onDelete={() => deleteOne(v.handle)}
               onSetPromo={setPromo}
+              onSave={saveAccount}
             />
           ))}
           {hidden > 0 && !expanded && (
@@ -1043,7 +1079,7 @@ function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
 }
 
 
-function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete, onSetPromo }) {
+function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete, onSetPromo, onSave }) {
   const conv = (v.conversion_rate * 100).toFixed(1)
   const lastScrape = v.last_scraped_at
     ? new Date(v.last_scraped_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
@@ -1072,6 +1108,18 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
     setArmed(false)
     onDelete?.()
   }
+  // Name / category editor — same collapsed pattern as the promo panel.
+  const [editOpen, setEditOpen] = useState(false)
+  const [editLabel, setEditLabel] = useState(v.raw_label || '')
+  const [editCategory, setEditCategory] = useState(v.category || '')
+  const [editNotes, setEditNotes] = useState(v.notes || '')
+  async function submitEdit() {
+    const ok = await onSave(v, {
+      label: editLabel, category: editCategory, notes: editNotes,
+    })
+    if (ok) setEditOpen(false)
+  }
+
   // Promo code editor — collapsed by default; tap 🎁 to expand the
   // inline form, save persists via PUT /admin/ig-accounts/<handle>/promo.
   // Visible only for founders (parent gates the prop).
@@ -1198,6 +1246,21 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
             padding: '2px 6px', lineHeight: 1,
           }}
         >⭐</button>
+        {onSave && (
+          <button
+            onClick={() => setEditOpen(o => !o)}
+            disabled={busy}
+            title="Editar nome e categoria"
+            style={{
+              background: editOpen ? 'var(--sage-pale)' : 'transparent',
+              border: `1px solid ${editOpen ? 'var(--sage)' : 'var(--border)'}`,
+              borderRadius: 999,
+              cursor: busy ? 'default' : 'pointer',
+              fontSize: 11, color: editOpen ? 'var(--sage)' : 'var(--charcoal-light)',
+              padding: '2px 6px', lineHeight: 1,
+            }}
+          >✏️</button>
+        )}
         {onSetPromo && (
           <button
             onClick={() => setPromoOpen(o => !o)}
@@ -1242,6 +1305,69 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
       </div>
       {/* Promo editor row — only when expanded. Sits below the row so
           the main leaderboard line stays single-row. */}
+      {onSave && editOpen && (
+        <div style={{
+          padding: '8px 10px', borderTop: '1px dashed var(--border)',
+          background: 'var(--cream)',
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 700 }}>
+            ✏️ Editar @{v.handle}
+          </div>
+          <input
+            value={editLabel}
+            onChange={e => setEditLabel(e.target.value.slice(0, 80))}
+            placeholder="Nome (ex. Bar do Sax)"
+            style={{
+              padding: '6px 8px', fontSize: 12, borderRadius: 6,
+              border: '1px solid var(--border)', outline: 'none',
+              background: 'var(--white)', color: 'var(--charcoal)',
+            }}
+          />
+          <select
+            value={editCategory}
+            onChange={e => setEditCategory(e.target.value)}
+            style={{
+              padding: '6px 8px', fontSize: 12, borderRadius: 6,
+              border: '1px solid var(--border)', outline: 'none',
+              background: 'var(--white)', color: 'var(--charcoal)',
+            }}
+          >
+            <option value="">— sem categoria —</option>
+            {CATEGORY_ORDER.map(c => (
+              <option key={c} value={c}>
+                {CATEGORY_META[c].emoji} {CATEGORY_META[c].label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={editNotes}
+            onChange={e => setEditNotes(e.target.value.slice(0, 200))}
+            placeholder="Anotação interna (opcional)"
+            style={{
+              padding: '6px 8px', fontSize: 12, borderRadius: 6,
+              border: '1px solid var(--border)', outline: 'none',
+              background: 'var(--white)', color: 'var(--charcoal)',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={submitEdit} disabled={busy} style={{ ...ghostBtn('var(--sage)'), flex: 1 }}>
+              {busy ? '…' : '✓ Salvar'}
+            </button>
+            <button
+              onClick={() => {
+                setEditLabel(v.raw_label || ''); setEditCategory(v.category || '')
+                setEditNotes(v.notes || ''); setEditOpen(false)
+              }}
+              disabled={busy}
+              style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {onSetPromo && promoOpen && (
         <div style={{
           padding: '8px 10px', borderTop: '1px dashed var(--border)',
