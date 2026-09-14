@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useT } from '../i18n'
 import Friends from './Friends'
 import Groups from './Groups'
+import FriendsFeed from '../components/FriendsFeed'
 
 export default function Community() {
   const t = useT()
@@ -46,6 +47,11 @@ export default function Community() {
           })}
         </div>
       </div>
+
+      {/* Where friends are going — first thing on the tab, above both
+          sub-tabs, since it's the only part of Community that changes
+          day to day. Hidden when empty. */}
+      <FriendsFeed />
 
       {/* Content */}
       <motion.div

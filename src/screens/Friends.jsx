@@ -5,7 +5,9 @@
  *   1. My code card — shareable friend code + copy button.
  *   2. Add by code — input + button to claim a friend.
  *   3. Friend list — people you're connected to.
- *   4. Activity feed — events your friends are going to.
+ *
+ * The "where friends are going" feed lives at the top of Community
+ * (components/FriendsFeed.jsx), above the Grupos/Amigos switch.
  *
  * All sections degrade gracefully when the backend is unavailable
  * (each API helper in services/api.js returns null/[] on failure).
@@ -22,7 +24,6 @@ import {
   addFriend,
   removeFriend,
   getFriends,
-  fetchFriendsFeed,
   trackEvent,
 } from '../services/api'
 
@@ -61,7 +62,6 @@ export default function Friends({ embedded = false }) {
   const [codeInput, setCodeInput] = useState('')
   const [addState, setAddState] = useState('idle') // 'idle' | 'sending' | 'success' | 'error'
   const [friends, setFriends] = useState([])
-  const [feed, setFeed] = useState([])
   const [loading, setLoading] = useState(true)
 
   async function handleRemove(friend) {
@@ -74,14 +74,12 @@ export default function Friends({ embedded = false }) {
   const reload = useCallback(async () => {
     if (!googleId) { setLoading(false); return }
     setLoading(true)
-    const [code, friendList, feedEvents] = await Promise.all([
+    const [code, friendList] = await Promise.all([
       getMyFriendCode(googleId),
       getFriends(googleId),
-      fetchFriendsFeed(googleId),
     ])
     setMyCode(code)
     setFriends(friendList || [])
-    setFeed(feedEvents || [])
     setLoading(false)
   }, [googleId])
 
@@ -355,85 +353,10 @@ export default function Friends({ embedded = false }) {
         )}
       </Section>
 
-      {/* Activity feed */}
-      <Section label={t.friends_feed_label}>
-        {loading ? null : feed.length === 0 ? (
-          <div style={{
-            background: 'var(--white)', borderRadius: 14, padding: '14px 16px',
-            border: '1px dashed var(--border)',
-            fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5,
-          }}>
-            {t.friends_feed_empty}
-          </div>
-        ) : (
-          feed.map(ev => (
-            <div
-              key={ev.event_id}
-              onClick={() => navigate('/events', { state: { openEventId: ev.event_id } })}
-              style={{
-                background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
-                border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
-                marginBottom: 8, cursor: 'pointer',
-              }}
-            >
-              <div style={{
-                fontSize: 14, fontWeight: 600, color: 'var(--charcoal)', marginBottom: 4,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {ev.event_name}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
-                {formatFeedDate(ev.event_date)}{ev.event_venue ? ` · ${ev.event_venue}` : ''}
-              </div>
-              {ev.friends_going && ev.friends_going.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ display: 'flex' }}>
-                    {ev.friends_going.slice(0, 4).map((f, i) => (
-                      <button
-                        key={f.google_id ?? i}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (f.google_id) navigate(`/friends/${encodeURIComponent(f.google_id)}`)
-                        }}
-                        disabled={!f.google_id}
-                        title={f.google_id ? `Ver eventos de ${f.name}` : f.name}
-                        style={{
-                          background: 'none', border: 'none', padding: 0,
-                          marginLeft: i === 0 ? 0 : -8,
-                          cursor: f.google_id ? 'pointer' : 'default',
-                          borderRadius: '50%',
-                        }}
-                      >
-                        <Avatar name={f.name} src={f.picture} size={26} />
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--terra)' }}>
-                    {ev.friends_going.length} {t.friends_feed_going}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </Section>
+      {/* The "where friends are going" feed moved to the top of the
+          Community tab (components/FriendsFeed.jsx). */}
 
       <div style={{ height: 24 }}/>
     </div>
   )
-}
-
-const _PT_WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-const _PT_MONTHS   = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-
-function formatFeedDate(isoStr) {
-  if (!isoStr) return ''
-  const d = new Date(isoStr)
-  if (Number.isNaN(d.getTime())) return ''
-  const wd = _PT_WEEKDAYS[d.getDay()]
-  const mo = _PT_MONTHS[d.getMonth()]
-  const time = d.getHours() || d.getMinutes()
-    ? ` · ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    : ''
-  return `${wd}, ${d.getDate()} ${mo}${time}`
 }

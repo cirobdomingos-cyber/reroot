@@ -1057,34 +1057,45 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
           const isAdmin = m.role === 'admin'
           const canActOnMember = viewerIsAdmin && m.google_id !== viewerGoogleId
           return (
+            // Two-line row: identity on top, actions underneath. With
+            // badge + friend chip + two admin buttons on the same line as
+            // the name, the text column collapsed to one character wide on
+            // a phone ("E" / "Entrou em 10 de set. de 2026" stacked word
+            // by word). The action line wraps instead of squeezing.
             <div key={m.google_id} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
+              display: 'flex', alignItems: 'flex-start', gap: 12,
               padding: '10px 4px',
             }}>
-              <Avatar name={m.name} src={m.picture} size={48} />
+              <Avatar name={m.name} src={m.picture} size={44} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                }}>
-                  {m.name || m.google_id}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    minWidth: 0,
+                  }}>
+                    {m.name || m.google_id}
+                  </div>
+                  {isAdmin && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
+                      color: 'var(--terra)', background: 'var(--terra-pale)',
+                      padding: '2px 7px', borderRadius: 6,
+                      textTransform: 'uppercase', flexShrink: 0,
+                    }}>
+                      Admin
+                    </span>
+                  )}
                 </div>
                 {m.joined_at && (
                   <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
                     Entrou em {fmtJoinedAt(m.joined_at)}
                   </div>
                 )}
-              </div>
-              {isAdmin && (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
-                  color: 'var(--terra)', background: 'var(--terra-pale)',
-                  padding: '3px 8px', borderRadius: 6,
-                  textTransform: 'uppercase', flexShrink: 0,
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                  gap: 6, marginTop: 8,
                 }}>
-                  Admin
-                </span>
-              )}
               {/* Add as friend, straight from the member list. The backend
                   has had /friends/add-by-id (auto-accepting, built for
                   exactly this "someone you saw in the app" case) all
@@ -1147,6 +1158,8 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                   </button>
                 </div>
               )}
+                </div>
+              </div>
             </div>
           )
         })}
