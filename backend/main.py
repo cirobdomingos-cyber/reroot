@@ -1539,11 +1539,16 @@ def _merge_source_event(ge: dict) -> dict:
         return ge
     pinned = set(ge.get("edited_fields") or [])
     merged = dict(ge)
+    # The two rows don't share a vocabulary: a catalog event calls the
+    # place venue_name and holds its dates as datetimes, while a private
+    # event stores venue and ISO strings. Translate here, once — reading
+    # src.venue raised AttributeError on every linked event, which is a
+    # 500 on the event screen.
     values = {
         "name": src.name,
-        "venue": src.venue,
-        "date_start": src.date_start,
-        "date_end": src.date_end,
+        "venue": src.venue_name,
+        "date_start": _as_iso(src.date_start),
+        "date_end": _as_iso(src.date_end),
         "description": src.description,
         "image_url": src.image_url,
     }
@@ -1562,6 +1567,14 @@ def _merge_source_event(ge: dict) -> dict:
         else:
             merged[field] = value
     return merged
+
+
+def _as_iso(value) -> str:
+    """Catalog dates are datetimes, private-event dates are ISO strings.
+    Everything downstream parses strings."""
+    if not value:
+        return ""
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
 def _source_url_of(ge: dict) -> str:
@@ -1583,8 +1596,13 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     unknown (empty string), we default to hiding the group context — a
     safe-by-default for any unauthenticated read paths."""
     from datetime import datetime as _dt
-    # One post, one set of facts — see _merge_source_event.
-    ge = _merge_source_event(ge)
+    # One post, one set of facts — see _merge_source_event. Guarded: the
+    # merge reads a second row's shape, and getting that wrong turned
+    # every linked event into a 500 instead of a slightly stale card.
+    try:
+        ge = _merge_source_event(ge)
+    except Exception as exc:
+        log.warning(f"source merge failed for {ge.get('id')}: {exc}")
     ds = ge.get("date_start") or ""
     try:
         dt = _dt.fromisoformat(ds.replace("Z", "+00:00")) if ds else None
