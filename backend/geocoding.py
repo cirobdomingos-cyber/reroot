@@ -21,6 +21,7 @@ discarded as a sanity check.
 
 import json
 import logging
+import os
 import time
 from typing import Optional
 
@@ -60,7 +61,12 @@ def _query_nominatim(query: str, timeout: float = 8.0) -> Optional[tuple[float, 
     the bairro from `suburb` / `neighbourhood` / `quarter` (Nominatim's
     naming varies by region — Curitiba uses `suburb` most often)."""
     headers = {
-        "User-Agent": "aue-curitiba-events/1.0 (https://reroot-production.up.railway.app)",
+        # Nominatim's policy wants a contactable address. Env-driven so it
+        # follows the app to a real auê domain instead of naming the old one.
+        "User-Agent": (
+            f"aue-curitiba-events/1.0 "
+            f"({os.environ.get('PUBLIC_ORIGIN', 'https://reroot-production.up.railway.app')})"
+        ),
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
     }
     params = {

@@ -9,7 +9,7 @@ import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { Capacitor } from '@capacitor/core'
 import { API_BASE } from '../lib/apiBase'
-import { getPublicOrigin } from '../lib/share'
+import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
 import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount, uploadAvatar } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
@@ -857,7 +857,7 @@ function ShareInstallSection() {
     window.matchMedia('(display-mode: standalone)').matches
   const installUrl = typeof window !== 'undefined'
     ? `${getPublicOrigin()}/install`
-    : 'https://reroot-production.up.railway.app/install'
+    : `${NATIVE_PUBLIC_ORIGIN}/install`
 
   useEffect(() => {
     function onAvailable() { setCanInstall(true) }

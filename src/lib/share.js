@@ -17,7 +17,19 @@ import { Capacitor } from '@capacitor/core'
 // or https://localhost (Android default) — meaningless to anyone receiving a
 // shared link. Force the canonical public URL on native. Web keeps using
 // window.location.origin so dev / staging / prod each share their own host.
-export const NATIVE_PUBLIC_ORIGIN = 'https://reroot-production.up.railway.app'
+//
+// Env-driven because this string is what every shared link says out loud,
+// and today it says "reroot" — the old product name — on a railway.app
+// subdomain, which reads to the person receiving it like a link not to
+// click. Moving to a real auê domain is now a build variable, and it
+// reaches installed apps through an OTA bundle, no App Review.
+//
+// `||` and not `??`: the Dockerfile declares the ARG, so an unset variable
+// arrives as an empty string, not undefined — the same trap documented at
+// length in lib/apiBase.js.
+export const NATIVE_PUBLIC_ORIGIN =
+  (import.meta.env.VITE_PUBLIC_ORIGIN || '').trim()
+  || 'https://reroot-production.up.railway.app'
 
 export function getPublicOrigin() {
   if (Capacitor.isNativePlatform?.()) return NATIVE_PUBLIC_ORIGIN

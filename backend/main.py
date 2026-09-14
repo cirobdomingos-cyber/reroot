@@ -107,6 +107,13 @@ class Settings(BaseSettings):
     # set it). Set ENV_NAME=staging on the Railway staging service and use
     # `if settings.env_name == "staging": ...` to gate behavior.
     env_name: str = "production"
+    # Canonical public address, for links we generate server-side and for
+    # the User-Agent we introduce ourselves with. The Railway subdomain
+    # still says "reroot" — the old product name — so this exists to make
+    # moving to a real auê domain a variable instead of a string hunt.
+    # Requests still prefer their own forwarded host when they have one,
+    # so a new domain works before anyone sets this.
+    public_origin: str = "https://reroot-production.up.railway.app"
 
 
 settings = Settings()
@@ -829,8 +836,112 @@ def _event_deep_link(event_id: str) -> str:
     return f"/#/events?event={event_id}"
 
 
+def _request_origin(request: Request) -> str:
+    """The public origin THIS request came in on.
+
+    Preferred over the configured one because it is automatically right
+    on a new domain, on staging, and on localhost. Railway terminates TLS
+    in front of uvicorn, so request.base_url reports http:// and the
+    forwarded headers are the only honest source.
+    """
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host")
+            or request.headers.get("host") or "").split(",")[0].strip()
+    if not host:
+        return settings.public_origin.rstrip("/")
+    if not proto:
+        proto = "http" if host.split(":")[0] in ("localhost", "127.0.0.1") else "https"
+    return f"{proto}://{host}"
+
+
+# Clients that fetch a URL to build a preview card instead of to read it.
+# "bot" is deliberately broad: a false positive costs nothing, because the
+# page we serve them also redirects.
+_LINK_PREVIEW_UA = re.compile(
+    r"whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|"
+    r"discordbot|linkedinbot|pinterest|skypeuripreview|googlebot|bingbot|"
+    r"embedly|quora link preview|redditbot|applebot|vkshare|w3c_validator|"
+    r"bot\b|crawler|spider|preview|scraper",
+    re.I,
+)
+
+
+def _og_escape(text: str) -> str:
+    return (
+        (text or "")
+        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _preview_html(*, title: str, description: str, image: str, url: str,
+                  redirect_to: str) -> str:
+    """A card for the crawler, a redirect for the human who slipped through."""
+    img_tag = f'<meta property="og:image" content="{_og_escape(image)}" />' if image else ""
+    card = "summary_large_image" if image else "summary"
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>{_og_escape(title)}</title>
+<meta name="description" content="{_og_escape(description)}" />
+<meta property="og:site_name" content="auê" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="{_og_escape(title)}" />
+<meta property="og:description" content="{_og_escape(description)}" />
+<meta property="og:url" content="{_og_escape(url)}" />
+{img_tag}
+<meta name="twitter:card" content="{card}" />
+<meta name="twitter:title" content="{_og_escape(title)}" />
+<meta name="twitter:description" content="{_og_escape(description)}" />
+<meta http-equiv="refresh" content="0; url={_og_escape(redirect_to)}" />
+</head>
+<body>
+<script>location.replace({json.dumps(redirect_to)});</script>
+<p>Abrindo no auê… <a href="{_og_escape(redirect_to)}">toque aqui</a>.</p>
+</body>
+</html>"""
+
+
+def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
+    """Title/description/image for a shared event link, or None.
+
+    PRIVATE events deliberately get no card. Their details are gated —
+    GET /events/{id} answers 403 to anyone not invited — and a preview is
+    fetched by whoever holds the URL, with no account and no invite. A
+    rich card would hand the name, venue and date of a private party to
+    anyone the link was forwarded to. They fall back to the generic auê
+    card below.
+    """
+    if not event_id or event_id.startswith("grp_ev_"):
+        return None
+    ev = db.get_event_by_id(event_id)
+    if not ev:
+        return None
+    when = ""
+    if ev.date_start:
+        try:
+            when = ev.date_start.strftime("%d/%m às %H:%M")
+        except Exception:
+            when = ""
+    where = (ev.venue_name or "").strip()
+    bits = [b for b in (when, where) if b]
+    description = " · ".join(bits)
+    extra = (ev.vibe_summary or ev.description or "").strip()
+    if extra:
+        description = f"{description} — {extra}" if description else extra
+    image = (ev.image_url or "").strip()
+    if image.startswith("/"):
+        image = f"{origin}{image}"
+    return {
+        "title": f"{ev.name} · auê",
+        "description": description[:200] or "Curitiba que acontece",
+        "image": image,
+    }
+
+
 @app.get("/e/{event_id}")
-def short_event_link(event_id: str):
+def short_event_link(event_id: str, request: Request):
     """Short-link redirect for share URLs. Tradeoff: shorter copy at
     the cost of one extra HTTP hop on the recipient's first tap.
     Universal Links on iOS still match the path (the AASA's component
@@ -841,13 +952,30 @@ def short_event_link(event_id: str):
     Sharing pattern: appLink('/events?event=<id>') → frontend rewrites
     to /e/<id> when the id starts with grp_ev_ or instagram_ig_, or
     falls back to the long URL for anything else."""
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import RedirectResponse, HTMLResponse
     if not event_id:
         return RedirectResponse(url="/", status_code=302)
-    return RedirectResponse(
-        url=_event_deep_link(event_id),
-        status_code=302,
-    )
+    target = _event_deep_link(event_id)
+
+    # Humans keep the plain 302 they have always had: no flash, no extra
+    # render, and Universal Links still intercept before this ever runs.
+    # Only preview crawlers get HTML, so nothing about the installed-app
+    # path or the service worker changes.
+    ua = request.headers.get("user-agent") or ""
+    if not _LINK_PREVIEW_UA.search(ua):
+        return RedirectResponse(url=target, status_code=302)
+
+    origin = _request_origin(request)
+    card = _event_preview_card(event_id, origin) or {
+        "title": "auê — Curitiba que acontece",
+        "description": "Todos os eventos da cidade num lugar só, com a galera junto.",
+        "image": f"{origin}/icon-512x512.png",
+    }
+    return HTMLResponse(_preview_html(
+        title=card["title"], description=card["description"],
+        image=card["image"], url=f"{origin}/e/{event_id}",
+        redirect_to=target,
+    ))
 
 
 @app.get("/install", response_class=PlainTextResponse)
@@ -6236,7 +6364,7 @@ def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
     Re-run until 'remaining' returns 0."""
     _require_curator(requesting_email)
     headers = {
-        "User-Agent": "aue-curitiba-events/1.0 (https://reroot-production.up.railway.app)",
+        "User-Agent": f"aue-curitiba-events/1.0 ({settings.public_origin})",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
     }
     with db.get_conn() as conn:
