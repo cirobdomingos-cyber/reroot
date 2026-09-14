@@ -58,6 +58,11 @@ def _setup_module(monkeypatch, db, posts, extract_impl):
     """Wire a fake Apify + fake Claude into the scraper module."""
     import scrapers.instagram_apify as ig
 
+    # Probe depth is a module constant (4 in production, to see past pinned
+    # posts). Pin it to 1 so the fake below can still tell the probe call
+    # from the full scrape by the number of posts requested.
+    monkeypatch.setattr(ig, "_PROBE_POSTS_PER_ACCOUNT", 1)
+
     db.upsert_ig_account(handle="cafe", label="Cafe", category="cafe", added_by_email="t")
 
     async def fake_scrape(token, urls, posts_per_account):

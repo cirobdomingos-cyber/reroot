@@ -152,6 +152,14 @@ APIFY_TIMEOUT_S = 240
 _APIFY_CHUNK_SIZE = 20
 _APIFY_CHUNK_CONCURRENCY = 3
 
+# Probe depth. Instagram allows up to 3 pinned posts at the top of a
+# profile, and a pinned post never changes — so with 1 post per handle the
+# probe could never see new content on a profile with a pin, and when the
+# pin was a collab it saw someone else's post entirely. 4 guarantees at
+# least one unpinned post whenever the profile has one. The full scrape
+# already asks for more than this per handle, so chunk timeouts don't move.
+_PROBE_POSTS_PER_ACCOUNT = 4
+
 EXTRACTION_PROMPT = """\
 Você está extraindo informações de eventos a partir de posts do Instagram \
 de contas curitibanas (cafés, museus, espaços culturais, coletivos, curadores).
@@ -328,17 +336,12 @@ async def fetch_events(
     else:
         log.info("Instagram (Apify): todos os perfis enriquecidos nas últimas 24h, skip details")
 
-    # ── (2) cheap probe — 1 post per handle to detect new content ──
+    # ── (2) cheap probe — newest posts per handle to detect new content ──
     probe_urls = [f"https://www.instagram.com/{a['handle']}/" for a in accounts]
-    probe_posts = await _run_apify_scrape(apify_token, probe_urls, posts_per_account=1)
-    latest_by_handle: dict[str, str] = {}  # handle → shortcode of latest post
-    for p in probe_posts:
-        h = (p.get("ownerUsername") or "").lower()
-        if not h or h in latest_by_handle:
-            continue
-        sc = _extract_shortcode(p.get("url") or "") or (p.get("id") or "")
-        if sc:
-            latest_by_handle[h] = sc
+    probe_posts = await _run_apify_scrape(
+        apify_token, probe_urls, posts_per_account=_PROBE_POSTS_PER_ACCOUNT,
+    )
+    latest_by_handle = _latest_shortcode_by_handle(probe_posts)
 
     probe_coverage = len(latest_by_handle) / max(len(accounts), 1)
     log.info(
@@ -373,9 +376,11 @@ async def fetch_events(
                 handles_to_fetch.append(h)
             else:
                 # Probe returned data overall but nothing for this handle →
-                # genuinely inaccessible (private, deleted, blocked). Skip.
+                # inaccessible (private, deleted, blocked). Skip, and
+                # deliberately do NOT stamp last_scraped_at: this used to,
+                # which made a profile that had never returned a post look
+                # freshly scraped in the admin every single day.
                 skipped_no_data += 1
-                db.mark_ig_account_scraped(h)
             continue
         if latest != prev:
             handles_to_fetch.append(h)
@@ -495,10 +500,16 @@ async def fetch_events(
     handles_with_data: set[str] = set()
     profile_seen: dict[str, dict] = {}
     for p in posts:
-        h = (p.get("ownerUsername") or "").lower()
+        h = _tracked_handle(p)
         if not h:
             continue
         handles_with_data.add(h)
+        # Owner fields describe whoever authored the post. On a collab shown
+        # on a tracked profile that's the collaborator, so read them only
+        # from the profile's own posts — or @sociedadebeneficente would be
+        # renamed "SAMBA CASA FORTE" by the post it pins.
+        if (p.get("ownerUsername") or "").lower() != h:
+            continue
         if h not in profile_seen:
             profile_seen[h] = {
                 "display_name": _pick(p,
@@ -570,7 +581,7 @@ async def fetch_events(
         sc = _extract_shortcode(post.get("url") or "") or (post.get("id") or "")
         if not sc or sc in failed_shortcodes:
             continue
-        ledger_rows.append((sc, (post.get("ownerUsername") or "").lower(), ev is not None))
+        ledger_rows.append((sc, _tracked_handle(post), ev is not None))
     if failed_shortcodes:
         log.warning(
             f"IG: {len(failed_shortcodes)} posts falharam na extração — "
@@ -606,11 +617,7 @@ async def fetch_events(
     # as producing nothing. Handles with no new posts keep their last
     # meaningful count; the admin UI's `future_events` column is the live
     # figure either way.
-    extracted_handles = {
-        (p.get("ownerUsername") or "").lower()
-        for p in posts_to_extract
-        if p.get("ownerUsername")
-    }
+    extracted_handles = {_tracked_handle(p) for p in posts_to_extract} - {""}
     for handle in handles_with_data & extracted_handles:
         db.set_ig_account_last_event_count(handle, yields_by_handle.get(handle, 0))
 
@@ -835,7 +842,11 @@ async def _extract_event(
     if len(caption) < 30:
         return None  # selfies, emoji posts, etc. — not events
 
-    handle = (post.get("ownerUsername") or "").strip()
+    # The tracked profile the post was fetched from, not necessarily its
+    # author: a collab or another account's post shown on a venue's profile
+    # belongs to that venue's catalog. Drives the event id (and so which
+    # venue it counts for), the prompt's context and the venue fallback.
+    handle = _tracked_handle(post)
     post_date = (post.get("timestamp") or "")[:10]
     post_url = post.get("url") or ""
     image_url = post.get("displayUrl") or None
@@ -1050,6 +1061,44 @@ async def _extract_event(
         recurrence_label=recurrence_label,
         recurrence_days=recurrence_days,
     )
+
+
+def _tracked_handle(post: dict) -> str:
+    """The tracked profile a post was fetched *for* — from Apify's inputUrl
+    (instagram.com/<handle>/) — falling back to ownerUsername for payloads
+    that don't carry it.
+
+    Keying posts by ownerUsername silently dropped any profile whose feed
+    opens with a post authored by someone else. @sociedadebeneficente pins
+    a collab owned by @sambacasaforte: the probe's single post came back as
+    sambacasaforte's, the venue never matched, and every daily run marked
+    it scraped without fetching anything — for four months, while it
+    posted dated event flyers every week.
+    """
+    m = re.search(r"instagram\.com/([A-Za-z0-9._]+)/?", post.get("inputUrl") or "")
+    if m and m.group(1).lower() not in ("p", "reel", "reels", "stories", "explore"):
+        return m.group(1).lower()
+    return (post.get("ownerUsername") or "").strip().lower()
+
+
+def _latest_shortcode_by_handle(posts: list[dict]) -> dict[str, str]:
+    """Newest post per tracked handle, ignoring pinned posts.
+
+    A pinned post never changes: if it counted as "latest", the probe would
+    compare the same shortcode every day and never notice new content.
+    Pinned posts only count when a profile returned nothing else — a stale
+    signal still beats marking the profile as having no data.
+    """
+    best: dict[str, tuple[bool, str, str]] = {}  # handle → (unpinned, timestamp, shortcode)
+    for p in posts:
+        h = _tracked_handle(p)
+        sc = _extract_shortcode(p.get("url") or "") or (p.get("id") or "")
+        if not h or not sc:
+            continue
+        candidate = (not p.get("isPinned"), p.get("timestamp") or "", sc)
+        if h not in best or candidate[:2] > best[h][:2]:
+            best[h] = candidate
+    return {h: v[2] for h, v in best.items()}
 
 
 def _extract_shortcode(url: str) -> str:

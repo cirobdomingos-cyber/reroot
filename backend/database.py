@@ -1490,8 +1490,16 @@ def update_ig_account_profile(handle: str, display_name: str = "",
             final_pic_url = local
     with get_conn() as conn:
         conn.execute(
+            # Only overwrite a field with a real value. The post scrape
+            # carries a display name but never a picture or bio
+            # (addParentData is off), and it used to write those blanks
+            # straight over the avatar and bio the details call had saved —
+            # confirmed on @sociedadebeneficente, and the likely reason 94 of
+            # 123 tracked accounts showed no picture.
             """UPDATE tracked_ig_accounts
-               SET display_name = ?, profile_pic_url = ?, bio_snippet = ?
+               SET display_name    = COALESCE(NULLIF(?, ''), display_name),
+                   profile_pic_url = COALESCE(NULLIF(?, ''), profile_pic_url),
+                   bio_snippet     = COALESCE(NULLIF(?, ''), bio_snippet)
                WHERE handle = ?""",
             (display_name[:200], final_pic_url, bio_snippet[:500], handle),
         )
