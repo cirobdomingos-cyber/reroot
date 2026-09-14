@@ -73,7 +73,13 @@ def _setup_module(monkeypatch, db, posts, extract_impl):
 
     monkeypatch.setattr(ig, "_run_apify_scrape", fake_scrape)
     monkeypatch.setattr(ig, "_enrich_profiles", lambda *a, **k: _noop())
-    monkeypatch.setattr(ig, "_extract_event", extract_impl)
+    # The extractor returns a LIST now (one post can announce a week of
+    # events). Each test's impl still speaks the one-event shape, so adapt.
+    async def extract_list(*a, **k):
+        ev = await extract_impl(*a, **k)
+        return [ev] if ev is not None else []
+
+    monkeypatch.setattr(ig, "_extract_events", extract_list)
     return ig
 
 

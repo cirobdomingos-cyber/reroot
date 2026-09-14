@@ -2498,7 +2498,7 @@ async def extract_ig_event(req: IgExtractRequest):
     if not settings.apify_api_token:
         return result
 
-    from scrapers.instagram_apify import _run_apify_scrape, _extract_event
+    from scrapers.instagram_apify import _run_apify_scrape, _extract_events
     from anthropic import AsyncAnthropic
     from datetime import timezone as tz
 
@@ -2522,7 +2522,10 @@ async def extract_ig_event(req: IgExtractRequest):
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     today_str = __import__("datetime").datetime.now(tz.utc).strftime("%Y-%m-%d")
-    raw_event = await _extract_event(client, post, today_str)
+    # A lineup post yields several; this form fills one event, so take the
+    # earliest — _extract_events returns them date-sorted.
+    raw_events = await _extract_events(client, post, today_str)
+    raw_event = raw_events[0] if raw_events else None
 
     if raw_event:
         result["name"] = raw_event.name
@@ -5450,7 +5453,7 @@ async def admin_test_extraction(requesting_email: str = "", caption: str = "", h
             messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
         )
         raw_text = response.content[0].text.strip()
-        # Strip markdown fences exactly as _extract_event does. Without
+        # Strip markdown fences exactly as _extract_events does. Without
         # this the debug endpoint reports "parse failed" on responses the
         # real pipeline handles fine — which makes it look like extraction
         # is broken when it isn't.

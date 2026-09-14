@@ -151,3 +151,19 @@ def test_a_group_without_the_venue_at_all_is_not_linked(db):
     group = db.create_group(google_id="host", name="Vazio")
     src = _ig_catalog_event(db, "macrobarepista", "AAA111", "2026-09-18")
     assert not db.find_group_event_by_source(group["id"], src)
+
+
+def test_link_resolves_to_a_later_night_once_the_first_is_gone(db):
+    """A lineup post produces one row per night: the earliest keeps the bare
+    id, the rest are date-suffixed. After the first night passes and is
+    pruned, pasting that post's link must still find the event."""
+    _catalog_row(db, "e_sex", "ig_changes.cwb_ABC123_0918")
+    _catalog_row(db, "e_sab", "ig_changes.cwb_ABC123_0919")
+    assert db.find_catalog_event_id_by_shortcode("ABC123") == "e_sex", \
+        "falls back to the earliest surviving night"
+
+
+def test_the_bare_id_still_wins_when_it_exists(db):
+    _catalog_row(db, "e_qui", "ig_changes.cwb_ABC123")
+    _catalog_row(db, "e_sex", "ig_changes.cwb_ABC123_0918")
+    assert db.find_catalog_event_id_by_shortcode("ABC123") == "e_qui"

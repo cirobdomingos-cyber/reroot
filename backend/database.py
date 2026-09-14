@@ -4172,6 +4172,17 @@ def find_catalog_event_id_by_shortcode(shortcode: str) -> str:
             "ORDER BY fetched_at DESC LIMIT 1",
             (f"%_{shortcode}",),
         ).fetchone()
+        if row:
+            return row["id"]
+        # A post announcing a week of shows produces one row per night: the
+        # earliest keeps the bare id matched above, the rest carry a date
+        # suffix. Once that first night is past and pruned, only suffixed
+        # rows remain — without this the link would resolve to nothing.
+        row = conn.execute(
+            "SELECT id FROM events WHERE source = 'instagram' AND external_id LIKE ? "
+            "ORDER BY external_id ASC LIMIT 1",
+            (f"%_{shortcode}_%",),
+        ).fetchone()
     return row["id"] if row else ""
 
 

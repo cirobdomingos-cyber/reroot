@@ -102,7 +102,11 @@ def _wire(monkeypatch, db, feed, extract_calls):
 
     monkeypatch.setattr(ig, "_run_apify_scrape", fake_scrape)
     monkeypatch.setattr(ig, "_enrich_profiles", no_details)
-    monkeypatch.setattr(ig, "_extract_event", extract)
+    async def extract_list(*a, **k):
+        ev = await extract(*a, **k)
+        return [ev] if ev is not None else []
+
+    monkeypatch.setattr(ig, "_extract_events", extract_list)
     return ig
 
 

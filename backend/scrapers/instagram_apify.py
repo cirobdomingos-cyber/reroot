@@ -221,9 +221,12 @@ data fantasma.
 
 Para (C) responda {{"is_event": false}}.
 
-Para (A) e (B) responda SOMENTE JSON válido (sem markdown, sem texto extra):
+Para (A) e (B) responda SOMENTE JSON válido (sem markdown, sem texto extra). \
+"events" é uma LISTA — um objeto por evento anunciado no post, quase sempre \
+com um só:
 {{
   "is_event": true,
+  "events": [{{
   "is_recurring": false | true,
   "recurrence_label": "<frase curta em pt-BR descrevendo a rotina, ex: 'Toda \
 quinta-feira', 'Sextas e sábados, 19h-23h'. null se is_recurring=false>",
@@ -239,6 +242,7 @@ is_recurring=false>],
   "date_end": "<YYYY-MM-DDTHH:MM:SS ou null>",
   "price_min": <número, 0 se gratuito>,
   "price_max": <número, 0 se gratuito>
+  }}]
 }}
 
 REGRAS DE DATA:
@@ -270,6 +274,22 @@ Outras regras:
 sem repetir o local.
 - Prefira EVENTO ÚNICO se o post mistura ambos (ex: "esta sexta show da X, e \
 toda terça tem open mic"). O evento único é mais time-sensitive.
+
+⚠️ POST COM VÁRIOS EVENTOS (muito comum: a "programação da semana" de um \
+bar ou casa de show). Quando a legenda anuncia MAIS DE UM evento com data \
+própria — "Quinta 17/09 tem X, sexta 18/09 tem Y, sábado tem Z" — devolva \
+TODOS, não só o primeiro. Cada um vira um objeto separado dentro de \
+"events", com seu próprio nome, data e preço.
+
+Isso vale só pra datas DIFERENTES. Um evento só que atravessa dias \
+seguidos (festival, exposição) continua sendo UM objeto com \
+date_start..date_end. E lista de dias sem evento próprio em cada um \
+("aberto de quinta a domingo") não é vários eventos — é rotina ou \
+propaganda, ver (B) e (C).
+
+Cada objeto passa pelas MESMAS regras acima: sem data concreta, fora de \
+Curitiba, ou no passado → simplesmente não entra na lista. Se nenhum \
+sobrar, responda {{"is_event": false}}.
 """
 
 
@@ -554,7 +574,7 @@ async def fetch_events(
 
     async def _bounded_extract(post):
         async with sem:
-            return await _extract_event(
+            return await _extract_events(
                 client, post, today_str, failed_out=failed_shortcodes
             )
 
@@ -562,7 +582,8 @@ async def fetch_events(
         *[_bounded_extract(p) for p in posts_to_extract],
         return_exceptions=False,
     )
-    events: list[RawEvent] = [ev for ev in results if ev is not None]
+    # One post can carry a whole week's lineup, so this is a flatten now.
+    events: list[RawEvent] = [ev for evs in results for ev in evs]
 
     log.info(
         f"Instagram (Apify): {len(events)} eventos extraídos de "
@@ -570,18 +591,18 @@ async def fetch_events(
     )
 
     # ── Record the ledger ──
-    # Only mark posts we actually got a verdict on. `_extract_event`
-    # returns None both for "not an event" (a real verdict, worth
+    # Only mark posts we actually got a verdict on. `_extract_events`
+    # returns [] both for "not an event" (a real verdict, worth
     # remembering) and for a transient API failure (must NOT be
     # remembered, or a credit outage would permanently burn every post
     # it touched — exactly the failure mode that froze this pipeline in
-    # September). `_LAST_EXTRACT_FAILED` carries that distinction.
+    # September). `failed_shortcodes` carries that distinction.
     ledger_rows: list[tuple[str, str, bool]] = []
     for post, ev in zip(posts_to_extract, results):
         sc = _extract_shortcode(post.get("url") or "") or (post.get("id") or "")
         if not sc or sc in failed_shortcodes:
             continue
-        ledger_rows.append((sc, _tracked_handle(post), ev is not None))
+        ledger_rows.append((sc, _tracked_handle(post), bool(ev)))
     if failed_shortcodes:
         log.warning(
             f"IG: {len(failed_shortcodes)} posts falharam na extração — "
@@ -820,16 +841,21 @@ async def _run_apify_chunk(
         return []
 
 
-async def _extract_event(
+async def _extract_events(
     client: AsyncAnthropic,
     post: dict,
     today_str: str,
     failed_out: Optional[set] = None,
-) -> Optional[RawEvent]:
+) -> list[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
-    Returns None if Claude judges it not an event, or on any error. Async so
+    Returns [] if Claude judges it not an event, or on any error. Async so
     the calling fan-out (asyncio.gather) can run many in parallel.
+
+    A post can carry SEVERAL events. The weekly-lineup post is a staple of
+    every bar in town — "quinta tem X, sexta tem Y, sábado tem Z" — and the
+    old contract was one object per post, so two thirds of that week never
+    reached the catalog. The model now answers with a list.
 
     `failed_out`: when given, shortcodes whose extraction never got an
     answer from the model (API error, credits, rate limit) are added to it.
@@ -840,7 +866,7 @@ async def _extract_event(
     """
     caption = (post.get("caption") or "").strip()
     if len(caption) < 30:
-        return None  # selfies, emoji posts, etc. — not events
+        return []  # selfies, emoji posts, etc. — not events
 
     # The tracked profile the post was fetched from, not necessarily its
     # author: a collab or another account's post shown on a venue's profile
@@ -885,7 +911,9 @@ async def _extract_event(
     try:
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=512,
+            # Three events with descriptions don't fit in 512, and a truncated
+        # answer is invalid JSON — the whole post would be dropped.
+        max_tokens=2048,
             messages=[{"role": "user", "content": content_blocks}],
         )
         try:
@@ -901,7 +929,7 @@ async def _extract_event(
         # The model answered, we just couldn't parse it. Treated as a
         # verdict so the post doesn't re-bill on every future run.
         log.debug(f"IG: invalid JSON for @{handle}/{shortcode}: {e}")
-        return None
+        return []
     except Exception as e:
         # No answer from the model — do not let the caller record this
         # post as processed, or a credit outage silently burns every post
@@ -913,10 +941,62 @@ async def _extract_event(
             log.error(f"IG: Anthropic credits depleted — all extraction will fail: {msg[:150]}")
         else:
             log.warning(f"IG Claude error for @{handle}/{shortcode}: {e}")
-        return None
+        return []
 
     if not data.get("is_event", False):
-        return None
+        return []
+
+    # "events": [...] is the current shape; a bare object is what the model
+    # returned before the list existed, and it still answers that way
+    # sometimes. Accept both rather than lose the post.
+    payloads = data.get("events")
+    if not isinstance(payloads, list) or not payloads:
+        payloads = [data]
+
+    out: list[RawEvent] = []
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        ev = _raw_event_from(
+            payload, handle=handle, shortcode=shortcode, caption=caption,
+            caption_lower=caption.lower(), post_date=post_date,
+            post_url=post_url, image_url=image_url, likes=likes,
+            had_image=had_image,
+        )
+        if ev is not None:
+            out.append(ev)
+
+    # Stable ids across runs: the earliest event keeps the post's own id,
+    # which is what every row created before this change already uses, and
+    # later ones are suffixed by their date. Ordering by date rather than by
+    # the model's output order means a re-scrape doesn't shuffle which event
+    # owns the bare id and duplicate the whole post.
+    out.sort(key=lambda e: e.date_start)
+    for ev in out[1:]:
+        ev.external_id = f"{ev.external_id}_{ev.date_start.strftime('%m%d')}"
+    # A same-day pair would collide — drop the duplicate rather than let one
+    # silently overwrite the other on upsert.
+    seen: set[str] = set()
+    deduped = []
+    for ev in out:
+        if ev.external_id in seen:
+            log.warning(f"IG: @{handle}/{shortcode} — two events share {ev.external_id}, keeping the first")
+            continue
+        seen.add(ev.external_id)
+        deduped.append(ev)
+    return deduped
+
+
+def _raw_event_from(
+    data: dict, *, handle: str, shortcode: str, caption: str, caption_lower: str,
+    post_date: str, post_url: str, image_url, likes: int, had_image: bool,
+) -> Optional[RawEvent]:
+    """One extracted payload -> one validated RawEvent, or None.
+
+    Every gate below used to live inline in the extractor, which worked
+    while a post meant exactly one event. Split out so each event in a
+    lineup post is judged on its own — one bad date shouldn't cost you the
+    other two nights."""
 
     is_recurring = bool(data.get("is_recurring", False))
     # Recurring programming (toda quinta, happy hour fixo, etc.) is not
@@ -981,7 +1061,6 @@ async def _extract_event(
     # Logged at WARNING so the founder can spot patterns in Railway
     # logs ("@letseggs keeps producing one-offs without date markers"
     # → review the source's content style).
-    caption_lower = (caption or "").lower()
     if not is_recurring:
         # (1) Date-marker presence check. Posts with images skip this —
         #     event dates are often printed on the flyer and Claude reads
