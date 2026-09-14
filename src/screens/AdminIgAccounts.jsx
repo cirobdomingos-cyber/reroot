@@ -251,6 +251,20 @@ export default function AdminIgAccounts() {
         </div>
       )}
 
+      {/* Entry to the catalog review queue, besides the push a curator
+          gets for each new suggestion. */}
+      {isCurator && (
+        <button
+          onClick={() => navigate('/curadoria')}
+          style={{
+            display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
+            borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
+            color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
+          }}
+        >
+          📋 Pedidos pro catálogo →
+        </button>
+      )}
       {!isCurator && !loading && (
         <NotACuratorMessage email={email} />
       )}

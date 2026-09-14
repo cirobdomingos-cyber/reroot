@@ -39,6 +39,10 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
   const [imageUrl, setImageUrl] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [extractMsg, setExtractMsg] = useState('')
+  // The extraction exactly as it came back, before any edit. Sent with the
+  // event so the catalog suggestion is built from the post, not from what
+  // the creator typed for their friends.
+  const [postData, setPostData] = useState(null)
   const extractTimer = useRef(null)
   // Guards against a slow extraction for an old link landing after the
   // user pasted a different one.
@@ -106,7 +110,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
   useEffect(() => {
     if (open) {
       setName(''); setVenue(''); setDateStart(''); setNote(''); setDescription('')
-      setIgUrl(''); setIgHandle(''); setImageUrl(''); setExtracting(false); setExtractMsg('')
+      setIgUrl(''); setIgHandle(''); setImageUrl(''); setExtracting(false); setExtractMsg(''); setPostData(null)
       setMultiDay(false); setDateEnd('')
       setSelected(new Set()); setSearch(''); setError(null); setExtraPeople([])
       setConnectedGroup(null); setShowGroupPicker(false); setConnectingGroupId(null)
@@ -135,7 +139,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
     setIgUrl(val)
     setExtractMsg('')
     clearTimeout(extractTimer.current)
-    if (!val.trim()) { setImageUrl(''); setIgHandle(''); return }
+    if (!val.trim()) { setImageUrl(''); setIgHandle(''); setPostData(null); return }
     if (!/instagram\.com\/(p|reel)\//i.test(val)) return
     // Debounced: fires once the user stops typing/pasting. Apify can take
     // several seconds on a cold start, so the fields fill in when it lands.
@@ -145,6 +149,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
       try {
         const data = await extractIgEvent(val.trim())
         if (seq !== extractSeq.current) return
+        setPostData(data)
         // Fill only what's still empty — never overwrite something typed.
         if (data.name) setName(prev => prev || data.name)
         if (data.venue_name) setVenue(prev => prev || data.venue_name)
@@ -159,6 +164,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
           : 'Não achei os detalhes no post. Preenche aqui embaixo.')
       } catch {
         if (seq !== extractSeq.current) return
+        setPostData(null)
         setExtractMsg('Não consegui ler o post. Preenche aqui embaixo.')
       } finally {
         if (seq === extractSeq.current) setExtracting(false)
@@ -271,6 +277,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
           image_url: imageUrl,
           source_url: igUrl.trim(),
           source_ig_handle: igHandle,
+          post: postData,
         })
       } else {
         event = await createPersonalPlan(googleId, {
@@ -284,6 +291,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
           image_url: imageUrl,
           source_url: igUrl.trim(),
           source_ig_handle: igHandle,
+          post: postData,
         })
       }
       onCreated?.(event)
@@ -337,6 +345,16 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
               )}
               {!extracting && extractMsg && (
                 <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6, lineHeight: 1.4 }}>{extractMsg}</div>
+              )}
+              {/* Says what happens to the post, so nobody is surprised it can
+                  go public — and that their own event doesn't wait for it. */}
+              {!extracting && postData && (postData.name || postData.date_start) && (
+                <div style={{
+                  fontSize: 12, color: 'var(--text2)', marginTop: 8, lineHeight: 1.45,
+                  padding: '8px 10px', borderRadius: 10, border: '1px dashed var(--line)',
+                }}>
+                  📋 O post também vai pra curadoria e, se aprovado, entra no catálogo público do auê. O evento com a galera já fica valendo.
+                </div>
               )}
               {!extracting && imageUrl && (
                 <div style={{ position: 'relative', width: 96, marginTop: 10 }}>

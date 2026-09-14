@@ -31,6 +31,7 @@ import FriendDetail    from './screens/FriendDetail'
 import Sources         from './screens/Sources'
 import SourceDetail    from './screens/SourceDetail'
 import VenueDashboard  from './screens/VenueDashboard'
+import CatalogReview   from './screens/CatalogReview'
 
 const pageVariants = {
   initial: { opacity: 0, x: 28 },
@@ -129,6 +130,8 @@ export default function App() {
             <Route path="/venue/:handle" element={<AnimatedPage><VenueDashboard /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
+            <Route path="/curadoria" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
+            <Route path="/curadoria/:requestId" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AnimatePresence>

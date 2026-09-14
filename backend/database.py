@@ -262,6 +262,28 @@ def init_db():
                 created_at      TEXT NOT NULL
             )
         """)
+        # Catalog review queue. An Instagram post behind a private event is
+        # suggested for the public catalog and waits here for a curator, as
+        # status='review' (kept apart from the legacy direct submissions,
+        # which used 'pending' / 'enriched'). enriched_event_id holds the
+        # catalog event id once approved.
+        for col_def in (
+            "ADD COLUMN image_url TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN ig_handle TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN shortcode TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN group_event_id TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN reviewed_by TEXT NOT NULL DEFAULT ''",
+            "ADD COLUMN reviewed_at TEXT",
+            "ADD COLUMN review_note TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(f"ALTER TABLE submitted_events {col_def}")
+            except sqlite3.OperationalError:
+                pass  # column already present
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_submitted_events_shortcode "
+            "ON submitted_events (shortcode)"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS groups (
                 id           TEXT PRIMARY KEY,
@@ -686,6 +708,147 @@ def mark_submitted_enriched(submission_id: int, enriched_event_id: str) -> None:
             (enriched_event_id, submission_id),
         )
         conn.commit()
+
+
+# ── Catalog review queue ─────────────────────────────────────────────────
+# Rows with a non-empty shortcode are review requests; rows without one are
+# legacy direct submissions and never show up in these queries.
+
+def insert_catalog_request(*, name: str, description: str, venue_name: str,
+                           date_start: str, url: str, image_url: str,
+                           ig_handle: str, shortcode: str, group_event_id: str,
+                           submitted_by: Optional[str]) -> int:
+    """Queue an Instagram post for curator review before it can join the
+    public catalog. Returns the request id."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO submitted_events
+                 (name, description, venue_name, venue_address, city, date_start,
+                  price_min, price_max, url, submitted_by, status, created_at,
+                  image_url, ig_handle, shortcode, group_event_id)
+               VALUES (?, ?, ?, '', 'Curitiba', ?, 0, 0, ?, ?, 'review', ?, ?, ?, ?, ?)""",
+            (name, description, venue_name, date_start, url, submitted_by, now,
+             image_url, ig_handle, shortcode, group_event_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def find_catalog_request_by_shortcode(shortcode: str) -> Optional[dict]:
+    """Open or approved request for the same post, if any. Rejected ones
+    don't count, so a post turned down once can be suggested again."""
+    if not shortcode:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM submitted_events WHERE shortcode = ? "
+            "AND status IN ('review', 'approved') ORDER BY id DESC LIMIT 1",
+            (shortcode,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_catalog_requests(status: str = "review", limit: int = 100) -> list[dict]:
+    """Requests in one status. The review queue is oldest-first so nothing
+    waits forever behind newer suggestions; history is newest-first."""
+    order = "ASC" if status == "review" else "DESC"
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM submitted_events WHERE status = ? AND shortcode != '' "
+            f"ORDER BY id {order} LIMIT ?",
+            (status, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_catalog_request(request_id: int) -> Optional[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM submitted_events WHERE id = ? AND shortcode != ''",
+            (request_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def update_catalog_request(request_id: int, fields: dict) -> Optional[dict]:
+    """Apply curator edits before publishing. Content fields only — status
+    and review bookkeeping move through resolve_catalog_request."""
+    allowed = {"name", "description", "venue_name", "date_start", "image_url"}
+    updates = {k: v for k, v in (fields or {}).items() if k in allowed and v is not None}
+    if updates:
+        sets = ", ".join(f"{k} = ?" for k in updates)
+        with get_conn() as conn:
+            conn.execute(
+                f"UPDATE submitted_events SET {sets} WHERE id = ?",
+                list(updates.values()) + [request_id],
+            )
+            conn.commit()
+    return get_catalog_request(request_id)
+
+
+def resolve_catalog_request(request_id: int, status: str, reviewed_by: str,
+                            catalog_event_id: str = "", note: str = "") -> bool:
+    """Move a request out of review. Conditional on it still being in
+    review, so two curators acting at the same moment can't both approve —
+    or one approve what the other just rejected. Returns whether this call
+    was the one that resolved it."""
+    if status not in ("approved", "rejected"):
+        raise ValueError(f"invalid status: {status}")
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE submitted_events SET status = ?, reviewed_by = ?, reviewed_at = ?, "
+            "enriched_event_id = ?, review_note = ? WHERE id = ? AND status = 'review'",
+            (status, reviewed_by, now, catalog_event_id or None, note or "", request_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+
+def reopen_catalog_request(request_id: int) -> None:
+    """Put a request back in the queue — used when publishing fails after
+    the request was already claimed as approved."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE submitted_events SET status = 'review', reviewed_by = '', "
+            "reviewed_at = NULL, enriched_event_id = NULL WHERE id = ?",
+            (request_id,),
+        )
+        conn.commit()
+
+
+def list_curator_emails() -> list[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT email FROM curators WHERE is_curator = 1").fetchall()
+    return [r["email"] for r in rows]
+
+
+def user_ids_for_emails(emails: list[str]) -> list[str]:
+    """Account ids for a set of emails, case-insensitive. Roles are granted
+    by email but pushes are addressed by account id; this is the join."""
+    wanted = sorted({(e or "").strip().lower() for e in emails if e and "@" in e})
+    if not wanted:
+        return []
+    marks = ",".join("?" for _ in wanted)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT DISTINCT id FROM users WHERE lower(email) IN ({marks})",
+            wanted,
+        ).fetchall()
+    return [r["id"] for r in rows]
+
+
+def set_group_event_source(event_id: str, source_event_id: str) -> bool:
+    """Point a private event at its public catalog event — the same link a
+    catalog fork carries from creation."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE group_events SET source_event_id = ? WHERE id = ?",
+            (source_event_id, event_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
 
 
 def count_upcoming_events(city: str) -> int:

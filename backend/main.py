@@ -1873,6 +1873,153 @@ def _description_with_source(description: str, source_url: str) -> str:
     return f"{desc}\n\nVer original: {link}".strip()
 
 
+_IG_POST_RE = re.compile(r"instagram\.com/(?:p|reel)/([A-Za-z0-9_-]+)")
+
+
+def _ig_shortcode(url: str) -> str:
+    m = _IG_POST_RE.search(url or "")
+    return m.group(1) if m else ""
+
+
+def _catalog_event_id_for(shortcode: str) -> str:
+    """One catalog row per Instagram post, whoever suggested it and however
+    many times: approving the same post again updates this row instead of
+    adding a second card."""
+    return f"submitted_igpost_{shortcode}"
+
+
+def _queue_catalog_request(event: dict, req, background_tasks: BackgroundTasks) -> None:
+    """Suggest the Instagram post behind a new private event for the public
+    catalog, and tell the curators.
+
+    The private event is already live for its invitees; only the public
+    copy waits for review. A post is never queued twice: if it was already
+    approved, the new private event just links to that catalog event; if a
+    request is already open, this one rides on it.
+    """
+    shortcode = _ig_shortcode(req.source_url)
+    if not shortcode:
+        return
+    existing = _catalog_event_id_for(shortcode)
+    if db.get_event_by_id(existing):
+        db.set_group_event_source(event["id"], existing)
+        return
+    if db.find_catalog_request_by_shortcode(shortcode):
+        return
+    post = req.post or {}
+    name = (post.get("name") or "").strip()
+    date_start = (post.get("date_start") or "").strip()
+    if not (name and _parse_submission_date(date_start)):
+        # The post didn't read as an event (no title or date) — nothing a
+        # curator could publish. The private event stands on its own.
+        return
+    venue = (post.get("venue_name") or "").strip()
+    handle = re.sub(
+        r"[^A-Za-z0-9._]", "",
+        (post.get("handle") or req.source_ig_handle or "").lstrip("@"),
+    )[:30].lower()
+    image = (post.get("image_url") or req.image_url or "").strip()
+    request_id = db.insert_catalog_request(
+        name=name[:200],
+        description=(post.get("description") or "").strip()[:2000],
+        venue_name=venue[:200],
+        date_start=date_start,
+        url=f"https://www.instagram.com/p/{shortcode}/",
+        image_url=image if _is_allowed_submission_image(f"request_{shortcode}", image) else "",
+        ig_handle=handle,
+        shortcode=shortcode,
+        group_event_id=event["id"],
+        submitted_by=req.google_id,
+    )
+    background_tasks.add_task(
+        _notify_curators_of_request, request_id, name, venue,
+        _user_display_name(req.google_id),
+    )
+
+
+def _notify_curators_of_request(request_id: int, name: str, venue: str, requester: str) -> None:
+    """Push every curator. Roles are stored by email and pushes by account
+    id, so this joins through users.email — a curator who signs in only via
+    Apple's private-relay address won't be reached until the curator email
+    on file is that relay address."""
+    body = f"{requester} sugeriu: {name}" + (f" · {venue}" if venue else "")
+    for uid in db.user_ids_for_emails(db.list_curator_emails()):
+        try:
+            _send_push_to_user(
+                uid,
+                title="📋 Evento pra curadoria",
+                body=body[:180],
+                url=f"/#/curadoria/{request_id}",
+                tag=f"catalog-request-{request_id}",
+            )
+        except Exception as exc:
+            log.warning(f"Catalog request {request_id}: push to {uid} failed: {exc}")
+
+
+def _build_catalog_event(*, event_id: str, external_id: str, name: str,
+                         description: str, venue_name: str, date_start,
+                         url: str, image_url: str):
+    """A publishable catalog event from curator-approved fields. Generic
+    category until _enrich_catalog_event fills it in the background."""
+    from models import EnrichedEvent
+    return EnrichedEvent(
+        id=event_id,
+        source="submitted",
+        external_id=external_id,
+        name=name[:200],
+        description=(description or "")[:1000],
+        venue_name=(venue_name or "")[:200],
+        venue_address="",
+        neighborhood="",
+        city=settings.city,
+        date_start=date_start,
+        date_end=None,
+        price_min=0.0,
+        price_max=0.0,
+        currency="BRL",
+        capacity=None,
+        attendees_confirmed=0,
+        kind="community",
+        category_label="Evento",
+        category_emoji="🎉",
+        has_food=False,
+        is_low_pressure=False,
+        is_curated=False,
+        pitch=(description or "")[:200] or name,
+        kids_welcome=False,
+        price_tier="free",
+        vibe_summary=name,
+        expected_size="medium",
+        header_gradient="linear-gradient(135deg, #FFF3E0, #FFE0B2)",
+        url=url[:500],
+        image_url=image_url or None,
+        fetched_at=datetime.now(timezone.utc),
+    )
+
+
+def _enrich_catalog_event(ev) -> None:
+    """Fill category, pitch and vibe with the same Claude pass the scraper
+    uses, keeping the approved name, date, venue and image. Runs after
+    approval so publishing never waits on the model; on failure the event
+    simply keeps the generic "Evento" category."""
+    if not settings.anthropic_api_key:
+        return
+    try:
+        from enrichment import EnrichmentPipeline
+        from models import RawEvent
+        raw = RawEvent(
+            source=ev.source, external_id=ev.external_id, name=ev.name,
+            description=ev.description, venue_name=ev.venue_name,
+            venue_address=ev.venue_address, city=ev.city,
+            date_start=ev.date_start, url=ev.url, image_url=ev.image_url,
+        )
+        enriched = EnrichmentPipeline(api_key=settings.anthropic_api_key).enrich(raw)
+        if enriched:
+            db.upsert_event(enriched)
+    except Exception as exc:
+        log.warning(f"Catalog enrichment for {ev.id} failed: {exc}")
+
+
 async def _save_unenriched_submission(submission_id: int, req: EventSubmission) -> None:
     """Write a user submission straight to the events table without Claude enrichment.
     Used when Anthropic credits are unavailable. Enrichment will overwrite on the
@@ -3303,6 +3450,11 @@ class GroupEventCreateRequest(BaseModel):
     image_url: str = ""
     source_url: str = ""
     source_ig_handle: str = ""
+    # What /events/extract-ig read from the post, before the creator edited
+    # anything. The catalog request is built from this rather than the
+    # creator's fields, so a private title ("aniver da Ana") or a personal
+    # description never reaches the public review queue.
+    post: Optional[dict] = None
 
 
 class PersonalPlanCreateRequest(BaseModel):
@@ -3323,6 +3475,11 @@ class PersonalPlanCreateRequest(BaseModel):
     image_url: str = ""
     source_url: str = ""
     source_ig_handle: str = ""
+    # What /events/extract-ig read from the post, before the creator edited
+    # anything. The catalog request is built from this rather than the
+    # creator's fields, so a private title ("aniver da Ana") or a personal
+    # description never reaches the public review queue.
+    post: Optional[dict] = None
 
 
 @app.post("/groups")
@@ -3870,6 +4027,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         source_event_id=(req.source_event_id or "").strip(),
     )
     event = _attach_instagram_post(event, req.image_url, req.source_url)
+    _queue_catalog_request(event, req, background_tasks)
 
     # Auto-RSVP the creator — same contract as create_personal_plan.
     # Without this, "Adicionar a um grupo" leaves the creator showing
@@ -4273,6 +4431,7 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
         source_event_id=(req.source_event_id or "").strip(),
     )
     event = _attach_instagram_post(event, req.image_url, req.source_url)
+    _queue_catalog_request(event, req, background_tasks)
 
     # Auto-RSVP the creator. Mirrors the contract from POST /rsvp so the
     # event shows up in the creator's RSVPs immediately.
@@ -5269,6 +5428,143 @@ def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
         )
         conn.commit()
     return {"ok": True, "handle": handle, "stored_at": local}
+
+
+class CatalogRequestDecision(BaseModel):
+    requesting_email: str
+    # Curator edits applied before publishing. Omitted = keep what was sent.
+    name: Optional[str] = None
+    description: Optional[str] = None
+    venue_name: Optional[str] = None
+    date_start: Optional[str] = None
+    image_url: Optional[str] = None
+    # Also start scraping this post's account daily.
+    track_handle: bool = False
+    note: str = ""
+
+
+def _catalog_request_out(row: dict) -> dict:
+    handle = (row.get("ig_handle") or "").lower()
+    return {
+        "id": row["id"],
+        "status": row["status"],
+        "name": row["name"],
+        "description": row["description"],
+        "venue_name": row["venue_name"],
+        "date_start": row["date_start"],
+        "url": row["url"],
+        "image_url": row.get("image_url") or "",
+        "ig_handle": handle,
+        "handle_tracked": bool(handle) and handle in _enabled_ig_handles(),
+        "submitted_by_name": _user_display_name(row["submitted_by"]) if row.get("submitted_by") else "",
+        "created_at": row["created_at"],
+        "reviewed_by": row.get("reviewed_by") or "",
+        "catalog_event_id": row.get("enriched_event_id") or "",
+    }
+
+
+@app.get("/admin/catalog-requests")
+def admin_list_catalog_requests(requesting_email: str = "", status: str = "review"):
+    """Catalog suggestions waiting for (or past) curator review."""
+    _require_curator(requesting_email)
+    if status not in ("review", "approved", "rejected"):
+        raise HTTPException(status_code=400, detail="status inválido")
+    return {"requests": [_catalog_request_out(r) for r in db.list_catalog_requests(status)]}
+
+
+@app.get("/admin/catalog-requests/{request_id}")
+def admin_get_catalog_request(request_id: int, requesting_email: str = ""):
+    _require_curator(requesting_email)
+    row = db.get_catalog_request(request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    return _catalog_request_out(row)
+
+
+@app.post("/admin/catalog-requests/{request_id}/approve")
+def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
+                                  background_tasks: BackgroundTasks):
+    """Publish a suggested post to the catalog, with the curator's edits,
+    and optionally start tracking its account."""
+    curator = _require_curator(req.requesting_email)
+    row = db.get_catalog_request(request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    if row["status"] != "review":
+        raise HTTPException(status_code=409, detail="Esse pedido já foi resolvido.")
+    edits = {
+        "name": req.name, "description": req.description,
+        "venue_name": req.venue_name, "date_start": req.date_start,
+        "image_url": req.image_url,
+    }
+    row = db.update_catalog_request(request_id, edits) or row
+    name = (row["name"] or "").strip()
+    ds = _parse_submission_date(row["date_start"])
+    if len(name) < 3 or not ds:
+        raise HTTPException(status_code=400, detail="Nome e data válidos são obrigatórios pra publicar.")
+
+    shortcode = row.get("shortcode") or _ig_shortcode(row["url"])
+    event_id = _catalog_event_id_for(shortcode)
+    # Claim the request first: the conditional update is what stops two
+    # curators publishing the same request at the same moment.
+    if not db.resolve_catalog_request(request_id, "approved", curator,
+                                      catalog_event_id=event_id, note=req.note):
+        raise HTTPException(status_code=409, detail="Outro curador acabou de resolver esse pedido.")
+    try:
+        image = ""
+        if row.get("image_url") and _is_allowed_submission_image(event_id, row["image_url"]):
+            image = image_store.rehost_image(event_id, row["image_url"]) or row["image_url"]
+        ev = _build_catalog_event(
+            event_id=event_id, external_id=f"igpost_{shortcode}", name=name,
+            description=row["description"], venue_name=row["venue_name"],
+            date_start=ds, url=row["url"], image_url=image,
+        )
+        db.upsert_event(ev)
+    except Exception as exc:
+        db.reopen_catalog_request(request_id)
+        log.error(f"Catalog request {request_id}: publish failed: {exc}")
+        raise HTTPException(status_code=500, detail="Não consegui publicar. O pedido voltou pra fila.")
+
+    if row.get("group_event_id"):
+        db.set_group_event_source(row["group_event_id"], event_id)
+
+    tracked = False
+    handle = (row.get("ig_handle") or "").lower()
+    if req.track_handle and handle:
+        known = {a["handle"].lower(): a for a in db.list_ig_accounts()}
+        if handle not in known:
+            # Only ever insert. An account that already exists (even if a
+            # curator disabled it) keeps its label, category and state.
+            db.upsert_ig_account(
+                handle=handle, enabled=True, added_by_email=curator,
+                notes=f"Adicionado ao aprovar o pedido #{request_id}",
+            )
+            _bust_handle_cache()
+            tracked = True
+        else:
+            tracked = bool(known[handle].get("enabled"))
+
+    background_tasks.add_task(_enrich_catalog_event, ev)
+    if row.get("submitted_by"):
+        background_tasks.add_task(
+            _send_push_to_user, row["submitted_by"], "✅ No catálogo",
+            f"{name} entrou no catálogo do auê", _event_deep_link(event_id),
+            f"catalog-approved-{request_id}",
+        )
+    return {"ok": True, "catalog_event_id": event_id, "handle_tracked": tracked}
+
+
+@app.post("/admin/catalog-requests/{request_id}/reject")
+def admin_reject_catalog_request(request_id: int, req: CatalogRequestDecision):
+    """Turn a suggestion down. The private event is untouched, and the same
+    post can be suggested again later. No push to the person who suggested
+    it — auê doesn't tell people their plans weren't good enough."""
+    curator = _require_curator(req.requesting_email)
+    if not db.get_catalog_request(request_id):
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    if not db.resolve_catalog_request(request_id, "rejected", curator, note=req.note):
+        raise HTTPException(status_code=409, detail="Esse pedido já foi resolvido.")
+    return {"ok": True}
 
 
 @app.post("/admin/submissions/backfill-images")
