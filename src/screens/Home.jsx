@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useT } from '../i18n'
-import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, syncRsvp } from '../services/api'
+import { fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents, getFriendRequests, syncRsvp } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
@@ -67,6 +67,10 @@ export default function Home() {
   const [notifToast, setNotifToast] = useState(null)
   const [showPlanSheet, setShowPlanSheet] = useState(false)
   const [friendsFeed, setFriendsFeed] = useState([])
+  // Incoming friend requests (in-app adds wait on the other person).
+  // Home only shows the aviso — accepting/declining lives in
+  // Community > Amigos, which already owns that flow.
+  const [friendRequests, setFriendRequests] = useState([])
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
   // Live event catalog — fetched from backend instead of using the stale
@@ -87,10 +91,11 @@ export default function Home() {
 
   useEffect(() => {
     const googleId = state.googleUser?.id
-    if (!googleId) return
+    if (!googleId) { setFriendRequests([]); return }
     fetchFriendsFeed(googleId).then(events => {
       setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
     })
+    getFriendRequests(googleId).then(r => setFriendRequests(r?.incoming || []))
     // Fetch every private event the user can see (classic group events,
     // personal plans where they're the creator or an invitee, plus
     // group+extras events). Split into pending vs accepted by checking
@@ -113,13 +118,15 @@ export default function Home() {
       setGroupEventsPending(pending)
       setGroupEventsAccepted(accepted)
     })
-    // Refetch friends feed when the tab regains focus — covers the case
-    // where a friend RSVPd while the app was in background.
+    // Refetch friends feed + pending requests when the tab regains
+    // focus — covers a friend RSVPing, or a request arriving (or being
+    // answered in Comunidade), while the app was in background.
     function onVisible() {
       if (document.visibilityState === 'visible') {
         fetchFriendsFeed(googleId).then(events => {
           setFriendsFeed(events.filter(ev => ev.friends_going?.length > 0))
         })
+        getFriendRequests(googleId).then(r => setFriendRequests(r?.incoming || []))
       }
     }
     document.addEventListener('visibilitychange', onVisible)
@@ -135,6 +142,12 @@ export default function Home() {
     (sum, ev) => sum + (ev.friends_going?.length || 0),
     0,
   )
+
+  // Aviso headline. One request names the person (more inviting than a
+  // bare count); several collapse into "N pessoas querem te adicionar".
+  const friendRequestHeadline = friendRequests.length === 1
+    ? `${friendRequests[0]?.name || 'Alguém'} ${t.home_friend_requests_one ?? 'quer te adicionar'}`
+    : `${friendRequests.length} ${t.home_friend_requests_many ?? 'pessoas querem te adicionar'}`
 
   // event_id → [{ name, picture, google_id }, ...] for the WeekCalendar
   // rows to render the same avatar stack the "Amigos vão" section
@@ -373,6 +386,64 @@ export default function Home() {
           + dismiss X. Hidden permanently after dismiss (via state) or
           subscribe (real subscription registered). */}
       <PushBanner state={state} dispatch={dispatch} />
+
+      {/* Pedidos de amizade — sits with the push banner, above the
+          greeting, because it's the only thing on Home that another
+          person is waiting on. Tap goes straight to Comunidade > Amigos,
+          which owns Aceitar/Recusar. Hidden when there are none, and
+          when logged out (the list is cleared on logout). */}
+      {friendRequests.length > 0 && (
+        <div style={{ padding: '14px 18px 0' }}>
+          <button
+            onClick={() => navigate('/community', { state: { tab: 'friends' } })}
+            style={{
+              width: '100%',
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '14px 16px',
+              background: 'transparent',
+              border: '1px solid var(--magenta)',
+              borderRadius: 14, cursor: 'pointer',
+              boxShadow: '0 0 18px rgba(255, 43, 214, 0.18)',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              {friendRequests.slice(0, 3).map((r, i) => (
+                <div
+                  key={r.google_id}
+                  style={{
+                    marginLeft: i === 0 ? 0 : -8,
+                    boxShadow: '0 0 0 2px var(--bg2)',
+                    borderRadius: '50%',
+                  }}
+                >
+                  <Avatar name={r.name} src={r.picture} size={32} />
+                </div>
+              ))}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="neon-display" style={{
+                fontSize: 15, color: 'var(--magenta)',
+                letterSpacing: '-0.01em',
+                textShadow: '0 0 8px rgba(255, 43, 214, 0.4)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>
+                {friendRequestHeadline}
+              </div>
+              <div className="neon-mono" style={{
+                fontSize: 10, color: 'var(--text2)',
+                letterSpacing: '0.16em', textTransform: 'uppercase',
+                marginTop: 4,
+              }}>
+                {t.home_friend_requests_cta ?? 'Aceitar em Comunidade'}
+              </div>
+            </div>
+            <span className="neon-mono" style={{
+              fontSize: 18, color: 'var(--magenta)', flexShrink: 0,
+            }}>→</span>
+          </button>
+        </div>
+      )}
 
       {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
       <div style={{ padding: '24px 18px 14px' }}>

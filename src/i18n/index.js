@@ -362,6 +362,12 @@ export const T = {
     home_month_dismiss:    'Entendido',
     home_month_share:      'Compartilhar',
 
+    // Aviso de pedidos de amizade no topo da Home
+    home_friend_requests_label: 'Pedidos de amizade',
+    home_friend_requests_one:   'quer te adicionar',
+    home_friend_requests_many:  'pessoas querem te adicionar',
+    home_friend_requests_cta:   'Aceitar em Comunidade',
+
     // ── Profile additions ─────────────────────────────────
     profile_week_label:    'Esta semana',
     profile_week_shown:    'dias apareceu',

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useT } from '../i18n'
 import Friends from './Friends'
@@ -7,7 +8,13 @@ import FriendsFeed from '../components/FriendsFeed'
 
 export default function Community() {
   const t = useT()
-  const [tab, setTab] = useState('groups') // 'groups' | 'friends'
+  // Callers can deep-link a sub-tab — navigate('/community', { state: { tab: 'friends' } }).
+  // Home's friend-request notice uses it so the aviso lands on the list
+  // that has the Aceitar buttons instead of on Grupos.
+  const location = useLocation()
+  const [tab, setTab] = useState(
+    location.state?.tab === 'friends' ? 'friends' : 'groups',
+  ) // 'groups' | 'friends'
 
   return (
     <div>
