@@ -35,6 +35,7 @@ import database as db
 import badges
 import image_store
 import quiet_hours
+from urllib.parse import quote
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -2675,17 +2676,8 @@ def get_user_profile(target_google_id: str, google_id: str = ""):
         "friend_status": "none",
     }
     if google_id:
-        if google_id == target_google_id:
-            profile["friend_status"] = "self"
-        else:
-            user_a, user_b = sorted([google_id, target_google_id])
-            with db.get_conn() as conn:
-                row = conn.execute(
-                    "SELECT status FROM friendships WHERE user_a = ? AND user_b = ?",
-                    (user_a, user_b),
-                ).fetchone()
-            if row and row["status"] == "accepted":
-                profile["friend_status"] = "friends"
+        # 'self' | 'friends' | 'requested' | 'incoming' | 'none'
+        profile["friend_status"] = db.friendship_status(google_id, target_google_id)
     return profile
 
 
@@ -2694,31 +2686,93 @@ class AddFriendByIdRequest(BaseModel):
     target_google_id: str # who they want to add
 
 
+def _user_display_name(google_id: str) -> str:
+    state = db.get_user_state(google_id) or {}
+    gu = state.get("googleUser") or {}
+    return state.get("userName") or gu.get("givenName") or gu.get("name") or "Alguém"
+
+
+def _notify_friend_request(requester_id: str, target_id: str) -> None:
+    """Push the target: tap opens the requester's profile, which carries
+    the Aceitar / Recusar buttons."""
+    try:
+        _send_push_to_user(
+            target_id,
+            "👋 Pedido de amizade",
+            f"{_user_display_name(requester_id)} quer ser seu amigo no auê",
+            url=f"/#/friends/{quote(requester_id, safe='')}",
+            tag=f"friend-request-{requester_id}",
+        )
+    except Exception as exc:
+        log.warning(f"friend request push failed: {exc}")
+
+
+def _on_friendship_accepted(acceptor_id: str, requester_id: str) -> list:
+    """Tell the requester, award badges on both sides. Returns the
+    acceptor's new badges for the toast."""
+    try:
+        _send_push_to_user(
+            requester_id,
+            "🤝 Pedido aceito",
+            f"{_user_display_name(acceptor_id)} aceitou seu pedido de amizade",
+            url=f"/#/friends/{quote(acceptor_id, safe='')}",
+            tag=f"friend-accepted-{acceptor_id}",
+        )
+    except Exception as exc:
+        log.warning(f"friend accepted push failed: {exc}")
+    badges.evaluate(requester_id)
+    return badges.evaluate(acceptor_id)
+
+
 @app.post("/friends/add-by-id")
 def friends_add_by_id(req: AddFriendByIdRequest):
-    """Add a friendship directly by the target's google_id, instead of
-    going through the invite-code flow. Used by tap-to-add-friend
-    surfaces inside the app (someone you saw in an attendees list,
-    an event creator, etc.). Same auto-accept semantics as /friends/add
-    — adding someone you saw in the app is already a deliberate social
-    action, so a two-sided accept flow would add friction without
-    safety upside.
+    """Send a friend request by the target's google_id. Used by the in-app
+    tap-to-add surfaces (group member list, someone's profile, post-event
+    "people you met"). Unlike invite codes these don't auto-accept: being
+    in the same group as someone isn't their consent, and friendship
+    shows them your RSVPs.
 
-    Returns the same shape as /friends/add — frontend can reuse the
-    success/already-friends/self handling."""
-    if not req.target_google_id:
-        return {"status": "not_found"}
-    code = db.get_friend_code(req.target_google_id)
-    result = db.upsert_friendship(
-        requester_google_id=req.google_id,
-        code=code,
-    )
-    if result.get("status") == "ok":
-        state = db.get_user_state(req.target_google_id) or {}
-        result["friend_name"] = state.get("userName") or req.target_google_id
-        result["new_badges"] = badges.evaluate(req.google_id)
-        badges.evaluate(req.target_google_id)
+    Returns {status}: 'requested' | 'accepted' (they had already asked
+    you) | 'already_requested' | 'already_friends' | 'self' | 'not_found'."""
+    result = db.request_friendship(req.google_id, req.target_google_id)
+    status = result["status"]
+    if status == "requested":
+        _notify_friend_request(req.google_id, req.target_google_id)
+    elif status == "accepted":
+        result["new_badges"] = _on_friendship_accepted(req.google_id, req.target_google_id)
+    if status in ("requested", "accepted"):
+        result["friend_name"] = _user_display_name(req.target_google_id)
     return result
+
+
+class FriendRequestAction(BaseModel):
+    google_id: str  # the person answering the request
+
+
+@app.get("/friends/requests")
+def friends_requests(google_id: str):
+    """Incoming requests to answer, plus the ids the user has asked (so
+    member lists can show "Pedido enviado" instead of "+ amigo")."""
+    return {
+        "incoming": db.get_incoming_friend_requests(google_id),
+        "outgoing_ids": db.get_outgoing_friend_request_ids(google_id),
+    }
+
+
+@app.post("/friends/requests/{from_google_id}/accept")
+def friends_request_accept(from_google_id: str, req: FriendRequestAction):
+    if not db.accept_friendship(req.google_id, from_google_id):
+        # Already accepted counts as success — a double tap or two devices.
+        if db.friendship_status(req.google_id, from_google_id) == "friends":
+            return {"ok": True, "status": "already_friends"}
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    return {"ok": True, "status": "accepted",
+            "new_badges": _on_friendship_accepted(req.google_id, from_google_id)}
+
+
+@app.post("/friends/requests/{from_google_id}/decline")
+def friends_request_decline(from_google_id: str, req: FriendRequestAction):
+    return {"ok": db.decline_friend_request(req.google_id, from_google_id)}
 
 
 @app.post("/friends/add")

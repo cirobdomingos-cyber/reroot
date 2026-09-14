@@ -467,6 +467,7 @@ export const T = {
     people_you_met:     'Pessoas que você conheceu',
     connect:            'Conectar',
     already_friends:    'Amigos',
+    friend_request_sent: 'Pedido enviado',
     no_attendees:       'Nenhum participante encontrado',
     connecting:         'Conectando...',
     connect_sent:       'Enviado!',

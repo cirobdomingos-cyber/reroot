@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { fetchFriendsFeed, getFriends, fetchUserProfile, addFriendById } from '../services/api'
+import {
+  fetchFriendsFeed, getFriends, fetchUserProfile, addFriendById,
+  acceptFriendRequest, declineFriendRequest,
+} from '../services/api'
 import Avatar from '../components/Avatar'
 
 // Per-friend view: shows the friend's profile header + the upcoming events
 // they've RSVPd to (intersection with the current user's friends_feed —
 // respects that friend's privacy settings, which are filtered server-side).
+//
+// Also where friend requests are answered: the "👋 Pedido de amizade" push
+// deep-links here, so an 'incoming' status shows Aceitar / Recusar.
 
 export default function FriendDetail() {
   const { googleId: friendId } = useParams()
@@ -15,14 +21,15 @@ export default function FriendDetail() {
   const myGoogleId = state.googleUser?.id
 
   const [friend, setFriend] = useState(null)
-  // friendStatus is what the BACKEND knows: 'friends' (already connected),
-  // 'self' (you tapped your own profile), 'none' (not connected yet —
-  // tap-to-add affordance fires).
+  // friendStatus is what the BACKEND knows: 'friends', 'self', 'requested'
+  // (you asked, waiting), 'incoming' (they asked you), 'none'.
   const [friendStatus, setFriendStatus] = useState('none')
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [addError, setAddError] = useState('')
+  // Bumped after accepting so the page refetches their events.
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!myGoogleId || !friendId) { setLoading(false); return }
@@ -51,24 +58,45 @@ export default function FriendDetail() {
         setLoading(false)
       })
     return () => { cancelled = true }
-  }, [myGoogleId, friendId])
+  }, [myGoogleId, friendId, reloadKey])
 
   async function handleAddFriend() {
-    if (adding || !myGoogleId || !friendId) return
-    setAdding(true); setAddError('')
+    if (busy || !myGoogleId || !friendId) return
+    setBusy(true); setAddError('')
     try {
       const result = await addFriendById(myGoogleId, friendId)
-      if (result.status === 'ok' || result.status === 'already_friends') {
+      if (result.status === 'requested' || result.status === 'already_requested') {
+        setFriendStatus('requested')
+      } else if (result.status === 'accepted' || result.status === 'already_friends') {
         setFriendStatus('friends')
+        setReloadKey(k => k + 1)
       } else if (result.status === 'self') {
         setFriendStatus('self')
       } else {
-        setAddError('Não consegui adicionar. Tenta de novo.')
+        setAddError('Não consegui mandar o pedido. Tenta de novo.')
       }
     } catch {
-      setAddError('Não consegui adicionar. Tenta de novo.')
+      setAddError('Não consegui mandar o pedido. Tenta de novo.')
     }
-    setAdding(false)
+    setBusy(false)
+  }
+
+  async function handleAnswer(accept) {
+    if (busy || !myGoogleId || !friendId) return
+    setBusy(true); setAddError('')
+    try {
+      if (accept) {
+        await acceptFriendRequest(myGoogleId, friendId)
+        setFriendStatus('friends')
+        setReloadKey(k => k + 1)
+      } else {
+        await declineFriendRequest(myGoogleId, friendId)
+        setFriendStatus('none')
+      }
+    } catch {
+      setAddError('Não deu certo agora. Tenta de novo.')
+    }
+    setBusy(false)
   }
 
   const upcoming = events
@@ -82,6 +110,13 @@ export default function FriendDetail() {
       </div>
     )
   }
+
+  const subtitle = {
+    self: 'Você',
+    requested: 'Pedido de amizade enviado',
+    incoming: 'Quer ser seu amigo no auê',
+    none: 'Ainda não são amigos',
+  }[friendStatus]
 
   return (
     <div style={{ padding: '20px 0 80px' }}>
@@ -113,7 +148,7 @@ export default function FriendDetail() {
               {loading
                 ? 'Carregando…'
                 : friendStatus !== 'friends'
-                  ? (friendStatus === 'self' ? 'Você' : 'Ainda não são amigos')
+                  ? subtitle
                   : upcoming.length === 0
                     ? 'Sem eventos próximos.'
                     : `${upcoming.length} evento${upcoming.length === 1 ? '' : 's'} próximo${upcoming.length === 1 ? '' : 's'}.`}
@@ -123,18 +158,56 @@ export default function FriendDetail() {
         {!loading && friendStatus === 'none' && (
           <button
             onClick={handleAddFriend}
-            disabled={adding}
+            disabled={busy}
             style={{
               marginTop: 14, width: '100%',
               padding: '12px', borderRadius: 12,
               background: 'var(--terra)', color: 'white',
               border: 'none', fontSize: 14, fontWeight: 700,
-              cursor: adding ? 'wait' : 'pointer',
-              opacity: adding ? 0.7 : 1,
+              cursor: busy ? 'wait' : 'pointer',
+              opacity: busy ? 0.7 : 1,
             }}
           >
-            {adding ? 'Adicionando…' : '+ Adicionar como amigo'}
+            {busy ? 'Enviando…' : '+ Adicionar como amigo'}
           </button>
+        )}
+        {!loading && friendStatus === 'requested' && (
+          <div style={{
+            marginTop: 14, width: '100%', boxSizing: 'border-box',
+            padding: '12px', borderRadius: 12, textAlign: 'center',
+            border: '1.5px dashed var(--border)',
+            color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+          }}>
+            ✓ Pedido enviado — aparece aqui quando {friend?.name || 'a pessoa'} aceitar
+          </div>
+        )}
+        {!loading && friendStatus === 'incoming' && (
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button
+              onClick={() => handleAnswer(true)}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '12px', borderRadius: 12,
+                background: 'var(--terra)', color: 'white',
+                border: 'none', fontSize: 14, fontWeight: 700,
+                cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1,
+              }}
+            >
+              Aceitar
+            </button>
+            <button
+              onClick={() => handleAnswer(false)}
+              disabled={busy}
+              style={{
+                flex: 1, padding: '12px', borderRadius: 12,
+                background: 'transparent', border: '1.5px solid var(--border)',
+                color: 'var(--charcoal-mid)', fontSize: 14, fontWeight: 700,
+                cursor: busy ? 'wait' : 'pointer',
+              }}
+            >
+              Recusar
+            </button>
+          </div>
         )}
         {addError && (
           <div style={{
@@ -147,7 +220,7 @@ export default function FriendDetail() {
         )}
       </div>
 
-      {!loading && upcoming.length === 0 && (
+      {!loading && friendStatus === 'friends' && upcoming.length === 0 && (
         <div style={{ padding: '32px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 10 }}>🌱</div>
           <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>

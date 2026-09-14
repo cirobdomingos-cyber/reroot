@@ -24,6 +24,9 @@ import {
   addFriend,
   removeFriend,
   getFriends,
+  getFriendRequests,
+  acceptFriendRequest,
+  declineFriendRequest,
   trackEvent,
 } from '../services/api'
 
@@ -62,7 +65,24 @@ export default function Friends({ embedded = false }) {
   const [codeInput, setCodeInput] = useState('')
   const [addState, setAddState] = useState('idle') // 'idle' | 'sending' | 'success' | 'error'
   const [friends, setFriends] = useState([])
+  // Incoming friend requests (in-app adds need the other side to accept).
+  const [requests, setRequests] = useState([])
+  const [answeringId, setAnsweringId] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  async function handleAnswer(req, accept) {
+    setAnsweringId(req.google_id)
+    try {
+      if (accept) await acceptFriendRequest(googleId, req.google_id)
+      else await declineFriendRequest(googleId, req.google_id)
+      trackEvent(accept ? 'friend_request_accepted' : 'friend_request_declined')
+      await reload()
+    } catch {
+      alert('Não deu certo agora. Tenta de novo.')
+    } finally {
+      setAnsweringId(null)
+    }
+  }
 
   async function handleRemove(friend) {
     if (!confirm(`Remover ${friend.name} da sua lista de amigos?`)) return
@@ -74,12 +94,14 @@ export default function Friends({ embedded = false }) {
   const reload = useCallback(async () => {
     if (!googleId) { setLoading(false); return }
     setLoading(true)
-    const [code, friendList] = await Promise.all([
+    const [code, friendList, reqs] = await Promise.all([
       getMyFriendCode(googleId),
       getFriends(googleId),
+      getFriendRequests(googleId),
     ])
     setMyCode(code)
     setFriends(friendList || [])
+    setRequests(reqs?.incoming || [])
     setLoading(false)
   }, [googleId])
 
@@ -160,6 +182,65 @@ export default function Friends({ embedded = false }) {
             {friendCount} {countLabel} · {t.friends_sub}
           </div>
         </div>
+      )}
+
+      {/* Friend requests — first, since they're the only thing here that
+          waits on the user. Hidden when there are none. */}
+      {requests.length > 0 && (
+        <Section label={`Pedidos de amizade · ${requests.length}`} style={{ marginTop: 8 }}>
+          <div style={{
+            background: 'var(--white)', borderRadius: 16, padding: '6px 14px',
+            border: '1px solid var(--magenta)', boxShadow: 'var(--shadow-sm)',
+          }}>
+            {requests.map((r, i) => (
+              <div key={r.google_id} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0',
+                borderBottom: i < requests.length - 1 ? '1px solid var(--border)' : 'none',
+              }}>
+                <button
+                  onClick={() => navigate(`/friends/${encodeURIComponent(r.google_id)}`)}
+                  style={{
+                    flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12,
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <Avatar name={r.name} src={r.picture} />
+                  <div style={{
+                    fontSize: 14, fontWeight: 600, color: 'var(--charcoal)',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {r.name}
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleAnswer(r, true)}
+                  disabled={answeringId === r.google_id}
+                  style={{
+                    padding: '8px 12px', borderRadius: 10, border: 'none', flexShrink: 0,
+                    background: 'var(--sage)', color: '#14081E',
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    opacity: answeringId === r.google_id ? 0.5 : 1,
+                  }}
+                >
+                  Aceitar
+                </button>
+                <button
+                  onClick={() => handleAnswer(r, false)}
+                  disabled={answeringId === r.google_id}
+                  style={{
+                    padding: '8px 10px', borderRadius: 10, flexShrink: 0,
+                    border: '1px solid var(--border)', background: 'transparent',
+                    color: 'var(--charcoal-mid)', fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Recusar
+                </button>
+              </div>
+            ))}
+          </div>
+        </Section>
       )}
 
       {/* My code card */}

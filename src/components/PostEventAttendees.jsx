@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
-import { fetchEventAttendees, addFriend } from '../services/api'
+import { fetchEventAttendees, addFriendById } from '../services/api'
 import Avatar from './Avatar'
 
 export default function PostEventAttendees({ eventId, eventDate }) {
@@ -77,15 +77,24 @@ export default function PostEventAttendees({ eventId, eventDate }) {
 
   if (attendees.length === 0) return null
 
+  // Sends a friend request (not an instant add — see /friends/add-by-id).
+  // This used to call the invite-code endpoint with the attendee's code,
+  // which auto-accepted: anyone at the same show could friend you.
   async function handleConnect(attendee) {
     setConnectState(prev => ({ ...prev, [attendee.google_id]: 'sending' }))
-    const result = await addFriend(googleId, attendee.friend_code)
-    if (result && (result.status === 'ok' || result.status === 'already_friends')) {
-      setConnectState(prev => ({ ...prev, [attendee.google_id]: 'sent' }))
-      // Update the attendee's is_friend locally
+    let status = null
+    try {
+      status = (await addFriendById(googleId, attendee.google_id))?.status
+    } catch {
+      status = null
+    }
+    if (status === 'accepted' || status === 'already_friends') {
+      setConnectState(prev => ({ ...prev, [attendee.google_id]: 'idle' }))
       setAttendees(prev => prev.map(a =>
         a.google_id === attendee.google_id ? { ...a, is_friend: true } : a
       ))
+    } else if (status === 'requested' || status === 'already_requested') {
+      setConnectState(prev => ({ ...prev, [attendee.google_id]: 'requested' }))
     } else {
       setConnectState(prev => ({ ...prev, [attendee.google_id]: 'idle' }))
     }
@@ -108,7 +117,7 @@ export default function PostEventAttendees({ eventId, eventDate }) {
       {/* Attendee list */}
       {attendees.map(attendee => {
         const cState = connectState[attendee.google_id] || 'idle'
-        const isFriend = attendee.is_friend || cState === 'sent'
+        const isFriend = attendee.is_friend
 
         return (
           <div
@@ -141,6 +150,14 @@ export default function PostEventAttendees({ eventId, eventDate }) {
                 background: 'var(--sage-pale)', flexShrink: 0,
               }}>
                 {t.already_friends}
+              </span>
+            ) : cState === 'requested' ? (
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: 'var(--charcoal-mid)',
+                padding: '6px 12px', borderRadius: 10, flexShrink: 0,
+                border: '1px dashed var(--border)',
+              }}>
+                {t.friend_request_sent}
               </span>
             ) : (
               <button

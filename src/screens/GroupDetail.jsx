@@ -14,7 +14,7 @@ import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
   setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed,
-  getFriends, addFriendById, BASE_URL,
+  getFriends, getFriendRequests, addFriendById, BASE_URL,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -973,38 +973,39 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
   // opens rather than lifted into GroupDetail — nothing else on the
   // screen needs it.
   const [friendIds, setFriendIds] = useState(new Set())
+  // People the viewer already asked — "Pedido enviado" instead of "+ amigo".
+  const [requestedIds, setRequestedIds] = useState(new Set())
   const [addingId, setAddingId] = useState(null)
 
   useEffect(() => {
     if (!open || !viewerGoogleId) return
     let cancelled = false
-    getFriends(viewerGoogleId).then(list => {
-      if (cancelled) return
-      setFriendIds(new Set((Array.isArray(list) ? list : []).map(f => f.google_id)))
-    }).catch(() => {})
+    Promise.all([getFriends(viewerGoogleId), getFriendRequests(viewerGoogleId)])
+      .then(([list, requests]) => {
+        if (cancelled) return
+        setFriendIds(new Set((Array.isArray(list) ? list : []).map(f => f.google_id)))
+        setRequestedIds(new Set(requests?.outgoing_ids || []))
+      }).catch(() => {})
     return () => { cancelled = true }
   }, [open, viewerGoogleId])
 
-  // POST /friends/add-by-id auto-accepts, same as the invite-code flow —
-  // adding someone you're already in a group with is a deliberate act, so
-  // there's no request to wait on. Optimistic: flip the row immediately
-  // and put it back if the call fails.
+  // POST /friends/add-by-id sends a request — sharing a group with someone
+  // isn't their consent to be your friend. If they had already asked you,
+  // the backend answers 'accepted' and you're friends right away.
   async function handleAddFriend(member) {
     setError(null)
     setAddingId(member.google_id)
-    setFriendIds(prev => new Set([...prev, member.google_id]))
     try {
       const res = await addFriendById(viewerGoogleId, member.google_id)
-      if (res?.status && !['ok', 'already_friends'].includes(res.status)) {
-        throw new Error('Não consegui adicionar')
+      if (res?.status === 'accepted' || res?.status === 'already_friends') {
+        setFriendIds(prev => new Set([...prev, member.google_id]))
+      } else if (res?.status === 'requested' || res?.status === 'already_requested') {
+        setRequestedIds(prev => new Set([...prev, member.google_id]))
+      } else {
+        throw new Error('Não consegui mandar o pedido')
       }
     } catch (e) {
-      setFriendIds(prev => {
-        const next = new Set(prev)
-        next.delete(member.google_id)
-        return next
-      })
-      setError(e?.message || 'Não consegui adicionar como amigo')
+      setError(e?.message || 'Não consegui mandar o pedido de amizade')
     } finally {
       setAddingId(null)
     }
@@ -1113,6 +1114,13 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                     flexShrink: 0, whiteSpace: 'nowrap',
                   }}>
                     ✓ amigos
+                  </span>
+                ) : requestedIds.has(m.google_id) ? (
+                  <span style={{
+                    fontSize: 10, fontWeight: 600, color: 'var(--text3)',
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                  }}>
+                    Pedido enviado
                   </span>
                 ) : (
                   <button

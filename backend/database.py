@@ -1796,7 +1796,7 @@ def get_venue_dashboard_stats(handle: str) -> dict:
                   OR (f.user_b = my.google_id AND f.user_a = theirs.google_id))
                 WHERE my.event_id IN ({rsvp_placeholders})
                   AND my.google_id != theirs.google_id
-                  AND f.status IN ('accepted', 'pending')""",
+                  AND f.status = 'accepted'""",
             all_rsvp_ids,
         ).fetchone()
         friends_amplified = int(amp_row["c"]) if amp_row else 0
@@ -2791,7 +2791,7 @@ def _resolve_attendee_users(google_ids: list[str], requesting_google_id: str) ->
             """
             SELECT user_a, user_b FROM friendships
             WHERE (user_a = ? OR user_b = ?)
-              AND status IN ('accepted', 'pending')
+              AND status = 'accepted'
             """,
             (requesting_google_id, requesting_google_id),
         ).fetchall()
@@ -2929,6 +2929,15 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
             (user_a, user_b),
         ).fetchone()
         if existing:
+            # A pending in-app request between the two gets settled by the
+            # code: sharing your code is consent, whichever side sent it.
+            if existing["status"] == "pending":
+                conn.execute(
+                    "UPDATE friendships SET status = 'accepted' WHERE user_a = ? AND user_b = ?",
+                    (user_a, user_b),
+                )
+                conn.commit()
+                return {"status": "ok"}
             return {"status": "already_friends"}
         conn.execute(
             """
@@ -2939,6 +2948,147 @@ def upsert_friendship(requester_google_id: str, code: str) -> dict:
         )
         conn.commit()
     return {"status": "ok"}
+
+
+# ── Friend requests (in-app adds) ──────────────────────────
+# Invite codes/links auto-accept (the code was handed over on purpose).
+# Taps inside the app — a group's member list, someone's profile, the
+# post-event "people you met" list — only send a request: being in the
+# same group as someone isn't their consent to be your friend, and
+# friendship unlocks their RSVPs in your feed.
+
+def _user_bits(conn, google_id: str) -> tuple[str, str]:
+    """(name, picture) from the user_states blob, falling back to the id."""
+    row = conn.execute(
+        "SELECT state_json FROM user_states WHERE google_id = ?", (google_id,),
+    ).fetchone()
+    if not row:
+        return google_id, ""
+    try:
+        state = json.loads(row["state_json"])
+    except (json.JSONDecodeError, TypeError):
+        return google_id, ""
+    gu = state.get("googleUser") or {}
+    name = state.get("userName") or gu.get("givenName") or gu.get("name") or google_id
+    return name, gu.get("picture") or ""
+
+
+def friendship_status(viewer_google_id: str, target_google_id: str) -> str:
+    """'self' | 'friends' | 'requested' (viewer asked) | 'incoming'
+    (target asked the viewer) | 'none'."""
+    if not viewer_google_id or not target_google_id:
+        return "none"
+    if viewer_google_id == target_google_id:
+        return "self"
+    user_a, user_b = sorted([viewer_google_id, target_google_id])
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status, initiated_by FROM friendships WHERE user_a = ? AND user_b = ?",
+            (user_a, user_b),
+        ).fetchone()
+    if not row:
+        return "none"
+    if row["status"] == "accepted":
+        return "friends"
+    return "requested" if row["initiated_by"] == viewer_google_id else "incoming"
+
+
+def request_friendship(requester_google_id: str, target_google_id: str) -> dict:
+    """Send a friend request.
+
+    Returns {'status': ...}:
+      'requested'         — new pending request
+      'accepted'          — target had already asked the requester; the
+                            two requests cross, so it's a friendship now
+      'already_requested' — requester's request is still pending
+      'already_friends'   — nothing to do
+      'self' / 'not_found'
+    """
+    if not target_google_id or get_user_state(target_google_id) is None:
+        return {"status": "not_found"}
+    if target_google_id == requester_google_id:
+        return {"status": "self"}
+    user_a, user_b = sorted([requester_google_id, target_google_id])
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status, initiated_by FROM friendships WHERE user_a = ? AND user_b = ?",
+            (user_a, user_b),
+        ).fetchone()
+        if row:
+            if row["status"] == "accepted":
+                return {"status": "already_friends"}
+            if row["initiated_by"] == requester_google_id:
+                return {"status": "already_requested"}
+            conn.execute(
+                "UPDATE friendships SET status = 'accepted' WHERE user_a = ? AND user_b = ?",
+                (user_a, user_b),
+            )
+            conn.commit()
+            return {"status": "accepted"}
+        conn.execute(
+            """
+            INSERT INTO friendships (user_a, user_b, status, initiated_by, created_at)
+            VALUES (?, ?, 'pending', ?, ?)
+            """,
+            (user_a, user_b, requester_google_id, now),
+        )
+        conn.commit()
+    return {"status": "requested"}
+
+
+def get_incoming_friend_requests(google_id: str) -> list[dict]:
+    """Pending requests other people sent to `google_id`, newest first.
+    Shape: [{google_id, name, picture, created_at}]"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT initiated_by, created_at FROM friendships
+            WHERE (user_a = ? OR user_b = ?)
+              AND status = 'pending' AND initiated_by != ?
+            ORDER BY created_at DESC
+            """,
+            (google_id, google_id, google_id),
+        ).fetchall()
+        out = []
+        for r in rows:
+            name, picture = _user_bits(conn, r["initiated_by"])
+            out.append({
+                "google_id": r["initiated_by"], "name": name,
+                "picture": picture, "created_at": r["created_at"],
+            })
+    return out
+
+
+def get_outgoing_friend_request_ids(google_id: str) -> list[str]:
+    """google_ids `google_id` has asked and who haven't answered."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT user_a, user_b FROM friendships
+            WHERE (user_a = ? OR user_b = ?)
+              AND status = 'pending' AND initiated_by = ?
+            """,
+            (google_id, google_id, google_id),
+        ).fetchall()
+    return [r["user_b"] if r["user_a"] == google_id else r["user_a"] for r in rows]
+
+
+def decline_friend_request(google_id: str, from_google_id: str) -> bool:
+    """Drop a pending request `from_google_id` sent to `google_id`. The
+    requester isn't told; their button just goes back to "+ amigo" if
+    they look again. Returns True if a request was removed."""
+    user_a, user_b = sorted([google_id, from_google_id])
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            DELETE FROM friendships
+            WHERE user_a = ? AND user_b = ? AND status = 'pending' AND initiated_by = ?
+            """,
+            (user_a, user_b, from_google_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def remove_friendship(google_id: str, friend_google_id: str) -> bool:
@@ -2959,8 +3109,8 @@ def remove_friendship(google_id: str, friend_google_id: str) -> bool:
 
 def accept_friendship(google_id: str, friend_google_id: str) -> bool:
     """
-    Flip a pending friendship to accepted.
-    Only the non-initiating party should call this.
+    Accept the pending request `friend_google_id` sent to `google_id`.
+    The requester can't accept their own request.
     Returns True if a row was updated, False if not found.
     """
     user_a, user_b = sorted([google_id, friend_google_id])
@@ -2969,8 +3119,9 @@ def accept_friendship(google_id: str, friend_google_id: str) -> bool:
             """
             UPDATE friendships SET status = 'accepted'
             WHERE user_a = ? AND user_b = ? AND status = 'pending'
+              AND initiated_by = ?
             """,
-            (user_a, user_b),
+            (user_a, user_b, friend_google_id),
         )
         conn.commit()
         return cur.rowcount > 0
@@ -2978,12 +3129,12 @@ def accept_friendship(google_id: str, friend_google_id: str) -> bool:
 
 def get_friends(google_id: str) -> list[dict]:
     """
-    Return all friends of google_id, enriched with name/picture
+    Return accepted friends of google_id, enriched with name/picture
     from their user_states blob.
 
-    We accept both 'accepted' and 'pending' statuses so that any legacy rows
-    created before auto-accept (which were stuck pending forever) surface
-    correctly without requiring a migration.
+    Pending rows are friend requests now (see request_friendship), so they
+    are not friends: they don't unlock RSVPs in the feed or count for
+    badges. Legacy pending rows were flipped by the old boot migration.
 
     Shape: [{ google_id, name, picture, status }]
     """
@@ -2992,7 +3143,7 @@ def get_friends(google_id: str) -> list[dict]:
             """
             SELECT user_a, user_b, status FROM friendships
             WHERE (user_a = ? OR user_b = ?)
-              AND status IN ('accepted', 'pending')
+              AND status = 'accepted'
             """,
             (google_id, google_id),
         ).fetchall()

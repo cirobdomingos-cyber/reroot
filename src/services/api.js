@@ -955,9 +955,10 @@ export async function fetchUserProfile(targetGoogleId, googleId = '') {
   return res.json()
 }
 
-// Add someone as a friend by their google_id (no invite-code juggling).
-// Auto-accepted, same shape as /friends/add: { status: 'ok'|'self'|
-// 'already_friends'|'not_found', friend_name?, new_badges? }
+// Send a friend request by google_id (in-app taps). Not auto-accepted —
+// only invite codes/links are. Returns { status: 'requested'|'accepted'|
+// 'already_requested'|'already_friends'|'self'|'not_found', new_badges? }
+// 'accepted' means they had already asked you, so you're friends now.
 export async function addFriendById(googleId, targetGoogleId) {
   const res = await fetchWithTimeout(`${BASE_URL}/friends/add-by-id`, {
     method: 'POST',
@@ -965,7 +966,48 @@ export async function addFriendById(googleId, targetGoogleId) {
     body: JSON.stringify({ google_id: googleId, target_google_id: targetGoogleId }),
   })
   if (!res.ok) throw new Error(`Add friend by id failed: ${res.status}`)
-  return res.json()
+  const data = await res.json()
+  dispatchBadgeUnlocks(data?.new_badges)
+  return data
+}
+
+// { incoming: [{google_id, name, picture, created_at}], outgoing_ids: [] }
+export async function getFriendRequests(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/friends/requests?google_id=${encodeURIComponent(googleId)}`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      return { incoming: data.incoming ?? [], outgoing_ids: data.outgoing_ids ?? [] }
+    }
+  } catch {
+    // Backend unavailable
+  }
+  return { incoming: [], outgoing_ids: [] }
+}
+
+async function answerFriendRequest(googleId, fromGoogleId, action) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/friends/requests/${encodeURIComponent(fromGoogleId)}/${action}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId }),
+    },
+  )
+  if (!res.ok) throw new Error(`Friend request ${action} failed: ${res.status}`)
+  const data = await res.json()
+  dispatchBadgeUnlocks(data?.new_badges)
+  return data
+}
+
+export function acceptFriendRequest(googleId, fromGoogleId) {
+  return answerFriendRequest(googleId, fromGoogleId, 'accept')
+}
+
+export function declineFriendRequest(googleId, fromGoogleId) {
+  return answerFriendRequest(googleId, fromGoogleId, 'decline')
 }
 
 // Kick a member out of a group. Admin-only on the backend; can't
