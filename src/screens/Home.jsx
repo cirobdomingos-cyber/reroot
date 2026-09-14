@@ -528,6 +528,7 @@ export default function Home() {
           might interest you. Renders nothing at all when there's
           nothing pending, no empty state and no "0 pendências". */}
       <PendingSection
+        myGoogleId={state.googleUser?.id}
         invites={groupEventsPending}
         onOpenInvite={ev => {
           if (ev.group_id || ev.groupId) navigate(`/groups/${ev.group_id || ev.groupId}`)
@@ -1096,6 +1097,7 @@ function PendingMoreRow({ label, onClick }) {
 }
 
 function PendingSection({
+  myGoogleId,
   invites = [], onOpenInvite, onAcceptInvite, onDeclineInvite, onSeeAllInvites,
   friendRequests = [], onOpenFriendRequest, onAnswerFriendRequest, onSeeAllFriendRequests,
   curation, onOpenCuration,
@@ -1171,10 +1173,15 @@ function PendingSection({
                 label: t.home_pending_invite_yes ?? '✓ Vou', primary: true, disabled: busyId === ev.id,
                 onClick: () => answer(ev.id, () => onAcceptInvite(ev)),
               },
-              {
+              // No "Não vou" on your own event. On group-tagged events the
+              // creator isn't auto-RSVPed, so their own event shows up here
+              // unconfirmed — and declining it is a no-op the backend
+              // refuses (the creator deletes an event, they don't leave it).
+              // The row would just vanish until the next load.
+              ...(ev.createdBy && ev.createdBy === myGoogleId ? [] : [{
                 label: t.home_pending_invite_no ?? '✕ Não vou', disabled: busyId === ev.id,
                 onClick: () => answer(ev.id, () => onDeclineInvite(ev)),
-              },
+              }]),
             ]}
           />
         ))}
