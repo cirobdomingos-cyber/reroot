@@ -147,7 +147,7 @@ def test_the_earliest_keeps_the_posts_own_id(monkeypatch):
     assert events[0].external_id == "ig_changes.cwb_ABC123", \
         "pre-existing rows use the bare id — the earliest event keeps it"
     suffixed = [e.external_id for e in events[1:]]
-    assert all(e.startswith("ig_changes.cwb_ABC123_") for e in suffixed)
+    assert all(e.startswith("ig_changes.cwb_ABC123-") for e in suffixed)
     assert len(set(e.external_id for e in events)) == 3, "ids are unique"
 
 

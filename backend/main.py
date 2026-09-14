@@ -1339,6 +1339,46 @@ def _passes_content_filter(ev, curated: bool = False) -> bool:
     return True
 
 
+@functools.lru_cache(maxsize=1)
+def _known_ig_handles_by_length() -> tuple:
+    """Every tracked handle, enabled or not, longest first. Used to read a
+    handle out of an external_id unambiguously."""
+    return tuple(sorted(
+        (a["handle"].lower() for a in db.list_ig_accounts()),
+        key=len, reverse=True,
+    ))
+
+
+def _ig_handle_from_external_id(ext: str) -> str:
+    """`ig_<handle>_<shortcode>[-<MMDD>]` -> handle, or "".
+
+    Counting underscores does not work here and never really did: handles
+    carry them ("damarate_confeitaria") and so do shortcodes. It survived
+    because "everything between the first and last underscore" happened to
+    be right while ids had exactly two. A lineup post appends a date suffix
+    to the second and later events, which broke that assumption — the
+    handle came back as "changes.cwb_ABC123", matched no tracked account,
+    and _is_active_source silently dropped those events from the catalog
+    while the venue's own Painel (a prefix LIKE) still listed them.
+
+    Match against the handles we actually track instead. That is the only
+    unambiguous reading, and it is what the scraper already does when it
+    attributes scraped events back to a handle.
+    """
+    if not ext or not ext.startswith("ig_"):
+        return ""
+    rest = ext[3:]
+    low = rest.lower()
+    for handle in _known_ig_handles_by_length():
+        if low.startswith(f"{handle}_"):
+            return handle
+    # Untracked handle (deleted account, legacy row): fall back to the old
+    # shape, after dropping a date suffix if one is present.
+    rest = re.sub(r"[-_]\d{4}$", "", rest)
+    idx = rest.rfind("_")
+    return rest[:idx].lower() if idx > 0 else ""
+
+
 def _is_active_source(ev) -> bool:
     """
     Drop events whose source is no longer being monitored. Two cases:
@@ -1364,17 +1404,8 @@ def _is_active_source(ev) -> bool:
     if source == "submitted":
         return True
     if source == "instagram":
-        ext = ev.external_id or ""
-        if not ext.startswith("ig_"):
-            return False
-        # Format: ig_<handle>_<post_id> — handle is everything between the
-        # first and last underscore.
-        rest = ext[3:]
-        idx = rest.rfind("_")
-        if idx <= 0:
-            return False
-        handle = rest[:idx].lower()
-        return handle in _enabled_ig_handles()
+        handle = _ig_handle_from_external_id(ev.external_id or "")
+        return bool(handle) and handle in _enabled_ig_handles()
     # Any other source (sympla, eventbrite, ingresso, meetup, sesc, mon,
     # teatro_guaira, turismo_curitiba, catraca_livre, google_places…)
     # is from a scraper we no longer run.
@@ -1440,6 +1471,7 @@ def _venue_promo_cached() -> dict[str, dict]:
 
 
 def _bust_handle_cache() -> None:
+    _known_ig_handles_by_length.cache_clear()
     _enabled_ig_handles_cached.cache_clear()
     _curator_ig_handles_cached.cache_clear()
     _featured_ig_handles_cached.cache_clear()
@@ -1451,14 +1483,7 @@ def _handle_for_event(ev) -> str:
     non-IG events (aue_original) or malformed ids."""
     if (ev.source or "").lower() != "instagram":
         return ""
-    ext = ev.external_id or ""
-    if not ext.startswith("ig_"):
-        return ""
-    rest = ext[3:]
-    idx = rest.rfind("_")
-    if idx <= 0:
-        return ""
-    return rest[:idx].lower()
+    return _ig_handle_from_external_id(ev.external_id or "")
 
 
 def _handle_from_event_id(event_id: str) -> str:

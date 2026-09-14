@@ -4181,7 +4181,7 @@ def find_catalog_event_id_by_shortcode(shortcode: str) -> str:
         row = conn.execute(
             "SELECT id FROM events WHERE source = 'instagram' AND external_id LIKE ? "
             "ORDER BY external_id ASC LIMIT 1",
-            (f"%_{shortcode}_%",),
+            (f"%_{shortcode}-%",),
         ).fetchone()
     return row["id"] if row else ""
 

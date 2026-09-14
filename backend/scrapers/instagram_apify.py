@@ -26,6 +26,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import httpx
@@ -1000,9 +1001,14 @@ async def _extract_events(
     # later ones are suffixed by their date. Ordering by date rather than by
     # the model's output order means a re-scrape doesn't shuffle which event
     # owns the bare id and duplicate the whole post.
+    # "-" and not "_": an id is ig_<handle>_<shortcode>, and readers pull
+    # the handle out by underscore position. An underscore suffix made
+    # "changes.cwb_ABC123" look like the handle, which matched no tracked
+    # account, and those events were dropped from the catalog while the
+    # venue's Painel still listed them. "-" never appears in a handle.
     out.sort(key=lambda e: e.date_start)
     for ev in out[1:]:
-        ev.external_id = f"{ev.external_id}_{ev.date_start.strftime('%m%d')}"
+        ev.external_id = f"{ev.external_id}-{ev.date_start.strftime('%m%d')}"
     # A same-day pair would collide — drop the duplicate rather than let one
     # silently overwrite the other on upsert.
     seen: set[str] = set()
@@ -1256,6 +1262,12 @@ def _details_is_stale(iso_str: Optional[str]) -> bool:
     return (datetime.now(timezone.utc) - last) > timedelta(hours=24)
 
 
+# The flyer says "21h" and it means 21h in Curitiba. Stamping that as UTC
+# made every scraped event render three hours early — a 21h show showed up
+# as 18:00 in the app.
+_CWB_TZ = ZoneInfo("America/Sao_Paulo")
+
+
 def _parse_iso(s: Optional[str]) -> Optional[datetime]:
     if not s or not isinstance(s, str):
         return None
@@ -1263,7 +1275,7 @@ def _parse_iso(s: Optional[str]) -> Optional[datetime]:
     for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
         try:
             dt = datetime.strptime(s[:19], fmt)
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=_CWB_TZ)
         except ValueError:
             continue
     return None
