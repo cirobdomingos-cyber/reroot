@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { fetchVenueLeaderboard } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
+import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 
 // Admin: collaborative curation of Instagram accounts.
 // - Anyone logged in can VIEW the catalog.
@@ -100,6 +101,37 @@ export default function AdminIgAccounts() {
     }
     setBusy(false)
   }
+
+  // Edit name / category / notes on a tracked handle. The endpoint was
+  // always an upsert that takes all three — only the UI was missing, so
+  // a typo'd label or a handle filed under the wrong category could only
+  // be fixed by deleting and re-adding it, losing its history.
+  async function saveAccount(acc, fields) {
+    setBusy(true)
+    try {
+      const res = await fetch(`${API_BASE}/admin/ig-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          handle: acc.handle,
+          label: fields.label ?? acc.label ?? '',
+          category: fields.category ?? acc.category ?? '',
+          enabled: acc.enabled,
+          notes: fields.notes ?? acc.notes ?? '',
+          requesting_email: email,
+        }),
+      })
+      if (!res.ok) throw new Error(`Erro ${res.status}`)
+      await load()
+      return true
+    } catch (e) {
+      setError(`Falha ao salvar: ${e.message}`)
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
+
 
   async function scrapeOne(handle) {
     setBusy(true)
@@ -322,7 +354,7 @@ export default function AdminIgAccounts() {
           / delete + activity stats + event count. Curators who aren't
           founders still see the legacy section below (no leaderboard
           access since views/RSVPs are paid-placement metrics). */}
-      {isCurator && !isFounder && (
+      {isCurator && (
         <section style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
             📷 Contas ativas
@@ -388,6 +420,7 @@ export default function AdminIgAccounts() {
                   onDelete={deleteAccount}
                   onScrape={scrapeOne}
                   onToggleFeatured={toggleFeatured}
+                  onSave={saveAccount}
                   // Admin tap on the handle row routes to the venue
                   // dashboard (founder-only metrics) instead of the
                   // public source page. The arrow icon on the right
@@ -1289,8 +1322,70 @@ function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onSc
 }
 
 
-function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onToggleFeatured, isFounder }) {
+function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onToggleFeatured, onSave, isFounder }) {
   const futureCount = acc.future_events ?? 0
+  const [editing, setEditing] = useState(false)
+  const [label, setLabel] = useState(acc.label || '')
+  const [category, setCategory] = useState(acc.category || '')
+  const [notes, setNotes] = useState(acc.notes || '')
+
+  async function submit() {
+    const ok = await onSave(acc, { label, category, notes })
+    if (ok) setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div style={{
+        background: 'var(--white)', border: '1px solid var(--sage)',
+        borderRadius: 12, padding: 12,
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+          @{acc.handle}
+        </div>
+        <input
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          placeholder="Nome (ex: Bar do Sax)"
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+        />
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+        >
+          <option value="">— sem categoria —</option>
+          {CATEGORY_ORDER.map(c => (
+            <option key={c} value={c}>
+              {CATEGORY_META[c].emoji} {CATEGORY_META[c].label}
+            </option>
+          ))}
+        </select>
+        <input
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Anotação interna (opcional)"
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={submit} disabled={busy} style={{ ...ghostBtn('var(--sage)'), flex: 1 }}>
+            {busy ? '…' : '✓ Salvar'}
+          </button>
+          <button
+            onClick={() => {
+              setLabel(acc.label || ''); setCategory(acc.category || '')
+              setNotes(acc.notes || ''); setEditing(false)
+            }}
+            disabled={busy}
+            style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    )
+  }
   // Prefix BASE_URL for our rehosted-avatar paths in dev — without
   // this, the <Avatar> tries to load /event-images/avatars/... from
   // Vite :5173 and 404s. Same logic as fetchSources's absoluteImageUrl.
@@ -1423,6 +1518,19 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
           }}
         >
           ⭐
+        </button>
+      )}
+      {onSave && (
+        <button
+          onClick={() => setEditing(true)}
+          disabled={busy}
+          title="Editar nome e categoria"
+          style={{
+            background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer',
+            fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+          }}
+        >
+          ✏️
         </button>
       )}
       {onScrape && (

@@ -203,6 +203,12 @@ export default function Events() {
   // List mode shows BOTH (range pills above, week strip below) so the
   // user can either zoom by range or pick a specific day.
   const [dateRange, setDateRange] = useState('all')  // 'today' | 'weekend' | 'week' | 'all'
+  // Filters collapsed by default. Three stacked rows of pills (category,
+  // price/kids, date) ate the top third of the phone before a single
+  // event showed — and in Mapa mode they pushed the map's own controls
+  // below the fold. The bar below says how many are on, so a collapsed
+  // filter is never a hidden one.
+  const [filtersOpen, setFiltersOpen] = useState(false)
   // Digest filter: when the user taps the daily-digest push, the URL
   // carries ?new=<id1,id2,...> with up to 12 newly-scraped event IDs.
   // The Events screen narrows to JUST those rows + shows a small
@@ -1022,6 +1028,49 @@ export default function Events() {
         </div>
       )}
 
+      {/* ── Filters, collapsed ── */}
+      {(() => {
+        const activeCount =
+          (priceFilter !== 'all' ? 1 : 0) +
+          (oneOffOnly ? 1 : 0) +
+          (kidsFilter ? 1 : 0) +
+          (dateRange !== 'all' ? 1 : 0)
+        return (
+          <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', alignItems: 'center' }}>
+            <button
+              onClick={() => setFiltersOpen(o => !o)}
+              className="neon-mono"
+              style={{
+                padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
+                fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase',
+                cursor: 'pointer',
+                border: `1px solid ${activeCount ? 'var(--magenta)' : 'var(--border)'}`,
+                background: activeCount ? 'var(--terra-pale)' : 'transparent',
+                color: activeCount ? 'var(--magenta)' : 'var(--charcoal-mid)',
+              }}
+            >
+              {filtersOpen ? '− Filtros' : '+ Filtros'}{activeCount ? ` · ${activeCount}` : ''}
+            </button>
+            {activeCount > 0 && (
+              <button
+                onClick={() => {
+                  setPriceFilter('all'); setOneOffOnly(false)
+                  setKidsFilter(false); setDateRange('all')
+                }}
+                style={{
+                  padding: '5px 10px', borderRadius: 16, whiteSpace: 'nowrap',
+                  fontSize: 11, cursor: 'pointer', background: 'transparent',
+                  border: '1px solid var(--border)', color: 'var(--charcoal-light)',
+                }}
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+        )
+      })()}
+
+      {filtersOpen && (<>
       {/* ── Filter chips: Todos + Só únicos + price + kids ──
           Order: "Todos" leads as the reset-everything pill (clears
           both price AND the oneOffOnly toggle so a single tap returns
@@ -1156,6 +1205,8 @@ export default function Events() {
           Moved into the Events header (lime 🎲 icon-pill next to
           Fontes/🔍) so it's always reachable from the chrome without
           stealing list real estate. */}
+
+      </>)}
 
       {/* ── Loading skeletons ── */}
       {loading && (

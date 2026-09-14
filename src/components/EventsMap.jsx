@@ -1,7 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+
+// Leaflet caches the container size, so a map whose box changed keeps
+// drawing at the old dimensions (grey bands, pins in the wrong place)
+// until it's told. The wrapper below resizes with the filters, so this
+// has to run on every height change, not just on mount.
+function InvalidateOnResize({ height }) {
+  const map = useMap()
+  useEffect(() => {
+    const id = setTimeout(() => map.invalidateSize(), 60)
+    return () => clearTimeout(id)
+  }, [map, height])
+  return null
+}
 
 // Curitiba center (Praça Tiradentes). Default zoom keeps the whole city
 // roughly in frame at 14, which works on a phone.
@@ -108,6 +121,35 @@ function FitToMarkers({ points }) {
 }
 
 export default function EventsMap({ events, onPinTap }) {
+  // The map used to be calc(100vh - 220px) — a guess at how much sat
+  // above it. With the filter rows open that guess was ~100px short, so
+  // the bottom of the map (and the "onde estou" button parked in its
+  // corner) fell below the fold with nothing left to scroll. Measure the
+  // real distance from the top of the map to the bottom of the screen
+  // instead, and redo it whenever the page reflows — opening a filter
+  // row, rotating the phone, the iOS toolbar sliding away.
+  const wrapRef = useRef(null)
+  const [mapHeight, setMapHeight] = useState(360)
+  useEffect(() => {
+    function measure() {
+      const el = wrapRef.current
+      if (!el) return
+      const top = el.getBoundingClientRect().top
+      const vh = window.visualViewport?.height || window.innerHeight
+      // BOTTOM_NAV + the wrapper's own bottom margin.
+      setMapHeight(Math.max(260, Math.round(vh - top - 72 - 12)))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(document.body)
+    window.addEventListener('resize', measure)
+    window.visualViewport?.addEventListener('resize', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', measure)
+      window.visualViewport?.removeEventListener('resize', measure)
+    }
+  }, [])
   // Only events with coords are pinnable; everything else is silently
   // dropped from the map view. The empty-state banner (rendered by
   // the parent) explains why some events might be missing.
@@ -160,10 +202,10 @@ export default function EventsMap({ events, onPinTap }) {
   )
 
   return (
-    <div style={{
+    <div ref={wrapRef} style={{
       position: 'relative',
-      height: 'calc(100vh - 220px)',
-      minHeight: 360,
+      height: mapHeight,
+      minHeight: 260,
       borderRadius: 12, overflow: 'hidden',
       margin: '0 16px 12px',
       border: '1px solid var(--border)',
@@ -179,6 +221,7 @@ export default function EventsMap({ events, onPinTap }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <FitToMarkers points={fitPoints} />
+        <InvalidateOnResize height={mapHeight} />
         {clusters.map(c => {
           const single = c.events.length === 1
           const ev = c.events[0]
