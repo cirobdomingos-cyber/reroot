@@ -4222,10 +4222,18 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
     """Remove a group link from a user-owned event. The event itself
     isn't deleted — only the link to this group. Allowed for the
     event's creator or any co-host. Returns the updated event row.
+    Accepts either the private event's own id or the CATALOG event's id:
+    the "Adicionar a um grupo" sheet only ever knows the latter, because
+    a fork gets a new id the sheet never sees. Without this, removing was
+    a dead end that told you to go delete the event inside the group.
+
     No-op if the group wasn't linked."""
     event = db.get_group_event(event_id)
     if not event:
+        event = db.find_group_event_by_source(group_id, event_id)
+    if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+    event_id = event["id"]
     is_creator = event["created_by"] == google_id
     is_co_host = google_id in (event.get("co_host_ids") or [])
     if not (is_creator or is_co_host):

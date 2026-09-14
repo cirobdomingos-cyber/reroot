@@ -91,15 +91,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     if (!confirm(`Remover esse evento do grupo "${group.name}"?`)) return
     setSubmittingId(group.id)
     try {
-      // Unlink only works for user-owned events (grp_ev_ ids). Catalog
-      // forks have a different id than the catalog source, so the
-      // event.id we have here is the source's id, not the fork's —
-      // skip the unlink for now in that case.
-      if (!event.id.startsWith('grp_ev_')) {
-        alert('Para remover um evento do catálogo de um grupo, abra o grupo e remova de lá.')
-        setSubmittingId(null)
-        return
-      }
+      // Works with the catalog id too: the backend resolves it to this
+      // group's fork. This used to bail with "abra o grupo e remova de
+      // lá" — which sent people looking for an event that, half the
+      // time, was never there (the linked check matched by venue alone).
       await unlinkEventFromGroup(event.id, group.id, googleId)
       setLinkedGroupIds(prev => {
         const next = new Set(prev)
@@ -238,7 +233,12 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                       disabled={isSubmitting || !!doneId}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 10,
-                        background: alreadyLinked ? 'var(--sage-pale)' : (isDone ? 'var(--sage-pale)' : 'white'),
+                        // var(--white), not literal white: the token maps to
+                        // the dark card surface under this theme, while the
+                        // label below uses var(--charcoal), which maps to
+                        // near-white text. A real white here put light text
+                        // on a white card — the group names vanished.
+                        background: alreadyLinked || isDone ? 'var(--sage-pale)' : 'var(--white)',
                         border: `1px solid ${alreadyLinked || isDone ? 'var(--sage)' : 'var(--border)'}`,
                         borderRadius: 12, padding: '12px 14px',
                         textAlign: 'left',

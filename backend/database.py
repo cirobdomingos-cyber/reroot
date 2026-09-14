@@ -4221,15 +4221,30 @@ def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[
                 handle = rest.rsplit("_", 1)[0].lower()
         if not handle:
             return None
-        # We don't have date_start here; pick any row with the matching
-        # handle in the group as a "good enough" fallback. False positives
-        # only happen across multiple events from the same handle in
-        # the same group, which is rare.
+        # Match the DAY too, which is what the docstring above always
+        # promised and the code never did: it took any row from the same
+        # handle in the same group. That is not a rare collision, it is
+        # the normal case — a bar posts a dozen events and a group like
+        # "Curitiba na real" collects them. Every later event from a
+        # venue already in the group came back "Adicionado", pointing at
+        # a fork that doesn't exist, with a remove button that sent you
+        # to the group to delete something that isn't there.
+        #
+        # Two events from the same venue on the same day is the only
+        # collision left, and for those the source_event_id column
+        # (path 1) has covered every fork made since the migration.
+        src_event = get_event_by_id(src)
+        day = ""
+        if src_event is not None and getattr(src_event, "date_start", None):
+            day = src_event.date_start.isoformat()[:10]
+        if not day:
+            return None
         row = conn.execute(
             """SELECT * FROM group_events
                WHERE group_id = ? AND source_ig_handle = ?
+                 AND substr(date_start, 1, 10) = ?
                ORDER BY created_at DESC LIMIT 1""",
-            (group_id, handle),
+            (group_id, handle, day),
         ).fetchone()
     return _hydrate_invitees(dict(row)) if row else None
 

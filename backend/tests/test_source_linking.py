@@ -90,3 +90,64 @@ def test_editing_one_field_leaves_the_others_following(db):
     assert row["edited_fields"] == ["note", "venue"]
     assert "name" not in row["edited_fields"]
     assert "date_start" not in row["edited_fields"]
+
+
+# ── "Adicionado" tem que ser sobre ESTE evento ──────────────
+# find_group_event_by_source's legacy fallback matched any event from the
+# same venue handle in the same group, ignoring the date. Its docstring
+# claimed handle + date the whole time. A bar posts a dozen events and a
+# group collects them, so every later event from a venue already in the
+# group showed "Adicionado · toque pra remover" for a fork that was never
+# there — and the remove button sent you to the group to delete nothing.
+
+
+def _ig_catalog_event(db, handle, shortcode, day):
+    from datetime import datetime
+    from models import EnrichedEvent
+    ev = EnrichedEvent(
+        id=f"instagram_ig_{handle}_{shortcode}", source="instagram",
+        external_id=f"ig_{handle}_{shortcode}",
+        name=f"Show {shortcode}", description="", venue_name="MACRO",
+        venue_address="", neighborhood="Centro", city="Curitiba",
+        date_start=datetime.fromisoformat(f"{day}T21:00:00"), date_end=None,
+        price_min=0, price_max=0, currency="BRL", capacity=None,
+        kind="community", category_label="Comunidade", category_emoji="🎉",
+        has_food=False, is_low_pressure=False, is_curated=True, pitch="",
+        price_tier="free", vibe_summary="", expected_size="large",
+        header_gradient="", url=f"https://instagram.com/p/{shortcode}/",
+        image_url="", fetched_at=datetime(2026, 9, 1),
+    )
+    db.upsert_event(ev)
+    return ev.id
+
+
+def test_another_night_at_the_same_bar_is_not_already_added(db):
+    """The bug: adding Friday's show marked Saturday's as added too."""
+    group = db.create_group(google_id="host", name="Curitiba na real")
+    friday = _ig_catalog_event(db, "macrobarepista", "AAA111", "2026-09-18")
+    saturday = _ig_catalog_event(db, "macrobarepista", "BBB222", "2026-09-19")
+    # A legacy fork: same handle, no source_event_id (pre-migration row).
+    db.create_group_event(
+        group_id=group["id"], google_id="host", name="Show AAA111",
+        date_start="2026-09-18T21:00:00", source_ig_handle="macrobarepista",
+    )
+    assert db.find_group_event_by_source(group["id"], friday), "that one IS in the group"
+    assert not db.find_group_event_by_source(group["id"], saturday), \
+        "a different night at the same bar was never added"
+
+
+def test_the_same_night_still_matches_a_legacy_fork(db):
+    """The fallback still has to do its job for pre-migration rows."""
+    group = db.create_group(google_id="host", name="Crew")
+    src = _ig_catalog_event(db, "macrobarepista", "AAA111", "2026-09-18")
+    db.create_group_event(
+        group_id=group["id"], google_id="host", name="Show AAA111",
+        date_start="2026-09-18T23:30:00", source_ig_handle="macrobarepista",
+    )
+    assert db.find_group_event_by_source(group["id"], src)
+
+
+def test_a_group_without_the_venue_at_all_is_not_linked(db):
+    group = db.create_group(google_id="host", name="Vazio")
+    src = _ig_catalog_event(db, "macrobarepista", "AAA111", "2026-09-18")
+    assert not db.find_group_event_by_source(group["id"], src)
