@@ -297,6 +297,8 @@ export default function AdminIgAccounts() {
           📋 Pedidos pro catálogo →
         </button>
       )}
+
+      {isCurator && <PostDebugSection email={email} />}
       {!isCurator && !loading && (
         <NotACuratorMessage email={email} />
       )}
@@ -788,6 +790,149 @@ const ghostBtn = (color) => ({
   border: `1px solid ${color}`, background: 'var(--white)', color,
   fontWeight: 700, fontSize: 12, cursor: 'pointer',
 })
+
+
+// "Esse post não virou evento" used to be answerable only by reading
+// Railway logs. Paste the link, get the model's actual answer and the
+// reason each event was rejected.
+function PostDebugSection({ email }) {
+  const [url, setUrl] = useState('')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+  const [running, setRunning] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  async function run() {
+    const link = url.trim()
+    if (!link) return
+    setRunning(true); setError(null); setResult(null)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-extract-debug?url=${encodeURIComponent(link)}`
+        + `&requesting_email=${encodeURIComponent(email)}`
+      )
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
+      setResult(body)
+    } catch (e) {
+      setError(e.message)
+    }
+    setRunning(false)
+  }
+
+  return (
+    <section style={{ marginBottom: 14 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'block', width: '100%', padding: '12px 14px',
+          borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
+          color: 'var(--text)', fontSize: 14, fontWeight: 700,
+          textAlign: 'left', cursor: 'pointer',
+        }}
+      >
+        🔍 Por que esse post não virou evento? {open ? '▾' : '▸'}
+      </button>
+
+      {open && (
+        <div style={{
+          marginTop: 8, padding: 12, borderRadius: 12,
+          border: '1px solid var(--border)', background: 'var(--white)',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
+            Cola o link de um post do Instagram. Roda a extração nele e mostra
+            o que o modelo respondeu — e o motivo de cada evento que caiu.
+            Custa uma chamada Apify + uma Claude.
+          </div>
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            placeholder="https://www.instagram.com/p/..."
+            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+          />
+          <button onClick={run} disabled={running || !url.trim()} style={ghostBtn('var(--sage)')}>
+            {running ? 'Analisando…' : '▶ Analisar post'}
+          </button>
+
+          {error && (
+            <div style={{
+              padding: '9px 12px', background: 'var(--terra-pale)',
+              color: 'var(--terra)', borderRadius: 8, fontSize: 12,
+            }}>
+              {error}
+            </div>
+          )}
+
+          {result && <PostDebugResult result={result} />}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PostDebugResult({ result }) {
+  const line = { fontSize: 12, color: 'var(--charcoal)', lineHeight: 1.6 }
+  const muted = { fontSize: 11, color: 'var(--charcoal-mid)' }
+  if (result.ok === false) {
+    return <div style={line}>Parou em <b>{result.stage}</b>: {result.detail}</div>
+  }
+  const extracted = result.extracted || []
+  const dropped = result.dropped || []
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={line}>
+        <b>@{result.handle}</b> · postado {result.posted_at || '—'}<br />
+        Flyer enviado pro modelo:{' '}
+        <b style={{ color: result.image_sent_to_model ? 'var(--sage)' : 'var(--terra)' }}>
+          {result.image_sent_to_model ? 'sim' : 'não'}
+        </b>
+      </div>
+
+      <div>
+        <div style={{ ...muted, fontWeight: 700, marginBottom: 4 }}>
+          ✅ Entraram no catálogo · {extracted.length}
+        </div>
+        {extracted.length === 0 ? (
+          <div style={muted}>nenhum</div>
+        ) : extracted.map(e => (
+          <div key={e.external_id} style={line}>
+            • <b>{e.name}</b> — {(e.date_start || '').replace('T', ' ').slice(0, 16)}
+            {e.venue_name ? ` · ${e.venue_name}` : ''}
+          </div>
+        ))}
+      </div>
+
+      {dropped.length > 0 && (
+        <div>
+          <div style={{ ...muted, fontWeight: 700, marginBottom: 4 }}>
+            ✕ Caíram · {dropped.length}
+          </div>
+          {dropped.map((d, i) => (
+            <div key={i} style={line}>• <b>{d.name}</b> — {d.reason}</div>
+          ))}
+        </div>
+      )}
+
+      <details>
+        <summary style={{ ...muted, cursor: 'pointer' }}>Resposta crua do modelo</summary>
+        <pre style={{
+          fontSize: 10, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          color: 'var(--charcoal-mid)', marginTop: 6,
+        }}>
+          {JSON.stringify(result.model_answer, null, 2)}
+        </pre>
+      </details>
+
+      <details>
+        <summary style={{ ...muted, cursor: 'pointer' }}>Legenda enviada</summary>
+        <div style={{ ...muted, whiteSpace: 'pre-wrap', marginTop: 6 }}>
+          {result.caption || '—'}
+        </div>
+      </details>
+    </div>
+  )
+}
 
 
 function Header({ userName, email, isCurator, isFounder, enabledCount, totalCount }) {
