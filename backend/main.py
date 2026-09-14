@@ -34,6 +34,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import database as db
 import badges
 import image_store
+import quiet_hours
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -6287,7 +6288,11 @@ def _reminder_time_label(date_iso: str) -> str:
     return dt.strftime("%H:%M")
 
 
-async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) -> dict:
+async def send_daily_digest_to_all_subscribers(
+    new_event_ids: list[str] | None,
+    *,
+    ignore_quiet_hours: bool = False,
+) -> dict:
     """Fanout the daily "novidades hoje" push after the catalog refresh,
     across both push channels:
       - Web Push subscribers (browser PWA / iOS Safari standalone)
@@ -6298,11 +6303,23 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
     today's scrape and tells each subscriber "X novos — Tributo Bowie ·
     Pedreira · +2 mais", with the tap routed to the top event hero.
 
+    Quiet hours (22:00–09:00 Curitiba, quiet_hours.py): the ids are parked
+    and the 09:00 job sends them. Outside quiet hours anything still parked
+    rides along — covers a 09:00 run missed because the container was down.
+
     Skipped silently when:
       - No new events from this scrape (would be a noise push)
       - No subscribers on either channel
       - User toggled off via privacy.dailyDigest = false
     """
+    if not ignore_quiet_hours and quiet_hours.is_quiet():
+        if new_event_ids:
+            db.defer_digest_events(list(new_event_ids))
+        return {"sent": 0, "skipped": 0, "reason": "quiet hours",
+                "deferred": len(new_event_ids or [])}
+    parked = db.take_deferred_digest_events()
+    if parked:
+        new_event_ids = list(dict.fromkeys(parked + list(new_event_ids or [])))
     if not new_event_ids:
         return {"sent": 0, "skipped": 0, "reason": "no new events"}
 
@@ -6431,6 +6448,8 @@ async def send_daily_digest_to_all_subscribers(new_event_ids: list[str] | None) 
 class DigestTriggerBody(BaseModel):
     requesting_email: str
     new_event_ids: list[str] = []
+    # Founder testing at night: send now instead of parking until 09:00.
+    ignore_quiet_hours: bool = False
 
 
 @app.post("/push/send-daily-digest")
@@ -6440,7 +6459,15 @@ async def push_send_daily_digest(body: DigestTriggerBody):
     refresh; this endpoint exists for backfills, dev testing, or
     re-firing on a scrape where the cron didn't catch the event ids."""
     _require_founder(body.requesting_email)
-    return await send_daily_digest_to_all_subscribers(body.new_event_ids)
+    return await send_daily_digest_to_all_subscribers(
+        body.new_event_ids, ignore_quiet_hours=body.ignore_quiet_hours,
+    )
+
+
+async def send_deferred_digest() -> dict:
+    """09:00 job: send whatever the night parked. No-op when empty —
+    send_daily_digest_to_all_subscribers takes the parked ids itself."""
+    return await send_daily_digest_to_all_subscribers([])
 
 
 # ── Live updates (Capgo self-hosted) ─────────────────────────────────

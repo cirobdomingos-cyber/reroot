@@ -290,6 +290,16 @@ async def run_refresh(settings):
         log.warning(f"Daily digest push failed: {e}")
 
 
+async def run_deferred_digest():
+    """Send the digest parked during quiet hours. Never raises."""
+    try:
+        from main import send_deferred_digest
+        result = await send_deferred_digest()
+        log.info(f"Digest adiado das horas silenciosas: {result}")
+    except Exception as exc:
+        log.error(f"Falha ao enviar digest adiado: {exc}")
+
+
 async def run_event_reminders():
     """Fire the day-before reminders. Never raises — a push transport
     hiccup must not kill the scheduler, same contract as the weekly
@@ -500,6 +510,16 @@ def start_scheduler(settings, run_immediately: bool = True):
         hour=REMINDER_HOUR,
         minute=0,
         id="event_reminders",
+        replace_existing=True,
+    )
+    # Digest parked during quiet hours goes out when they end (09:00).
+    from quiet_hours import QUIET_END_HOUR
+    scheduler.add_job(
+        run_deferred_digest,
+        trigger="cron",
+        hour=QUIET_END_HOUR,
+        minute=0,
+        id="deferred_digest",
         replace_existing=True,
     )
     scheduler.start()

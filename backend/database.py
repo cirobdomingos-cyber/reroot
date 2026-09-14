@@ -117,6 +117,15 @@ def init_db():
                 created_at    TEXT NOT NULL
             )
         """)
+        # Events whose digest landed in quiet hours (22:00–09:00, see
+        # quiet_hours.py). The 09:00 job sends them as one digest. In SQLite
+        # rather than a scheduler job so an overnight redeploy keeps them.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS deferred_digest_events (
+                event_id   TEXT PRIMARY KEY,
+                queued_at  TEXT NOT NULL
+            )
+        """)
         # Lazy prune on boot — keeps the table small without a cron job.
         try:
             cutoff_30d = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -2495,6 +2504,30 @@ def insert_daily_digest(digest_id: str, event_ids: list[str]) -> None:
             (digest_id, json.dumps(list(event_ids)), now),
         )
         conn.commit()
+
+
+def defer_digest_events(event_ids: list[str]) -> None:
+    """Park event ids for the 09:00 digest. Re-parking an id is a no-op,
+    so several night refreshes merge into one digest."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO deferred_digest_events (event_id, queued_at) VALUES (?, ?)",
+            [(eid, now) for eid in event_ids if eid],
+        )
+        conn.commit()
+
+
+def take_deferred_digest_events() -> list[str]:
+    """Return every parked event id (oldest first) and clear the queue in
+    the same transaction, so the morning digest can only go out once."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT event_id FROM deferred_digest_events ORDER BY queued_at, event_id"
+        ).fetchall()
+        conn.execute("DELETE FROM deferred_digest_events")
+        conn.commit()
+    return [r["event_id"] for r in rows]
 
 
 def get_daily_digest(digest_id: str) -> Optional[dict]:
