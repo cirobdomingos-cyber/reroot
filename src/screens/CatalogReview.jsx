@@ -36,6 +36,15 @@ function fmtWhen(iso) {
   return `${day} · ${time}`
 }
 
+// For real timestamps (created_at, reviewed_at): stored as UTC with an
+// offset, so let Date convert to the viewer's local time.
+function fmtStamp(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
 const page = { padding: '16px 16px 110px', color: 'var(--text)', minHeight: '100%' }
 const card = {
   background: 'var(--bg2)', border: '1px solid var(--line)', borderRadius: 14,
@@ -228,7 +237,9 @@ function RequestDetail({ id, email }) {
         <Thumb src={form.image_url} size={96} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-            {req.submitted_by_name ? `${req.submitted_by_name} sugeriu` : 'Sugestão'} · {fmtWhen(req.created_at)}
+            {/* created_at is a real UTC timestamp (with offset), unlike event
+                dates — fmtStamp converts it; fmtWhen would show it 3h off. */}
+            {req.submitted_by_name ? `${req.submitted_by_name} sugeriu` : 'Sugestão'} · {fmtStamp(req.created_at)}
           </div>
           {req.ig_handle && <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>@{req.ig_handle}</div>}
           <a
@@ -245,10 +256,25 @@ function RequestDetail({ id, email }) {
         </div>
       </div>
 
+      {/* Every curator gets the same push, so the rest will open requests
+          someone already decided. Say who and when, and point at the result,
+          instead of leaving them to discover it from a greyed-out form. */}
       {resolved && (
-        <Muted>
-          {req.status === 'approved' ? '✅ Já aprovado' : 'Já recusado'}{req.reviewed_by ? ` por ${req.reviewed_by}` : ''}.
-        </Muted>
+        <div style={{ ...card, flexDirection: 'column', alignItems: 'stretch', gap: 8, borderColor: req.status === 'approved' ? 'var(--lime)' : 'var(--line)' }}>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            {req.status === 'approved' ? '✅ Essa adição já foi aprovada' : 'Essa adição já foi recusada'}
+            {req.reviewed_by_name ? ` por ${req.reviewed_by_name}` : ''}
+          </div>
+          {req.reviewed_at && <Muted>{fmtStamp(req.reviewed_at)}</Muted>}
+          {req.status === 'approved' && req.catalog_event_id && (
+            <button
+              onClick={() => navigate(`/events?event=${encodeURIComponent(req.catalog_event_id)}`)}
+              style={{ ...primaryBtn, alignSelf: 'flex-start' }}
+            >
+              Ver no catálogo
+            </button>
+          )}
+        </div>
       )}
 
       <div>

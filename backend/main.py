@@ -5443,6 +5443,25 @@ class CatalogRequestDecision(BaseModel):
     note: str = ""
 
 
+def _reviewer_name(email: str) -> str:
+    """Name to show for the curator who resolved a request.
+
+    Every curator gets the same push, so the others will open requests that
+    are already decided. Reviews are recorded by email — that's how curator
+    roles are granted — but "já aprovado por ana.souza@gmail.com" reads like
+    a log line; they should see a person. Falls back to the part before the
+    @ when that curator has never signed into the app.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return ""
+    ids = db.user_ids_for_emails([email])
+    name = _user_display_name(ids[0]) if ids else ""
+    if name and name != "Alguém":
+        return name
+    return email.split("@")[0]
+
+
 def _catalog_request_out(row: dict) -> dict:
     handle = (row.get("ig_handle") or "").lower()
     return {
@@ -5459,6 +5478,8 @@ def _catalog_request_out(row: dict) -> dict:
         "submitted_by_name": _user_display_name(row["submitted_by"]) if row.get("submitted_by") else "",
         "created_at": row["created_at"],
         "reviewed_by": row.get("reviewed_by") or "",
+        "reviewed_by_name": _reviewer_name(row.get("reviewed_by") or ""),
+        "reviewed_at": row.get("reviewed_at") or "",
         "catalog_event_id": row.get("enriched_event_id") or "",
     }
 
