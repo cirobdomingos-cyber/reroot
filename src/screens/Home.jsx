@@ -77,6 +77,11 @@ export default function Home() {
   // the dates and RSVP state needed to split pending from accepted.
   const [friendRequests, setFriendRequests] = useState([])
   const [curation, setCuration] = useState({ is_curator: false, events: 0, accounts: 0 })
+  // Events the user said "não vou" to, by every id they answer to: the
+  // private event's own id AND the catalog event it mirrors. A friend
+  // RSVPing the public copy of a night you already turned down should
+  // not put it back on your Home under another name.
+  const [declinedIds, setDeclinedIds] = useState(() => new Set())
   const [groupEventsPending, setGroupEventsPending] = useState([])
   const [groupEventsAccepted, setGroupEventsAccepted] = useState([])
   // Live event catalog — fetched from backend instead of using the stale
@@ -122,6 +127,7 @@ export default function Home() {
     fetchUserGroupEvents(googleId).then(events => {
       const pending = []
       const accepted = []
+      const declined = new Set()
       for (const ev of (events || [])) {
         const t = ev.dateStart ? Date.parse(ev.dateStart) : NaN
         if (Number.isNaN(t) || t <= now) continue  // future-only on Home
@@ -133,10 +139,15 @@ export default function Home() {
         // visible inside the group they belong to), but they are an
         // answer already given — neither pending nor accepted. Asking
         // again on Home is exactly the nagging "Não vou" was for.
-        if (ev.youDeclined && !state.rsvps[ev.id]) continue
+        if (ev.youDeclined && !state.rsvps[ev.id]) {
+          declined.add(ev.id)
+          if (ev.sourceEventId) declined.add(ev.sourceEventId)
+          continue
+        }
         if (state.rsvps[ev.id]) accepted.push(norm)
         else pending.push(norm)
       }
+      setDeclinedIds(declined)
       setGroupEventsPending(pending)
       setGroupEventsAccepted(accepted)
     })
@@ -155,12 +166,18 @@ export default function Home() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [state.googleUser?.id, state.googleUser?.email])
 
+  // Home never mentions an event you turned down — not as a pendência,
+  // not as "amigos vão", not in the ticker. Saying "não vou" should
+  // take it off the screen you open every day; it stays reachable in
+  // the group and in Comunidade, where you go looking on purpose.
+  const homeFriendsFeed = friendsFeed.filter(ev => !declinedIds.has(ev.event_id))
+
   // "Amigos vão" tile — counts (friend, event) pairs across all
   // upcoming events. One friend going to three different events = 3.
   // Reads as "friend-confirmations you might want to join" rather
   // than "distinct friends with any plans". Total social activity
   // signal beats unique-person count for surfacing FOMO.
-  const friendGoingCount = friendsFeed.reduce(
+  const friendGoingCount = homeFriendsFeed.reduce(
     (sum, ev) => sum + (ev.friends_going?.length || 0),
     0,
   )
@@ -171,7 +188,7 @@ export default function Home() {
   // per row instead of scanning friendsFeed for each event.
   const friendsByEventId = (() => {
     const map = {}
-    for (const ev of friendsFeed) {
+    for (const ev of homeFriendsFeed) {
       if (ev.event_id && Array.isArray(ev.friends_going) && ev.friends_going.length) {
         map[ev.event_id] = ev.friends_going
       }
@@ -533,7 +550,6 @@ export default function Home() {
           might interest you. Renders nothing at all when there's
           nothing pending, no empty state and no "0 pendências". */}
       <PendingSection
-        myGoogleId={state.googleUser?.id}
         invites={groupEventsPending}
         onOpenInvite={ev => {
           if (ev.group_id || ev.groupId) navigate(`/groups/${ev.group_id || ev.groupId}`)
@@ -558,7 +574,7 @@ export default function Home() {
           noise. Tap a row to open the event; tap the section header to
           see the full list in Community. */}
       {(() => {
-        const friendsFeedFiltered = friendsFeed.filter(ev => !state.rsvps[ev.event_id])
+        const friendsFeedFiltered = homeFriendsFeed.filter(ev => !state.rsvps[ev.event_id])
         if (friendsFeedFiltered.length === 0 || state.privacy?.showInFriendSuggestions === false) {
           return null
         }
@@ -1102,7 +1118,6 @@ function PendingMoreRow({ label, onClick }) {
 }
 
 function PendingSection({
-  myGoogleId,
   invites = [], onOpenInvite, onAcceptInvite, onDeclineInvite, onSeeAllInvites,
   friendRequests = [], onOpenFriendRequest, onAnswerFriendRequest, onSeeAllFriendRequests,
   curation, onOpenCuration,
@@ -1178,15 +1193,10 @@ function PendingSection({
                 label: t.home_pending_invite_yes ?? '✓ Vou', primary: true, disabled: busyId === ev.id,
                 onClick: () => answer(ev.id, () => onAcceptInvite(ev)),
               },
-              // No "Não vou" on your own event. On group-tagged events the
-              // creator isn't auto-RSVPed, so their own event shows up here
-              // unconfirmed — and declining it is a no-op the backend
-              // refuses (the creator deletes an event, they don't leave it).
-              // The row would just vanish until the next load.
-              ...(ev.createdBy && ev.createdBy === myGoogleId ? [] : [{
+              {
                 label: t.home_pending_invite_no ?? '✕ Não vou', disabled: busyId === ev.id,
                 onClick: () => answer(ev.id, () => onDeclineInvite(ev)),
-              }]),
+              },
             ]}
           />
         ))}

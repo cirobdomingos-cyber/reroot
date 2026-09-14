@@ -222,6 +222,21 @@ export default function MyRsvps() {
   // to begin with, just remove them from the invitee list. Creators
   // never appear in Pendentes (they're auto-RSVP'd at create time)
   // so we don't need the role-aware branch here.
+  // "Vou" from the pending list — same local RSVP + backend sync the
+  // event screen does, so the row moves to Confirmados without a trip
+  // through the detail view.
+  function acceptInvite(ev) {
+    const googleId = state.googleUser?.id
+    if (!googleId) return
+    const ds = ev.dateStart || ev.date_start || ''
+    const venue = ev.groupName || ev.group_name || ev.venue || ''
+    dispatch({
+      type: 'TOGGLE_RSVP',
+      payload: { eventId: ev.id, dateStart: ds, name: ev.name, venue },
+    })
+    syncRsvp(googleId, { id: ev.id, name: ev.name, venue, dateStart: ds, url: '' }, true)
+  }
+
   function declineInvite(ev) {
     if (!confirm(`Recusar convite pra "${ev.name || ev.id}"?`)) return
     if (!state.googleUser?.id) return
@@ -297,6 +312,7 @@ export default function MyRsvps() {
               key={ev.id}
               event={ev}
               onOpen={() => openEvent({ id: ev.id })}
+              onAccept={() => acceptInvite(ev)}
               onDecline={() => declineInvite(ev)}
             />
           ))}
@@ -460,33 +476,36 @@ function FriendEventRow({ event: ev, kind = 'public', onOpen, onFriend }) {
   )
 }
 
-function PendingRow({ event: ev, onOpen, onDecline }) {
-  // Pending invite — distinct from confirmed RSVPs by the terra
-  // "Convite" pill. Trash button declines the invite (removes the
-  // user from the event's invitee list) so the row vanishes — without
-  // it, the only way out of a pending invite was to confirm + cancel,
-  // which left the row bouncing back to pending.
+const answerBtn = {
+  padding: '6px 10px', borderRadius: 999, cursor: 'pointer',
+  fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+}
+
+function PendingRow({ event: ev, onOpen, onAccept, onDecline }) {
+  // Both answers, same words as the event screen and Home. The decline
+  // used to be a bare trash icon with no accept next to it, so the two
+  // halves of one decision lived on different screens and the icon read
+  // as "delete this event" rather than "não vou".
   const time = (ev.dateStart || '').slice(11, 16)
-  const isPlan = ev.isPersonalPlan
   const trailing = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <span style={{
-        fontSize: 10, fontWeight: 700, color: 'var(--terra)',
-        background: 'var(--terra-pale)', padding: '4px 8px', borderRadius: 6,
-        letterSpacing: 0.3,
-      }}>
-        {isPlan ? '🎲 Convite' : '👥 Grupo'}
-      </span>
+      {onAccept && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onAccept() }}
+          style={{ ...answerBtn, border: 'none', background: 'var(--sage)', color: 'var(--on-lime)' }}
+        >
+          Vou
+        </button>
+      )}
       {onDecline && (
         <button
           onClick={(e) => { e.stopPropagation(); onDecline() }}
-          title="Recusar convite"
           style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+            ...answerBtn, border: '1px solid var(--border)',
+            background: 'transparent', color: 'var(--charcoal-mid)',
           }}
         >
-          🗑
+          Não vou
         </button>
       )}
     </div>

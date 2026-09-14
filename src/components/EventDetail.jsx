@@ -281,12 +281,14 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
   // Already said no. The event is still here because it belongs to a
   // group they're in — declining a direct invite still removes it.
   const youDeclined = !!(ev.isGroupEvent && ev.youDeclined && !rsvped)
-  const canDecline = !!(
-    ev.isGroupEvent && googleId && !rsvped && !youDeclined
-    && ev.createdBy !== googleId
-    && !(ev.coHostIds || []).includes(googleId)
-    && (ev.extraInviteeIds || []).includes(googleId)
-  )
+  // Every private event gets the same pair of answers, for everyone who
+  // can see it — creator and co-hosts included. It used to be offered
+  // only to invitees who hadn't answered yet, so the same event showed
+  // "Vou / Não vou" to one person and a lone "Cancelar confirmação" to
+  // another, and changing your mind meant finding a different control
+  // on a different screen. Catalog events keep the single save button:
+  // nobody invited you to those.
+  const canDecline = !!(ev.isGroupEvent && googleId)
   async function handleDecline() {
     // groupId is only set for viewers who are in the tagged group —
     // exactly the case where the event survives the decline. Outsiders
@@ -968,51 +970,52 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           />
         )}
 
-        {youDeclined ? (
-          // Answered "não vou", event kept because it's the group's.
-          // Says so plainly and leaves one way back — no second
-          // "Não vou" to press, since that's the state they're in.
-          <div style={{
-            padding: '14px 16px', borderRadius: 12,
-            border: '1px solid var(--border)', background: 'var(--cream)',
-          }}>
-            <div style={{
-              fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
-              marginBottom: 4,
-            }}>
-              Você não vai nesse
+        {canDecline ? (
+          // The two answers, always both, with the current one marked.
+          // A toggle rather than a branch: whatever you picked, the other
+          // option is right there, so changing your mind never means
+          // hunting for a different control somewhere else.
+          <>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={rsvped ? undefined : onRsvp}
+                aria-pressed={rsvped}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12,
+                  border: rsvped ? 'none' : '1.5px solid var(--border)',
+                  background: rsvped ? 'var(--sage)' : 'transparent',
+                  color: rsvped ? 'var(--on-lime)' : 'var(--charcoal)',
+                  fontSize: 14, fontWeight: 700,
+                  cursor: rsvped ? 'default' : 'pointer',
+                }}
+              >
+                {rsvped ? '✓ Vou' : 'Vou'}
+              </button>
+              <button
+                onClick={youDeclined ? undefined : handleDecline}
+                aria-pressed={youDeclined}
+                disabled={declining}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12,
+                  border: youDeclined ? 'none' : '1.5px solid var(--border)',
+                  background: youDeclined ? 'var(--terra-pale)' : 'transparent',
+                  color: youDeclined ? 'var(--terra)' : 'var(--charcoal-mid)',
+                  fontSize: 14, fontWeight: 700,
+                  cursor: declining ? 'wait' : youDeclined ? 'default' : 'pointer',
+                }}
+              >
+                {declining ? '…' : youDeclined ? '✓ Não vou' : 'Não vou'}
+              </button>
             </div>
-            <div style={{
-              fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5,
-              marginBottom: 12,
-            }}>
-              Continua aparecendo porque é do grupo. Mudou de ideia?
-            </div>
-            <button className="btn btn--primary" onClick={onRsvp} style={{ width: '100%' }}>
-              Mudei de ideia, vou
-            </button>
-          </div>
-        ) : canDecline ? (
-          // Invited to a private event and haven't answered: give both
-          // answers equal weight. Before, the only way to say no was the
-          // trash icon in Meus eventos, and the host never found out.
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn btn--primary" onClick={onRsvp} style={{ flex: 1 }}>
-              Vou
-            </button>
-            <button
-              onClick={handleDecline}
-              disabled={declining}
-              style={{
-                flex: 1, padding: '12px', borderRadius: 12,
-                background: 'transparent', border: '1.5px solid var(--border)',
-                color: 'var(--charcoal-mid)', fontSize: 14, fontWeight: 700,
-                cursor: declining ? 'wait' : 'pointer',
-              }}
-            >
-              {declining ? '…' : 'Não vou'}
-            </button>
-          </div>
+            {youDeclined && ev.groupId && (
+              <div style={{
+                marginTop: 8, fontSize: 12, lineHeight: 1.5,
+                color: 'var(--charcoal-mid)',
+              }}>
+                Continua aqui porque é um evento do grupo. Mudou de ideia? É só tocar em "Vou".
+              </div>
+            )}
+          </>
         ) : (
           <button className="btn btn--primary" onClick={onRsvp}>
             {rsvped

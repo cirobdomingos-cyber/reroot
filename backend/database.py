@@ -586,6 +586,20 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # column already present
 
+        # Which fields a human deliberately edited on this row. An event
+        # created from an Instagram link follows its catalog twin for
+        # everything else (see _group_event_to_frontend), so the two stop
+        # being a snapshot and a live copy of the same post. A field in
+        # here is pinned: the group's "a gente chega 18h" survives the
+        # catalog saying 21h. Empty for legacy rows, which is right —
+        # nobody edited them, so they pick up the good data.
+        try:
+            conn.execute(
+                "ALTER TABLE group_events ADD COLUMN edited_fields TEXT NOT NULL DEFAULT '[]'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
+
         # Migration: drop NOT NULL on group_id so personal plans (group_id
         # IS NULL + extra_invitee_ids non-empty) are insertable. SQLite has
         # no ALTER COLUMN, so we rebuild the table when the existing column
@@ -3718,6 +3732,11 @@ def _hydrate_invitees(row: dict) -> dict:
         row["declined_ids"] = json.loads(raw_dec) if isinstance(raw_dec, str) else (raw_dec or [])
     except (json.JSONDecodeError, TypeError):
         row["declined_ids"] = []
+    raw_ed = row.get("edited_fields") or "[]"
+    try:
+        row["edited_fields"] = json.loads(raw_ed) if isinstance(raw_ed, str) else (raw_ed or [])
+    except (json.JSONDecodeError, TypeError):
+        row["edited_fields"] = []
     return row
 
 
@@ -3999,8 +4018,13 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
     left them on the invitee list, so the row bounced back to "pending";
     removing them from the list alone made them disappear for the host.
 
-    The creator can't decline their own event (they delete it instead),
-    so the creator is never recorded. Returns True if anything changed."""
+    The creator can decline too. Organizing something is not the same as
+    going to it — you can put the group's rolê together and not make it —
+    and refusing to record that left the creator with a single toggle
+    where everyone else had an answer. They keep seeing the event either
+    way (created_by grants visibility on its own), and they never see
+    themselves in their own "quem recusou" list, which excludes the
+    viewer. Returns True if anything changed."""
     if not event_id or not google_id:
         return False
     with get_conn() as conn:
@@ -4019,13 +4043,14 @@ def decline_event_invite(event_id: str, google_id: str) -> bool:
         except (json.JSONDecodeError, TypeError):
             declined = []
         was_invited = google_id in ids
+        is_creator = google_id == row["created_by"]
         had_rsvp = conn.execute(
             "DELETE FROM rsvps WHERE event_id = ? AND google_id = ?", (event_id, google_id),
         ).rowcount > 0
-        if not (was_invited or had_rsvp):
+        if not (was_invited or had_rsvp or is_creator):
             return False
         ids = [g for g in ids if g != google_id]
-        if google_id != row["created_by"] and google_id not in declined:
+        if google_id not in declined:
             declined.append(google_id)
         conn.execute(
             "UPDATE group_events SET extra_invitee_ids = ?, declined_ids = ? WHERE id = ?",
@@ -4112,6 +4137,37 @@ def unlink_event_from_group(event_id: str, group_id: str) -> Optional[dict]:
     return get_group_event(event_id)
 
 
+def find_catalog_event_id_by_shortcode(shortcode: str) -> str:
+    """The catalog's id for an Instagram post, or "".
+
+    A post reaches the catalog two ways and they use different ids: a
+    curator-approved suggestion is "submitted_igpost_<shortcode>", while
+    the daily scrape of a tracked handle stores external_id
+    "ig_<handle>_<shortcode>". Only the first was ever looked up, so
+    pasting the link to a post the catalog already had — which is most
+    of them, since the handles are tracked — created a private event
+    linked to nothing, drifting from the public one it came from.
+    """
+    if not shortcode:
+        return ""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM events WHERE id = ?", (f"submitted_igpost_{shortcode}",),
+        ).fetchone()
+        if row:
+            return row["id"]
+        # Scraped rows are "ig_<handle>_<shortcode>". The handle can hold
+        # underscores and dots, so match on the tail instead of splitting.
+        # "_" is LIKE's single-char wildcard and matches a literal one too,
+        # which is all this needs.
+        row = conn.execute(
+            "SELECT id FROM events WHERE source = 'instagram' AND external_id LIKE ? "
+            "ORDER BY fetched_at DESC LIMIT 1",
+            (f"%_{shortcode}",),
+        ).fetchone()
+    return row["id"] if row else ""
+
+
 def find_group_event_by_source(group_id: str, source_event_id: str) -> Optional[dict]:
     """Return an existing group_events row that was forked from the same
     catalog event into the same group, if any. Used to short-circuit
@@ -4191,10 +4247,17 @@ def update_group_event(event_id: str, fields: dict) -> Optional[dict]:
     updates = {k: v for k, v in (fields or {}).items() if k in allowed and v is not None}
     if not updates:
         return get_group_event(event_id)
+    # Editing a field pins it: from here on this row keeps its own value
+    # even when its catalog twin says otherwise. Someone typed it on
+    # purpose, so the source stops speaking for that field.
+    current = get_group_event(event_id) or {}
+    pinned = sorted({*(current.get("edited_fields") or []), *updates.keys()})
     set_clauses = ", ".join(f"{k} = ?" for k in updates)
-    params = list(updates.values()) + [event_id]
+    params = list(updates.values()) + [json.dumps(pinned), event_id]
     with get_conn() as conn:
-        conn.execute(f"UPDATE group_events SET {set_clauses} WHERE id = ?", params)
+        conn.execute(
+            f"UPDATE group_events SET {set_clauses}, edited_fields = ? WHERE id = ?", params,
+        )
         # Keep the denormalized copy on rsvps in sync. Those columns are
         # what get_rsvps_for_day() reads, so without this a host who moves
         # an event leaves every attendee scheduled to be reminded on the

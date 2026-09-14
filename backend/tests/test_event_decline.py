@@ -82,11 +82,18 @@ def test_decline_twice_does_not_duplicate(db, event):
     assert db.get_group_event(event)["declined_ids"] == ["ana"]
 
 
-def test_creator_is_never_recorded_as_declined(db, event):
-    _rsvp(db, "host", event)
-    db.decline_event_invite(event, "host")
-    assert db.get_group_event(event)["declined_ids"] == []
-
+def test_creator_can_decline_their_own_event(db, event):
+    """Organizing a rolê isn't the same as going to it. The creator used
+    to get a bare RSVP toggle where everyone else got an answer."""
+    db.upsert_rsvp(google_id="host", event_id=event, event_name="Churras",
+                   event_venue="", event_date="2026-12-01T20:00:00", event_url="")
+    assert db.decline_event_invite(event, "host") is True
+    ge = db.get_group_event(event)
+    assert "host" in ge["declined_ids"]
+    # Still theirs to see — created_by grants visibility on its own.
+    assert event in {e["id"] for e in db.get_events_visible_to_user("host")}
+    # And they never see themselves in their own "quem recusou" list.
+    assert "host" not in _ids(db.get_event_declined(event, "host"))
 
 def test_stranger_cannot_create_a_decline(db, event):
     assert db.decline_event_invite(event, "stranger") is False

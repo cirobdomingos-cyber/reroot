@@ -1504,6 +1504,71 @@ def _is_in_curitiba(ev) -> bool:
     return True
 
 
+_SOURCE_BACKED_FIELDS = ("name", "venue", "date_start", "date_end", "description", "image_url")
+
+
+def _merge_source_event(ge: dict) -> dict:
+    """Overlay the catalog twin's current values onto a private event that
+    was created from the same Instagram post.
+
+    A private event built from an IG link used to be a photograph of one
+    client-side parse of that post: wrong time, the handle sitting in the
+    venue line, no cover image, and no way to ever improve — while the
+    catalog held the same post enriched, re-scraped and correct. Two
+    cards for one night out, disagreeing with each other.
+
+    They are one post, so they read one set of facts. The private layer
+    (who's invited, the note, co-hosts, RSVPs) stays on this row, and any
+    field a human actually edited is pinned in edited_fields and wins.
+    Falls back to the stored copy when the catalog row is gone.
+    """
+    src_id = (ge.get("source_event_id") or "").strip()
+    if not src_id:
+        # Rows created before the link existed carry only the post URL.
+        # Resolve it once and write it down — every event made from a
+        # link the catalog already had is in this state, and they are
+        # the ones showing the wrong time and no cover today.
+        src_id = db.find_catalog_event_id_by_shortcode(
+            _ig_shortcode(_source_url_of(ge))
+        )
+        if not src_id:
+            return ge
+        db.set_group_event_source(ge["id"], src_id)
+    src = db.get_event_by_id(src_id)
+    if not src:
+        return ge
+    pinned = set(ge.get("edited_fields") or [])
+    merged = dict(ge)
+    values = {
+        "name": src.name,
+        "venue": src.venue,
+        "date_start": src.date_start,
+        "date_end": src.date_end,
+        "description": src.description,
+        "image_url": src.image_url,
+    }
+    for field in _SOURCE_BACKED_FIELDS:
+        if field in pinned:
+            continue
+        value = values.get(field)
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            continue  # the catalog has nothing better to say
+        if field == "description":
+            # Keep the "Ver original:" suffix this row carries — it's how
+            # the private event links back to the post.
+            merged[field] = _description_with_source(value, _source_url_of(ge))
+        else:
+            merged[field] = value
+    return merged
+
+
+def _source_url_of(ge: dict) -> str:
+    m = re.search(r"Ver original:\s*(\S+)", ge.get("description") or "")
+    return m.group(1).rstrip(".,;") if m else ""
+
+
 def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "") -> dict:
     """Shape a `group_events` row into the EnrichedEvent dict the frontend
     consumes. Used by GET /events/{id} and GET /events/group so both paths
@@ -1518,6 +1583,8 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     unknown (empty string), we default to hiding the group context — a
     safe-by-default for any unauthenticated read paths."""
     from datetime import datetime as _dt
+    # One post, one set of facts — see _merge_source_event.
+    ge = _merge_source_event(ge)
     ds = ge.get("date_start") or ""
     try:
         dt = _dt.fromisoformat(ds.replace("Z", "+00:00")) if ds else None
@@ -1644,6 +1711,11 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # against the source venue so the original Painel still gets
         # credit for downstream attention.
         "sourceIgHandle": ge.get("source_ig_handle") or "",
+        # The catalog event this one mirrors, when it came from a post the
+        # catalog also has. The frontend uses it to treat the two as one
+        # event — chiefly so declining the private one also quiets the
+        # public one on Home.
+        "sourceEventId": ge.get("source_event_id") or "",
     }
 
 
@@ -1926,8 +1998,14 @@ def _queue_catalog_request(event: dict, req, background_tasks: BackgroundTasks) 
     shortcode = _ig_shortcode(req.source_url)
     if not shortcode:
         return
-    existing = _catalog_event_id_for(shortcode)
-    if db.get_event_by_id(existing):
+    # Bind to the catalog's copy of this post whichever way it got there:
+    # a curator-approved suggestion, or the daily scrape of a tracked
+    # handle. Only the first id shape was checked here before, so pasting
+    # a link to a post from a handle we already track — most posts —
+    # produced a private event bound to nothing, which is how one night
+    # out ended up as two cards that disagreed.
+    existing = db.find_catalog_event_id_by_shortcode(shortcode)
+    if existing:
         db.set_group_event_source(event["id"], existing)
         return
     if db.find_catalog_request_by_shortcode(shortcode):
