@@ -195,7 +195,7 @@ function CreateGroupSheet({ open, onClose, onCreate, t }) {
             <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={onClose} style={backdropStyle} />
             <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }} className="aue-sheet" style={sheetStyle}>
               <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
               </div>
@@ -274,7 +274,7 @@ function JoinGroupSheet({ open, onClose, onJoin, t }) {
             <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={onClose} style={backdropStyle} />
             <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 350 }} style={sheetStyle}>
+              transition={{ type: 'spring', damping: 30, stiffness: 350 }} className="aue-sheet" style={sheetStyle}>
               <div style={{ display: 'flex', justifyContent: 'center', padding: '6px 0 12px' }}>
                 <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
               </div>

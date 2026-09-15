@@ -219,6 +219,7 @@ export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
       {open && (
         <motion.div
           key="event-drawer"
+          className="aue-drawer"
           initial={{ y: '100%' }}
           animate={{ y: 0 }}
           exit={{ y: '100%' }}

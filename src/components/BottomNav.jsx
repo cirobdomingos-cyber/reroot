@@ -4,13 +4,18 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 
 import { API_BASE } from '../lib/apiBase'
+import { useIsDesktop } from '../lib/useIsDesktop'
 
+// Bottom tab bar on phones; on a PC the same component renders as the left
+// sidebar (layout in globals.css), with the auê wordmark on top and Perfil
+// as its own item — on the phone Perfil lives behind the Home avatar.
 export default function BottomNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { state } = useApp()
   const t = useT()
   const a11y = state.accessibilityMode
+  const isDesktop = useIsDesktop()
 
   // Founder status — the Curar tab is now founder-only (full admin
   // shell: handle CRUD, curators management, usage stats, feedback).
@@ -95,6 +100,19 @@ export default function BottomNav() {
         </svg>
       ),
     },
+    isDesktop && {
+      path: '/profile',
+      label: t.nav_profile ?? 'Perfil',
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          style={glowStyle(active)}
+          stroke={stroke(active)}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/>
+        </svg>
+      ),
+    },
     // Founder-only tab. Curators (non-founder) get a narrower 'add
     // handle' affordance on the Sources page; this tab is the full admin
     // shell. Rightmost slot when present (Profile lives behind the Home
@@ -115,6 +133,11 @@ export default function BottomNav() {
 
   return (
     <nav className="bottom-nav">
+      {isDesktop && (
+        <div className="nav-brand neon-display neon-glow-mag" onClick={() => navigate('/home')}>
+          auê
+        </div>
+      )}
       {NAV_ITEMS.map(({ path, label, icon }) => {
         const active = pathname === path || (path === '/admin/ig' && pathname.startsWith('/admin'))
         return (

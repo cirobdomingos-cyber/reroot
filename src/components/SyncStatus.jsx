@@ -32,6 +32,7 @@ export default function SyncStatus({ lang = 'pt' }) {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -60, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className="aue-toast"
           style={{
             position: 'fixed', top: 48, left: 16, right: 16,
             zIndex: 200,

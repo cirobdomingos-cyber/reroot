@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, PROFILES, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
+import { useIsDesktop } from '../lib/useIsDesktop'
 import { useT } from '../i18n'
 import {
   fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents,
@@ -65,6 +66,7 @@ function eventPriorityRank(ev, priorityMoods) {
 
 export default function Home() {
   const { state, dispatch } = useApp()
+  const isDesktop = useIsDesktop()
   const navigate = useNavigate()
   const t = useT()
 
@@ -374,7 +376,8 @@ export default function Home() {
       if (ra !== rb) return ra - rb
       return homeEffectiveStartTs(a) - homeEffectiveStartTs(b)
     })
-    .slice(0, 3)
+    // PC shows them as a 2-column grid; 3 would leave a hole.
+    .slice(0, isDesktop ? 6 : 3)
 
   // Activity ticker counts — replaces the previous stat tiles.
   // "rolando" = total events in the live catalog; falls back to a
@@ -388,86 +391,14 @@ export default function Home() {
   const versionStamp = `V.${String(_now.getFullYear() % 100).padStart(2, '0')}${String(_weekOfYear).padStart(2, '0')}`
   const semana = String(_weekOfYear).padStart(2, '0')
 
-  return (
-    <div>
-      {/* Brand block — Neon Boteco direction. 84px "auê" wordmark in
-          magenta with magenta glow, mono caption underneath. Avatar tap
-          shortcuts to Profile (replaces the old Perfil nav tab). */}
-      <div style={{ padding: '20px 18px 16px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'flex-start',
-          justifyContent: 'space-between', gap: 12,
-        }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="neon-display neon-glow-mag" style={{
-              fontSize: 84, lineHeight: 0.85,
-            }}>
-              auê
-            </div>
-            <div className="neon-mono" style={{
-              fontSize: 10, marginTop: 8,
-              letterSpacing: '0.24em', textTransform: 'uppercase',
-              color: 'var(--cyan)',
-            }}>
-              ▸ CWB.NIGHT.LOG // {versionStamp}
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/profile')}
-            aria-label={t.nav_profile ?? 'Perfil'}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: 0, flexShrink: 0, borderRadius: '50%',
-              marginTop: 6,
-            }}
-          >
-            <Avatar
-              src={myPicture(state)}
-              name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
-              size={40}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Activity ticker — three colored counts in mono, separated by
-          line dividers top + bottom. Replaces the old stat tiles; the
-          tile-tap routes are folded into the friends/confirmed section
-          headers below (each "Ver tudo →" jumps to /my-rsvps). */}
-      <div className="neon-mono" style={{
-        borderTop: '1px solid var(--line)',
-        borderBottom: '1px solid var(--line)',
-        padding: '8px 18px',
-        display: 'flex', gap: 20, overflowX: 'auto',
-        scrollbarWidth: 'none',
-      }}>
-        <span style={{
-          fontSize: 11, color: 'var(--lime)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {rsvpCount} {rsvpCount === 1 ? 'confirmado' : 'confirmados'}
-        </span>
-        <span style={{
-          fontSize: 11, color: 'var(--magenta)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {friendGoingCount} {friendGoingCount === 1 ? 'amigo vai' : 'amigos vão'}
-        </span>
-        <span style={{
-          fontSize: 11, color: 'var(--cyan)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {rolandoCount} rolando
-        </span>
-      </div>
-
-      {/* Push permission banner — sits between the activity ticker and
-          the greeting for users who haven't opted in (skipped the
-          onboarding primer or are on a fresh device). One-tap subscribe
-          + dismiss X. Hidden permanently after dismiss (via state) or
-          subscribe (real subscription registered). */}
-      <PushBanner state={state} dispatch={dispatch} />
-
+  // ── Home sections ──
+  // Built once, placed by layout. Phones stack them in the original order.
+  // On a PC (useIsDesktop) the things to act on and plan with — greeting,
+  // pendências, calendar, suggestions — fill the main column, and the
+  // social signals (friends going, your next events, community) sit in a
+  // sticky right rail.
+  const homeGreeting = (
+    <div className={isDesktop ? 'home-hero--desktop' : undefined}>
       {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
       <div style={{ padding: '24px 18px 14px' }}>
         <div className="neon-mono" style={{
@@ -539,6 +470,10 @@ export default function Home() {
         </div>
       )}
 
+    </div>
+  )
+  const homePending = (
+    <>
       {/* Pendências — one place for everything waiting on the user:
           event invites, friend requests, and (for curators) the review
           queues. Before this they were scattered — invites here, friend
@@ -566,6 +501,10 @@ export default function Home() {
         onOpenCuration={tab => navigate(tab === 'contas' ? '/curadoria?tab=contas' : '/curadoria')}
       />
 
+    </>
+  )
+  const homeFriends = (
+    <>
       {/* Friends activity feed — moved to top of the content stack so
           social signal leads ("oh, the gang is going to that"). Events
           the user is already RSVPed to are filtered out — they show
@@ -645,6 +584,10 @@ export default function Home() {
         )
       })()}
 
+    </>
+  )
+  const homeCalendar = (
+    <>
       {/* Week Calendar */}
       <div className="section-label" style={{
         color: 'var(--cyan)',
@@ -682,6 +625,10 @@ export default function Home() {
         onGroupRsvp={handleAcceptInvite}
       />
 
+    </>
+  )
+  const homeUpcoming = (
+    <>
       {/* Upcoming RSVPs */}
       {upcomingRsvps.length > 0 && (
         <>
@@ -745,11 +692,10 @@ export default function Home() {
         </>
       )}
 
-      {/* "Amigos vão" relocated to the top of the content stack — see
-          earlier section above the Pending invites block. Original
-          position kept as a comment marker so future surface ordering
-          changes have a paper trail. */}
-
+    </>
+  )
+  const homeSuggested = (
+    <>
       {/* Suggested events — tap a row to open the full hero on the
           Events tab; RSVP happens there. */}
       <div className="section-label" style={{
@@ -758,7 +704,9 @@ export default function Home() {
       }}>
         <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()} · {String(rolandoCount).padStart(2, '0')}</span>
       </div>
-      <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={isDesktop
+        ? { margin: '0 18px 12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }
+        : { margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {suggestedEvents.map(ev => {
           // For events that visually belong to today (recurring +
           // multi-day in-progress), override the row's date column to
@@ -787,7 +735,7 @@ export default function Home() {
           onClick={() => navigate('/events')}
           className="neon-mono"
           style={{
-            width: '100%', padding: 12, borderRadius: 12,
+            width: '100%', padding: 12, borderRadius: 12, gridColumn: '1 / -1',
             fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
             cursor: 'pointer', border: '1px solid var(--line)',
             background: 'transparent', color: 'var(--cyan)',
@@ -797,6 +745,10 @@ export default function Home() {
         </button>
       </div>
 
+    </>
+  )
+  const homeCommunity = (
+    <>
       {/* Community highlights */}
       <div className="section-label" style={{ color: 'var(--magenta)' }}>
         // {(t.home_community_label ?? 'Comunidade').toUpperCase()}
@@ -840,6 +792,118 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+    </>
+  )
+
+  return (
+    <div>
+      {/* Brand block — Neon Boteco direction. 84px "auê" wordmark in
+          magenta with magenta glow, mono caption underneath. Avatar tap
+          shortcuts to Profile (replaces the old Perfil nav tab). */}
+      <div style={{ padding: '20px 18px 16px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: 12,
+        }}>
+          <div style={{ minWidth: 0 }}>
+            {/* On a PC the sidebar already carries the wordmark. */}
+            {!isDesktop && (
+              <div className="neon-display neon-glow-mag" style={{
+                fontSize: 84, lineHeight: 0.85,
+              }}>
+                auê
+              </div>
+            )}
+            <div className="neon-mono" style={{
+              fontSize: 10, marginTop: 8,
+              letterSpacing: '0.24em', textTransform: 'uppercase',
+              color: 'var(--cyan)',
+            }}>
+              ▸ CWB.NIGHT.LOG // {versionStamp}
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/profile')}
+            aria-label={t.nav_profile ?? 'Perfil'}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              padding: 0, flexShrink: 0, borderRadius: '50%',
+              marginTop: 6,
+            }}
+          >
+            <Avatar
+              src={myPicture(state)}
+              name={state.userName || state.googleUser?.givenName || state.googleUser?.name}
+              size={40}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Activity ticker — three colored counts in mono, separated by
+          line dividers top + bottom. Replaces the old stat tiles; the
+          tile-tap routes are folded into the friends/confirmed section
+          headers below (each "Ver tudo →" jumps to /my-rsvps). */}
+      <div className="neon-mono" style={{
+        borderTop: '1px solid var(--line)',
+        borderBottom: '1px solid var(--line)',
+        padding: '8px 18px',
+        display: 'flex', gap: 20, overflowX: 'auto',
+        scrollbarWidth: 'none',
+      }}>
+        <span style={{
+          fontSize: 11, color: 'var(--lime)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
+          ● {rsvpCount} {rsvpCount === 1 ? 'confirmado' : 'confirmados'}
+        </span>
+        <span style={{
+          fontSize: 11, color: 'var(--magenta)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
+          ● {friendGoingCount} {friendGoingCount === 1 ? 'amigo vai' : 'amigos vão'}
+        </span>
+        <span style={{
+          fontSize: 11, color: 'var(--cyan)', letterSpacing: '0.1em',
+          whiteSpace: 'nowrap',
+        }}>
+          ● {rolandoCount} rolando
+        </span>
+      </div>
+
+      {/* Push permission banner — sits between the activity ticker and
+          the greeting for users who haven't opted in (skipped the
+          onboarding primer or are on a fresh device). One-tap subscribe
+          + dismiss X. Hidden permanently after dismiss (via state) or
+          subscribe (real subscription registered). */}
+      <PushBanner state={state} dispatch={dispatch} />
+
+      {isDesktop ? (
+        <div className="home-desktop-grid">
+          <div className="home-desktop-main">
+            {homeGreeting}
+            {homePending}
+            {homeCalendar}
+            {homeSuggested}
+          </div>
+          <aside className="home-desktop-rail">
+            {homeFriends}
+            {homeUpcoming}
+            {homeCommunity}
+          </aside>
+        </div>
+      ) : (
+        <>
+          {homeGreeting}
+          {homePending}
+          {homeFriends}
+          {homeCalendar}
+          {homeUpcoming}
+          {homeSuggested}
+          {homeCommunity}
+        </>
+      )}
 
       {/* Personal-plan creation sheet — opened by the "Criar um evento
           com amigos" CTA above. Same component Events.jsx mounts; both
@@ -889,7 +953,7 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
-            className="neon-card"
+            className="neon-card aue-toast"
             style={{
               position: 'fixed', bottom: 90, left: 16, right: 16, zIndex: 300,
               padding: '12px 16px',

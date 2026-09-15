@@ -79,6 +79,7 @@ export default function BadgeUnlockToast() {
           exit={{ opacity: 0, y: 16, scale: 0.95 }}
           transition={{ type: 'spring', damping: 22, stiffness: 280 }}
           onClick={openInProfile}
+          className="aue-toast"
           style={{
             position: 'fixed', bottom: 90, left: 16, right: 16,
             background: 'linear-gradient(135deg, #FFF4E5 0%, #FFE6C7 100%)',

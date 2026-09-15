@@ -501,3 +501,126 @@ input  { font-family: inherit; }
      above keeps real content clear of the real OS bar. */
   .status-bar { display: none; }
 }
+
+/* ── Tablet / narrow window (431–1023px) ──
+   Used to get the 390×844 phone mockup floating on black. Now the app
+   fills the window and the content column is capped so lines don't
+   stretch; the bottom nav stays. */
+@media (min-width: 431px) and (max-width: 1023px) {
+  body { padding: 0; background: var(--bg); display: block; }
+  .phone-shell {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .phone-shell::before, .status-bar { display: none; }
+  .screen-inner { max-width: 640px; margin: 0 auto; }
+  .bottom-nav { justify-content: center; gap: 28px; }
+}
+
+/* ── PC (≥1024px) ──
+   Grid shell: sidebar nav on the left, screens on the right. Keep in sync
+   with DESKTOP_QUERY in lib/useIsDesktop.js.
+
+   Containing block: sheets, drawers and toasts are `position: fixed` with
+   left/right/bottom 0 and rely on a transformed ancestor to stay inside
+   the app (on the phone mockup that was .phone-shell). Here the transform
+   moves to the screen area, so they cover the content column but never
+   the sidebar. */
+@media (min-width: 1024px) {
+  body { padding: 0; background: var(--bg); display: block; }
+  .phone-shell {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .phone-shell::before, .status-bar { display: none; }
+  .phone-shell > * { grid-column: 2; }
+  .app-screen-area { grid-row: 2; transform: translateZ(0); }
+
+  /* Bottom nav → sidebar */
+  .phone-shell > .bottom-nav {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    height: auto;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 4px;
+    padding: 28px 14px;
+    border-top: none;
+    border-right: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .nav-brand {
+    font-size: 48px;
+    line-height: 0.85;
+    padding: 0 14px 28px;
+    cursor: pointer;
+  }
+  .nav-item {
+    flex-direction: row;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 12px;
+  }
+  .nav-item--active { background: rgba(255, 43, 214, 0.08); }
+  .nav-item__label { font-size: 11px; }
+
+  /* Content column. Screens were designed as a phone column, so they get
+     a readable width; Home opts into the wide two-column layout. */
+  .screen-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 16px 24px 48px;
+  }
+  .screen-inner--wide { max-width: 1240px; }
+
+  /* Bottom sheets and toasts: centered, capped width instead of spanning
+     the whole content area. margin:auto centers a fixed box that has
+     left/right 0, and doesn't fight framer-motion's transform. */
+  .aue-sheet {
+    max-width: 560px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .aue-toast {
+    max-width: 420px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  /* Event detail is portaled to <body> as a full-screen drawer. On a PC
+     it becomes a right-hand panel so the list stays visible beside it. */
+  .aue-drawer {
+    left: auto !important;
+    width: min(640px, 100vw);
+    border-left: 1px solid var(--line);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.55);
+  }
+
+  /* Home — see the section comment in screens/Home.jsx */
+  .home-desktop-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 0 32px;
+    align-items: start;
+    padding-bottom: 24px;
+  }
+  .home-desktop-rail {
+    position: sticky;
+    top: 12px;
+    border-left: 1px solid var(--line);
+    padding-bottom: 12px;
+  }
+  .home-hero--desktop {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+  }
+}

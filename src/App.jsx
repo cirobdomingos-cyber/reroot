@@ -40,7 +40,10 @@ const pageVariants = {
 }
 const pageTransition = { duration: 0.22, ease: [0.4, 0, 0.2, 1] }
 
-function AnimatedPage({ children }) {
+// `wide`: on a PC the content column is capped at a readable width
+// (screens were built as a phone column); wide screens like Home, which
+// have their own two-column layout, get the full width.
+function AnimatedPage({ children, wide = false }) {
   return (
     <motion.div
       className="screen"
@@ -50,7 +53,7 @@ function AnimatedPage({ children }) {
       exit="exit"
       transition={pageTransition}
     >
-      <div className="screen-inner">{children}</div>
+      <div className={wide ? 'screen-inner screen-inner--wide' : 'screen-inner'}>{children}</div>
     </motion.div>
   )
 }
@@ -96,7 +99,7 @@ export default function App() {
       <InstallBanner />
 
       {/* Screen area — AnimatePresence key on pathname triggers exit/enter */}
-      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+      <div className="app-screen-area" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>
             <Route
@@ -115,7 +118,7 @@ export default function App() {
             <Route path="/partner-intro"   element={<Navigate to="/home" replace />} />
             <Route path="/diagnostic"      element={<Navigate to="/home" replace />} />
             <Route path="/journey"         element={<Navigate to="/home" replace />} />
-            <Route path="/home"    element={<AnimatedPage><Home /></AnimatedPage>} />
+            <Route path="/home"    element={<AnimatedPage wide><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />

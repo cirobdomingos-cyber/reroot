@@ -314,6 +314,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 10500 }} />
           <motion.div key="sheet" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 350 }}
+            className="aue-sheet"
             style={{
               position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--white)',
               borderRadius: '20px 20px 0 0',
