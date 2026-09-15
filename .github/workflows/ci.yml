@@ -1,0 +1,78 @@
+name: CI
+
+# The gate between a change and the customer. Runs on every pull request
+# into dev (staging) or main (production), and on pushes to both so a
+# direct push or the main → dev sync bot can't slip past unchecked.
+#
+# The job names below (backend, frontend, smoke) are the required status
+# checks in main's branch protection — renaming a job silently removes it
+# from the gate, so change both together. See docs/RELEASE_PROCESS.md.
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest
+      - name: Run tests
+        run: python -m pytest backend/tests -q
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # Errors fail the job; warnings don't (there are ~280 false "unused"
+      # warnings until eslint-plugin-react is added).
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test (phone, tablet, PC)
+        run: npx playwright test
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
