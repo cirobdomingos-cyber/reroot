@@ -1041,7 +1041,28 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
             : '🔗 Compartilhar'}
         </button>
 
-        {((onAddToGroup && !isVenue) || onEdit || canInvite || onDelete || rsvped) && (
+        {/* Kept alongside Compartilhar rather than behind "Mais" — both
+            are growth actions (get people TO an event vs. get an event
+            INTO the group people already share), same reasoning that
+            keeps Compartilhar in the open. It used to take opening "Mais"
+            first; group usage is a priority right now, so that extra tap
+            is gone. */}
+        {onAddToGroup && !isVenue && (
+          <button
+            onClick={onAddToGroup}
+            style={{
+              width: '100%', marginTop: 10,
+              padding: '12px', borderRadius: 12,
+              background: 'transparent', border: '1.5px solid var(--border)',
+              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            👥 Adicionar a um grupo
+          </button>
+        )}
+
+        {(onEdit || canInvite || onDelete || rsvped) && (
           <details style={{ marginTop: 10 }}>
             <summary
               style={{
@@ -1053,21 +1074,6 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
             >
               ⋯ Mais
             </summary>
-
-            {onAddToGroup && !isVenue && (
-              <button
-                onClick={onAddToGroup}
-                style={{
-                  width: '100%', marginTop: 10,
-                  padding: '12px', borderRadius: 12,
-                  background: 'transparent', border: '1.5px solid var(--border)',
-                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                👥 Adicionar a um grupo
-              </button>
-            )}
 
             {onEdit && (
               <button
