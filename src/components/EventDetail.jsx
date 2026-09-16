@@ -1026,51 +1026,12 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           </button>
         )}
 
-        {onAddToGroup && !isVenue && (
-          <button
-            onClick={onAddToGroup}
-            style={{
-              width: '100%', marginTop: 10,
-              padding: '12px', borderRadius: 12,
-              background: 'transparent', border: '1.5px solid var(--border)',
-              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            👥 Adicionar a um grupo
-          </button>
-        )}
-
-        {onEdit && (
-          <button
-            onClick={onEdit}
-            style={{
-              width: '100%', marginTop: 10,
-              padding: '12px', borderRadius: 12,
-              background: 'transparent', border: '1.5px solid var(--border)',
-              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            ✏️ Editar evento
-          </button>
-        )}
-
-        {canInvite && (
-          <button
-            onClick={() => setShowInvite(true)}
-            style={{
-              width: '100%', marginTop: 10,
-              padding: '12px', borderRadius: 12,
-              background: 'transparent', border: '1.5px solid var(--border)',
-              color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            👥 Convidar mais gente
-          </button>
-        )}
-
+        {/* Compartilhar stays in the open — getting other people to an
+            event is the point. Everything else moved behind "Mais": six
+            full-width buttons at identical weight made the actual
+            question (Vou / Não vou) look like just another row.
+            <details> rather than component state: no extra re-render
+            path, and the keyboard/screen-reader behaviour is native. */}
         <button
           onClick={handleShare}
           style={{
@@ -1088,28 +1049,88 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
             : '🔗 Compartilhar'}
         </button>
 
-        {/* Delete — only when caller decides the user has authority
-            (personal plan creator). Red text + ghost background so it
-            reads as destructive without a loud full-color button. */}
-        {onDelete && (
-          <button
-            onClick={onDelete}
-            style={{
-              width: '100%', marginTop: 10,
-              padding: '12px', borderRadius: 12,
-              background: 'transparent', border: '1.5px solid #FFCDD2',
-              color: '#C62828',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            🗑 Apagar plano
-          </button>
-        )}
+        {((onAddToGroup && !isVenue) || onEdit || canInvite || onDelete || rsvped) && (
+          <details style={{ marginTop: 10 }}>
+            <summary
+              style={{
+                listStyle: 'none', cursor: 'pointer',
+                padding: '12px', borderRadius: 12, textAlign: 'center',
+                border: '1.5px solid var(--border)',
+                color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+              }}
+            >
+              ⋯ Mais
+            </summary>
 
-        {rsvped && (
-          <div style={{ marginTop: 10 }}>
-            <AddToCalendar event={ev} />
-          </div>
+            {onAddToGroup && !isVenue && (
+              <button
+                onClick={onAddToGroup}
+                style={{
+                  width: '100%', marginTop: 10,
+                  padding: '12px', borderRadius: 12,
+                  background: 'transparent', border: '1.5px solid var(--border)',
+                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                👥 Adicionar a um grupo
+              </button>
+            )}
+
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                style={{
+                  width: '100%', marginTop: 10,
+                  padding: '12px', borderRadius: 12,
+                  background: 'transparent', border: '1.5px solid var(--border)',
+                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                ✏️ Editar evento
+              </button>
+            )}
+
+            {canInvite && (
+              <button
+                onClick={() => setShowInvite(true)}
+                style={{
+                  width: '100%', marginTop: 10,
+                  padding: '12px', borderRadius: 12,
+                  background: 'transparent', border: '1.5px solid var(--border)',
+                  color: 'var(--charcoal-mid)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                👥 Convidar mais gente
+              </button>
+            )}
+
+            {rsvped && (
+              <div style={{ marginTop: 10 }}>
+                <AddToCalendar event={ev} />
+              </div>
+            )}
+
+            {/* Delete — only when caller decides the user has authority
+                (personal plan creator). Red text + ghost background so it
+                reads as destructive without a loud full-color button. */}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                style={{
+                  width: '100%', marginTop: 10,
+                  padding: '12px', borderRadius: 12,
+                  background: 'transparent', border: '1.5px solid #FFCDD2',
+                  color: '#C62828',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                🗑 Apagar plano
+              </button>
+            )}
+          </details>
         )}
 
         {/* Venues keep the Google Maps link at the bottom; non-venue source link is shown above the description. */}

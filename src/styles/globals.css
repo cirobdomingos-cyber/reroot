@@ -408,6 +408,11 @@ input  { font-family: inherit; }
   margin-top: 20px;
 }
 
+/* <details> used as a disclosure button (event detail's "⋯ Mais").
+   Safari draws its own triangle via this pseudo-element, which
+   `list-style: none` alone doesn't remove. */
+summary::-webkit-details-marker { display: none; }
+
 /* ── Divider ── */
 .divider { height: 1px; background: var(--line); margin: 12px 0; }
 
