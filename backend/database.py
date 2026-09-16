@@ -2136,6 +2136,47 @@ def get_usage_stats(window_days: int = 30) -> dict:
     }
 
 
+def get_group_composition() -> dict:
+    """Are the groups that exist actually crews, or one person each?
+
+    The counts dashboard says how many groups were created and nothing
+    about what happened next, which is the difference between "people
+    don't understand groups" (they create one and stop) and "people never
+    invite anyone" (a broken invite flow). Solo-and-empty is the number
+    that separates those two.
+    """
+    with get_conn() as conn:
+        # Multi-group events (May 2026) carry a group_ids JSON list; older
+        # rows only have group_id. Match either, when the column exists.
+        has_group_ids = any(
+            r["name"] == "group_ids"
+            for r in conn.execute("PRAGMA table_info(group_events)").fetchall()
+        )
+        event_match = "ge.group_id = g.id"
+        if has_group_ids:
+            event_match += " OR ge.group_ids LIKE '%' || g.id || '%'"
+        rows = conn.execute(f"""
+            SELECT
+              (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id) AS members,
+              (SELECT COUNT(*) FROM group_events ge WHERE {event_match}) AS events
+            FROM groups g
+        """).fetchall()
+
+    total = len(rows)
+    members = [r["members"] for r in rows]
+    events = [r["events"] for r in rows]
+    return {
+        "total": total,
+        "with_more_than_one_member": sum(1 for m in members if m > 1),
+        "with_at_least_one_event": sum(1 for e in events if e > 0),
+        # Created, then nothing: nobody joined and nothing was planned.
+        "solo_and_empty": sum(1 for m, e in zip(members, events) if m <= 1 and e == 0),
+        "avg_members": round(sum(members) / total, 1) if total else 0,
+        "member_counts": sorted(members, reverse=True),
+        "event_counts": sorted(events, reverse=True),
+    }
+
+
 def get_weekly_summary() -> dict:
     """Founder's "what happened this week" report. Compares the last 7
     days against the prior 7 days for every metric — week-over-week
