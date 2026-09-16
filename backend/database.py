@@ -229,6 +229,39 @@ def init_db():
                 updated_at  TEXT NOT NULL
             )
         """)
+        # Migration: when the account was first seen. `updated_at` is
+        # overwritten on every save, so without this "new users today" had
+        # to be guessed from it — and guessed wrong: it counted everyone
+        # who opened the app today. Backfilled from updated_at, which for
+        # existing rows is the only date we have.
+        try:
+            conn.execute("ALTER TABLE user_states ADD COLUMN created_at TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # column already present
+        conn.execute("UPDATE user_states SET created_at = updated_at WHERE created_at = ''")
+        # One row per user per day they were active. user_states keeps a
+        # single overwritten timestamp, so the old "active users per day"
+        # chart could only ever place a user on their LAST active day —
+        # every earlier day read as empty. This table is the real series;
+        # it only knows days from the deploy that introduced it onward.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_activity (
+                google_id  TEXT NOT NULL,
+                day        TEXT NOT NULL,          -- YYYY-MM-DD (UTC)
+                PRIMARY KEY (google_id, day)
+            )
+        """)
+        # Seed the one day we do know for users who predate this table:
+        # their last save. Without it everyone reads "0 dias ativos" until
+        # they next open the app, which looks like a broken column rather
+        # than a young dataset. So: days before this deploy hold only each
+        # user's last visit; days after are complete.
+        conn.execute("""
+            INSERT OR IGNORE INTO user_activity (google_id, day)
+            SELECT google_id, substr(updated_at, 1, 10)
+            FROM user_states
+            WHERE updated_at != ''
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS rsvps (
                 google_id    TEXT NOT NULL,
@@ -1063,17 +1096,28 @@ def get_user_state(google_id: str) -> Optional[dict]:
 
 
 def upsert_user_state(google_id: str, state: dict) -> None:
-    """Insert or replace the full state blob for the given Google account."""
+    """Insert or replace the full state blob for the given Google account.
+
+    Also stamps first-seen (once) and marks the user active today. The
+    state save is the app's heartbeat — it fires on login, RSVP, and every
+    other mutation — so it's the cheapest honest source for "who was
+    active on which day" without a second request per session.
+    """
+    now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO user_states (google_id, state_json, updated_at)
-            VALUES (?, ?, ?)
+            INSERT INTO user_states (google_id, state_json, updated_at, created_at)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(google_id) DO UPDATE SET
                 state_json = excluded.state_json,
                 updated_at = excluded.updated_at
             """,
-            (google_id, json.dumps(state), datetime.now(timezone.utc).isoformat()),
+            (google_id, json.dumps(state), now, now),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO user_activity (google_id, day) VALUES (?, ?)",
+            (google_id, now[:10]),
         )
         conn.commit()
 
@@ -2043,27 +2087,51 @@ def get_usage_stats(window_days: int = 30) -> dict:
             "SELECT COUNT(DISTINCT google_id) FROM user_states WHERE updated_at >= ?",
             (month_ago,),
         ).fetchone()[0]
+        # Real signups today, from created_at. This used to count every
+        # user whose state was saved today — i.e. it was DAU wearing a
+        # different label.
         new_today = conn.execute(
-            # `created_at` doesn't exist on user_states (it only has
-            # updated_at) — best approximation: rows whose updated_at
-            # was today AND whose previous-day activity is absent. Cheap
-            # version: rows with updated_at >= today's start that look
-            # like first-day rows. Approximate; refine if needed.
-            "SELECT COUNT(*) FROM user_states WHERE substr(updated_at, 1, 10) = ?",
+            "SELECT COUNT(*) FROM user_states WHERE substr(created_at, 1, 10) = ?",
             (today_iso,),
         ).fetchone()[0]
 
-        # Daily series — counts per day in the window
+        # Daily series, split into first-day users and returning ones.
+        # Sourced from user_activity: user_states.updated_at is overwritten
+        # on every save, so grouping by it put each user on exactly one day
+        # and left every earlier day looking dead.
         daily_rows = conn.execute(
-            """SELECT substr(updated_at, 1, 10) as day,
-                      COUNT(DISTINCT google_id) as active
-               FROM user_states
-               WHERE substr(updated_at, 1, 10) >= ?
-               GROUP BY day
-               ORDER BY day ASC""",
+            """SELECT a.day AS day,
+                      COUNT(*) AS active,
+                      SUM(CASE WHEN substr(u.created_at, 1, 10) = a.day THEN 1 ELSE 0 END) AS new_users
+               FROM user_activity a
+               LEFT JOIN user_states u ON u.google_id = a.google_id
+               WHERE a.day >= ?
+               GROUP BY a.day
+               ORDER BY a.day ASC""",
             (window_start.isoformat(),),
         ).fetchall()
-        daily = [{"date": r["day"], "active": r["active"]} for r in daily_rows]
+        daily = [{
+            "date": r["day"],
+            "active": r["active"],
+            "new": r["new_users"] or 0,
+            "returning": r["active"] - (r["new_users"] or 0),
+        } for r in daily_rows]
+
+        # Retention: of the users who first showed up more than 7 days
+        # ago, how many came back in the last 7 days.
+        eligible = conn.execute(
+            "SELECT COUNT(*) FROM user_states WHERE created_at < ? AND created_at != ''",
+            (week_ago,),
+        ).fetchone()[0]
+        returned = conn.execute(
+            "SELECT COUNT(*) FROM user_states WHERE created_at < ? AND created_at != '' AND updated_at >= ?",
+            (week_ago, week_ago),
+        ).fetchone()[0]
+        retention = {
+            "eligible": eligible,
+            "returned": returned,
+            "pct": round(returned * 100 / eligible) if eligible else 0,
+        }
 
         # Funnel steps — life-cycle progression
         users_with_profile = conn.execute(
@@ -2073,12 +2141,16 @@ def get_usage_stats(window_days: int = 30) -> dict:
         users_with_rsvp = conn.execute(
             "SELECT COUNT(DISTINCT google_id) FROM rsvps"
         ).fetchone()[0]
+        # Distinct people in at least one accepted friendship. The old
+        # version added two DISTINCT counts and subtracted a subquery that
+        # didn't line up with either, so it could exceed the user count.
         users_with_friend = conn.execute(
-            """SELECT COUNT(DISTINCT user_a) + COUNT(DISTINCT user_b) -
-               (SELECT COUNT(DISTINCT user_a) FROM friendships fb
-                WHERE fb.user_a IN (SELECT user_b FROM friendships))
-               FROM friendships"""
-        ).fetchone()[0] or 0  # rough — overlapping users counted once via subquery
+            """SELECT COUNT(*) FROM (
+                   SELECT user_a AS gid FROM friendships WHERE status = 'accepted'
+                   UNION
+                   SELECT user_b AS gid FROM friendships WHERE status = 'accepted'
+               )"""
+        ).fetchone()[0]
         users_with_group = conn.execute(
             "SELECT COUNT(DISTINCT google_id) FROM group_members"
         ).fetchone()[0]
@@ -2130,10 +2202,82 @@ def get_usage_stats(window_days: int = 30) -> dict:
         "wau": wau,
         "mau": mau,
         "daily": daily,
+        "retention": retention,
         "funnel": funnel,
         "recent": recent,
         "counts": counts,
     }
+
+
+def get_user_directory(limit: int = 200, offset: int = 0, sort: str = "last_seen",
+                       query: str = "") -> dict:
+    """Every user with what they've actually done — the answer to "who are
+    these 27 people?", which the dashboard could only answer for the last
+    ten of them.
+
+    Per user: when they arrived, when they were last seen, how many
+    distinct days they've been active, and their RSVP / friend / group /
+    event counts. Small-N by design (tens of users): the per-user counts
+    are subqueries and the sort happens in Python, which keeps this
+    readable. Revisit if the user table reaches the thousands.
+    """
+    sort_keys = {
+        "last_seen": lambda u: u["last_seen"],
+        "joined": lambda u: u["joined"],
+        "days_active": lambda u: u["days_active"],
+        "rsvps": lambda u: u["rsvps"],
+        "friends": lambda u: u["friends"],
+        "name": lambda u: (u["name"] or u["email"] or "").lower(),
+    }
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+              s.google_id AS google_id,
+              s.state_json AS state_json,
+              s.updated_at AS last_seen,
+              s.created_at AS joined,
+              (SELECT COUNT(*) FROM user_activity a WHERE a.google_id = s.google_id) AS days_active,
+              (SELECT COUNT(*) FROM rsvps r WHERE r.google_id = s.google_id) AS rsvps,
+              (SELECT COUNT(*) FROM friendships f
+                WHERE f.status = 'accepted'
+                  AND (f.user_a = s.google_id OR f.user_b = s.google_id)) AS friends,
+              (SELECT COUNT(*) FROM group_members m WHERE m.google_id = s.google_id) AS groups,
+              (SELECT COUNT(*) FROM group_events ge WHERE ge.created_by = s.google_id) AS events_created,
+              ((SELECT COUNT(*) FROM push_subscriptions p WHERE p.google_id = s.google_id)
+               + (SELECT COUNT(*) FROM apns_device_tokens t WHERE t.google_id = s.google_id)) AS push_devices
+            FROM user_states s
+            """
+        ).fetchall()
+
+    users = []
+    for r in rows:
+        try:
+            state = json.loads(r["state_json"]) if r["state_json"] else {}
+        except (json.JSONDecodeError, TypeError):
+            state = {}
+        gu = state.get("googleUser") or {}
+        users.append({
+            "google_id": r["google_id"],
+            "name": state.get("userName") or gu.get("givenName") or gu.get("name") or "",
+            "email": gu.get("email") or "",
+            "picture": user_picture(state),
+            "joined": r["joined"] or "",
+            "last_seen": r["last_seen"] or "",
+            "days_active": r["days_active"],
+            "rsvps": r["rsvps"],
+            "friends": r["friends"],
+            "groups": r["groups"],
+            "events_created": r["events_created"],
+            "push_devices": r["push_devices"],
+        })
+
+    q = (query or "").strip().lower()
+    if q:
+        users = [u for u in users if q in u["name"].lower() or q in u["email"].lower()]
+    users.sort(key=sort_keys.get(sort, sort_keys["last_seen"]), reverse=(sort != "name"))
+    total = len(users)
+    return {"total": total, "users": users[offset:offset + limit]}
 
 
 def get_group_composition() -> dict:

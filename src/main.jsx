@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { AppProvider } from './context/AppContext'
 import { reportError } from './services/api'
+import { initPushNavigation } from './lib/pushNavigation'
 import App from './App'
 import './styles/globals.css'
 
@@ -46,6 +47,15 @@ if (Capacitor.isNativePlatform?.()) {
       console.error('CapacitorUpdater.notifyAppReady failed', err)
     })
 }
+
+// Notification taps → routes. Registered here, at module load, because
+// iOS delivers the tap right after launch and the listener has to exist
+// already. It used to be wired inside the push opt-in flow, so it was
+// missing on every launch after the one where permission was granted —
+// which is why tapping "✨ N novos em CWB" opened the default screen
+// instead of the digest. Sits after notifyAppReady so nothing here can
+// delay the bundle being marked healthy.
+initPushNavigation()
 
 if (Capacitor.isNativePlatform?.()) {
   import('@capacitor/app').then(({ App: CapApp }) => {
