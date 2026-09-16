@@ -53,6 +53,11 @@ export default function Groups({ embedded = false }) {
       trackEvent('group_created', { visibility: data.visibility })
       setGroups(prev => [{ ...group, member_count: 1, role: 'admin', next_event: null }, ...prev])
       setShowCreate(false)
+      // handleJoin below already does this; creating didn't, so the
+      // creator landed back on the list looking at a card with a generic
+      // "sem eventos" line and no next step. Land on the group instead,
+      // where the primeiros-passos nudge (GroupDetail) picks up from here.
+      navigate(`/groups/${group.id}`)
     } catch (err) {
       console.error('[Groups] create failed', err)
       alert(t.groups_create_error ?? 'Erro ao criar grupo. Verifique sua conexão.')
