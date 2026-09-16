@@ -39,6 +39,7 @@
     "@playwright/test": "^1.63.0",
     "@vitejs/plugin-react": "^4.3.0",
     "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
     "patch-package": "^8.0.1",

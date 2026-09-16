@@ -34,6 +34,11 @@ export default function AdminIgAccounts() {
   const [usage, setUsage] = useState(null)
   // Full user directory (founder-only) — replaces "last 10 logins".
   const [users, setUsers] = useState(null)
+  // Distinct from the page-wide `error` state: UsersTable used to render
+  // nothing at all on a failed fetch, so "not deployed yet" and "broken"
+  // looked identical. Tracked separately so retrying just re-fetches this
+  // one endpoint instead of the whole admin page.
+  const [usersError, setUsersError] = useState(null)
   // Client-side errors, grouped by (type, message) — founder-only.
   const [clientErrors, setClientErrors] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
@@ -58,6 +63,21 @@ export default function AdminIgAccounts() {
   // Add-curator form state
   const [newCuratorEmail, setNewCuratorEmail] = useState('')
   const [newCuratorNotes, setNewCuratorNotes] = useState('')
+
+  // Standalone (not folded into `load` below) so the retry button in
+  // UsersTable's error state can re-fetch just this endpoint instead of
+  // every founder panel on the page.
+  const loadUsers = useCallback(async () => {
+    if (!email) return
+    try {
+      const usersRes = await fetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
+      if (!usersRes.ok) throw new Error(`Erro ${usersRes.status}`)
+      setUsers(await usersRes.json())
+      setUsersError(null)
+    } catch (e) {
+      setUsersError(e.message)
+    }
+  }, [email])
 
   const load = useCallback(async () => {
     if (!email) { setLoading(false); return }
@@ -86,10 +106,7 @@ export default function AdminIgAccounts() {
           const usageRes = await fetch(withEmail(`${API_BASE}/admin/usage-stats`, email))
           if (usageRes.ok) setUsage(await usageRes.json())
         } catch { /* usage fetch is best-effort */ }
-        try {
-          const usersRes = await fetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
-          if (usersRes.ok) setUsers(await usersRes.json())
-        } catch { /* user directory is best-effort */ }
+        await loadUsers()
         try {
           const errRes = await fetch(withEmail(`${API_BASE}/admin/client-errors`, email))
           if (errRes.ok) setClientErrors(await errRes.json())
@@ -100,7 +117,7 @@ export default function AdminIgAccounts() {
       setError(`Falha ao carregar: ${e.message}`)
     }
     setLoading(false)
-  }, [email])
+  }, [email, loadUsers])
 
   useEffect(() => { load() }, [load])
 
@@ -379,7 +396,12 @@ export default function AdminIgAccounts() {
           3. Feedback — read what users said.
           4. Active handles — operational list at the bottom; adding new
              handles lives on the Sources page now (no duplicate form). */}
-      {isFounder && usage && <UsageSection usage={usage} users={users} clientErrors={clientErrors} />}
+      {isFounder && usage && (
+        <UsageSection
+          usage={usage} users={users} usersError={usersError} onRetryUsers={loadUsers}
+          clientErrors={clientErrors}
+        />
+      )}
 
       {/* Leaderboard — founder sales tool. Sits right under "Uso do
           app" since both panels are the founder's "where do I focus
@@ -400,6 +422,7 @@ export default function AdminIgAccounts() {
         <CuratorsSection
           curators={curators}
           email={email}
+          users={users}
           newCuratorEmail={newCuratorEmail}
           setNewCuratorEmail={setNewCuratorEmail}
           newCuratorNotes={newCuratorNotes}
@@ -661,7 +684,7 @@ function statusBtn(color) {
 // ── UsageSection — founder dashboard ──────────────────────
 // DAU/WAU/MAU + funnel + 30-day daily series + recent logins.
 // Charts are simple inline SVG bars to avoid a chart-library dep.
-function UsageSection({ usage, users, clientErrors }) {
+function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) {
   const maxDaily = Math.max(1, ...usage.daily.map(d => d.active))
   const maxFunnel = Math.max(1, ...usage.funnel.map(f => f.count))
   return (
@@ -791,7 +814,7 @@ function UsageSection({ usage, users, clientErrors }) {
 
       {/* Every user and what they've done. The "últimos logins" list
           below stays as the quick glance; this is the full picture. */}
-      <UsersTable data={users} />
+      <UsersTable data={users} error={usersError} onRetry={onRetryUsers} />
 
       {/* Client errors, grouped by message — /analytics/funnel only counts
           by event_name, which collapses every distinct js_uncaught message
@@ -859,9 +882,37 @@ function UsageSection({ usage, users, clientErrors }) {
 // ── UsersTable — who the users are, not just how many ─────
 // The dashboard could only show the ten most recent logins. This is the
 // whole list with per-user activity, sorted client-side (tens of rows).
-function UsersTable({ data }) {
+function UsersTable({ data, error, onRetry }) {
   const [sort, setSort] = useState('last_seen')
   const [query, setQuery] = useState('')
+
+  // A failed fetch and "this endpoint isn't deployed yet" used to look
+  // identical — both just rendered nothing. Show which one it actually is.
+  if (error) {
+    return (
+      <div style={{
+        background: 'var(--white)', borderRadius: 12, padding: 14,
+        border: '1px solid var(--border)', marginBottom: 14,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+          USUÁRIOS
+        </div>
+        <div style={{ fontSize: 12, color: '#C62828', marginBottom: 10 }}>
+          Falha ao carregar: {error}
+        </div>
+        <button
+          onClick={onRetry}
+          style={{
+            padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
+            background: 'transparent', color: 'var(--charcoal)',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Tentar de novo
+        </button>
+      </div>
+    )
+  }
   if (!data) return null
 
   const cols = [
@@ -2160,11 +2211,22 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
 
 
 function CuratorsSection({
-  curators, email,
+  curators, email, users,
   newCuratorEmail, setNewCuratorEmail,
   newCuratorNotes, setNewCuratorNotes,
   onAdd, onRemove, busy,
 }) {
+  // A curator added by the email the founder remembers doesn't reach them
+  // if their account actually signed in with a different one — an Apple
+  // "Hide My Email" relay address being the common case, since it looks
+  // nothing like the person's real address. Curator roles AND push
+  // targeting both key off users.email (see _notify_curators_of_request
+  // in backend/main.py), so a typed-from-memory email silently breaks
+  // both. Suggesting from the real user directory (already fetched for
+  // the usage panel) lets the founder pick the address actually on file
+  // instead of guessing it.
+  const emailInDirectory = !newCuratorEmail.trim() || (users?.users || [])
+    .some(u => (u.email || '').toLowerCase() === newCuratorEmail.trim().toLowerCase())
   // Only show non-feedbacker-only rows. With feedback open to everyone,
   // the curators table should reflect just curator status.
   const visibleCurators = curators.filter(c => c.is_founder || c.is_curator)
@@ -2184,28 +2246,45 @@ function CuratorsSection({
       <form onSubmit={onAdd} style={{
         background: 'var(--white)', borderRadius: 14, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
-        display: 'flex', gap: 8, flexWrap: 'wrap',
       }}>
-        <input
-          type="email"
-          value={newCuratorEmail}
-          onChange={e => setNewCuratorEmail(e.target.value)}
-          placeholder="email@exemplo.com"
-          style={{ ...inputStyle, flex: '2 1 220px' }}
-        />
-        <input
-          value={newCuratorNotes}
-          onChange={e => setNewCuratorNotes(e.target.value)}
-          placeholder="Nota (opcional)"
-          style={inputStyle}
-        />
-        <button
-          type="submit"
-          disabled={busy || !newCuratorEmail.trim()}
-          style={primaryBtn(busy || !newCuratorEmail.trim())}
-        >
-          Liberar
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            type="email"
+            list="curator-email-options"
+            value={newCuratorEmail}
+            onChange={e => setNewCuratorEmail(e.target.value)}
+            placeholder="email@exemplo.com"
+            style={{ ...inputStyle, flex: '2 1 220px' }}
+          />
+          {/* Suggests from the real user directory so the founder can pick
+              the email actually on file, not one typed from memory. */}
+          <datalist id="curator-email-options">
+            {(users?.users || []).map(u => (
+              <option key={u.google_id} value={u.email}>{u.name || u.email}</option>
+            ))}
+          </datalist>
+          <input
+            value={newCuratorNotes}
+            onChange={e => setNewCuratorNotes(e.target.value)}
+            placeholder="Nota (opcional)"
+            style={inputStyle}
+          />
+          <button
+            type="submit"
+            disabled={busy || !newCuratorEmail.trim()}
+            style={primaryBtn(busy || !newCuratorEmail.trim())}
+          >
+            Liberar
+          </button>
+        </div>
+        {!emailInDirectory && (
+          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 8, lineHeight: 1.4 }}>
+            ⚠️ Nenhuma conta logada usa esse email. Se a pessoa entrou pela
+            Apple com "Ocultar meu email", o endereço real dela é outro
+            (tipo @privaterelay.appleid.com) — confere na lista de usuários
+            ou peça pra ela conferir em Perfil.
+          </div>
+        )}
       </form>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
