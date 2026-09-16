@@ -104,17 +104,34 @@ self.addEventListener('push', event => {
 
 // ── Notification click handler ────────────────────────────────────────────────
 // Focus or open the app when user taps the notification.
+// The old version looked for a client whose url `includes` the target —
+// which, for a relative hash target like '/#/events?digest=d_1', is
+// essentially never true. So it called openWindow, and an installed PWA
+// answers that by focusing the window it already has, without changing
+// the route: the tap landed on whatever screen was last open. Now we
+// focus, then navigate that window (or hand the url to the page, which
+// applies it via lib/pushNavigation.js).
 self.addEventListener('notificationclick', event => {
   event.notification.close()
   const targetUrl = event.notification.data?.url ?? '/'
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      for (const client of windowClients) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
-          return client.focus()
+  const absolute = new URL(targetUrl, self.location.origin).href
+  event.waitUntil((async () => {
+    const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const client of windowClients) {
+      if (new URL(client.url).origin !== self.location.origin) continue
+      if ('focus' in client) await client.focus()
+      if ('navigate' in client) {
+        try {
+          await client.navigate(absolute)
+          return
+        } catch {
+          // Some browsers refuse navigate() on a client they don't
+          // control; the page can route itself instead.
         }
       }
-      return clients.openWindow(targetUrl)
-    })
-  )
+      client.postMessage({ type: 'push-navigate', url: targetUrl })
+      return
+    }
+    await clients.openWindow(absolute)
+  })())
 })
