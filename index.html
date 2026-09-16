@@ -11,6 +11,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="auê" />
+    <!-- Safari's native Smart App Banner — shows an "Abrir"/"Obter" bar
+         at the top of the page on iOS, no custom JS needed. This only
+         works once there's a real App Store id, which is why the DIY
+         InstallBanner.jsx component existed before auê went public;
+         that component is gone now that this covers the same case
+         natively (and better — Apple's own UI, not blockable). -->
+    <meta name="apple-itunes-app" content="app-id=6765535013" />
     <meta name="description" content="auê — Curitiba que acontece. Todos os eventos da cidade num lugar só, com a galera junto." />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <title>auê — Curitiba que acontece</title>

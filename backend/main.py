@@ -99,9 +99,14 @@ class Settings(BaseSettings):
     twa_package_name: str = "app.aue"
     twa_sha256_fingerprint: str = ""  # e.g. "AB:CD:EF:..." — empty disables endpoint
     # Beta distribution links — the /install endpoint sniffs User-Agent and
-    # 302s iOS users to TestFlight + Android users to Play Store internal
-    # testing. Empty string disables the redirect for that platform and
-    # falls back to the universal HTML walkthrough.
+    # 302s Android users to Play Store internal testing. Empty string
+    # disables the redirect and falls back to the universal HTML
+    # walkthrough. iOS no longer needs an env var here: auê is public on
+    # the App Store (id 6765535013, see APP_STORE_URL below), so that's
+    # the default iOS redirect. testflight_invite_url is now only an
+    # override — set it during a version-bump testing window (the app
+    # occasionally goes back to TestFlight-only between releases) to send
+    # /install to the beta instead of the store's current build.
     testflight_invite_url: str = ""  # https://testflight.apple.com/join/XXXXXX
     play_store_internal_url: str = ""  # https://play.google.com/apps/internaltest/...
     # Deployment environment label. Defaults to "production" so a missing
@@ -1001,12 +1006,20 @@ def short_event_link(event_id: str, request: Request):
     ))
 
 
+# auê's public App Store listing. The id is permanent (unlike a TestFlight
+# invite link, which rotates), so it's a constant rather than an env var.
+APP_STORE_URL = "https://apps.apple.com/app/id6765535013"
+
+
 @app.get("/install", response_class=PlainTextResponse)
 def install_page(request: Request):
     """Universal install entry point. Sniffs the recipient's User-Agent
-    and 302s to the right beta channel:
+    and 302s to the right channel:
 
-      - iOS / iPadOS  → TestFlight invite link
+      - iOS / iPadOS  → TestFlight invite link, if one is set (an active
+                        version-bump testing window — see settings.
+                        testflight_invite_url); otherwise the public App
+                        Store listing.
       - Android       → Play Store internal-testing link
       - Anything else → existing HTML walkthrough (PWA install + manual
                         Add-to-Home-Screen instructions for both platforms)
@@ -1016,9 +1029,6 @@ def install_page(request: Request):
     them landing on a "tap your platform" intermediary screen. UA can
     be spoofed but it costs nothing here — worst case we send them to
     the wrong store and they hit a "not available" page.
-
-    Empty env var disables the redirect for that platform — handy
-    during the beta-link transition when only one store is provisioned.
     """
     from fastapi.responses import RedirectResponse
     ua = (request.headers.get("user-agent") or "").lower()
@@ -1033,8 +1043,9 @@ def install_page(request: Request):
         # and tap the Add-to-Home-Screen walkthrough.
     )
     is_android = "android" in ua
-    if is_ios and settings.testflight_invite_url:
-        return RedirectResponse(url=settings.testflight_invite_url, status_code=302)
+    if is_ios:
+        url = settings.testflight_invite_url or APP_STORE_URL
+        return RedirectResponse(url=url, status_code=302)
     if is_android and settings.play_store_internal_url:
         return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
     return PlainTextResponse(_INSTALL_HTML, media_type="text/html; charset=utf-8")
