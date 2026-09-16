@@ -120,6 +120,11 @@ export default function App() {
             <Route path="/journey"         element={<Navigate to="/home" replace />} />
             <Route path="/home"    element={<AnimatedPage wide><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
+            {/* Daily-digest push deep link. Same Events screen, just keyed by a
+                route param instead of a stripped ?digest= query — see
+                digestId handling in Events.jsx for why that matters (refresh
+                used to lose the filter entirely). */}
+            <Route path="/novidades/:digestId" element={<AnimatedPage><Events /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />

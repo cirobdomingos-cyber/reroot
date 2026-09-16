@@ -487,6 +487,19 @@ export async function fetchUserBadges(googleId) {
   return []
 }
 
+// Most recent daily-digest snapshot — powers the Home "o que rolou hoje"
+// entry point. Unlike the push-tap path, Home never received a digest_id,
+// so it asks the backend for whichever one it sent last. null if none
+// exists yet (fresh deploy) or the request fails; either way Home just
+// omits the entry point.
+export async function fetchLatestDigest() {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/digests/latest`)
+    if (res.ok) return await res.json()
+  } catch {}
+  return null
+}
+
 // Lifetime / personal-best counters (Recordes Pessoais).
 export async function fetchUserStats(googleId) {
   if (!googleId) return null

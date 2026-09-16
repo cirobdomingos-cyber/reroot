@@ -81,7 +81,18 @@ convert or die at the sign-in wall.
   the date row and the week strip overlap by design.
 - **Group funnel**, per the events above.
 
-## 6. Small things
+## 6. Notification inbox
+
+Idea from 16 Sep: a dedicated in-app section for things that don't need a
+push — friend invites received, invites accepted, new venues added to
+tracking, new events found. Unread count as a badge (e.g. on Profile or a
+bell icon), clear-all action. Goal: move low-urgency events out of push
+(where every one costs opt-in trust, see item 2) into a pull surface the
+user checks when they want to. Needs an unread/read model — likely a new
+table keyed by user + event type, or reuse `analytics_events` with a
+`seen_at` column.
+
+## 7. Small things
 
 - **Users table fails silently.** `UsersTable` returns `null` when its
   fetch fails — no message — so "not deployed yet" and "broken" look
