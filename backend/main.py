@@ -4518,19 +4518,49 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             # Expand the invitee list to include this group's members
             # (minus the creator). Existing invitees are preserved so
             # other groups' members stay visible.
-            existing_invitees = src_row.get("extra_invitee_ids") or []
-            new_invitees = sorted({
-                *[str(g) for g in existing_invitees if g],
-                *[m["google_id"] for m in db.get_group_members(group_id)
-                  if m.get("google_id") and m["google_id"] != req.google_id],
-            })
+            existing_invitees = {
+                str(g) for g in (src_row.get("extra_invitee_ids") or []) if g
+            }
+            group_member_ids = {
+                m["google_id"] for m in db.get_group_members(group_id)
+                if m.get("google_id") and m["google_id"] != req.google_id
+            }
+            new_invitees = sorted(existing_invitees | group_member_ids)
+            # Only the people this link actually adds. Everyone already on
+            # the list was pushed when the event was created — pushing
+            # them again for a link they can't see would be noise.
+            newly_invited = sorted(group_member_ids - existing_invitees)
             linked = db.link_event_to_group(src_id, group_id, new_invitees)
             if linked:
-                # No push on this path — the group's members become
-                # invitees (so the event lands in their Pendências) but
-                # nothing tells them. Pre-existing, reported separately;
-                # the honest count here is zero, not len(new_invitees).
-                return {**linked, "notified_count": 0}
+                # This path used to send nothing at all: the group's
+                # members became invitees, the event appeared in their
+                # Pendências, and the one channel that reaches a phone
+                # before the app is opened stayed quiet. "Fiz um plano,
+                # quero chamar a galera" is the most group-shaped action
+                # there is, so it gets the same push the catalog path
+                # gets. Everyone here came out of get_group_members, so
+                # the group framing is safe — no outsider learns the
+                # group exists.
+                if newly_invited:
+                    group = db.get_group(group_id)
+                    title = f"🎲 {(group or {}).get('name') or 'no grupo'}"
+                    body = f"{_user_display_name(req.google_id)} adicionou: {linked.get('name') or ''}"
+                    tag = f"group-event-{group_id}-{src_id}"
+
+                    def _fanout_link_pushes():
+                        for invitee_id in newly_invited:
+                            try:
+                                _send_push_to_user(
+                                    invitee_id, title=title, body=body,
+                                    url=f"/#/groups/{group_id}", tag=tag,
+                                )
+                            except Exception as exc:
+                                log.warning(
+                                    f"Group event {src_id}: link push to {invitee_id} failed: {exc}"
+                                )
+
+                    background_tasks.add_task(_fanout_link_pushes)
+                return {**linked, "notified_count": len(newly_invited)}
 
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)
