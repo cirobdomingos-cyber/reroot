@@ -151,28 +151,12 @@ export function usePushNotifications() {
         })
         if (!res.ok) throw new Error('Falha ao registrar token no servidor.')
 
-        // Wire the tap handler ONCE — the plugin keeps the listener for
-        // the lifetime of the app process, so subscribing again is
-        // idempotent (we don't dedupe; the tap handler is fast and
-        // harmless to re-register). Reads the `url` field from the data
-        // dict and navigates the SPA via HashRouter.
-        await PushNotifications.addListener('pushNotificationActionPerformed', action => {
-          const data = action?.notification?.data || {}
-          const target = data.url
-          if (target && typeof target === 'string') {
-            // HashRouter URLs start with '/#/...'. Setting location.hash
-            // is enough — Router picks it up.
-            try {
-              const hashIdx = target.indexOf('#')
-              if (hashIdx >= 0) {
-                window.location.hash = target.slice(hashIdx)
-              } else {
-                window.location.assign(target)
-              }
-            } catch {}
-          }
-        })
-
+        // Tap handling is NOT wired here any more. It used to be — which
+        // meant the listener only existed in the session where the user
+        // opted in, since the plugin keeps listeners per app process and
+        // nothing calls subscribe() on a normal launch. Every later tap
+        // opened the default screen. It now registers at app start; see
+        // lib/pushNavigation.js.
         setApnsToken(token)
         dispatch({ type: 'SET_PUSH_OPTED_IN' })
         setLocalDetected(true)
