@@ -315,21 +315,24 @@ export default function WeekCalendar({
         </motion.div>
       </AnimatePresence>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: 14, marginTop: 8, justifyContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage)' }} />
-          <span style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
-            {language === 'pt' ? 'Confirmado' : 'Confirmed'}
-          </span>
+      {/* Legend — only when there are dots to explain. On an empty week
+          it was a key for nothing. */}
+      {totalWeekEvents > 0 && (
+        <div style={{ display: 'flex', gap: 14, marginTop: 8, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sage)' }} />
+            <span style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
+              {language === 'pt' ? 'Confirmado' : 'Confirmed'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--terra)' }} />
+            <span style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
+              {language === 'pt' ? 'Convite de grupo' : 'Group invite'}
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--terra)' }} />
-          <span style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
-            {language === 'pt' ? 'Convite de grupo' : 'Group invite'}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

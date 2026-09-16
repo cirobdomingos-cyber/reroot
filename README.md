@@ -172,8 +172,10 @@ Dois services no Railway, mesmo código, configs diferentes:
 
 | Env | Branch | URL | Volume / DB |
 |---|---|---|---|
-| Production | `main` | `reroot-production.up.railway.app` | volume separado |
-| Staging | `dev` | (subdomínio gerado pelo Railway) | volume separado |
+| Production | `main` | `reroot-production.up.railway.app` (e `auecuritiba.com`) | volume separado |
+| Staging | `dev` | `aue-staging.up.railway.app` | volume separado |
+
+Fluxo de release (branch → staging → produção → canary no iPhone): [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md). `main` é protegida — só entra por PR com CI verde.
 
 Sync automático: `.github/workflows/sync-staging.yml` faz `merge main → dev` em cada push pra `main` → Railway redeploya staging com a baseline de prod. Commits experimentais que ficam **só** em `dev` sobrevivem ao merge (até causarem conflito).
 
