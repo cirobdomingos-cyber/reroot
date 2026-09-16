@@ -855,11 +855,18 @@ function BundleInfo() {
     if (!Capacitor.isNativePlatform?.()) return
     let cancelled = false
     import('@capgo/capacitor-updater')
-      .then(({ CapacitorUpdater }) => CapacitorUpdater.current())
+      .then(async ({ CapacitorUpdater }) => {
+        const current = await CapacitorUpdater.current()
+        // The id OTA_CANARY_DEVICES lists to get a build before everyone
+        // else (backend/ota.py, docs/RELEASE_PROCESS.md).
+        const { deviceId } = await CapacitorUpdater.getDeviceId().catch(() => ({}))
+        return { ...current, deviceId }
+      })
       .then(res => { if (!cancelled) setInfo(res) })
       .catch(err => { if (!cancelled) setInfo({ error: String(err?.message || err) }) })
     return () => { cancelled = true }
   }, [])
+  const [copied, setCopied] = useState(false)
 
   if (!info) return null
   // bundle.id === 'builtin' means no update has been applied and the app
@@ -879,6 +886,23 @@ function BundleInfo() {
         : onBuiltin
           ? `nativo ${info.native || ''} (sem atualização aplicada)`
           : `${info.bundle?.version || info.bundle?.id} · nativo ${info.native || ''}`}
+      {info.deviceId && (
+        <button
+          onClick={() => {
+            navigator.clipboard?.writeText(info.deviceId).then(() => {
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1800)
+            }).catch(() => {})
+          }}
+          className="neon-mono"
+          style={{
+            display: 'block', marginTop: 4, padding: 0, background: 'none', border: 'none',
+            color: 'var(--text3)', fontSize: 10, cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          {copied ? '✓ id copiado' : `device ${info.deviceId}`}
+        </button>
+      )}
     </div>
   )
 }

@@ -18,9 +18,11 @@ The repo and Railway subdomain still say `reroot` — that's the old product nam
 
 ## Branching model
 
-- `main` → Railway production (`reroot-production.up.railway.app`)
-- `dev` → Railway staging
-- [.github/workflows/sync-staging.yml](.github/workflows/sync-staging.yml) auto-merges `main → dev` on every push to main, so staging tracks prod by default. Commits that exist only on `dev` are intentional staging-only experiments.
+- `main` → Railway production (`reroot-production.up.railway.app`). **Protected: changes arrive only by pull request with CI green — never push to main.**
+- `dev` → Railway staging. Feature work: `feat/*` branch from `dev` → PR into `dev` → test on staging → release PR `dev → main`. Hotfixes: `fix/*` from `main` → PR into `main`.
+- CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)): `backend` (pytest), `frontend` (lint + build), `smoke` (Playwright, phone/tablet/PC, backend unreachable).
+- iPhone updates go to `OTA_CANARY_DEVICES` first, then everyone. Full steps: [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
+- [.github/workflows/sync-staging.yml](.github/workflows/sync-staging.yml) auto-merges `main → dev` on every push to main, so hotfixes reach staging.
 - Behavior differences between envs come from env vars (`ENV_NAME`), **never** from divergent code branches.
 
 ## Voice & branding (post-pivot, April 2026)

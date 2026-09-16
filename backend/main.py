@@ -34,6 +34,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 import database as db
 import badges
 import image_store
+import ota
 import quiet_hours
 from urllib.parse import quote
 from scheduler import start_scheduler, stop_scheduler, run_refresh
@@ -7212,13 +7213,22 @@ def _ota_main_chunk_name() -> Optional[str]:
     return max(js, key=lambda p: p.stat().st_size).name
 
 
-def _ota_bundle_zip() -> Optional[bytes]:
+def _ota_env() -> tuple[str, str, frozenset[str]]:
+    """(published, canary, canary device ids) — see ota.py."""
+    return (
+        (os.environ.get("OTA_BUNDLE_VERSION") or "").strip(),
+        (os.environ.get("OTA_CANARY_VERSION") or "").strip(),
+        ota.parse_devices(os.environ.get("OTA_CANARY_DEVICES")),
+    )
+
+
+def _ota_bundle_zip(version: str) -> Optional[bytes]:
     """Zip of the static dir, built once per process and memoized.
 
-    Keyed on the configured version so a redeploy (fresh process) always
+    Keyed on the version being served so a redeploy (fresh process) always
     rebuilds, while repeated downloads from many devices don't re-zip.
     """
-    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
+    version = (version or "").strip()
     if not version or not STATIC_DIR.exists():
         return None
     if _OTA_ZIP_CACHE.get("version") == version:
@@ -7261,17 +7271,19 @@ async def ota_check(request: Request):
     and no stats are collected — statsUrl is "" in capacitor.config.json
     so nothing about our users reaches a third party.
     """
-    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
-    if not version:
+    published, canary, canary_devices = _ota_env()
+    if not published and not canary:
         return {"message": "Live updates disabled", "error": "disabled"}
     try:
         body = await request.json()
     except Exception:
         body = {}
     current = str(body.get("version_name") or body.get("version") or "").strip()
-    if current == version:
-        return {"message": "Up to date"}
-    if _ota_bundle_zip() is None:
+    offer = ota.decide(current, str(body.get("device_id") or ""), published, canary, canary_devices)
+    if offer.version is None:
+        return {"message": offer.reason}
+    version = offer.version
+    if _ota_bundle_zip(version) is None:
         return {"message": "No bundle packed", "error": "no_bundle"}
     # Build the URL from the proxy's forwarded headers, not request.base_url.
     # Railway terminates TLS in front of uvicorn, so base_url reports
@@ -7286,7 +7298,7 @@ async def ota_check(request: Request):
         # Anything that isn't a local dev host is behind TLS in practice.
         proto = "http" if host.split(":")[0] in ("localhost", "127.0.0.1") else "https"
     base = f"{proto}://{host}"
-    log.info(f"OTA: offering {version} to a device on '{current or 'unknown'}' via {base}")
+    log.info(f"OTA: offering {version} ({offer.reason}) to a device on '{current or 'unknown'}' via {base}")
     return {"version": version, "url": f"{base}/updates/bundle/{version}.zip"}
 
 
@@ -7296,10 +7308,10 @@ def ota_bundle(version: str):
     currently published — a device holding a stale URL gets a 404 rather
     than whatever happens to be on disk now."""
     from fastapi.responses import Response
-    configured = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
-    if not configured or version != configured:
+    published, canary, _ = _ota_env()
+    if version not in ota.servable_versions(published, canary):
         raise HTTPException(status_code=404, detail="Unknown bundle version")
-    data = _ota_bundle_zip()
+    data = _ota_bundle_zip(version)
     if data is None:
         raise HTTPException(status_code=404, detail="Bundle not available")
     return Response(
@@ -7313,11 +7325,14 @@ def ota_bundle(version: str):
 def ota_status(requesting_email: str = ""):
     """Is OTA on, and what would be served? Founder-only."""
     _require_founder(requesting_email)
-    version = (os.environ.get("OTA_BUNDLE_VERSION") or "").strip()
-    data = _ota_bundle_zip()
+    published, canary, canary_devices = _ota_env()
+    data = _ota_bundle_zip(canary or published)
     return {
-        "enabled": bool(version),
-        "published_version": version or None,
+        "enabled": bool(published or canary),
+        "published_version": published or None,
+        # While set, only canary_devices are offered anything (ota.py).
+        "canary_version": canary or None,
+        "canary_devices": len(canary_devices),
         "bundle_bytes": len(data) if data else 0,
         # Verify this against the deployed web build before telling anyone
         # to test — it is the only way to know the published version holds

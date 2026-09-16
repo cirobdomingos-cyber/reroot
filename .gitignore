@@ -44,6 +44,10 @@ dev-dist/
 # reference, don't ship to the repo.
 neon_boteco_rebrand/
 
+# Playwright smoke test output (CI uploads these as an artifact)
+test-results/
+playwright-report/
+
 # scratch files from local debugging
 b.tmp
 *.tmp
