@@ -5084,3 +5084,168 @@ def delete_user_account(google_id: str) -> bool:
         conn.execute("DELETE FROM users WHERE id = ?", (google_id,))
         conn.commit()
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Catalog export / import
+#
+# Staging has its own volume, so it starts empty and every test runs
+# against three fake events. These two functions let staging pull the
+# real catalog from production over plain HTTP, so what you test looks
+# like what people actually see.
+#
+# The column lists below are ALLOWLISTS, on purpose. A denylist would
+# leak the next personal column somebody adds to one of these tables,
+# and three already exist: tracked_ig_accounts.added_by_email,
+# .claimed_by_email, and submitted_events.submitted_by — which is why
+# submitted_events isn't exported at all. Adding a column to this
+# export should be a decision, never a side effect.
+#
+# Nothing here touches users, friendships, RSVPs, analytics or push
+# tokens. Staging must never hold a real push token: the send path has
+# no environment check, so a test there would notify real phones.
+# ─────────────────────────────────────────────────────────────────────
+
+# Venue geocoding is copied along with the venues. It costs API calls to
+# regenerate and it's the same answer either way — a venue's coordinates
+# don't differ between environments.
+_VENUE_EXPORT_COLUMNS = (
+    "name_normalized", "name_original", "address", "lat", "lng", "bairro",
+    "geocode_source", "geocode_status", "geocoded_at",
+)
+
+# `notes` is curator free-text and could hold anything, so it stays home.
+# Same for the two email columns. `enabled` comes across because a handle
+# a curator switched off in production shouldn't come back on in staging.
+_IG_EXPORT_COLUMNS = (
+    "handle", "label", "category", "enabled", "featured",
+    "promo_code", "promo_perk",
+)
+
+
+def export_catalog(event_limit: int = 5000) -> dict:
+    """The catalog and nothing else — events, venues, tracked IG handles.
+
+    Events come out newest-first by date_start so a limit keeps what's
+    upcoming and drops old history, which is the useful half.
+    """
+    with get_conn() as conn:
+        events = [
+            dict(r) for r in conn.execute(
+                """SELECT id, source, external_id, payload,
+                          fetched_at, enriched_at, is_curated
+                     FROM events
+                 ORDER BY json_extract(payload, '$.date_start') DESC
+                    LIMIT ?""",
+                (event_limit,),
+            ).fetchall()
+        ]
+        venues = [
+            dict(r) for r in conn.execute(
+                f"SELECT {', '.join(_VENUE_EXPORT_COLUMNS)} FROM venues"
+            ).fetchall()
+        ]
+        ig_accounts = [
+            dict(r) for r in conn.execute(
+                f"SELECT {', '.join(_IG_EXPORT_COLUMNS)} FROM tracked_ig_accounts"
+            ).fetchall()
+        ]
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "events": events,
+        "venues": venues,
+        "ig_accounts": ig_accounts,
+    }
+
+
+def import_catalog(data: dict) -> dict:
+    """Upsert an export_catalog() payload into this database.
+
+    Upsert, not replace: a venue you hand-corrected in staging keeps its
+    correction unless production has a geocode for it too. Returns counts
+    plus the events that failed to parse, so a partial import reports
+    what it dropped instead of looking clean.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    counts = {"events": 0, "venues": 0, "ig_accounts": 0}
+    skipped: list[str] = []
+
+    for row in data.get("events") or []:
+        payload = row.get("payload")
+        if not payload:
+            continue
+        try:
+            # Parse before writing. The payload crossed a network from
+            # another service; a row that isn't a valid EnrichedEvent
+            # would otherwise sit in the table and blow up at render.
+            ev = EnrichedEvent.model_validate_json(payload)
+        except Exception as e:
+            skipped.append(f"{row.get('id', '?')}: {type(e).__name__}")
+            continue
+        upsert_event(ev)
+        counts["events"] += 1
+
+    with get_conn() as conn:
+        for v in data.get("venues") or []:
+            key = (v.get("name_normalized") or "").strip()
+            if not key:
+                continue
+            conn.execute(
+                """INSERT INTO venues
+                       (name_normalized, name_original, address, lat, lng,
+                        bairro, geocode_source, geocode_status, geocoded_at,
+                        created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(name_normalized) DO UPDATE SET
+                       name_original  = excluded.name_original,
+                       address        = excluded.address,
+                       -- Only overwrite coordinates when the incoming row
+                       -- actually has them; an ungeocoded production row
+                       -- must not erase a staging fix.
+                       lat            = COALESCE(excluded.lat, venues.lat),
+                       lng            = COALESCE(excluded.lng, venues.lng),
+                       bairro         = excluded.bairro,
+                       -- The status has to follow the coordinates. Taking
+                       -- the incoming 'pending' while COALESCE keeps the
+                       -- local lat/lng leaves a row that has coordinates
+                       -- but is filtered out of the map as ungeocoded.
+                       geocode_source = CASE WHEN excluded.lat IS NOT NULL
+                                             THEN excluded.geocode_source
+                                             ELSE venues.geocode_source END,
+                       geocode_status = CASE WHEN excluded.lat IS NOT NULL
+                                             THEN excluded.geocode_status
+                                             ELSE venues.geocode_status END,
+                       geocoded_at    = CASE WHEN excluded.lat IS NOT NULL
+                                             THEN excluded.geocoded_at
+                                             ELSE venues.geocoded_at END""",
+                (key, v.get("name_original") or key, v.get("address") or "",
+                 v.get("lat"), v.get("lng"), v.get("bairro") or "",
+                 v.get("geocode_source") or "", v.get("geocode_status") or "pending",
+                 v.get("geocoded_at") or "", now),
+            )
+            counts["venues"] += 1
+
+        for a in data.get("ig_accounts") or []:
+            handle = (a.get("handle") or "").strip().lstrip("@").lower()
+            if not handle:
+                continue
+            conn.execute(
+                """INSERT INTO tracked_ig_accounts
+                       (handle, label, category, enabled, featured,
+                        promo_code, promo_perk, added_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(handle) DO UPDATE SET
+                       label      = excluded.label,
+                       category   = excluded.category,
+                       enabled    = excluded.enabled,
+                       featured   = excluded.featured,
+                       promo_code = excluded.promo_code,
+                       promo_perk = excluded.promo_perk""",
+                (handle, a.get("label") or "", a.get("category") or "",
+                 1 if a.get("enabled") else 0, 1 if a.get("featured") else 0,
+                 a.get("promo_code") or "", a.get("promo_perk") or "", now),
+            )
+            counts["ig_accounts"] += 1
+        conn.commit()
+
+    return {**counts, "skipped": skipped}

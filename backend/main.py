@@ -17,6 +17,7 @@ import sqlite3
 import hashlib
 import re
 import unicodedata
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -115,6 +116,13 @@ class Settings(BaseSettings):
     # Requests still prefer their own forwarded host when they have one,
     # so a new domain works before anyone sets this.
     public_origin: str = "https://reroot-production.up.railway.app"
+    # Catalog sync (staging pulls production's events so tests run against
+    # real data). Shared secret, set to the same value on both Railway
+    # services. Empty disables the export endpoint entirely — the catalog
+    # is the product, so this fails closed rather than open.
+    catalog_sync_token: str = ""
+    # Where staging pulls from. Only read when env_name != "production".
+    catalog_sync_origin: str = "https://reroot-production.up.railway.app"
 
 
 settings = Settings()
@@ -5817,6 +5825,77 @@ _DROPPED_SCRAPER_SOURCES = (
     "teatro_guaira", "turismo_curitiba", "catraca_livre", "google_places",
     "prefeitura",
 )
+
+
+# ── Catalog sync: staging pulls production's events ──────────────────
+#
+# Staging runs on its own volume, so without this it has three fake
+# events and every test is a guess. These two endpoints move the
+# catalog — events, venues, tracked handles — and nothing else. See
+# db.export_catalog for what's deliberately left behind and why.
+
+
+@app.get("/catalog-export")
+def catalog_export(token: str = "", event_limit: int = 5000):
+    """Production side of the sync. Token-gated, and the token has no
+    default: with CATALOG_SYNC_TOKEN unset this 404s as if it were never
+    deployed. The catalog is most of what auê is worth, so an open dump
+    of it is not a thing we leave lying around — /events is paginated
+    and filtered for a reason.
+    """
+    if not settings.catalog_sync_token:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not secrets.compare_digest(token, settings.catalog_sync_token):
+        raise HTTPException(status_code=404, detail="Not found")
+    return db.export_catalog(event_limit=min(event_limit, 20000))
+
+
+@app.post("/admin/sync-catalog")
+def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
+    """Staging side. Pulls production's catalog and upserts it here.
+
+    Blocked in production — env_name defaults to "production" when the
+    var is missing, so an unconfigured service refuses rather than
+    importing something over the real catalog.
+    """
+    _require_curator(requesting_email)
+    if settings.env_name == "production":
+        raise HTTPException(
+            status_code=400,
+            detail="Sync só roda fora da produção — é ela que é a fonte.",
+        )
+    if not settings.catalog_sync_token:
+        raise HTTPException(
+            status_code=400,
+            detail="CATALOG_SYNC_TOKEN não configurado neste serviço.",
+        )
+
+    url = f"{settings.catalog_sync_origin.rstrip('/')}/catalog-export"
+    try:
+        resp = httpx.get(
+            url,
+            params={"token": settings.catalog_sync_token, "event_limit": event_limit},
+            timeout=120.0,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Não consegui falar com a produção: {e}")
+    if resp.status_code == 404:
+        # 404 is also what a bad token returns, so say both.
+        raise HTTPException(
+            status_code=502,
+            detail="Produção respondeu 404 — token errado, ou ainda sem CATALOG_SYNC_TOKEN lá.",
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Produção respondeu {resp.status_code}")
+
+    result = db.import_catalog(resp.json())
+    log.info(
+        f"Catalog sync de {settings.catalog_sync_origin}: "
+        f"{result['events']} eventos, {result['venues']} locais, "
+        f"{result['ig_accounts']} @s, {len(result['skipped'])} ignorados"
+    )
+    return {"ok": True, "source": settings.catalog_sync_origin, **result}
+
 
 
 @app.post("/admin/venues/seed")

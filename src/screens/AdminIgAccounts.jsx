@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { fetchVenueLeaderboard } from '../services/api'
+import { fetchVenueLeaderboard, checkBackendHealth } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
@@ -39,6 +39,10 @@ export default function AdminIgAccounts() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // Which environment is answering. The catalog sync only makes sense
+  // away from production — production is the source, not a target — so
+  // the button stays hidden until /health says we're somewhere else.
+  const [envName, setEnvName] = useState(null)
 
   // Search filter for the IG handles list — matches handle, label,
   // display_name, or category. Live filter, no debounce needed for ~25
@@ -89,6 +93,10 @@ export default function AdminIgAccounts() {
   }, [email])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    checkBackendHealth().then(h => setEnvName(h?.env_name || null))
+  }, [])
 
   async function toggleEnabled(acc) {
     setBusy(true)
@@ -180,6 +188,34 @@ export default function AdminIgAccounts() {
       alert('Refresh iniciado em background. Próximo scrape de Instagram em ~1-2 min.')
     } catch (e) {
       setError(`Falha ao disparar refresh: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
+  async function syncCatalog() {
+    if (!confirm(
+      'Puxar o catálogo da produção pra este ambiente?\n\n' +
+      'Vem eventos, locais e @s. NÃO vem usuários, amizades, RSVPs ' +
+      'nem tokens de push.'
+    )) return
+    setBusy(true)
+    try {
+      const r = await fetch(
+        withEmail(`${API_BASE}/admin/sync-catalog`, email),
+        { method: 'POST' },
+      )
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
+      const dropped = body.skipped?.length
+        ? `\n${body.skipped.length} evento(s) ignorado(s) por payload inválido.`
+        : ''
+      alert(
+        `Catálogo sincronizado.\n\n${body.events} eventos, ` +
+        `${body.venues} locais, ${body.ig_accounts} @s.${dropped}`
+      )
+      await load()
+    } catch (e) {
+      setError(`Falha ao sincronizar catálogo: ${e.message}`)
     }
     setBusy(false)
   }
@@ -454,6 +490,16 @@ export default function AdminIgAccounts() {
           >
             ▶ Disparar refresh agora
           </button>
+          {envName && envName !== 'production' && (
+            <button
+              onClick={syncCatalog}
+              disabled={busy}
+              style={ghostBtn('var(--honey)')}
+              title="Só catálogo — usuários e push ficam na produção"
+            >
+              ⬇ Puxar catálogo da produção
+            </button>
+          )}
         </div>
       )}
     </div>
