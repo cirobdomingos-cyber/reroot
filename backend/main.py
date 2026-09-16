@@ -4509,7 +4509,12 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         if src_row and src_row.get("created_by") == req.google_id:
             if group_id in (src_row.get("group_ids") or []):
                 # Already linked to this group — nothing to do.
-                return src_row
+                # notified_count is what the sheet reports back to the
+                # user ("3 avisados"). It has to be what actually went
+                # out, not the group's size: three of this endpoint's
+                # four exits send no push at all, and a count computed
+                # on the client would claim otherwise on every one.
+                return {**src_row, "notified_count": 0}
             # Expand the invitee list to include this group's members
             # (minus the creator). Existing invitees are preserved so
             # other groups' members stay visible.
@@ -4521,7 +4526,11 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             })
             linked = db.link_event_to_group(src_id, group_id, new_invitees)
             if linked:
-                return linked
+                # No push on this path — the group's members become
+                # invitees (so the event lands in their Pendências) but
+                # nothing tells them. Pre-existing, reported separately;
+                # the honest count here is zero, not len(new_invitees).
+                return {**linked, "notified_count": 0}
 
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)
@@ -4541,7 +4550,9 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
                 )
             except Exception as e:
                 log.warning(f"Group event {existing['id']}: dedup auto-RSVP failed: {e}")
-            return existing
+            # Already in this group from an earlier tap — the push went
+            # out then, not now.
+            return {**existing, "notified_count": 0}
 
     if req.invitee_google_ids is None:
         invitees = [
@@ -4655,7 +4666,11 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # on their own next interaction (cheaper than evaluating N members
     # synchronously here).
     new_badges = badges.evaluate(req.google_id)
-    return {**event, "new_badges": new_badges}
+    # How many people this add actually reaches. The fan-out is a
+    # BackgroundTask, so this is "queued for", not "delivered to" — an
+    # individual send can still fail on a dead token. It is the honest
+    # number available at this point, and the only exit that isn't zero.
+    return {**event, "new_badges": new_badges, "notified_count": len(invitees)}
 
 
 @app.get("/groups/{group_id}/events")
