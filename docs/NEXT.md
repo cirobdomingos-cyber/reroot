@@ -3,7 +3,8 @@
 Working backlog, ranked. Every item says what justifies it, so a future
 session can re-rank instead of guessing. Numbers are dated: re-measure
 before trusting them (`/admin/usage-stats`, `/admin/users`,
-`/admin/group-stats`, `/analytics/funnel` — all founder-only).
+`/admin/group-stats`, `/analytics/funnel`, `/admin/client-errors` — all
+founder-only).
 
 Process for anything here: `docs/RELEASE_PROCESS.md`. `main` is protected;
 work goes `feat/*` → PR into `dev` → staging → release PR → production.
@@ -30,96 +31,168 @@ that day and backfilled with one day per user). It means something from
 
 ---
 
-## 1. Make the client errors readable — recommended next
+## Open right now
 
-183 uncaught errors and 145 unhandled rejections against 38 accounts, and
-**not one message is readable today**: `/errors/client` stores them in
-`analytics_events.properties_json`, but `/analytics/funnel` only counts by
-`event_name`. Meanwhile 14 accounts did nothing at all — if some of them
-crashed on first run, this is the cheapest large win available.
+**`DIGEST_URL_NOVIDADES` is still unset in production.** The Novidades
+screen shipped (`prod-2026-09-16-9`), but the daily digest push keeps
+sending the legacy `/#/events?digest=<id>` until that var is set to
+`true` on the production Railway service. It's read per call in
+`_digest_deep_link`, so it takes effect on the next digest — no deploy.
+Bundles older than `prod-2026-09-16-5` have no `/novidades` route and
+would land on the default screen, so the OTA needs to have rolled first.
 
-Build: founder-only endpoint that groups the stored messages (top message,
-count, last seen, sample url/context), plus a panel in the Admin tab.
-Either it finds a real bug or it rules the theory out.
+---
 
-## 2. Push opt-in
+## 1. Genre in the UI
 
-26 of 38 accounts have no push device. The daily digest, friend requests
-and event invites all reach under a third of users — and we just spent a
-release fixing where notification taps land. Look at when the app asks and
-what it says (`PushBanner` on Home, the onboarding primer).
+The tag ships per event from the enrichment pass (`genre`, closed
+vocabulary in `enrichment.py`), but **nothing reads it yet** — that was
+deliberate, so tags accumulate before the filter exists. The catalog has
+no backfill: events are perishable, so it self-tags over a few weeks from
+the first scrape after `prod-2026-09-16-9`.
 
-## 3. `/#/novidades/:digestId` page
+Decided: genre **replaces** source-level follows rather than adding a
+second mute axis — so this item also removes `lib/follows.js`,
+`unfollowedSources` (AppContext + remote sync), and the "Seguindo"
+toggle in Fontes. Fontes stays as the transparency surface showing what's
+curated and tracked.
 
-Agreed, not built. The digest push currently lands on Eventos with a
-filter, and the filter parameter is stripped from the URL immediately —
-so a refresh loses it and there's no way back to "what was new today".
+Open call: preference (ranking) vs. filter (exclusion). Recommendation on
+file is ranking — a hard genre mute is set once, forgotten, and quietly
+makes the catalog worse, which fights "tudo que tá rolando em Curitiba".
 
-**Sequencing is load-bearing:** ship the route (and a Home entry point)
-first, let the OTA bundle roll out, and only then change the backend's
-digest URL. Phones run whatever bundle they last downloaded; pointing the
-backend at a route an old bundle doesn't have sends those users to the
-default screen — the exact bug that was just fixed.
+## 2. Channels ("Rockzão", "Pagodera")
 
-## 4. Group "first event" nudge
+Curated, auê-run collections people follow — the Spotify "This Is" shape.
+Why it matters: a private group is empty until a member acts, and the
+measurement says that's exactly where it stalls (3 people ever created an
+event, 13 events across 2 groups). A channel is never empty because we
+fill it, and with genre tags filling it becomes near-automatic.
 
-19 of 38 are in a group, but only 3 people have ever created an event and
-all 13 events live in 2 groups. So the gap is *creating*, not
-understanding what a group is. Aim a "primeiros passos" panel at the
-first event inside a group; the two solo-and-empty groups (creator never
-invited anyone) are a smaller, separate problem.
+The real prize is push economics: today push is one broadcast/day to 12
+devices. A channel push is targeted and has a reason to exist — and it's
+the only decent argument for re-enabling notifications for the 26 who
+turned them off.
 
-Tracking shipped 16 Sep: `group_created`, `group_joined` (code/link),
-`group_invite_opened`, `group_invite_shared`, `group_event_created`. The
-pair `group_invite_opened` → `group_joined` shows whether invite links
-convert or die at the sign-in wall.
+**Next step is the manual pilot, not the plumbing.** One channel, events
+hand-picked, real push, two weeks. Mostly copy plus one push. If a
+hand-curated Rockzão doesn't retain, the automated one won't either.
 
-## 5. Waiting on data (check after ~23 Sep)
+Two cautions, both recorded before building:
+- Frame it as a **channel you follow**, not a group you're in. "This Is"
+  works because nobody expects other humans in a playlist. Shipped as a
+  group (member count, avatars, invite), people arrive expecting a crew
+  and find a bot feed.
+- Don't overload the `groups` table. Every group feature would need
+  "…unless it's a channel" branches — admin checks, invite sheet,
+  MembersSheet, and the primeiros-passos nudge would fire on an empty
+  channel telling auê to invite people to its own channel. Share the
+  event-attach + notify plumbing, not the group row.
+- Batch channel pushes (one per channel per day). Someone in three
+  channels could triple their notification volume, which is how push gets
+  turned off.
 
-- **Eventos filter rows.** Three rows of filters, and `events_filter_*`
-  (shipped 16 Sep) records which ones people touch. Cut what nobody uses;
-  the date row and the week strip overlap by design.
-- **Group funnel**, per the events above.
+## 3. IG avatars expire
+
+Root cause is **not** storage — the Railway volume is shared with SQLite
+and works for event flyers and user uploads. Instagram bot-detects
+Railway's IP on the `instagram.com/<handle>/` scrape that *discovers* the
+avatar URL, which is the only path available for the ~94 of 123 accounts
+Apify never returned a `profile_pic_url` for. Downloading the bytes from
+a known URL is not blocked — that's why the manual workaround
+(`/admin/avatars/rehost-url`, founder fetches the og:image locally and
+POSTs it) works.
+
+Also found: `rehost_pending_avatars` is exposed at
+`POST /admin/avatars/rehost` but **is not scheduled anywhere** — it only
+ever runs when triggered by hand.
+
+Three paths, decision pending:
+- Get `profile_pic_url` from Apify at scrape time, killing the blocked
+  scrape. The scraper already tries several field paths
+  (`parentData.profilePicUrl`, `ownerProfilePicUrl`, …) and still comes
+  back empty for most, so confirming whether it's actor config or an
+  actor limitation needs a live run that costs Apify credit.
+- Route discovery through a proxy / residential IP (paid).
+- Automate the local workaround in batch from a trusted machine.
+
+## 4. Waiting on data (check after ~23 Sep)
+
+- **Group funnel** — `group_created`, `group_joined` (code/link),
+  `group_invite_opened`, `group_invite_shared`, `group_event_created`,
+  all shipped 16 Sep. The pair `group_invite_opened` → `group_joined`
+  shows whether invite links convert or die at the sign-in wall. **This
+  is the measurement that decides whether groups become the app's
+  focus** — decide with the number, not before.
+- **Eventos filter rows.** `events_filter_*` (shipped 16 Sep) records
+  which of the three filter rows people touch. Cut what nobody uses; the
+  date row and the week strip overlap by design.
+
+## 5. Push opt-in
+
+26 of 38 accounts have no push device. The mechanical trap is fixed —
+the Home banner used to hide itself permanently on *any* subscribe
+failure, not just an explicit denial, and both permission calls are now
+timeout-guarded. What's left is the product question: when the app asks
+and what it says (`PushBanner` on Home, the onboarding primer).
 
 ## 6. Notification inbox
 
-Idea from 16 Sep: a dedicated in-app section for things that don't need a
-push — friend invites received, invites accepted, new venues added to
-tracking, new events found. Unread count as a badge (e.g. on Profile or a
-bell icon), clear-all action. Goal: move low-urgency events out of push
-(where every one costs opt-in trust, see item 2) into a pull surface the
-user checks when they want to. Needs an unread/read model — likely a new
-table keyed by user + event type, or reuse `analytics_events` with a
-`seen_at` column.
+A dedicated in-app section for things that don't need a push — friend
+invites received, invites accepted, new venues tracked, new events found.
+Unread badge, clear-all. Moves low-urgency events out of push (where each
+one costs opt-in trust) into a pull surface. Gains weight if channels
+ship, since that's where channel activity goes instead of a notification.
+Needs an unread/read model — a new table keyed by user + event type, or
+`analytics_events` with a `seen_at` column.
 
-## 7. Small things
+## 7. Credit for community suggestions
 
-- **Users table fails silently.** `UsersTable` returns `null` when its
-  fetch fails — no message — so "not deployed yet" and "broken" look
-  identical. Show an error with a retry.
-- **IG avatars expire.** Instagram CDN URLs die after a few days and
-  re-hosting them fails on Railway, so venue avatars go blank over time.
-- **eslint React plugin missing** — ~288 warnings, nearly all false
-  "unused" flags on JSX components, which hides real ones.
-- **Curators are matched by email**, so a curator signed in with Apple's
-  private relay address never gets curator pushes.
-- **Scrape depth is 5 posts/account**; it missed a dated flyer once
-  (Baque Mulher, 16 Sep). Raising it costs Apify + Claude per day.
-- **Dedupe prefers a manual submission** over the venue's own IG post.
+Suggesting an @ already works end to end (`SuggestAccountForm` →
+`/accounts/requests` → `account_requests` → curator push → approve), and
+approval **already** pushes the suggester and writes `Sugerida por <nome>`
+into the account's notes. The gap is that the credit is invisible:
+- Show "sugerida por" publicly on the source (store the `google_id`
+  rather than a name string, so it can link to the profile).
+- Badge on approval — the badges system already has the shape
+  (`BADGES` in `badges.py`, `award_badge`, tiers); this is a dict entry
+  plus one call.
+- **Notify when the first event from that account lands.** The approval
+  push promises "os eventos aparecem depois do próximo scrape" and never
+  follows up. The first event is the moment it becomes real.
+
+## 8. Small things
+
+- **IG avatars** — see item 3, promoted out of this list.
 - **Two accounts still uncategorised**: `@visit.curitiba`,
-  `@sambacasaforte`.
+  `@sambacasaforte`. Data entry in `/admin/ig`, not code.
+
+---
+
+## Decided, don't re-litigate
+
+- **Scrape depth stays at 5 posts/account** (16 Sep). It missed a dated
+  flyer once; raising it costs Apify + Claude every day.
+- **Genre replaces source follows.** No second mute axis, and the
+  source-level opt-out goes away — see item 1.
+- **Skipped on purpose:** surfacing `request_count` as social proof, and
+  a "N fontes, X da comunidade" scoreboard on Fontes.
+- **No genre backfill.** Events are perishable; the catalog turns over.
 
 ---
 
 ## State of the release machinery (16 Sep 2026)
 
-- Production tags: `prod-2026-09-15` (baseline), `prod-2026-09-16`,
-  `-2`, `-3`, `-4`.
+- Production tags: `prod-2026-09-15` (baseline), then `prod-2026-09-16`
+  through `-9`.
 - OTA published: **1.2.4** — devices get it on a cold start, sometimes
   after two launches. Perfil's bottom line shows the running bundle and
   the device id for `OTA_CANARY_DEVICES`.
 - Canary is wired but has never been used: set `OTA_CANARY_VERSION` +
   `OTA_CANARY_DEVICES` to put a build on one phone before everyone.
+- iOS is public on the App Store (id `6765535013`). `/install` 302s iOS
+  there; `settings.testflight_invite_url`, when set, overrides that for a
+  version-bump beta window.
 - Staging: https://aue-staging.up.railway.app (own database, `ENV_NAME=staging`).
 - No automated check can tap a push notification — that verification is
   always manual, on a real device.
