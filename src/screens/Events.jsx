@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
@@ -228,12 +228,19 @@ export default function Events() {
   // below the fold. The bar below says how many are on, so a collapsed
   // filter is never a hidden one.
   const [filtersOpen, setFiltersOpen] = useState(false)
-  // Digest filter: when the user taps the daily-digest push, the URL
-  // carries ?new=<id1,id2,...> with up to 12 newly-scraped event IDs.
-  // The Events screen narrows to JUST those rows + shows a small
-  // "X novidades de hoje · Limpar" banner so the user knows they're
-  // in a filtered view. Limpar clears it.
+  // Digest filter: when the user taps the daily-digest push, they land
+  // either on /novidades/:digestId (route param — survives refresh, the
+  // link the push now sends) or on the older ?new=/?digest= query-param
+  // forms (stripped after read — kept only for back-compat with bundles
+  // that haven't picked up the OTA yet). Either way the Events screen
+  // narrows to JUST those rows + shows a small "X novidades de hoje ·
+  // Limpar" banner so the user knows they're in a filtered view.
+  const { digestId: routeDigestId } = useParams()
   const [digestIds, setDigestIds] = useState(null) // null | string[]
+  // Set when a /novidades/:digestId link is opened after the digest has
+  // been pruned server-side (30 days) — tells the user why the page is
+  // empty instead of silently showing the full catalog.
+  const [digestExpired, setDigestExpired] = useState(false)
   // Map of IG handle → tracked category. Built from /sources on mount so
   // the chip filter on top of the catalog can use the same taxonomy as
   // the Sources page (bar, cafe, restaurante, musica, …).
@@ -323,17 +330,20 @@ export default function Events() {
     const queryDigest = params.get('digest')  // current: ?digest=<digest_id>
     const openId = stateId || queryId
 
-    // Daily-digest push tap brings the user here with ?digest=<id>.
-    // Fetch the persisted event_ids list from the backend (kept off
-    // the push payload to avoid the APNs / web push size limits that
-    // forced the old ?new=id,id,... approach to cap at 12).
-    if (queryDigest) {
-      fetch(`${BASE_URL}/digests/${encodeURIComponent(queryDigest)}`)
-        .then(r => r.ok ? r.json() : null)
+    // Daily-digest push tap brings the user here via /novidades/<id>
+    // (routeDigestId) or, on older bundles, ?digest=<id>. Fetch the
+    // persisted event_ids list from the backend (kept off the push
+    // payload to avoid the APNs / web push size limits that forced the
+    // old ?new=id,id,... approach to cap at 12).
+    const digestIdToFetch = routeDigestId || queryDigest
+    if (digestIdToFetch) {
+      fetch(`${BASE_URL}/digests/${encodeURIComponent(digestIdToFetch)}`)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
         .then(d => {
           if (d?.event_ids?.length) setDigestIds(d.event_ids)
+          else if (routeDigestId) setDigestExpired(true)
         })
-        .catch(() => {})
+        .catch(() => { if (routeDigestId) setDigestExpired(true) })
     } else if (queryNew) {
       // Backward compat: older builds sent inline ids in the URL.
       const ids = queryNew.split(',').map(s => s.trim()).filter(Boolean)
@@ -360,7 +370,7 @@ export default function Events() {
       // from here on.
       navigate('/events', { replace: true })
     }
-  }, [location.state?.openEventId, location.search, loading, groupEventsReady, navigate])
+  }, [location.state?.openEventId, location.search, routeDigestId, loading, groupEventsReady, navigate])
 
   async function openDetail(eventId) {
     setSelectedEventId(eventId)
@@ -817,6 +827,36 @@ export default function Events() {
           )}
         </AnimatePresence>
 
+        {/* Expired-digest notice — /novidades/:digestId is now a real,
+            bookmarkable/shareable link (unlike the old ?digest= query
+            param, which was stripped on read), so it can be reopened
+            after the backend prunes the digest (30 days). Tell the user
+            why instead of silently showing the full catalog. */}
+        {digestExpired && (
+          <div style={{
+            margin: '0 16px 8px', padding: '10px 12px',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--line)',
+            borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <div style={{ flex: 1, fontSize: 12, color: 'var(--text2)', lineHeight: 1.4 }}>
+              Essa novidade já não está mais disponível — mas dá uma olhada
+              no catálogo completo.
+            </div>
+            <button
+              onClick={() => navigate('/events', { replace: true })}
+              className="neon-mono"
+              style={{
+                flexShrink: 0, padding: '6px 10px', borderRadius: 8,
+                background: 'transparent', border: '1px solid var(--line)',
+                color: 'var(--text2)', fontSize: 10, letterSpacing: '0.18em',
+                textTransform: 'uppercase', cursor: 'pointer',
+              }}
+            >
+              Ver tudo
+            </button>
+          </div>
+        )}
+
         {/* Digest filter banner — shows when the user landed here via a
             daily-digest push tap. Lime accent + "Limpar" link returns
             them to the full catalog. Sits inside the sticky header so
@@ -851,7 +891,13 @@ export default function Events() {
               </div>
             </div>
             <button
-              onClick={() => setDigestIds(null)}
+              onClick={() => {
+                setDigestIds(null)
+                // On /novidades/:digestId, clearing state alone leaves the
+                // id in the URL — a refresh would just re-fetch it. Route
+                // back to the plain catalog so Limpar actually sticks.
+                if (routeDigestId) navigate('/events', { replace: true })
+              }}
               className="neon-mono"
               style={{
                 flexShrink: 0,

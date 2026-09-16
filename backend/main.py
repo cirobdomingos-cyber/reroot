@@ -7192,6 +7192,21 @@ def _reminder_time_label(date_iso: str) -> str:
     return dt.strftime("%H:%M")
 
 
+def _digest_deep_link(digest_id: str) -> str:
+    """The URL a digest push points at.
+
+    /novidades/:digestId is a real route (shipped alongside this function)
+    that survives a refresh, unlike the old ?digest= query param the app
+    stripped on read. Gated behind an env var rather than switched
+    outright: phones run whatever JS bundle they last downloaded, and an
+    old bundle has no route for /novidades — it'd fall through to the
+    default screen. Flip DIGEST_URL_NOVIDADES=true once the OTA rollout
+    has had time to reach production devices (see docs/NEXT.md item 3)."""
+    if os.environ.get("DIGEST_URL_NOVIDADES", "false").strip().lower() == "true":
+        return f"/#/novidades/{digest_id}"
+    return f"/#/events?digest={digest_id}"
+
+
 async def send_daily_digest_to_all_subscribers(
     new_event_ids: list[str] | None,
     *,
@@ -7271,7 +7286,7 @@ async def send_daily_digest_to_all_subscribers(
     # a scrape lands 30+ events).
     digest_id = f"d_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
     db.insert_daily_digest(digest_id, [e["id"] for e in parsed])
-    url = f"/#/events?digest={digest_id}"
+    url = _digest_deep_link(digest_id)
     tag = "daily-digest"
 
     web_subs = db.get_all_push_subscriptions()
@@ -7589,6 +7604,18 @@ async def push_send_reminders(requesting_email: str = "", dry_run: bool = True):
 def push_vapid_public_key():
     """Return the VAPID public key so the frontend can subscribe."""
     return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.get("/digests/latest")
+def get_latest_digest():
+    """Most recent digest, for the Home 'o que rolou hoje' entry point —
+    unlike the push-tap path, Home has no digest_id handed to it. Must be
+    registered before /digests/{digest_id} or FastAPI would try to look
+    up a digest literally named 'latest'. 404 if none has been sent yet."""
+    digest = db.get_latest_daily_digest()
+    if not digest:
+        raise HTTPException(status_code=404, detail="Nenhum digest ainda")
+    return digest
 
 
 @app.get("/digests/{digest_id}")
