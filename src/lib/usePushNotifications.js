@@ -91,6 +91,13 @@ export function usePushNotifications() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Returns true on success, the string 'denied' when the user (or a past
+  // session) explicitly refused the permission prompt, or false for any
+  // other failure — network, misconfigured VAPID key, SW timeout, server
+  // error. Callers that permanently stop asking on failure (the Home
+  // banner) MUST only do that for 'denied' — a transient false is worth
+  // retrying next session, and used to get treated identically to a real
+  // no, which is most of why so few of our accounts have push enabled.
   const subscribe = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -103,11 +110,14 @@ export function usePushNotifications() {
       if (IS_NATIVE) {
         const { PushNotifications } = await import('@capacitor/push-notifications')
         // Permission first — APNs returns "granted" on iOS only after
-        // the user accepts the system prompt.
+        // the user accepts the system prompt. 'denied' is an explicit
+        // no; anything else ('prompt', 'prompt-with-rationale') means no
+        // decision was made and the ask is worth repeating — see the
+        // 'denied' sentinel return below.
         const permResult = await PushNotifications.requestPermissions()
         if (permResult.receive !== 'granted') {
-          dispatch({ type: 'SET_PUSH_DISMISSED' })
-          return false
+          if (permResult.receive === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
+          return permResult.receive === 'denied' ? 'denied' : false
         }
 
         // Listen for the registration event before calling register() —
@@ -164,10 +174,14 @@ export function usePushNotifications() {
       }
 
       // ── Web (browser/PWA) channel ────────────────────────────
+      // 'denied' is an explicit no. 'default' means the prompt was
+      // dismissed without a choice (e.g. the user navigated away) — not
+      // a no, so callers shouldn't treat it as one. See the 'denied'
+      // sentinel return below.
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
-        dispatch({ type: 'SET_PUSH_DISMISSED' })
-        return false
+        if (permission === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
+        return permission === 'denied' ? 'denied' : false
       }
 
       const keyRes = await fetch(`${API_BASE}/push/vapid-public-key`)
