@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
-import { fetchGroups, createGroup, joinGroup } from '../services/api'
+import { fetchGroups, createGroup, joinGroup, trackEvent } from '../services/api'
 
 // Tells App.jsx to hide the FAB while this sheet is open. Without this the
 // FAB visually overlaps the sheet because AnimatedPage establishes its own
@@ -48,6 +48,9 @@ export default function Groups({ embedded = false }) {
       console.log('[Groups] createGroup', { googleId, data })
       const group = await createGroup(googleId, data)
       console.log('[Groups] created', group)
+      // Groups were never instrumented, so "5 groups exist" was the only
+      // thing we knew about them — not whether anyone was invited after.
+      trackEvent('group_created', { visibility: data.visibility })
       setGroups(prev => [{ ...group, member_count: 1, role: 'admin', next_event: null }, ...prev])
       setShowCreate(false)
     } catch (err) {
@@ -58,6 +61,7 @@ export default function Groups({ embedded = false }) {
 
   async function handleJoin(code) {
     const result = await joinGroup(googleId, code)
+    if (result.status === 'ok') trackEvent('group_joined', { via: 'code' })
     if (result.status === 'ok' || result.status === 'already_member') {
       // Refresh the list
       const updated = await fetchGroups(googleId)

@@ -6613,6 +6613,14 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
     return db.get_usage_stats(window_days=window_days)
 
 
+@app.get("/admin/group-stats")
+def admin_group_stats(requesting_email: str = ""):
+    """Founder-only: whether the groups that exist have members and
+    events, or were created and abandoned. See db.get_group_composition."""
+    _require_founder(requesting_email)
+    return db.get_group_composition()
+
+
 @app.get("/admin/weekly-summary")
 def admin_weekly_summary(requesting_email: str = ""):
     """Founder-only: return the past-7-days vs prior-7-days activity
