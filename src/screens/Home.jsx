@@ -8,7 +8,7 @@ import { useT } from '../i18n'
 import {
   fetchEvents, fetchFriendsFeed, fetchGroups, fetchUserGroupEvents,
   getMyPending, acceptFriendRequest, declineFriendRequest,
-  declineEventInvite, syncRsvp, trackEvent,
+  declineEventInvite, syncRsvp, trackEvent, fetchLatestDigest,
 } from '../services/api'
 import WeekCalendar from '../components/WeekCalendar'
 import Avatar from '../components/Avatar'
@@ -67,12 +67,27 @@ export default function Home() {
   // calendar to a future week leaves the "próximos" section showing the
   // exact same events that are already visible in the strip.
   const [calendarWeekOffset, setCalendarWeekOffset] = useState(0)
+  // Latest daily-digest snapshot, for the "o que rolou hoje" entry point.
+  // null until fetched, and stays null (card hidden) if none exists yet
+  // or the digest is stale — see the 36h cutoff below.
+  const [latestDigest, setLatestDigest] = useState(null)
 
   useEffect(() => {
     // Fetch the live catalog (broad "Tudo" view — same as Events screen).
     fetchEvents('all').then(({ events }) => {
       setAllEvents(events || [])
     }).catch(() => setAllEvents([]))
+  }, [])
+
+  useEffect(() => {
+    fetchLatestDigest().then(d => {
+      if (!d?.id || !d?.event_ids?.length) return
+      // Digests fire once a day; a 36h cutoff keeps the card from pointing
+      // at "hoje" content that's actually from two days ago if a scrape
+      // was skipped or delayed.
+      const ageMs = Date.now() - new Date(d.created_at).getTime()
+      if (ageMs < 36 * 60 * 60 * 1000) setLatestDigest(d)
+    })
   }, [])
 
   useEffect(() => {
@@ -586,6 +601,39 @@ export default function Home() {
           </button>
         )
       })()}
+
+      {/* "O que rolou hoje" — entry point into /novidades/:digestId, the
+          same view a digest push opens, but reachable without waiting for
+          a notification. Lime accent matches the banner shown once inside
+          that page (see Events.jsx) so the two read as one feature. */}
+      {latestDigest && (
+        <div
+          onClick={() => navigate(`/novidades/${latestDigest.id}`)}
+          style={{
+            margin: '0 16px 14px', padding: '14px 16px', cursor: 'pointer',
+            borderRadius: 16, border: '1px solid rgba(198, 255, 0, 0.35)',
+            background: 'rgba(198, 255, 0, 0.06)',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}
+        >
+          <span style={{
+            fontSize: 16, lineHeight: 1, flexShrink: 0, color: 'var(--lime)',
+            filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+          }}>✨</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="neon-mono" style={{
+              fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+              color: 'var(--lime)',
+            }}>
+              {latestDigest.event_ids.length} novidade{latestDigest.event_ids.length === 1 ? '' : 's'} de hoje
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+              O que apareceu no catálogo hoje
+            </div>
+          </div>
+          <span style={{ flexShrink: 0, color: 'var(--lime)' }}>→</span>
+        </div>
+      )}
 
       {/* The one route to discovery now that "Pra você" is gone: Home is
           your plans, Eventos is the city. With nothing planned at all,

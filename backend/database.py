@@ -2895,6 +2895,27 @@ def get_daily_digest(digest_id: str) -> Optional[dict]:
     }
 
 
+def get_latest_daily_digest() -> Optional[dict]:
+    """Most recent digest snapshot, or None if none exist yet. Powers the
+    Home entry point ("see what's new today") — the id isn't known there
+    otherwise, since it's normally only learned from a push payload."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, event_ids, created_at FROM daily_digests ORDER BY created_at DESC LIMIT 1",
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        ids = json.loads(row["event_ids"])
+    except (json.JSONDecodeError, TypeError):
+        ids = []
+    return {
+        "id": row["id"],
+        "event_ids": ids,
+        "created_at": row["created_at"],
+    }
+
+
 def delete_catalog_event(event_id: str) -> bool:
     """Hard-delete a catalog event from the events table. Used by the
     admin "remove this LLM mis-extraction" endpoint when an IG post
