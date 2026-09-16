@@ -34,6 +34,8 @@ export default function AdminIgAccounts() {
   const [usage, setUsage] = useState(null)
   // Full user directory (founder-only) — replaces "last 10 logins".
   const [users, setUsers] = useState(null)
+  // Client-side errors, grouped by (type, message) — founder-only.
+  const [clientErrors, setClientErrors] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
   const [isFounder, setIsFounder] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -88,6 +90,10 @@ export default function AdminIgAccounts() {
           const usersRes = await fetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
           if (usersRes.ok) setUsers(await usersRes.json())
         } catch { /* user directory is best-effort */ }
+        try {
+          const errRes = await fetch(withEmail(`${API_BASE}/admin/client-errors`, email))
+          if (errRes.ok) setClientErrors(await errRes.json())
+        } catch { /* client-errors panel is best-effort */ }
       }
       setError(null)
     } catch (e) {
@@ -373,7 +379,7 @@ export default function AdminIgAccounts() {
           3. Feedback — read what users said.
           4. Active handles — operational list at the bottom; adding new
              handles lives on the Sources page now (no duplicate form). */}
-      {isFounder && usage && <UsageSection usage={usage} users={users} />}
+      {isFounder && usage && <UsageSection usage={usage} users={users} clientErrors={clientErrors} />}
 
       {/* Leaderboard — founder sales tool. Sits right under "Uso do
           app" since both panels are the founder's "where do I focus
@@ -655,7 +661,7 @@ function statusBtn(color) {
 // ── UsageSection — founder dashboard ──────────────────────
 // DAU/WAU/MAU + funnel + 30-day daily series + recent logins.
 // Charts are simple inline SVG bars to avoid a chart-library dep.
-function UsageSection({ usage, users }) {
+function UsageSection({ usage, users, clientErrors }) {
   const maxDaily = Math.max(1, ...usage.daily.map(d => d.active))
   const maxFunnel = Math.max(1, ...usage.funnel.map(f => f.count))
   return (
@@ -786,6 +792,12 @@ function UsageSection({ usage, users }) {
       {/* Every user and what they've done. The "últimos logins" list
           below stays as the quick glance; this is the full picture. */}
       <UsersTable data={users} />
+
+      {/* Client errors, grouped by message — /analytics/funnel only counts
+          by event_name, which collapses every distinct js_uncaught message
+          into one bucket. This is the panel that answers whether accounts
+          that never RSVP'd/friended/grouped crashed on first run. */}
+      <ClientErrorsSection data={clientErrors} />
 
       {/* Recent logins */}
       <div style={{
@@ -961,6 +973,91 @@ function UsersTable({ data }) {
       {rows.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--charcoal-light)', paddingTop: 8 }}>
           Nenhum usuário encontrado.
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function ClientErrorsSection({ data }) {
+  const [sort, setSort] = useState('count')
+  const [query, setQuery] = useState('')
+  if (!data) return null
+
+  const q = query.trim().toLowerCase()
+  const rows = (data.errors || [])
+    .filter(e => !q || e.message.toLowerCase().includes(q) || e.error_type.toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (sort === 'count') return b.count - a.count
+      if (sort === 'last_seen') return b.last_seen < a.last_seen ? -1 : 1
+      return String(a[sort]).localeCompare(String(b[sort]))
+    })
+
+  const fmt = iso => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
+  const th = active => ({
+    textAlign: 'left', padding: '6px 6px', fontSize: 10, fontWeight: 700,
+    color: active ? 'var(--terra)' : 'var(--charcoal-light)',
+    textTransform: 'uppercase', letterSpacing: 0.4, cursor: 'pointer',
+    whiteSpace: 'nowrap', background: 'none', border: 'none',
+  })
+
+  return (
+    <div style={{
+      background: 'var(--white)', borderRadius: 12, padding: 14,
+      border: '1px solid var(--border)', marginBottom: 14,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 10, marginBottom: 10, flexWrap: 'wrap',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
+          ERROS DO CLIENTE · {rows.length} distinto{rows.length === 1 ? '' : 's'}
+        </div>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar mensagem ou tipo"
+          style={{ ...inputStyle, flex: '0 1 200px', padding: '6px 10px', fontSize: 12 }}
+        />
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th><button onClick={() => setSort('error_type')} style={th(sort === 'error_type')}>Tipo</button></th>
+              <th><button onClick={() => setSort('message')} style={th(sort === 'message')}>Mensagem</button></th>
+              <th style={{ textAlign: 'right' }}><button onClick={() => setSort('count')} style={th(sort === 'count')}>Vezes</button></th>
+              <th><button onClick={() => setSort('last_seen')} style={th(sort === 'last_seen')}>Última vez</button></th>
+              <th style={{ textAlign: 'left' }}><span style={{ ...th(false), cursor: 'default' }}>Amostra</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(e => (
+              <tr key={`${e.error_type}:${e.message}`} style={{ borderBottom: '1px solid var(--cream)' }}>
+                <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{e.error_type}</td>
+                <td style={{
+                  padding: '6px 6px', color: 'var(--charcoal)', maxWidth: 320,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }} title={e.message}>
+                  {e.message || <span style={{ color: 'var(--charcoal-light)' }}>(sem mensagem)</span>}
+                </td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{e.count}</td>
+                <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmt(e.last_seen)}</td>
+                <td style={{
+                  padding: '6px 6px', color: 'var(--charcoal-light)', maxWidth: 200,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }} title={e.sample_url}>
+                  {e.sample_url || '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--charcoal-light)', paddingTop: 8 }}>
+          Nenhum erro registrado.
         </div>
       )}
     </div>

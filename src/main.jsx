@@ -112,16 +112,37 @@ if (Capacitor.isNativePlatform?.()) {
   })
 }
 
-// Global error handlers — catch uncaught JS errors in production
+// Reads googleUser straight from localStorage rather than AppContext —
+// these listeners fire outside React (and can fire before AppProvider
+// has mounted), so there's no hook to call here. Best-effort: a parse
+// failure or missing user just means the report goes in anonymous.
+function currentGoogleId() {
+  try {
+    const raw = localStorage.getItem('aue_state')
+    return raw ? (JSON.parse(raw)?.googleUser?.id || '') : ''
+  } catch {
+    return ''
+  }
+}
+
+// Global error handlers — catch uncaught JS errors in production. url and
+// stack ride along in `context` so the founder-only /admin/client-errors
+// panel can show where an error happened, not just its message — without
+// them, every report from every screen collapses into one anonymous line.
 window.addEventListener('error', (event) => {
   reportError('js_uncaught', event.message, {
     filename: event.filename,
     line: event.lineno,
     col: event.colno,
-  })
+    url: window.location.href,
+    stack: event.error?.stack || '',
+  }, currentGoogleId())
 })
 window.addEventListener('unhandledrejection', (event) => {
-  reportError('js_unhandled_promise', String(event.reason).slice(0, 500))
+  reportError('js_unhandled_promise', String(event.reason).slice(0, 500), {
+    url: window.location.href,
+    stack: event.reason?.stack || '',
+  }, currentGoogleId())
 })
 
 // PWA install prompt capture — Chrome/Edge/Brave fire `beforeinstallprompt`
