@@ -74,6 +74,16 @@ def test_latest_digest_returns_the_most_recent(api):
     db, _main, client = api
     db.insert_daily_digest("d_20260916T090000", ["ev1", "ev2"])
     db.insert_daily_digest("d_20260916T140000", ["ev3"])
+    # insert_daily_digest stamps created_at with now(), and two inserts
+    # this close together land in the same clock tick on Windows — the
+    # ORDER BY then ties and SQLite hands back whichever it likes. Stamp
+    # them apart so this asserts ordering rather than luck.
+    with db.get_conn() as conn:
+        conn.execute("UPDATE daily_digests SET created_at = ? WHERE id = ?",
+                     ("2026-09-16T09:00:00+00:00", "d_20260916T090000"))
+        conn.execute("UPDATE daily_digests SET created_at = ? WHERE id = ?",
+                     ("2026-09-16T14:00:00+00:00", "d_20260916T140000"))
+        conn.commit()
     res = client.get("/digests/latest")
     assert res.status_code == 200
     body = res.json()
