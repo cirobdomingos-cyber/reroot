@@ -919,7 +919,7 @@ export default function Home() {
 // single low-key strip with a lime CTA + dismiss. Hides permanently
 // once the user subscribes OR taps the X.
 function PushBanner({ state, dispatch }) {
-  const { subscribed, subscribe, loading } = usePushNotifications()
+  const { subscribed, subscribe, loading, error } = usePushNotifications()
   const [busy, setBusy] = useState(false)
 
   // Three independent reasons to hide. If any is true, no banner.
@@ -930,10 +930,14 @@ function PushBanner({ state, dispatch }) {
   async function handleEnable() {
     setBusy(true)
     try {
-      const ok = await subscribe()
-      if (!ok) {
-        // Permission denied or transport unavailable — hide the banner
-        // so we don't keep nagging. User can revisit via Profile toggle.
+      const result = await subscribe()
+      // Only an explicit "denied" permanently hides the banner. It used
+      // to hide on ANY failure — a VAPID misconfig, a slow mobile
+      // network, a timed-out service worker registration — which meant
+      // a one-off hiccup burned the ask forever, same as a real refusal.
+      // 26 of 38 accounts have no push device; conflating "no" with
+      // "the network blinked" is a plausible chunk of that gap.
+      if (result === 'denied') {
         dispatch({ type: 'DISMISS_PUSH_BANNER' })
       }
     } finally {
@@ -971,6 +975,15 @@ function PushBanner({ state, dispatch }) {
         }}>
           Receba quando amigos confirmarem rolês perto de você.
         </div>
+        {/* Only reachable on a transient failure now — an explicit
+            "denied" hides the whole banner instead. Tells the user the
+            tap wasn't a no-op, since the banner otherwise just sits
+            there waiting for a retry. */}
+        {error && (
+          <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, opacity: 0.8 }}>
+            Não rolou agora — tenta de novo?
+          </div>
+        )}
       </div>
       <button
         onClick={handleEnable}
