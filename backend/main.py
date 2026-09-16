@@ -17,6 +17,7 @@ import sqlite3
 import hashlib
 import re
 import unicodedata
+import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -115,6 +116,13 @@ class Settings(BaseSettings):
     # Requests still prefer their own forwarded host when they have one,
     # so a new domain works before anyone sets this.
     public_origin: str = "https://reroot-production.up.railway.app"
+    # Catalog sync (staging pulls production's events so tests run against
+    # real data). Shared secret, set to the same value on both Railway
+    # services. Empty disables the export endpoint entirely — the catalog
+    # is the product, so this fails closed rather than open.
+    catalog_sync_token: str = ""
+    # Where staging pulls from. Only read when env_name != "production".
+    catalog_sync_origin: str = "https://reroot-production.up.railway.app"
 
 
 settings = Settings()
@@ -3699,9 +3707,24 @@ def _format_event_date(dt: datetime) -> str:
 
 
 def _format_price(min_p: float, max_p: float, currency: str) -> str:
-    symbol = "R$" if currency == "BRL" else "$"
+    """A price we actually read off the post, or "" — never a guess.
+
+    Zero used to render as "Gratuito", but zero is also what the
+    extractor leaves behind whenever a caption says nothing about money,
+    which is most captions. So the catalog told people a pile of events
+    were free when they charge at the door. That is the one error in a
+    listing that costs the reader something real: they show up with no
+    money on them.
+
+    Empty string here, and the app renders no price at all. Silence is
+    honest; the reader finds out from the venue. A genuinely free event
+    we DID read as free is currently indistinguishable from an unknown
+    one — worth fixing in the extractor (a "price_known" flag), not by
+    guessing here.
+    """
     if min_p == 0 and max_p == 0:
-        return "Gratuito"
+        return ""
+    symbol = "R$" if currency == "BRL" else "$"
     if min_p == max_p:
         return f"{symbol} {min_p:.0f}"
     return f"{symbol} {min_p:.0f} – {max_p:.0f}"
@@ -5802,6 +5825,111 @@ _DROPPED_SCRAPER_SOURCES = (
     "teatro_guaira", "turismo_curitiba", "catraca_livre", "google_places",
     "prefeitura",
 )
+
+
+# ── Catalog sync: staging pulls production's events ──────────────────
+#
+# Staging runs on its own volume, so without this it has three fake
+# events and every test is a guess. These two endpoints move the
+# catalog — events, venues, tracked handles — and nothing else. See
+# db.export_catalog for what's deliberately left behind and why.
+
+
+@app.get("/catalog-export")
+def catalog_export(token: str = "", event_limit: int = 5000):
+    """Production side of the sync. Token-gated, and the token has no
+    default: with CATALOG_SYNC_TOKEN unset this 404s as if it were never
+    deployed. The catalog is most of what auê is worth, so an open dump
+    of it is not a thing we leave lying around — /events is paginated
+    and filtered for a reason.
+    """
+    if not settings.catalog_sync_token:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not secrets.compare_digest(token, settings.catalog_sync_token):
+        raise HTTPException(status_code=404, detail="Not found")
+    return db.export_catalog(event_limit=min(event_limit, 20000))
+
+
+@app.post("/admin/sync-catalog")
+def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
+    """Staging side. Pulls production's catalog and upserts it here.
+
+    Blocked in production — env_name defaults to "production" when the
+    var is missing, so an unconfigured service refuses rather than
+    importing something over the real catalog.
+    """
+    _require_curator(requesting_email)
+    if settings.env_name == "production":
+        raise HTTPException(
+            status_code=400,
+            detail="Sync só roda fora da produção — é ela que é a fonte.",
+        )
+    if not settings.catalog_sync_token:
+        raise HTTPException(
+            status_code=400,
+            detail="CATALOG_SYNC_TOKEN não configurado neste serviço.",
+        )
+
+    url = f"{settings.catalog_sync_origin.rstrip('/')}/catalog-export"
+    try:
+        resp = httpx.get(
+            url,
+            params={"token": settings.catalog_sync_token, "event_limit": event_limit},
+            timeout=120.0,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Não consegui falar com a produção: {e}")
+    if resp.status_code == 404:
+        # 404 is also what a bad token returns, so say both.
+        raise HTTPException(
+            status_code=502,
+            detail="Produção respondeu 404 — token errado, ou ainda sem CATALOG_SYNC_TOKEN lá.",
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Produção respondeu {resp.status_code}")
+    # This app has no real 404 for an unknown route — the SPA fallback
+    # (spa_fallback, below) matches anything unmatched and serves
+    # index.html with a plain 200. So a route that doesn't exist YET on
+    # production (this endpoint shipped to dev/staging first; production
+    # only gets it once dev merges into main) looks like success until
+    # you look at what came back. Catch that specific case by content
+    # type instead of leaving it to a bare JSON-parse error.
+    if "html" in resp.headers.get("content-type", "").lower():
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Produção respondeu a página do site, não o catálogo — "
+                "ela ainda não tem o endpoint /catalog-export. Precisa "
+                "sair o release (dev → main) antes do sync funcionar."
+            ),
+        )
+
+    try:
+        payload = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+
+    try:
+        result = db.import_catalog(payload)
+    except Exception as e:
+        # import_catalog already catches per-row sqlite errors into
+        # `skipped` — this is the backstop for whatever it didn't
+        # anticipate. First run against the real catalog hit exactly
+        # that: an uncaught exception here used to surface as a bodyless
+        # HTTP 500 (FastAPI's default handler for anything it didn't
+        # expect), which the frontend could only report as "HTTP 500" —
+        # true, but useless. Log the real trace for Railway and hand the
+        # client a message worth reading.
+        log.exception("Catalog sync: import_catalog falhou")
+        raise HTTPException(status_code=500, detail=f"Import falhou: {type(e).__name__}: {e}")
+
+    log.info(
+        f"Catalog sync de {settings.catalog_sync_origin}: "
+        f"{result['events']} eventos, {result['venues']} locais, "
+        f"{result['ig_accounts']} @s, {len(result['skipped'])} ignorados"
+    )
+    return {"ok": True, "source": settings.catalog_sync_origin, **result}
+
 
 
 @app.post("/admin/venues/seed")

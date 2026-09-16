@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { fetchVenueLeaderboard } from '../services/api'
+import { fetchVenueLeaderboard, checkBackendHealth } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
@@ -39,6 +39,14 @@ export default function AdminIgAccounts() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // Which environment is answering. The catalog sync only makes sense
+  // away from production — production is the source, not a target — so
+  // the button stays hidden until /health says we're somewhere else.
+  const [envName, setEnvName] = useState(null)
+  // Separate from `busy`: a few hundred events, imported one fsync'd
+  // commit at a time, can take long enough that "disabled + grey" reads
+  // as "did nothing" on a phone. The button says so explicitly instead.
+  const [syncing, setSyncing] = useState(false)
 
   // Search filter for the IG handles list — matches handle, label,
   // display_name, or category. Live filter, no debounce needed for ~25
@@ -89,6 +97,10 @@ export default function AdminIgAccounts() {
   }, [email])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    checkBackendHealth().then(h => setEnvName(h?.env_name || null))
+  }, [])
 
   async function toggleEnabled(acc) {
     setBusy(true)
@@ -181,6 +193,51 @@ export default function AdminIgAccounts() {
     } catch (e) {
       setError(`Falha ao disparar refresh: ${e.message}`)
     }
+    setBusy(false)
+  }
+
+  async function syncCatalog() {
+    if (!confirm(
+      'Puxar o catálogo da produção pra este ambiente?\n\n' +
+      'Vem eventos, locais e @s. NÃO vem usuários, amizades, RSVPs ' +
+      'nem tokens de push.'
+    )) return
+    setBusy(true)
+    setSyncing(true)
+    // The request can legitimately take a while (production fetches its
+    // own catalog, then this service writes every row) — but it must
+    // not hang forever if Railway's edge or the production service
+    // drops it silently. 90s is comfortably above a normal sync and
+    // still short enough that the failure is loud, not "nothing".
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), 90_000)
+    try {
+      const r = await fetch(
+        withEmail(`${API_BASE}/admin/sync-catalog`, email),
+        { method: 'POST', signal: timeout.signal },
+      )
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
+      const dropped = body.skipped?.length
+        ? `\n${body.skipped.length} evento(s) ignorado(s) por payload inválido.`
+        : ''
+      alert(
+        `Catálogo sincronizado.\n\n${body.events} eventos, ` +
+        `${body.venues} locais, ${body.ig_accounts} @s.${dropped}`
+      )
+      await load()
+    } catch (e) {
+      const msg = e.name === 'AbortError'
+        ? 'A produção não respondeu em 90s — tenta de novo em instantes.'
+        : e.message
+      // A silent setError can render off-screen above a long page while
+      // the button that triggered it sits near the bottom — this looked
+      // exactly like "clicked, nothing happened". The alert can't be missed.
+      setError(`Falha ao sincronizar catálogo: ${msg}`)
+      alert(`Falha ao sincronizar catálogo: ${msg}`)
+    }
+    clearTimeout(timer)
+    setSyncing(false)
     setBusy(false)
   }
 
@@ -454,6 +511,16 @@ export default function AdminIgAccounts() {
           >
             ▶ Disparar refresh agora
           </button>
+          {envName && envName !== 'production' && (
+            <button
+              onClick={syncCatalog}
+              disabled={busy}
+              style={ghostBtn('var(--honey)')}
+              title="Só catálogo — usuários e push ficam na produção"
+            >
+              {syncing ? '⬇ Sincronizando…' : '⬇ Puxar catálogo da produção'}
+            </button>
+          )}
         </div>
       )}
     </div>
