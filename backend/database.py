@@ -251,6 +251,17 @@ def init_db():
                 PRIMARY KEY (google_id, day)
             )
         """)
+        # Seed the one day we do know for users who predate this table:
+        # their last save. Without it everyone reads "0 dias ativos" until
+        # they next open the app, which looks like a broken column rather
+        # than a young dataset. So: days before this deploy hold only each
+        # user's last visit; days after are complete.
+        conn.execute("""
+            INSERT OR IGNORE INTO user_activity (google_id, day)
+            SELECT google_id, substr(updated_at, 1, 10)
+            FROM user_states
+            WHERE updated_at != ''
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS rsvps (
                 google_id    TEXT NOT NULL,
