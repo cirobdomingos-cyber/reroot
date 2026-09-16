@@ -13,6 +13,7 @@
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
+import react from 'eslint-plugin-react'
 
 export default [
   { ignores: ['dist/**', 'dev-dist/**', 'node_modules/**', 'android/**', 'ios/**', 'backend/**', 'output/**', 'synthetic_data/**', 'neon_boteco_rebrand/**', 'New folder/**'] },
@@ -24,11 +25,18 @@ export default [
       globals: { ...globals.browser, ...globals.serviceworker },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
-    plugins: { 'react-hooks': reactHooks },
+    plugins: { 'react-hooks': reactHooks, react },
     rules: {
       ...js.configs.recommended.rules,
       'no-undef': 'error',
       'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
+      // Core no-unused-vars doesn't know a capitalized JSX tag (<Foo />) is
+      // a reference to `Foo` — without this, every component used only in
+      // JSX (i.e. nearly all of them) reads as unused. This was the ~288
+      // false "unused" warnings docs/NEXT.md flagged as hiding real ones.
+      // Only this one rule from eslint-plugin-react, not its recommended
+      // set — this file's job is catching bugs, not style arguments.
+      'react/jsx-uses-vars': 'warn',
       // Hook dependency mistakes are the other silent-at-build-time class.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'off',
