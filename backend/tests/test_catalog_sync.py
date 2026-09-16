@@ -341,3 +341,57 @@ def test_a_row_that_raises_is_skipped_not_fatal(other_db):
     assert len(result["skipped"]) == 1
     names = {e.name for e in other_db.get_events(limit=10)}
     assert names == {"Evento bom 1", "Evento bom 2"}
+
+
+# ── 8. production hasn't shipped this endpoint yet ───────────────────
+
+class _FakeResponse:
+    """Just enough of an httpx.Response to drive admin_sync_catalog."""
+    def __init__(self, status_code, content_type, body):
+        self.status_code = status_code
+        self.headers = {"content-type": content_type}
+        self._body = body
+
+    def json(self):
+        import json as _json
+        return _json.loads(self._body)
+
+
+def test_sync_explains_when_production_has_no_export_route_yet(api, monkeypatch):
+    """This app has no real 404 — spa_fallback serves index.html (200)
+    for any unmatched route, which is exactly what happens when this
+    endpoint has shipped to dev but production hasn't gotten the release
+    yet. A bare JSON-parse error ('Expecting value: line 1 column 1')
+    told the user nothing; the content-type check names the real cause."""
+    db_, main_, client = api(CATALOG_SYNC_TOKEN="t", ENV_NAME="staging")
+    db_.add_curator("ciro@example.com")
+
+    monkeypatch.setattr(
+        main_.httpx, "get",
+        lambda *a, **kw: _FakeResponse(200, "text/html; charset=utf-8", "<!doctype html>..."),
+    )
+    r = client.post("/admin/sync-catalog?requesting_email=ciro@example.com")
+    assert r.status_code == 502
+    assert "/catalog-export" in r.json()["detail"]
+    assert "release" in r.json()["detail"]
+
+
+def test_sync_end_to_end_against_a_mocked_production(api, monkeypatch):
+    """The happy path, mocked at the network boundary: a valid catalog
+    JSON response gets parsed and imported exactly like the direct
+    import_catalog tests already cover."""
+    db_, main_, client = api(CATALOG_SYNC_TOKEN="t", ENV_NAME="staging")
+    db_.add_curator("ciro@example.com")
+
+    body = json.dumps({
+        "events": [{"id": "ig_x_1", "payload": _event(shortcode="X1").model_dump_json()}],
+        "venues": [], "ig_accounts": [],
+    })
+    monkeypatch.setattr(
+        main_.httpx, "get",
+        lambda *a, **kw: _FakeResponse(200, "application/json", body),
+    )
+    r = client.post("/admin/sync-catalog?requesting_email=ciro@example.com")
+    assert r.status_code == 200
+    assert r.json()["events"] == 1
+    assert len(db_.get_events(limit=10)) == 1

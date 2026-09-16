@@ -5887,6 +5887,22 @@ def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
         )
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Produção respondeu {resp.status_code}")
+    # This app has no real 404 for an unknown route — the SPA fallback
+    # (spa_fallback, below) matches anything unmatched and serves
+    # index.html with a plain 200. So a route that doesn't exist YET on
+    # production (this endpoint shipped to dev/staging first; production
+    # only gets it once dev merges into main) looks like success until
+    # you look at what came back. Catch that specific case by content
+    # type instead of leaving it to a bare JSON-parse error.
+    if "html" in resp.headers.get("content-type", "").lower():
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Produção respondeu a página do site, não o catálogo — "
+                "ela ainda não tem o endpoint /catalog-export. Precisa "
+                "sair o release (dev → main) antes do sync funcionar."
+            ),
+        )
 
     try:
         payload = resp.json()
