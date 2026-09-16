@@ -64,6 +64,7 @@ Responda SOMENTE com JSON válido (sem markdown, sem texto extra):
   "price_tier": "free" | "low" | "medium" | "high",
   "vibe_summary": "<frase de 1 linha em pt-BR descrevendo a experiência sem hype>",
   "expected_size": "small" | "medium" | "large",
+  "genre": "rock" | "samba_pagode" | "sertanejo" | "eletronica" | "mpb" | "rap_trap" | "forro" | "jazz_blues" | "classica" | "pop" | "nenhum",
   "neighborhood_guess": "<bairro de Curitiba ou vazio se não souber>"
 }}
 
@@ -108,7 +109,33 @@ OUTROS CAMPOS:
     - "Show da Terno Rei na Pedreira, abertura às 21h"
 - vibe_summary: descritivo neutro, sem hype. "Show de rock no Teatro Guaíra, 800 lugares" \
   não "Show ÉPICO!!"
+- genre: gênero musical que MANDA na noite. "nenhum" quando não é show/festa com \
+  música definida — exposição, feira, oficina, teatro, cinema, esporte, roda de \
+  conversa. Line-up com vários estilos: escolhe o dominante. Na dúvida, ou se a \
+  legenda não deixa claro, usa "nenhum" — chutar gênero errado é pior que não ter.
 """
+
+
+# Closed vocabulary for the `genre` field. "nenhum" is deliberately absent:
+# the model emits it for non-music nights, and _clean_genre maps anything
+# outside this set (including "nenhum") to "" — so there's one way to say
+# "don't rank this by genre" instead of two.
+GENRES = frozenset({
+    "rock", "samba_pagode", "sertanejo", "eletronica", "mpb",
+    "rap_trap", "forro", "jazz_blues", "classica", "pop",
+})
+
+
+def _clean_genre(value) -> str:
+    """Keep only genres from the closed vocabulary above.
+
+    The prompt asks for one of a fixed list, but models improvise — plurals,
+    a style we never listed, sometimes a whole sentence. An invented genre is
+    worse than none: the point of the tag is grouping nights that genuinely
+    belong together, and one wrong label puts sertanejo in Rockzão.
+    """
+    genre = (value or "").strip().lower()
+    return genre if genre in GENRES else ""
 
 
 class EnrichmentPipeline:
@@ -165,6 +192,7 @@ class EnrichmentPipeline:
         # value — Claude sometimes emits `"kind": null`. Fall back to the
         # safe default in that case using `or`.
         category = data.get("kind") or "community"
+        genre = _clean_genre(data.get("genre"))
         emoji, label = CATEGORY_META.get(category, ("🤝", "Comunidade"))
         gradient = CATEGORY_GRADIENTS.get(category, CATEGORY_GRADIENTS["community"])
 
@@ -203,6 +231,7 @@ class EnrichmentPipeline:
                 price_tier=data.get("price_tier") or "free",
                 vibe_summary=data.get("vibe_summary") or raw.name,
                 expected_size=data.get("expected_size") or "medium",
+                genre=genre,
                 header_gradient=gradient,
 
                 url=raw.url,

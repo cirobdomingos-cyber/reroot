@@ -145,6 +145,13 @@ function normalizeBackendEvent(ev) {
     attendeesConfirmed: ev.attendeesConfirmed,
     expectedSize: ev.expectedSize,
     vibeSummary: ev.vibeSummary,
+    // Dominant musical genre, or '' for "not a music night / couldn't tell".
+    // No UI reads it yet — it's here so the tag reaches the client as events
+    // get re-enriched. This normalizer is a whitelist and anything missing
+    // from it is silently dropped (that's how isRecurring went missing once),
+    // so the field lands here the same day it lands in the payload rather
+    // than the day someone builds the filter.
+    genre: ev.genre || '',
     pitch: ev.pitch,
     url: ev.url,
     source: ev.source || 'live',

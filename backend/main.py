@@ -3623,6 +3623,7 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "attendeesConfirmed": member_count,
         "expectedSize": ev.expected_size,
         "vibeSummary": ev.vibe_summary,
+        "genre": getattr(ev, "genre", "") or "",
         "pitch": ev.pitch,
         # Fall back to a Google Maps search for the venue when we don't have
         # a canonical event URL (e.g. seed events, partner-submitted events
