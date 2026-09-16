@@ -25,6 +25,10 @@ The repo and Railway subdomain still say `reroot` — that's the old product nam
 - [.github/workflows/sync-staging.yml](.github/workflows/sync-staging.yml) auto-merges `main → dev` on every push to main, so hotfixes reach staging.
 - Behavior differences between envs come from env vars (`ENV_NAME`), **never** from divergent code branches.
 
+## What to work on next
+
+[docs/NEXT.md](docs/NEXT.md) — ranked backlog with the production numbers that justify each item, plus the carried-over small stuff. Re-measure before trusting the numbers; the endpoints are named there.
+
 ## Voice & branding (post-pivot, April 2026)
 
 The product pivoted from **Reroot** (wellness "social re-entry" framing) to **auê** (celebratory city catalog). When writing copy, prompts, or pitches:
