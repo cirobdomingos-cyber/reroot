@@ -6613,6 +6613,16 @@ def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
     return db.get_usage_stats(window_days=window_days)
 
 
+@app.get("/admin/users")
+def admin_users(requesting_email: str = "", limit: int = 200, offset: int = 0,
+                sort: str = "last_seen", q: str = ""):
+    """Founder-only: every user with their activity counts. The dashboard
+    could only show the last ten logins, which answered "who showed up
+    recently" but never "who are these people and what do they do"."""
+    _require_founder(requesting_email)
+    return db.get_user_directory(limit=min(limit, 500), offset=max(offset, 0), sort=sort, query=q)
+
+
 @app.get("/admin/group-stats")
 def admin_group_stats(requesting_email: str = ""):
     """Founder-only: whether the groups that exist have members and
