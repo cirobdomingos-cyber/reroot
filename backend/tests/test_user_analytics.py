@@ -85,6 +85,28 @@ def test_daily_series_separates_new_from_returning(db):
     assert stats["new_today"] == 1, "new_today counts signups, not activity"
 
 
+def test_users_from_before_the_table_keep_their_last_seen_day(db):
+    """Otherwise every existing user reads "0 dias ativos" until they next
+    open the app — a column of zeros that reads as a bug."""
+    with db.get_conn() as conn:
+        conn.execute(
+            """INSERT INTO user_states (google_id, state_json, updated_at, created_at)
+               VALUES ('old', '{}', ?, ?)""",
+            ("2026-09-01T10:00:00+00:00", "2026-09-01T10:00:00+00:00"),
+        )
+        conn.execute("DELETE FROM user_activity WHERE google_id = 'old'")
+        conn.commit()
+
+    db.init_db()  # migrations run on every boot
+
+    with db.get_conn() as conn:
+        days = [r["day"] for r in conn.execute(
+            "SELECT day FROM user_activity WHERE google_id = 'old'").fetchall()]
+    assert days == ["2026-09-01"]
+    old = next(u for u in db.get_user_directory()["users"] if u["google_id"] == "old")
+    assert old["days_active"] == 1
+
+
 def test_user_directory_counts_what_people_did(db):
     db.upsert_user_state("ana", _state("Ana", "ana@x.com"))
     db.upsert_user_state("bia", _state("Bia", "bia@x.com"))

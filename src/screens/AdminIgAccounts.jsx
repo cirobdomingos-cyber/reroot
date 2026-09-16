@@ -626,7 +626,7 @@ function UsageSection({ usage, users }) {
         <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginBottom: 8 }}>
           <span style={{ color: 'var(--terra)', fontWeight: 700 }}>■</span> novos ·{' '}
           <span style={{ color: 'var(--sage)', fontWeight: 700 }}>■</span> voltaram ·
-          série começa no deploy desta medição
+          antes desta medição, só o último acesso de cada pessoa
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 92 }}>
           {usage.daily.map(d => {
