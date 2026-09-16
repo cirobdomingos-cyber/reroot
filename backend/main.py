@@ -1047,6 +1047,11 @@ def health():
     total = db.count_events()
     return {
         "status": "ok",
+        # Which environment answered. Without this there is no way to tell
+        # from outside whether the staging service actually has
+        # ENV_NAME=staging — it defaults to "production" when unset, so
+        # anything gated on it would behave as prod on staging.
+        "env_name": settings.env_name,
         "events_in_db": total,
         # "configured" used to mean "env var present" — that hid a 401 in
         # prod for hours. Now it's True only when the key validates against
