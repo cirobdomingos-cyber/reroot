@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Capacitor } from '@capacitor/core'
 import { useApp } from './context/AppContext'
 import { useT } from './i18n'
+import { isIosBrowser, isStandalonePwa } from './lib/platform'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
-import InstallBanner from './components/InstallBanner'
 // Companion chat (LLM) disabled — kept in the codebase as dead code so the
 // surface is easy to bring back, but unmounted here so users can't open it
 // and burn API tokens. Re-enable by restoring the import + FAB + mount.
@@ -13,6 +14,7 @@ import InstallBanner from './components/InstallBanner'
 import SyncStatus from './components/SyncStatus'
 import BadgeUnlockToast from './components/BadgeUnlockToast'
 import Onboarding     from './screens/Onboarding'
+import AppStoreGate, { shouldSkipAppStoreGate } from './screens/AppStoreGate'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
 import Diagnostic     from './screens/Diagnostic'
@@ -77,6 +79,19 @@ export default function App() {
   // hit Onboarding only on first launch and immediately get past it.
   const showNav = !isOnboarding
 
+  // First-time iOS Safari visitors landing on a generic entry point (bare
+  // `/`, not a specific shared link — those are separate routes and never
+  // reach here) get offered the App Store instead of Onboarding, now that
+  // auê has a real listing. Never for the installed PWA or the native app
+  // — this is only about the cold, un-installed web visit. "Continuar no
+  // navegador" flips this off for the rest of the tab session so tapping
+  // it doesn't just re-show the same gate on the next render.
+  const [webPreferred, setWebPreferred] = useState(shouldSkipAppStoreGate)
+  const offerAppStore = !webPreferred
+    && !Capacitor.isNativePlatform?.()
+    && isIosBrowser()
+    && !isStandalonePwa()
+
   // Sync accessibility mode to root element so CSS [data-accessibility="on"] selectors work
   useEffect(() => {
     document.documentElement.dataset.accessibility = state.accessibilityMode ? 'on' : 'off'
@@ -96,7 +111,6 @@ export default function App() {
   return (
     <div className="phone-shell">
       <StatusBar dark={isOnboarding} />
-      <InstallBanner />
 
       {/* Screen area — AnimatePresence key on pathname triggers exit/enter */}
       <div className="app-screen-area" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -106,7 +120,9 @@ export default function App() {
               path="/"
               element={
                 !state.hasJoined
-                  ? <AnimatedPage><Onboarding /></AnimatedPage>
+                  ? (offerAppStore
+                      ? <AnimatedPage><AppStoreGate onContinueInBrowser={() => setWebPreferred(true)} /></AnimatedPage>
+                      : <AnimatedPage><Onboarding /></AnimatedPage>)
                   : <Navigate to="/home" replace />
               }
             />
