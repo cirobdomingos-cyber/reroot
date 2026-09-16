@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useApp } from '../context/AppContext'
-import { joinGroup, lookupGroupInvite } from '../services/api'
+import { joinGroup, lookupGroupInvite, trackEvent } from '../services/api'
 
 // Landing screen for group invite links: /#/join/<code>
 //
@@ -31,6 +31,9 @@ export default function JoinGroup() {
       if (cancelled) return
       if (!data) { setStatus('not_found'); return }
       setGroup(data)
+      // The pair that matters: invites opened vs. joins. A gap here is a
+      // broken funnel (sign-in wall, confusing confirm), not disinterest.
+      trackEvent('group_invite_opened', { signed_in: !!googleId })
       if (!googleId) setStatus('no_auth')
       else setStatus('ready')
     })
@@ -42,6 +45,7 @@ export default function JoinGroup() {
     setStatus('joining')
     try {
       const result = await joinGroup(googleId, inviteCode)
+      if (result.status === 'ok') trackEvent('group_joined', { via: 'link' })
       if (result.status === 'ok') setStatus('success')
       else if (result.status === 'already_member') setStatus('already')
       else setStatus('not_found')

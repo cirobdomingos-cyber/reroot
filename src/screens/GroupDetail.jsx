@@ -14,7 +14,7 @@ import {
   fetchGroupDetail, createGroupEvent, deleteGroupEvent,
   leaveGroup, deleteGroup, getGroupCalendarFeedUrl, syncRsvp, fetchEvents, updateGroup,
   setGroupMemberRole, removeGroupMember, fetchGroupStats, fetchFriendsFeed,
-  getFriends, getFriendRequests, addFriendById, BASE_URL,
+  getFriends, getFriendRequests, addFriendById, trackEvent, BASE_URL,
 } from '../services/api'
 
 export default function GroupDetail() {
@@ -72,6 +72,7 @@ export default function GroupDetail() {
   // created the row and just hands it back.
   async function handleAddEvent(eventData) {
     const newEvent = await createGroupEvent(groupId, googleId, eventData)
+    trackEvent('group_event_created', { via: 'catalog' })
     setGroup(prev => ({ ...prev, events: [...(prev?.events || []), newEvent] }))
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
   }
@@ -85,6 +86,7 @@ export default function GroupDetail() {
     const belongsHere = newEvent?.group_id === groupId ||
       (newEvent?.group_ids || []).includes(groupId)
     if (belongsHere) {
+      trackEvent('group_event_created', { via: 'sheet' })
       setGroup(prev => ({ ...prev, events: [...(prev?.events || []), newEvent] }))
     }
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
@@ -743,6 +745,7 @@ function InviteSheet({ open, onClose, group, t }) {
 
   function handleCopyCode() {
     navigator.clipboard.writeText(group.invite_code)
+    trackEvent('group_invite_shared', { method: 'code' })
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -753,6 +756,7 @@ function InviteSheet({ open, onClose, group, t }) {
       title: 'auê',
       text: `Bora entrar no grupo "${group.name}" no auê?`,
     })
+    trackEvent('group_invite_shared', { method: result === 'shared' ? 'share' : 'link' })
     setShareStatus(result)
     if (result === 'copied') {
       // The link (not just the code) was copied to clipboard
@@ -766,6 +770,7 @@ function InviteSheet({ open, onClose, group, t }) {
 
   function handleWhatsApp() {
     const msg = `Bora pro grupo "${group.name}" no auê! 🎉 ${inviteUrl}`
+    trackEvent('group_invite_shared', { method: 'whatsapp' })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener')
     onClose()
   }
