@@ -18,6 +18,22 @@ import { fetchEvents, trackEvent, BASE_URL } from '../services/api'
 // (see _digest_deep_link in backend/main.py) and old installed bundles
 // have no route for /novidades at all.
 
+// Marks a digest as read once it's actually been opened, so Home's
+// "✨ N novidades" card doesn't keep offering something you already saw.
+// Keyed by digest id, and each scrape mints a new one — so this hides the
+// card for that batch only, and the next scrape brings it back on its own.
+// Per-device by design: it's a "you already looked at this" flag, not
+// account state worth a backend round-trip.
+const SEEN_KEY = 'aue_seen_digest_id'
+
+export function hasSeenDigest(digestId) {
+  try {
+    return !!digestId && localStorage.getItem(SEEN_KEY) === digestId
+  } catch {
+    return false
+  }
+}
+
 const PT_MONTHS = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
@@ -54,6 +70,9 @@ export default function Novidades() {
         const ids = digest?.event_ids || []
         if (cancelled) return
         setDigestDate(digest?.created_at || '')
+        // Resolved, so it counts as seen even if it turned out empty —
+        // the point is the person came and looked.
+        try { localStorage.setItem(SEEN_KEY, digestId) } catch {}
         if (!ids.length) { setEvents([]); return }
 
         // The catalog fetch is the same offline-first one Eventos uses, so
