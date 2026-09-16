@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
+import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
@@ -1786,6 +1787,12 @@ function _formatPrice(ev, freeLabel) {
 }
 
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
+  // Flyer treatment — staging experiment, see lib/cardVariant.js.
+  const cardVariant = eventCardVariant()
+  const [imgBroken, setImgBroken] = useState(false)
+  const hasImage = !!ev.imageUrl && !imgBroken
+  const showThumb = hasImage && cardVariant === 'thumb'
+  const showCover = hasImage && cardVariant === 'cover'
   const isGroupEvent = !!ev.isGroupEvent
   const isRecurring = !!ev.isRecurring && !isGroupEvent
   // "Ongoing" = recurring OR multi-day range. Both are conceptually
@@ -1844,10 +1851,32 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
                   : isOngoing ? 'none'
                   : 'inset 3px 0 0 #7E57C2',
         display: 'flex', alignItems: 'stretch', gap: 14,
+        // The cover variant needs the image on its own line above the
+        // row; wrapping + flex-basis 100% does that without restructuring
+        // the card into a column and re-indenting everything below.
+        flexWrap: showCover ? 'wrap' : 'nowrap',
         cursor: 'pointer',
         position: 'relative',
       }}
     >
+      {showCover && (
+        <img
+          src={ev.imageUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgBroken(true)}
+          style={{
+            // Negative margins cancel the card's padding so the flyer
+            // goes edge to edge and the top corners match the card.
+            flexBasis: '100%', width: 'calc(100% + 28px)',
+            margin: '-12px -14px 10px', height: 150,
+            objectFit: 'cover', display: 'block',
+            borderRadius: '11px 11px 0 0', background: 'var(--bg2)',
+          }}
+        />
+      )}
+
       {/* LEFT — day anchor. Color tracks the stripe so the kind reads
           from the day number too: terra for one-off, purple for
           recurring, sage for group. Width fixed at 42px so the
@@ -1996,6 +2025,21 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           </div>
         )}
       </div>
+
+      {showThumb && (
+        <img
+          src={ev.imageUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgBroken(true)}
+          style={{
+            flexShrink: 0, width: 72, height: 72,
+            objectFit: 'cover', borderRadius: 10,
+            background: 'var(--bg2)', alignSelf: 'center',
+          }}
+        />
+      )}
     </div>
   )
 }
