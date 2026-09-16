@@ -15,6 +15,7 @@ import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
+import { hasSeenDigest } from './Novidades'
 import { getAnchorToday } from '../lib/dateAnchor'
 
 function getGreetingKey() {
@@ -82,6 +83,9 @@ export default function Home() {
   useEffect(() => {
     fetchLatestDigest().then(d => {
       if (!d?.id || !d?.event_ids?.length) return
+      // Already opened this one — don't keep offering it. Each scrape
+      // mints a new digest id, so the card comes back with the next batch.
+      if (hasSeenDigest(d.id)) return
       // Digests fire once a day; a 36h cutoff keeps the card from pointing
       // at "hoje" content that's actually from two days ago if a scrape
       // was skipped or delayed.

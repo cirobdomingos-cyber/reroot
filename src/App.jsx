@@ -15,6 +15,7 @@ import SyncStatus from './components/SyncStatus'
 import BadgeUnlockToast from './components/BadgeUnlockToast'
 import Onboarding     from './screens/Onboarding'
 import AppStoreGate, { shouldSkipAppStoreGate } from './screens/AppStoreGate'
+import Novidades      from './screens/Novidades'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
 import Diagnostic     from './screens/Diagnostic'
@@ -136,11 +137,10 @@ export default function App() {
             <Route path="/journey"         element={<Navigate to="/home" replace />} />
             <Route path="/home"    element={<AnimatedPage wide><Home /></AnimatedPage>} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
-            {/* Daily-digest push deep link. Same Events screen, just keyed by a
-                route param instead of a stripped ?digest= query — see
-                digestId handling in Events.jsx for why that matters (refresh
-                used to lose the filter entirely). */}
-            <Route path="/novidades/:digestId" element={<AnimatedPage><Events /></AnimatedPage>} />
+            {/* Daily-digest push deep link — its own curated screen, not
+                Eventos wearing a filter. Events.jsx keeps the legacy
+                ?digest= handling for pushes already out in the wild. */}
+            <Route path="/novidades/:digestId" element={<AnimatedPage><Novidades /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />

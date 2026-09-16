@@ -50,8 +50,20 @@ def test_finds_a_post_the_scraper_brought_in(db):
 
 
 def test_finds_a_post_a_curator_approved(db):
+    """Submission-only: nothing else claims this post, so it resolves."""
     _catalog_row(db, "submitted_igpost_ABC123xyz", "whatever")
     assert db.find_catalog_event_id_by_shortcode("ABC123xyz") == "submitted_igpost_ABC123xyz"
+
+
+def test_the_venues_own_post_wins_when_both_exist(db):
+    """The same post can be in the catalog twice: approved from a
+    suggestion AND picked up by the scrape of the tracked handle. The
+    scraped row is the one that keeps getting refreshed, so a private
+    event linked to it follows the real time and description instead of
+    whatever the snapshot said once."""
+    _catalog_row(db, "submitted_igpost_ABC123xyz", "whatever")
+    _catalog_row(db, "ig_bardosax_ABC123xyz", "ig_bardosax_ABC123xyz")
+    assert db.find_catalog_event_id_by_shortcode("ABC123xyz") == "ig_bardosax_ABC123xyz"
 
 
 def test_handles_with_underscores_and_dots_still_match(db):

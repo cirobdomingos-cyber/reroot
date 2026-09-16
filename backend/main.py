@@ -1190,17 +1190,11 @@ def list_events(
         and _passes_content_filter(ev, curated=good_only)
         and mood_pred(ev)
     ]
-    # Host-first sort before dedup: when the same event is posted by a
-    # venue (bardosax) AND a curator (umcuradorqualquer), we want the
-    # venue's version to survive — it has the canonical time/venue and
-    # richer description. _dedupe_events keeps the first occurrence, so
-    # putting non-curators first naturally accomplishes this. date_start
-    # ASC is the secondary sort to preserve the existing chronology
-    # (which Tier 2.5 of dedup relies on for "earliest session wins").
-    cleaned.sort(key=lambda ev: (
-        _is_curator_event(ev),
-        ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
-    ))
+    # The host-first pre-sort that used to live here moved into
+    # _dedupe_events, which now orders its own input by (_source_rank,
+    # date_start) — the other three callers never pre-sorted at all, so
+    # they inherited whatever order SQLite returned. The featured-first
+    # re-sort below re-establishes the final order either way.
     deduped = _dedupe_events(cleaned)[:limit]
 
     # Featured-first re-sort: events from a Destaque handle (and the
@@ -1284,9 +1278,13 @@ def _dedupe_events(events):
          near-misses like "Caça à Arte no MON sem Paredes" vs "MON sem
          Paredes — Arte ao Ar Livre".
 
-    Input is sorted by date_start ASC upstream, so "first occurrence wins"
-    means the earliest-time variant survives — which is what we want for
-    Tier 2.5 (multiple sessions of the same event collapse to the early one).
+    Ordering decides who survives, since the loop below keeps the first
+    occurrence — so this sorts its own input rather than trusting callers
+    to do it. Primary key is _source_rank (the venue's own post beats a
+    hand-typed submission of the same night); secondary is date_start ASC,
+    which keeps Tier 2.5 collapsing multiple sessions to the earliest one.
+    Three of the four callers never pre-sorted at all, so they used to
+    inherit whatever order SQLite returned.
     """
     NAME_JACCARD = 0.6
     # When venue already matches, accept lower Jaccard but require at
@@ -1296,6 +1294,10 @@ def _dedupe_events(events):
     NAME_VENUE_SHARED_MIN = 2
     NAME_VENUE_JACCARD = 0.3
     VENUE_JACCARD = 0.4
+    events = sorted(events, key=lambda ev: (
+        _source_rank(ev),
+        ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
+    ))
     out = []
     for ev in events:
         ev_day = ev.date_start.date().isoformat() if ev.date_start else ""
@@ -1673,6 +1675,31 @@ def _is_curator_event(ev) -> bool:
     aue_original and venue handles return False — they're treated as
     primary-host candidates in dedup ordering."""
     return _handle_for_event(ev) in _curator_ig_handles_cached()
+
+
+def _source_rank(ev) -> int:
+    """Precedence when two rows turn out to be the same event. Lower wins.
+
+    The venue's own Instagram post beats a manual submission of the same
+    night: a submission is a one-time snapshot someone typed (or a curator
+    approved once), while the venue's post is re-scraped and re-enriched
+    every day, so it carries the real time, venue line and description.
+    aue_original sits above both — hand-curated institutional events, not
+    a scrape of anything. Curator handles come last: they repost other
+    people's nights, so their copy is the least authoritative.
+
+    This used to be decided by insertion order, which meant the
+    submission usually won — a curator approves a suggestion before the
+    next scrape runs, so its row landed first. Same class of bug as the
+    curator-vs-venue coin flip that the (is_curator, date_start) pre-sort
+    fixed; this generalizes that fix to every source.
+    """
+    source = (ev.source or "").lower()
+    if source == "aue_original":
+        return 0
+    if source == "instagram":
+        return 3 if _is_curator_event(ev) else 1
+    return 2  # submitted, and anything else that still reaches dedup
 
 
 def _is_in_curitiba(ev) -> bool:
@@ -3596,6 +3623,7 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "attendeesConfirmed": member_count,
         "expectedSize": ev.expected_size,
         "vibeSummary": ev.vibe_summary,
+        "genre": getattr(ev, "genre", "") or "",
         "pitch": ev.pitch,
         # Fall back to a Google Maps search for the venue when we don't have
         # a canonical event URL (e.g. seed events, partner-submitted events

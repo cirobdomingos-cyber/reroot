@@ -86,3 +86,15 @@ class EnrichedEvent(BaseModel):
     # when no Sympla match exists. Frontend uses presence to render the
     # "🎟️ Comprar ingresso" CTA.
     sympla_url: str = ""
+
+    # Dominant musical genre, from the enrichment pass. Closed vocabulary
+    # (see GENRES in enrichment.py); empty string means "not a music night"
+    # or "couldn't tell", which are deliberately the same thing here — both
+    # mean "don't rank this by genre".
+    #
+    # Per-event on purpose: the account-level `category` on
+    # tracked_ig_accounts can't carry this, since the same bar does rock on
+    # Friday and pagode on Saturday. Defaults to "" so rows enriched before
+    # this field existed still load (upsert_event stores model_dump_json,
+    # so absent keys fall back to the default).
+    genre: str = ""
