@@ -4414,19 +4414,25 @@ def find_catalog_event_id_by_shortcode(shortcode: str) -> str:
     if not shortcode:
         return ""
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT id FROM events WHERE id = ?", (f"submitted_igpost_{shortcode}",),
-        ).fetchone()
-        if row:
-            return row["id"]
         # Scraped rows are "ig_<handle>_<shortcode>". The handle can hold
         # underscores and dots, so match on the tail instead of splitting.
         # "_" is LIKE's single-char wildcard and matches a literal one too,
         # which is all this needs.
+        #
+        # Checked before the submitted row on purpose: when the same post
+        # exists both ways, the venue's scraped copy is the one that keeps
+        # getting refreshed, so a private event linked to it follows the
+        # real time and description instead of a one-time snapshot. Same
+        # precedence _source_rank applies in dedup.
         row = conn.execute(
             "SELECT id FROM events WHERE source = 'instagram' AND external_id LIKE ? "
             "ORDER BY fetched_at DESC LIMIT 1",
             (f"%_{shortcode}",),
+        ).fetchone()
+        if row:
+            return row["id"]
+        row = conn.execute(
+            "SELECT id FROM events WHERE id = ?", (f"submitted_igpost_{shortcode}",),
         ).fetchone()
         if row:
             return row["id"]
