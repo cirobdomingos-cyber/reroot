@@ -332,6 +332,23 @@ export default function GroupDetail() {
         <GroupStatsPanel stats={stats} />
       )}
 
+      {/* "Primeiros passos" — 19/38 accounts are in a group, but only 3
+          have ever created an event and all 13 events live in 2 groups.
+          The gap is creating, not understanding groups (docs/NEXT.md #4).
+          Shown in the same slot GroupStatsPanel would occupy, gated the
+          same way (stats loaded, events_total === 0) so a fresh group
+          never sits there silently — it either has a wall of zeros
+          replaced by this, or real stats once someone acts on it. */}
+      {stats && stats.events_total === 0 && (
+        <FirstEventNudge
+          groupId={groupId}
+          soloAndEmpty={(group.members?.length || 1) === 1}
+          isAdmin={isAdmin}
+          onInvite={() => setShowInvite(true)}
+          onAddEvent={() => setShowAddEvent(true)}
+        />
+      )}
+
       {/* Upcoming events */}
       <h2 style={sectionTitleStyle}>{t.groups_next_event} ({upcomingEvents.length})</h2>
       {upcomingEvents.length === 0 ? (
@@ -660,6 +677,84 @@ function ActionBtn({ label, onClick, accent }) {
     }}>
       {label}
     </button>
+  )
+}
+
+// "Primeiros passos" — nudges a fresh group toward its first real action.
+// Two different gaps share this one panel (docs/NEXT.md #4): a solo group
+// (creator never invited anyone) needs an invite; a group with members
+// but zero events needs someone to add one. Dismiss is local/per-visit,
+// not persisted like the Home push banner — the panel's real exit
+// condition is "someone acted" (events_total becomes > 0 and the parent
+// stops rendering this at all), not "someone was annoyed once".
+function FirstEventNudge({ groupId, soloAndEmpty, isAdmin, onInvite, onAddEvent }) {
+  const [dismissed, setDismissed] = useState(false)
+  const shownTracked = useRef(false)
+
+  useEffect(() => {
+    if (shownTracked.current) return
+    shownTracked.current = true
+    trackEvent('group_first_event_nudge_shown', { group_id: groupId, solo: soloAndEmpty })
+  }, [groupId, soloAndEmpty])
+
+  if (dismissed) return null
+
+  const primary = (soloAndEmpty && isAdmin)
+    ? {
+        icon: '💬', label: 'Convide a galera',
+        desc: 'Um grupo sozinho não rola. Chama quem você quer levar junto.',
+        cta: 'Convidar', onClick: onInvite,
+      }
+    : {
+        icon: '📅', label: 'Marquem o primeiro rolê',
+        desc: 'Todo grupo começa com um evento — do catálogo ou um plano seu.',
+        cta: '+ Adicionar evento', onClick: onAddEvent,
+      }
+
+  function handleCta() {
+    trackEvent('group_first_event_nudge_clicked', { group_id: groupId, solo: soloAndEmpty })
+    primary.onClick()
+  }
+
+  function handleDismiss() {
+    trackEvent('group_first_event_nudge_dismissed', { group_id: groupId, solo: soloAndEmpty })
+    setDismissed(true)
+  }
+
+  return (
+    <div style={{
+      marginBottom: 20, padding: '14px 16px', borderRadius: 14,
+      background: 'var(--terra-pale)', border: '1px solid var(--terra)',
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+    }}>
+      <span style={{ fontSize: 22, flexShrink: 0, lineHeight: 1.2 }}>{primary.icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+          {primary.label}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 2, lineHeight: 1.4 }}>
+          {primary.desc}
+        </div>
+        <button
+          onClick={handleCta}
+          style={{
+            marginTop: 10, padding: '8px 14px', borderRadius: 10, border: 'none',
+            background: 'var(--sage)', color: 'var(--on-lime)',
+            fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          {primary.cta}
+        </button>
+      </div>
+      <button
+        onClick={handleDismiss}
+        aria-label="Dispensar"
+        style={{
+          flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer',
+          fontSize: 16, color: 'var(--charcoal-light)', padding: 4,
+        }}
+      >×</button>
+    </div>
   )
 }
 
