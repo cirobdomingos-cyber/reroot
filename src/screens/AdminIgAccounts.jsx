@@ -43,6 +43,10 @@ export default function AdminIgAccounts() {
   // away from production — production is the source, not a target — so
   // the button stays hidden until /health says we're somewhere else.
   const [envName, setEnvName] = useState(null)
+  // Separate from `busy`: a few hundred events, imported one fsync'd
+  // commit at a time, can take long enough that "disabled + grey" reads
+  // as "did nothing" on a phone. The button says so explicitly instead.
+  const [syncing, setSyncing] = useState(false)
 
   // Search filter for the IG handles list — matches handle, label,
   // display_name, or category. Live filter, no debounce needed for ~25
@@ -199,10 +203,18 @@ export default function AdminIgAccounts() {
       'nem tokens de push.'
     )) return
     setBusy(true)
+    setSyncing(true)
+    // The request can legitimately take a while (production fetches its
+    // own catalog, then this service writes every row) — but it must
+    // not hang forever if Railway's edge or the production service
+    // drops it silently. 90s is comfortably above a normal sync and
+    // still short enough that the failure is loud, not "nothing".
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), 90_000)
     try {
       const r = await fetch(
         withEmail(`${API_BASE}/admin/sync-catalog`, email),
-        { method: 'POST' },
+        { method: 'POST', signal: timeout.signal },
       )
       const body = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
@@ -215,8 +227,17 @@ export default function AdminIgAccounts() {
       )
       await load()
     } catch (e) {
-      setError(`Falha ao sincronizar catálogo: ${e.message}`)
+      const msg = e.name === 'AbortError'
+        ? 'A produção não respondeu em 90s — tenta de novo em instantes.'
+        : e.message
+      // A silent setError can render off-screen above a long page while
+      // the button that triggered it sits near the bottom — this looked
+      // exactly like "clicked, nothing happened". The alert can't be missed.
+      setError(`Falha ao sincronizar catálogo: ${msg}`)
+      alert(`Falha ao sincronizar catálogo: ${msg}`)
     }
+    clearTimeout(timer)
+    setSyncing(false)
     setBusy(false)
   }
 
@@ -497,7 +518,7 @@ export default function AdminIgAccounts() {
               style={ghostBtn('var(--honey)')}
               title="Só catálogo — usuários e push ficam na produção"
             >
-              ⬇ Puxar catálogo da produção
+              {syncing ? '⬇ Sincronizando…' : '⬇ Puxar catálogo da produção'}
             </button>
           )}
         </div>

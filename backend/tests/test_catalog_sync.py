@@ -283,3 +283,34 @@ def test_sync_needs_a_curator(api):
     assert client.post("/admin/sync-catalog").status_code == 401
     r = client.post("/admin/sync-catalog?requesting_email=qualquer@example.com")
     assert r.status_code == 403
+
+
+# ── 6. one commit for the whole payload ──────────────────────────────
+
+def test_import_writes_events_in_one_connection(other_db, monkeypatch):
+    """The bug behind 'clicked the button, nothing happened': the first
+    cut of this function called upsert_event() per row, which opens and
+    commits its own sqlite3.connect() each time. A few hundred events is
+    a few hundred sequential fsyncs on a network volume — slow enough to
+    read as a hang. Import must do the whole payload in one connection."""
+    seen = []
+    real_connect = other_db.sqlite3.connect
+
+    def counting_connect(*a, **kw):
+        seen.append(1)
+        return real_connect(*a, **kw)
+
+    monkeypatch.setattr(other_db.sqlite3, "connect", counting_connect)
+
+    events = [
+        {"id": f"ig_x_{i}", "payload": _event(shortcode=f"X{i}").model_dump_json()}
+        for i in range(20)
+    ]
+    other_db.import_catalog({"events": events})
+
+    # One connection for the run, not one per event — check before the
+    # next db call (get_events) would add one of its own.
+    assert len(seen) == 1, f"expected 1 connection, opened {len(seen)}"
+
+    monkeypatch.setattr(other_db.sqlite3, "connect", real_connect)
+    assert len(other_db.get_events(limit=100)) == 20

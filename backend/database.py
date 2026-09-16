@@ -5165,27 +5165,49 @@ def import_catalog(data: dict) -> dict:
     correction unless production has a geocode for it too. Returns counts
     plus the events that failed to parse, so a partial import reports
     what it dropped instead of looking clean.
+
+    One connection, one commit for the whole payload — not one per row.
+    upsert_event() opens and commits its own connection per call, which
+    is fine for a single scrape result but turns a few hundred events
+    into a few hundred sequential fsyncs on Railway's volume. That was
+    slow enough to look like the button did nothing.
     """
     now = datetime.now(timezone.utc).isoformat()
     counts = {"events": 0, "venues": 0, "ig_accounts": 0}
     skipped: list[str] = []
 
+    # Parse every event up front — a payload that doesn't parse belongs
+    # in `skipped`, not in the same loop as the writes below.
+    parsed_events: list[EnrichedEvent] = []
     for row in data.get("events") or []:
         payload = row.get("payload")
         if not payload:
             continue
         try:
-            # Parse before writing. The payload crossed a network from
-            # another service; a row that isn't a valid EnrichedEvent
-            # would otherwise sit in the table and blow up at render.
             ev = EnrichedEvent.model_validate_json(payload)
         except Exception as e:
             skipped.append(f"{row.get('id', '?')}: {type(e).__name__}")
             continue
-        upsert_event(ev)
-        counts["events"] += 1
+        parsed_events.append(ev)
 
     with get_conn() as conn:
+        for ev in parsed_events:
+            conn.execute("""
+                INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source, external_id) DO UPDATE SET
+                    payload         = excluded.payload,
+                    fetched_at      = excluded.fetched_at,
+                    enriched_at     = excluded.enriched_at,
+                    is_curated      = excluded.is_curated
+            """, (
+                ev.id, ev.source, ev.external_id, ev.model_dump_json(),
+                ev.fetched_at.isoformat(),
+                ev.enriched_at.isoformat() if ev.enriched_at else None,
+                1 if ev.is_curated else 0,
+            ))
+            counts["events"] += 1
+
         for v in data.get("venues") or []:
             key = (v.get("name_normalized") or "").strip()
             if not key:
