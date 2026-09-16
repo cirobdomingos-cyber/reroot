@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp, PROFILES, myPicture } from '../context/AppContext'
+import { useApp, myPicture } from '../context/AppContext'
 import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { useIsDesktop } from '../lib/useIsDesktop'
 import { useT } from '../i18n'
@@ -37,33 +37,6 @@ function getEyebrowLabel() {
 // Mood→event matching, used to order Home suggestions by the user's profile.
 // Mirrors the backend's _MOOD_KIND / _MOOD_SOURCES / familia logic so the
 // frontend can re-rank without a round-trip.
-const _MOOD_KIND = {
-  tranquilo:  'quiet_social',
-  ativo:      'active',
-  criativo:   'creative',
-  comunidade: 'community',
-}
-// Was a source-id allowlist back when we scraped MON/SESC/Teatro Guaíra
-// directly. Those scrapers are gone — equivalent IG handles cover the
-// same venues. Cultural mood now matches by the LLM-extracted event
-// kind only (see _mood_predicate on the backend).
-const _CULTURAL_SOURCES = new Set()
-
-function eventMatchesMood(ev, mood) {
-  if (!mood || mood === 'all') return true
-  if (mood in _MOOD_KIND) return ev.category === _MOOD_KIND[mood]
-  if (mood === 'cultural') return _CULTURAL_SOURCES.has(ev.source)
-  if (mood === 'familia') return !!ev.kidsWelcome
-  return false
-}
-
-function eventPriorityRank(ev, priorityMoods) {
-  for (let i = 0; i < priorityMoods.length; i++) {
-    if (eventMatchesMood(ev, priorityMoods[i])) return i
-  }
-  return Number.MAX_SAFE_INTEGER
-}
-
 export default function Home() {
   const { state, dispatch } = useApp()
   const isDesktop = useIsDesktop()
@@ -327,60 +300,10 @@ export default function Home() {
   // priority order of moods; events matching priority[0] come first,
   // then priority[1], etc. Events not in any priority mood drop to the
   // bottom but still surface.
-  const profile = state.profile ? PROFILES[state.profile] : null
-  const priorityMoods = profile?.priorityMoods ?? []
-  // Sort key clamped to today for events that ALREADY started but cover
-  // today (multi-day "Programação Maio 2026", recurring residencies).
-  // Without this, those events sort by their original April/May 2 start
-  // and lead the list as if they're old. Mirrors the same fix the
-  // Events tab uses (see Events.jsx effectiveStartTs).
-  const sortFloorHome = getAnchorToday().getTime()
-  const todayIsoHome = (() => {
-    const t = getAnchorToday()
-    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
-  })()
-  function homeEffectiveStartTs(ev) {
-    const raw = ev.dateStart ? new Date(ev.dateStart).getTime() : NaN
-    if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
-    const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
-    const startKey = (ev.dateStart || '').slice(0, 10)
-    const endKey = (ev.dateEnd || '').slice(0, 10) || startKey
-    const coversToday =
-      (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length > 0) ||
-      (isMultiDay && startKey <= todayIsoHome && todayIsoHome <= endKey)
-    if (coversToday) {
-      return sortFloorHome + (raw % 86_400_000)
-    }
-    return Math.max(raw, sortFloorHome)
-  }
-  function homeDisplayDate(ev) {
-    const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
-    const startKey = (ev.dateStart || '').slice(0, 10)
-    const endKey = (ev.dateEnd || '').slice(0, 10) || startKey
-    if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length > 0) {
-      return todayIsoHome
-    }
-    if (isMultiDay && startKey <= todayIsoHome && todayIsoHome <= endKey) {
-      return todayIsoHome
-    }
-    return null
-  }
-  // Suggestions and the "rolando" count skip accounts the user unfollowed
-  // in Fontes. RSVP-driven lists above keep the full catalog — an event
-  // you said you'd go to stays yours.
+  // The "rolando" count skips accounts the user unfollowed in Fontes.
+  // RSVP-driven lists keep the full catalog — an event you said you'd go
+  // to stays yours.
   const hiddenSources = unfollowedSet(state)
-  const suggestedEvents = allEvents
-    .filter(ev => !hiddenByFollows(ev, hiddenSources))
-    .filter(ev => !state.rsvps[ev.id])
-    .sort((a, b) => {
-      const ra = eventPriorityRank(a, priorityMoods)
-      const rb = eventPriorityRank(b, priorityMoods)
-      if (ra !== rb) return ra - rb
-      return homeEffectiveStartTs(a) - homeEffectiveStartTs(b)
-    })
-    // PC shows them as a 2-column grid; 3 would leave a hole.
-    .slice(0, isDesktop ? 6 : 3)
-
   // Activity ticker counts — replaces the previous stat tiles.
   // "rolando" = total events in the live catalog; falls back to a
   // skeleton zero while the fetch resolves.
@@ -392,11 +315,13 @@ export default function Home() {
   const semana = String(_weekOfYear).padStart(2, '0')
 
   // ── Home sections ──
-  // Built once, placed by layout. Phones stack them in the original order.
-  // On a PC (useIsDesktop) the things to act on and plan with — greeting,
-  // pendências, calendar, suggestions — fill the main column, and the
-  // social signals (friends going, community) sit in a
-  // sticky right rail.
+  // Home answers "what am I doing?"; Eventos answers "what's happening?".
+  // The old "Pra você" list was a small copy of the Eventos feed, so the
+  // two tabs did the same job and neither did it well.
+  //
+  // Built once, placed by layout. Phones stack them in order; on a PC
+  // (useIsDesktop) greeting, pendências and the calendar fill the main
+  // column and the social signals sit in a sticky right rail.
   const homeGreeting = (
     <div className={isDesktop ? 'home-hero--desktop' : undefined}>
       {/* Greeting — "Boa, {name}. Bora?" with cyan glow on Bora? */}
@@ -662,58 +587,52 @@ export default function Home() {
         )
       })()}
 
-    </>
-  )
-  const homeSuggested = (
-    <>
-      {/* Suggested events — tap a row to open the full hero on the
-          Events tab; RSVP happens there. */}
-      <div className="section-label" style={{
-        color: 'var(--cyan)',
-        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      }}>
-        <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()}</span>
-      </div>
-      <div style={isDesktop
-        ? { margin: '0 18px 12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }
-        : { margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {suggestedEvents.map(ev => {
-          // For events that visually belong to today (recurring +
-          // multi-day in-progress), override the row's date column to
-          // today so the user sees them as current rolês — same fix
-          // the Events tab card uses. Falls back to the natural
-          // dateStart for one-off future events.
-          const displayDate = homeDisplayDate(ev)
-          const dateForRow = displayDate
-            ? `${displayDate}T${(ev.dateStart || '').slice(11) || '00:00:00'}`
-            : ev.dateStart
-          return (
-            <HomeEventRow
-              key={ev.id}
-              name={ev.name}
-              dateStart={dateForRow}
-              time={ev.time}
-              venue={ev.venue}
-              isRecurring={!!ev.isRecurring}
-              isGroupEvent={!!ev.isGroupEvent}
-              onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
-              trailing={null}
-            />
-          )
-        })}
+      {/* The one route to discovery now that "Pra você" is gone: Home is
+          your plans, Eventos is the city. With nothing planned at all,
+          the fuller invitation — otherwise a single line. */}
+      {(rsvpCount === 0 && groupEventsPending.length === 0 && upcomingRsvps.length === 0) ? (
+        <div style={{
+          margin: '0 16px 14px', padding: '18px 16px',
+          borderRadius: 16, border: '1px dashed var(--line)', textAlign: 'center',
+        }}>
+          <div className="neon-display" style={{ fontSize: 16, color: 'var(--text)', marginBottom: 6 }}>
+            {t.home_nothing_planned ?? 'Nada marcado ainda'}
+          </div>
+          <div className="neon-mono" style={{
+            fontSize: 11, color: 'var(--text2)', letterSpacing: '0.04em', marginBottom: 12,
+          }}>
+            {rolandoCount > 0
+              ? `${rolandoCount} ${rolandoCount === 1 ? 'rolê rolando' : 'rolês rolando'} em Curitiba`
+              : 'Vê o que tá rolando em Curitiba'}
+          </div>
+          <button
+            onClick={() => navigate('/events')}
+            className="neon-mono"
+            style={{
+              width: '100%', padding: 12, borderRadius: 12,
+              border: '1px solid var(--cyan)', background: 'transparent',
+              color: 'var(--cyan)', fontSize: 11, letterSpacing: '0.18em',
+              textTransform: 'uppercase', cursor: 'pointer',
+            }}
+          >
+            {(t.home_see_all_events ?? 'Ver todos os eventos').toUpperCase()} ↗
+          </button>
+        </div>
+      ) : (
         <button
           onClick={() => navigate('/events')}
           className="neon-mono"
           style={{
-            width: '100%', padding: 12, borderRadius: 12, gridColumn: '1 / -1',
-            fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
-            cursor: 'pointer', border: '1px solid var(--line)',
-            background: 'transparent', color: 'var(--cyan)',
+            width: 'calc(100% - 32px)', margin: '0 16px 14px',
+            padding: 12, borderRadius: 12,
+            border: '1px solid var(--line)', background: 'transparent',
+            color: 'var(--cyan)', fontSize: 11, letterSpacing: '0.18em',
+            textTransform: 'uppercase', cursor: 'pointer',
           }}
         >
           {(t.home_see_all_events ?? 'Ver todos os eventos').toUpperCase()} ↗
         </button>
-      </div>
+      )}
 
     </>
   )
@@ -853,7 +772,6 @@ export default function Home() {
             {homeGreeting}
             {homePending}
             {homeCalendar}
-            {homeSuggested}
           </div>
           <aside className="home-desktop-rail">
             {homeFriends}
@@ -866,7 +784,6 @@ export default function Home() {
           {homePending}
           {homeFriends}
           {homeCalendar}
-          {homeSuggested}
           {homeCommunity}
         </>
       )}
