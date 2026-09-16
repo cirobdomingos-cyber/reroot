@@ -6804,6 +6804,15 @@ def admin_group_stats(requesting_email: str = ""):
     return db.get_group_composition()
 
 
+@app.get("/admin/client-errors")
+def admin_client_errors(requesting_email: str = "", limit: int = 50):
+    """Founder-only: client_error:* rows grouped by (type, message), with
+    count/first-seen/last-seen/a sample url+user per group. See
+    db.get_client_error_summary."""
+    _require_founder(requesting_email)
+    return {"errors": db.get_client_error_summary(limit=min(limit, 200))}
+
+
 @app.get("/admin/weekly-summary")
 def admin_weekly_summary(requesting_email: str = ""):
     """Founder-only: return the past-7-days vs prior-7-days activity

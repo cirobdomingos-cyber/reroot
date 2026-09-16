@@ -2522,6 +2522,56 @@ def get_funnel_counts() -> list[dict]:
     return [{"event_name": row["event_name"], "total": row["total"]} for row in rows]
 
 
+def get_client_error_summary(limit: int = 50) -> list[dict]:
+    """Group client_error:* analytics rows by (error_type, message) — count,
+    first/last seen, one sample url + user per group. /analytics/funnel
+    only counts by event_name, which collapses every distinct js_uncaught
+    message (a real bug vs. another real bug) into one bucket; this is
+    what actually answers "what's breaking, how often, for whom".
+
+    Grouped in Python rather than SQL: the error volume is in the
+    hundreds, not enough to need a correlated-subquery-per-group query,
+    and a plain loop is easier to get right than SQL for "keep the
+    freshest non-empty url/google_id per group"."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT event_name, properties_json, created_at
+            FROM analytics_events
+            WHERE event_name LIKE 'client_error:%'
+            ORDER BY created_at ASC
+        """).fetchall()
+
+    groups: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        try:
+            props = json.loads(row["properties_json"])
+        except (json.JSONDecodeError, TypeError):
+            props = {}
+        message = (props.get("message") or "").strip()
+        error_type = row["event_name"].removeprefix("client_error:")
+        key = (error_type, message)
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {
+                "error_type": error_type,
+                "message": message,
+                "count": 0,
+                "first_seen": row["created_at"],
+                "last_seen": row["created_at"],
+                "sample_url": "",
+                "sample_google_id": "",
+            }
+        g["count"] += 1
+        g["last_seen"] = row["created_at"]  # rows are ASC, so the last write is the latest
+        if props.get("url"):
+            g["sample_url"] = props["url"]
+        if props.get("google_id"):
+            g["sample_google_id"] = props["google_id"]
+
+    ordered = sorted(groups.values(), key=lambda g: g["count"], reverse=True)
+    return ordered[:limit]
+
+
 def get_events_by_ids(ids: list[str]) -> list[dict]:
     """Fetch the payload + source for a specific set of event IDs.
     Used by the post-scrape summary email to render newly-added events
