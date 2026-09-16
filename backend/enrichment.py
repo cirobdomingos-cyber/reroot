@@ -117,8 +117,12 @@ class EnrichmentPipeline:
 
     def enrich(self, raw: RawEvent) -> EnrichedEvent | None:
         """Enriquece um único evento. Retorna None se Claude falhar."""
+        # Zero is what the extractor leaves behind when the caption said
+        # nothing about money, which is most captions — it is not a reading
+        # of "free". Telling Claude "Gratuito" here put that guess into the
+        # copy it writes back. Say we don't know, and it won't claim.
         price_str = (
-            "Gratuito" if raw.price_min == 0 and raw.price_max == 0
+            "não informado" if raw.price_min == 0 and raw.price_max == 0
             else f"R$ {raw.price_min:.0f}" if raw.price_min == raw.price_max
             else f"R$ {raw.price_min:.0f} – {raw.price_max:.0f}"
         )

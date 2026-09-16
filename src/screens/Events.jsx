@@ -198,7 +198,6 @@ export default function Events() {
   const [searchQuery, setSearchQuery]       = useState('')
   const [searchOpen, setSearchOpen]         = useState(false)
   const [notifToast, setNotifToast]         = useState(null)
-  const [priceFilter, setPriceFilter]       = useState('all')
   const [kidsFilter, setKidsFilter]         = useState(false)
   // "Só únicos" — hide recurring residencies and multi-day ranges from
   // the list and the per-day pick filter. Default OFF so the catalog
@@ -217,9 +216,8 @@ export default function Events() {
   // user can either zoom by range or pick a specific day.
   const [dateRange, setDateRange] = useState('all')  // 'today' | 'weekend' | 'week' | 'all'
 
-  // Which of these three rows of filters people actually touch.
+  // Which of these filters people actually touch.
   useFilterUsage('events_filter_category', activeFilter)
-  useFilterUsage('events_filter_price', priceFilter)
   useFilterUsage('events_filter_kids', kidsFilter)
   useFilterUsage('events_filter_oneoff', oneOffOnly)
   useFilterUsage('events_filter_date', dateRange)
@@ -581,16 +579,9 @@ export default function Events() {
       return !end || end === start
     })
   }
-  // Price filter — additive (AND logic)
-  if (priceFilter === 'free') {
-    filteredEvents = filteredEvents.filter(ev =>
-      ev.priceTier === 'free' || ev.price === 'Gratuito' || ev.price === 'Free'
-    )
-  } else if (priceFilter === 'paid') {
-    filteredEvents = filteredEvents.filter(ev =>
-      ev.priceTier !== 'free' && ev.price !== 'Gratuito' && ev.price !== 'Free'
-    )
-  }
+  // The "Grátis" filter is gone with the label: it selected on the same
+  // price_tier flag, so it promised a list of free events and delivered
+  // a list of events whose caption happened not to mention money.
   // Kids Welcome filter — additive
   if (kidsFilter) {
     filteredEvents = filteredEvents.filter(ev => ev.kidsWelcome)
@@ -1052,7 +1043,6 @@ export default function Events() {
       {/* ── Filters, collapsed ── */}
       {(() => {
         const activeCount =
-          (priceFilter !== 'all' ? 1 : 0) +
           (oneOffOnly ? 1 : 0) +
           (kidsFilter ? 1 : 0) +
           (dateRange !== 'all' ? 1 : 0)
@@ -1075,7 +1065,7 @@ export default function Events() {
             {activeCount > 0 && (
               <button
                 onClick={() => {
-                  setPriceFilter('all'); setOneOffOnly(false)
+                  setOneOffOnly(false)
                   setKidsFilter(false); setDateRange('all')
                 }}
                 style={{
@@ -1095,17 +1085,16 @@ export default function Events() {
       {/* ── Filter chips: Todos + Só únicos + price + kids ──
           Order: "Todos" leads as the reset-everything pill (clears
           both price AND the oneOffOnly toggle so a single tap returns
-          the full catalog). "⚡ Só únicos" sits second as a sub-mode.
-          Then the price options. */}
+          the full catalog). "⚡ Só únicos" sits second as a sub-mode. */}
       <div style={{ display: 'flex', gap: 6, padding: '0 16px 8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-        {/* "Todos" — clears price + Só únicos in one tap. Active state
-            requires BOTH filters at default for the visual to read as
+        {/* "Todos" — clears every filter in this row in one tap. Active
+            state requires them all at default for the visual to read as
             "no filtering active". */}
         {(() => {
-          const isAllActive = priceFilter === 'all' && !oneOffOnly && !kidsFilter
+          const isAllActive = !oneOffOnly && !kidsFilter
           return (
             <button
-              onClick={() => { setPriceFilter('all'); setOneOffOnly(false); setKidsFilter(false) }}
+              onClick={() => { setOneOffOnly(false); setKidsFilter(false) }}
               style={{
                 padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
                 fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
@@ -1136,23 +1125,6 @@ export default function Events() {
           }}
         >
           ⚡ Só únicos
-        </button>
-        {/* Grátis is a toggle: tap to enable, tap again to disable.
-            Pago was dropped — most users reach for Grátis explicitly,
-            and the binary "any price" / "free only" pair covers the
-            two states people actually want. */}
-        <button
-          onClick={() => setPriceFilter(p => p === 'free' ? 'all' : 'free')}
-          style={{
-            padding: '5px 12px', borderRadius: 16, whiteSpace: 'nowrap',
-            fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
-            transition: 'all 0.15s',
-            border: priceFilter === 'free' ? 'none' : '1px solid var(--border)',
-            background: priceFilter === 'free' ? 'var(--sage)' : 'transparent',
-            color: priceFilter === 'free' ? '#14081E' : 'var(--text2)',
-          }}
-        >
-          🆓 {t.filter_free}
         </button>
         <button
           onClick={() => setKidsFilter(k => !k)}
@@ -1768,22 +1740,26 @@ function _parseDayLabels(iso) {
   }
 }
 
-function _formatPrice(ev, freeLabel) {
-  if (ev.priceTier === 'free' || ev.price === 'Gratuito' || ev.price === 'Free') {
-    return { text: (freeLabel || 'FREE').toUpperCase(), tone: 'free' }
-  }
-  if (ev.price) {
-    // Strip the R$ prefix for the compact terminal look — reference shows
-    // bare numbers ("80-160", "18"). Keep the raw string when stripping
-    // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
-    // consistency with the reference.
-    const stripped = ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()
-    return { text: stripped, tone: 'paid' }
-  }
-  // Unknown — neither a free flag nor a parsed price. Show a clear
-  // "?" so users don't assume the event is free by accident. Cyan tone
-  // so it reads as informational, not an error.
-  return { text: '?', tone: 'unknown' }
+// Only a price we actually read off the post. Returns null otherwise,
+// and the card drops the slot entirely.
+//
+// The "free" branch is gone on purpose. price_tier=free is what the
+// extractor lands on whenever a caption doesn't mention money, which is
+// most captions — so the catalog was full of events labelled GRÁTIS that
+// charge at the door. A wrong price is worse than no price: it sends
+// someone to a show with no money on them.
+//
+// "?" for unknown is gone too. It was on the majority of cards, which
+// is noise, not information — an absent price already reads as
+// "não informado", and the row gets the space back.
+function _formatPrice(ev) {
+  const raw = (ev.price || '').trim()
+  if (!raw || raw === 'Gratuito' || raw === 'Free') return null
+  // Strip the R$ prefix for the compact terminal look — reference shows
+  // bare numbers ("80-160", "18"). Keep the raw string when stripping
+  // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
+  // consistency with the reference.
+  return { text: raw.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim() }
 }
 
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
@@ -1826,7 +1802,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
   const bairro = (ev.bairro && ev.bairro.trim()) || suffixBairro || ''
   const venueLine = bairro ? `${venueName} · ${bairro}` : venueName
 
-  const price = _formatPrice(ev, t?.tag_free)
+  const price = _formatPrice(ev)
   const friendCount = friendsGoing.length
 
   return (
@@ -2004,12 +1980,8 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         )}
         {price && (
           <div
-            title={price.tone === 'unknown' ? 'Preço não informado' : undefined}
             style={{
-              fontSize: 12, fontWeight: 800,
-              color: price.tone === 'free'    ? 'var(--lime)'
-                   : price.tone === 'unknown' ? 'var(--cyan)'
-                   :                            'var(--text)',
+              fontSize: 12, fontWeight: 800, color: 'var(--text)',
               letterSpacing: 0.5, whiteSpace: 'nowrap',
             }}
           >
@@ -2164,6 +2136,8 @@ function PersonalChip({ chip }) {
 
 function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
   const subtype = getSubtype(ev)
+  // Same rule as the event cards: a price we actually read, or nothing.
+  const price = _formatPrice(ev)
   // Split "Name · Neighborhood" reliably
   const [, neighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -2242,8 +2216,8 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
               Fechado
             </span>
           )}
-          {ev.price && (
-            <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{ev.price}</span>
+          {price && (
+            <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{price.text}</span>
           )}
           {ev.kidsWelcome && (
             <span style={{

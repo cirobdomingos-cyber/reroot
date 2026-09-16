@@ -550,19 +550,13 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
               {ev.name}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-              {ev.priceTier === 'free' ? (
-                <span className="neon-pill" style={{ color: 'var(--lime)' }}>$0</span>
-              ) : ev.price ? (
+              {/* No "$0" pill. price_tier=free is where the extractor
+                  lands whenever a caption doesn't mention money, so it
+                  marked as free a pile of events that charge at the
+                  door. Silence beats a wrong promise. */}
+              {ev.price && (
                 <span className="neon-pill" style={{ color: 'var(--text)' }}>
                   {ev.price.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim()}
-                </span>
-              ) : (
-                <span
-                  className="neon-pill"
-                  title="Preço não informado"
-                  style={{ color: 'var(--cyan)' }}
-                >
-                  $ ?
                 </span>
               )}
               {ev.categoryLabel && !ev.isGroupEvent && (
@@ -761,8 +755,10 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
             : (ev.date && (ev.duration || ev.time))
               ? `${ev.date} · ${ev.duration || ev.time}`
               : (ev.date || ev.time || null)
-          const costValue = ev.price
-            || (ev.priceTier === 'free' ? 'Grátis' : '? não informado')
+          // null drops the row — see the filter on `rows` below. Better
+          // an absent line than one asserting "Grátis" off a flag the
+          // extractor sets whenever a caption is silent about money.
+          const costValue = ev.price || null
           const sourceValue = ev.source === 'instagram' && ev.igHandle
             ? `@${ev.igHandle}`
             : (ev.isCustom ? 'auê plano' : (ev.categoryLabel || null))
@@ -822,17 +818,13 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           )
         })()}
 
-        {/* Price badge + Kids Welcome tag in detail view */}
-        {(ev.priceTier === 'free' || ev.kidsWelcome) && (
+        {/* Kids Welcome tag in detail view. The "Grátis" badge that sat
+            here is gone — same unreliable flag as everywhere else. */}
+        {ev.kidsWelcome && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-            {ev.priceTier === 'free' && (
-              <span className="tag tag--sage">{t.tag_free}</span>
-            )}
-            {ev.kidsWelcome && (
-              <span className="tag" style={{ background: '#FFF3E0', color: '#E65100' }}>
-                {t.tag_kids}
-              </span>
-            )}
+            <span className="tag" style={{ background: '#FFF3E0', color: '#E65100' }}>
+              {t.tag_kids}
+            </span>
           </div>
         )}
 

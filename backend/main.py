@@ -3699,9 +3699,24 @@ def _format_event_date(dt: datetime) -> str:
 
 
 def _format_price(min_p: float, max_p: float, currency: str) -> str:
-    symbol = "R$" if currency == "BRL" else "$"
+    """A price we actually read off the post, or "" — never a guess.
+
+    Zero used to render as "Gratuito", but zero is also what the
+    extractor leaves behind whenever a caption says nothing about money,
+    which is most captions. So the catalog told people a pile of events
+    were free when they charge at the door. That is the one error in a
+    listing that costs the reader something real: they show up with no
+    money on them.
+
+    Empty string here, and the app renders no price at all. Silence is
+    honest; the reader finds out from the venue. A genuinely free event
+    we DID read as free is currently indistinguishable from an unknown
+    one — worth fixing in the extractor (a "price_known" flag), not by
+    guessing here.
+    """
     if min_p == 0 and max_p == 0:
-        return "Gratuito"
+        return ""
+    symbol = "R$" if currency == "BRL" else "$"
     if min_p == max_p:
         return f"{symbol} {min_p:.0f}"
     return f"{symbol} {min_p:.0f} – {max_p:.0f}"

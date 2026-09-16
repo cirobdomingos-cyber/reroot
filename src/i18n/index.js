@@ -58,12 +58,10 @@ export const T = {
 
     // ── Filter: price & family ────────────────────────────
     filter_all_prices:      'Todos',
-    filter_free:            'Grátis',
     filter_paid:            'Pago',
     filter_kids_welcome:    'Kids Welcome',
     filter_hide_curated:    'Só reais',
     filter_hide_curated_on: 'Sem sugestões AI',
-    tag_free:               'Grátis',
     tag_kids:               '👶 Kids Welcome',
     tag_curated:            'Sugestão AI',
     tag_curated_long:       'Sugestão curada por AI — não é evento real',
@@ -463,7 +461,6 @@ export const T = {
     home_activities_sub_first: 'Comece por aqui — antes de eventos em grupo',
     home_activity_reroot:  'Por que é bom agora',
     home_activity_solo:    '✓ Solo-friendly',
-    home_activity_free:    'Grátis',
 
     // ── Event-day banner ──────────────────────────────────
     home_event_today_label: 'Você tem um evento esta semana',
