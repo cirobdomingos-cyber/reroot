@@ -1073,6 +1073,11 @@ function PendingSection({
   // A row already answering stops taking input — on a slow connection
   // the buttons stay tappable long enough to fire the call twice.
   const [busyId, setBusyId] = useState(null)
+  // A convite pendente shows the event's own flyer instead of the
+  // generic ◆/◌ glyph — the photo is what you actually recognize the
+  // event by. IDs land here when the IG CDN URL 403s/expires so the
+  // row falls back to the glyph instead of an empty slot.
+  const [brokenImg, setBrokenImg] = useState(() => new Set())
 
   const curationRows = []
   if (curation?.is_curator) {
@@ -1129,6 +1134,19 @@ function PendingSection({
             key={ev.id}
             kind="invite"
             icon={ev.isPersonalPlan ? '◆' : '◌'}
+            avatar={(ev.imageUrl && !brokenImg.has(ev.id)) ? (
+              <img
+                src={ev.imageUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setBrokenImg(prev => new Set(prev).add(ev.id))}
+                style={{
+                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                  objectFit: 'cover', background: 'var(--bg2)',
+                }}
+              />
+            ) : undefined}
             title={ev.name}
             subtitle={[
               formatFriendsFeedDate(ev.date_start || ev.dateStart || ''),

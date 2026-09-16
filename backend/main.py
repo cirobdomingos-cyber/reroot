@@ -5888,7 +5888,25 @@ def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Produção respondeu {resp.status_code}")
 
-    result = db.import_catalog(resp.json())
+    try:
+        payload = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+
+    try:
+        result = db.import_catalog(payload)
+    except Exception as e:
+        # import_catalog already catches per-row sqlite errors into
+        # `skipped` — this is the backstop for whatever it didn't
+        # anticipate. First run against the real catalog hit exactly
+        # that: an uncaught exception here used to surface as a bodyless
+        # HTTP 500 (FastAPI's default handler for anything it didn't
+        # expect), which the frontend could only report as "HTTP 500" —
+        # true, but useless. Log the real trace for Railway and hand the
+        # client a message worth reading.
+        log.exception("Catalog sync: import_catalog falhou")
+        raise HTTPException(status_code=500, detail=f"Import falhou: {type(e).__name__}: {e}")
+
     log.info(
         f"Catalog sync de {settings.catalog_sync_origin}: "
         f"{result['events']} eventos, {result['venues']} locais, "

@@ -5163,14 +5163,23 @@ def import_catalog(data: dict) -> dict:
 
     Upsert, not replace: a venue you hand-corrected in staging keeps its
     correction unless production has a geocode for it too. Returns counts
-    plus the events that failed to parse, so a partial import reports
-    what it dropped instead of looking clean.
+    plus every row that failed, so a partial import reports what it
+    dropped instead of looking clean — or, worse, taking the whole
+    request down with it.
 
     One connection, one commit for the whole payload — not one per row.
     upsert_event() opens and commits its own connection per call, which
     is fine for a single scrape result but turns a few hundred events
     into a few hundred sequential fsyncs on Railway's volume. That was
     slow enough to look like the button did nothing.
+
+    Each write is its own try/except. A real production catalog — months
+    of scrapes, hand edits, old rows from since-dropped sources — has
+    shapes these functions were never tested against, and the first live
+    run hit exactly that: one bad row raised inside the shared
+    transaction and took the whole import down as an unhandled 500,
+    losing every row that would otherwise have gone in fine. A skipped
+    row now costs one line in `skipped`, not the whole sync.
     """
     now = datetime.now(timezone.utc).isoformat()
     counts = {"events": 0, "venues": 0, "ig_accounts": 0}
@@ -5186,87 +5195,104 @@ def import_catalog(data: dict) -> dict:
         try:
             ev = EnrichedEvent.model_validate_json(payload)
         except Exception as e:
-            skipped.append(f"{row.get('id', '?')}: {type(e).__name__}")
+            skipped.append(f"evento {row.get('id', '?')}: {type(e).__name__}: {e}")
             continue
         parsed_events.append(ev)
 
     with get_conn() as conn:
         for ev in parsed_events:
-            conn.execute("""
-                INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source, external_id) DO UPDATE SET
-                    payload         = excluded.payload,
-                    fetched_at      = excluded.fetched_at,
-                    enriched_at     = excluded.enriched_at,
-                    is_curated      = excluded.is_curated
-            """, (
-                ev.id, ev.source, ev.external_id, ev.model_dump_json(),
-                ev.fetched_at.isoformat(),
-                ev.enriched_at.isoformat() if ev.enriched_at else None,
-                1 if ev.is_curated else 0,
-            ))
+            try:
+                conn.execute("""
+                    INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(source, external_id) DO UPDATE SET
+                        payload         = excluded.payload,
+                        fetched_at      = excluded.fetched_at,
+                        enriched_at     = excluded.enriched_at,
+                        is_curated      = excluded.is_curated
+                """, (
+                    ev.id, ev.source, ev.external_id, ev.model_dump_json(),
+                    ev.fetched_at.isoformat(),
+                    ev.enriched_at.isoformat() if ev.enriched_at else None,
+                    1 if ev.is_curated else 0,
+                ))
+            except sqlite3.Error as e:
+                # id is the PRIMARY KEY; the ON CONFLICT target above is
+                # the (source, external_id) unique index. A row that
+                # collides on id without colliding on that pair — old
+                # data from before some dedup rule existed, say — isn't
+                # caught by ON CONFLICT and raises here instead.
+                skipped.append(f"evento {ev.id}: {type(e).__name__}: {e}")
+                continue
             counts["events"] += 1
 
         for v in data.get("venues") or []:
             key = (v.get("name_normalized") or "").strip()
             if not key:
                 continue
-            conn.execute(
-                """INSERT INTO venues
-                       (name_normalized, name_original, address, lat, lng,
-                        bairro, geocode_source, geocode_status, geocoded_at,
-                        created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(name_normalized) DO UPDATE SET
-                       name_original  = excluded.name_original,
-                       address        = excluded.address,
-                       -- Only overwrite coordinates when the incoming row
-                       -- actually has them; an ungeocoded production row
-                       -- must not erase a staging fix.
-                       lat            = COALESCE(excluded.lat, venues.lat),
-                       lng            = COALESCE(excluded.lng, venues.lng),
-                       bairro         = excluded.bairro,
-                       -- The status has to follow the coordinates. Taking
-                       -- the incoming 'pending' while COALESCE keeps the
-                       -- local lat/lng leaves a row that has coordinates
-                       -- but is filtered out of the map as ungeocoded.
-                       geocode_source = CASE WHEN excluded.lat IS NOT NULL
-                                             THEN excluded.geocode_source
-                                             ELSE venues.geocode_source END,
-                       geocode_status = CASE WHEN excluded.lat IS NOT NULL
-                                             THEN excluded.geocode_status
-                                             ELSE venues.geocode_status END,
-                       geocoded_at    = CASE WHEN excluded.lat IS NOT NULL
-                                             THEN excluded.geocoded_at
-                                             ELSE venues.geocoded_at END""",
-                (key, v.get("name_original") or key, v.get("address") or "",
-                 v.get("lat"), v.get("lng"), v.get("bairro") or "",
-                 v.get("geocode_source") or "", v.get("geocode_status") or "pending",
-                 v.get("geocoded_at") or "", now),
-            )
+            try:
+                conn.execute(
+                    """INSERT INTO venues
+                           (name_normalized, name_original, address, lat, lng,
+                            bairro, geocode_source, geocode_status, geocoded_at,
+                            created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(name_normalized) DO UPDATE SET
+                           name_original  = excluded.name_original,
+                           address        = excluded.address,
+                           -- Only overwrite coordinates when the incoming row
+                           -- actually has them; an ungeocoded production row
+                           -- must not erase a staging fix.
+                           lat            = COALESCE(excluded.lat, venues.lat),
+                           lng            = COALESCE(excluded.lng, venues.lng),
+                           bairro         = excluded.bairro,
+                           -- The status has to follow the coordinates. Taking
+                           -- the incoming 'pending' while COALESCE keeps the
+                           -- local lat/lng leaves a row that has coordinates
+                           -- but is filtered out of the map as ungeocoded.
+                           geocode_source = CASE WHEN excluded.lat IS NOT NULL
+                                                 THEN excluded.geocode_source
+                                                 ELSE venues.geocode_source END,
+                           geocode_status = CASE WHEN excluded.lat IS NOT NULL
+                                                 THEN excluded.geocode_status
+                                                 ELSE venues.geocode_status END,
+                           geocoded_at    = CASE WHEN excluded.lat IS NOT NULL
+                                                 THEN excluded.geocoded_at
+                                                 ELSE venues.geocoded_at END""",
+                    (key, v.get("name_original") or key, v.get("address") or "",
+                     v.get("lat"), v.get("lng"), v.get("bairro") or "",
+                     v.get("geocode_source") or "", v.get("geocode_status") or "pending",
+                     v.get("geocoded_at") or "", now),
+                )
+            except sqlite3.Error as e:
+                skipped.append(f"local {key}: {type(e).__name__}: {e}")
+                continue
             counts["venues"] += 1
 
         for a in data.get("ig_accounts") or []:
             handle = (a.get("handle") or "").strip().lstrip("@").lower()
             if not handle:
                 continue
-            conn.execute(
-                """INSERT INTO tracked_ig_accounts
-                       (handle, label, category, enabled, featured,
-                        promo_code, promo_perk, added_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(handle) DO UPDATE SET
-                       label      = excluded.label,
-                       category   = excluded.category,
-                       enabled    = excluded.enabled,
-                       featured   = excluded.featured,
-                       promo_code = excluded.promo_code,
-                       promo_perk = excluded.promo_perk""",
-                (handle, a.get("label") or "", a.get("category") or "",
-                 1 if a.get("enabled") else 0, 1 if a.get("featured") else 0,
-                 a.get("promo_code") or "", a.get("promo_perk") or "", now),
-            )
+            try:
+                conn.execute(
+                    """INSERT INTO tracked_ig_accounts
+                           (handle, label, category, enabled, featured,
+                            promo_code, promo_perk, added_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(handle) DO UPDATE SET
+                           label      = excluded.label,
+                           category   = excluded.category,
+                           enabled    = excluded.enabled,
+                           featured   = excluded.featured,
+                           promo_code = excluded.promo_code,
+                           promo_perk = excluded.promo_perk""",
+                    (handle, a.get("label") or "", a.get("category") or "",
+                     1 if a.get("enabled") else 0, 1 if a.get("featured") else 0,
+                     a.get("promo_code") or "", a.get("promo_perk") or "", now),
+                )
+            except sqlite3.Error as e:
+                skipped.append(f"@{handle}: {type(e).__name__}: {e}")
+                continue
             counts["ig_accounts"] += 1
         conn.commit()
 

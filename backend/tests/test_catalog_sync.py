@@ -314,3 +314,30 @@ def test_import_writes_events_in_one_connection(other_db, monkeypatch):
 
     monkeypatch.setattr(other_db.sqlite3, "connect", real_connect)
     assert len(other_db.get_events(limit=100)) == 20
+
+
+# ── 7. one bad row doesn't take the whole import down ────────────────
+
+def test_a_row_that_raises_is_skipped_not_fatal(other_db):
+    """The bug behind the first real run: events.id is the PRIMARY KEY,
+    but the ON CONFLICT target above is the (source, external_id) unique
+    index. A row that collides on id without colliding on that pair —
+    plausible in a catalog with months of history — isn't caught by
+    ON CONFLICT and used to raise straight out of the shared
+    transaction, losing every other row in the same request."""
+    good_a = _event(shortcode="GOOD1", name="Evento bom 1")
+    bad = _event(shortcode="GOOD1", name="Evento colidido")
+    object.__setattr__(bad, "id", good_a.id)  # same PK, different (source, external_id) below
+    bad.external_id = "ig_samba_OTHERCODE"
+    good_b = _event(shortcode="GOOD2", name="Evento bom 2")
+
+    result = other_db.import_catalog({"events": [
+        {"id": good_a.id, "payload": good_a.model_dump_json()},
+        {"id": bad.id, "payload": bad.model_dump_json()},
+        {"id": good_b.id, "payload": good_b.model_dump_json()},
+    ]})
+
+    assert result["events"] == 2
+    assert len(result["skipped"]) == 1
+    names = {e.name for e in other_db.get_events(limit=10)}
+    assert names == {"Evento bom 1", "Evento bom 2"}

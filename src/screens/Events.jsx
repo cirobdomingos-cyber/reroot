@@ -1740,28 +1740,6 @@ function _parseDayLabels(iso) {
   }
 }
 
-// Only a price we actually read off the post. Returns null otherwise,
-// and the card drops the slot entirely.
-//
-// The "free" branch is gone on purpose. price_tier=free is what the
-// extractor lands on whenever a caption doesn't mention money, which is
-// most captions — so the catalog was full of events labelled GRÁTIS that
-// charge at the door. A wrong price is worse than no price: it sends
-// someone to a show with no money on them.
-//
-// "?" for unknown is gone too. It was on the majority of cards, which
-// is noise, not information — an absent price already reads as
-// "não informado", and the row gets the space back.
-function _formatPrice(ev) {
-  const raw = (ev.price || '').trim()
-  if (!raw || raw === 'Gratuito' || raw === 'Free') return null
-  // Strip the R$ prefix for the compact terminal look — reference shows
-  // bare numbers ("80-160", "18"). Keep the raw string when stripping
-  // would lose meaning ("Doação", "Combo"). em-dash → en-dash for
-  // consistency with the reference.
-  return { text: raw.replace(/R\$\s*/g, '').replace(/\s*-\s*/g, '–').trim() }
-}
-
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
   // Flyer treatment — staging experiment, see lib/cardVariant.js.
   const cardVariant = eventCardVariant()
@@ -1802,7 +1780,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
   const bairro = (ev.bairro && ev.bairro.trim()) || suffixBairro || ''
   const venueLine = bairro ? `${venueName} · ${bairro}` : venueName
 
-  const price = _formatPrice(ev)
   const friendCount = friendsGoing.length
 
   return (
@@ -1880,6 +1857,25 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {weekday}
         </div>
       </div>
+
+      {/* Flyer thumb — between the day and the name, not out on the far
+          margin past the price/badges. Reads as "this is what the event
+          looks like" right where you're already looking, instead of a
+          detail you notice last. */}
+      {showThumb && (
+        <img
+          src={ev.imageUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgBroken(true)}
+          style={{
+            flexShrink: 0, width: 56, height: 56,
+            objectFit: 'cover', borderRadius: 10,
+            background: 'var(--bg2)', alignSelf: 'center',
+          }}
+        />
+      )}
 
       {/* CENTER — name + single metadata row */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1978,16 +1974,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             )}
           </div>
         )}
-        {price && (
-          <div
-            style={{
-              fontSize: 12, fontWeight: 800, color: 'var(--text)',
-              letterSpacing: 0.5, whiteSpace: 'nowrap',
-            }}
-          >
-            {price.text}
-          </div>
-        )}
         {rsvped && (
           <div style={{
             fontSize: 9, fontWeight: 700, color: 'var(--sage)',
@@ -1997,21 +1983,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           </div>
         )}
       </div>
-
-      {showThumb && (
-        <img
-          src={ev.imageUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setImgBroken(true)}
-          style={{
-            flexShrink: 0, width: 72, height: 72,
-            objectFit: 'cover', borderRadius: 10,
-            background: 'var(--bg2)', alignSelf: 'center',
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -2136,8 +2107,6 @@ function PersonalChip({ chip }) {
 
 function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
   const subtype = getSubtype(ev)
-  // Same rule as the event cards: a price we actually read, or nothing.
-  const price = _formatPrice(ev)
   // Split "Name · Neighborhood" reliably
   const [, neighborhood] = ev.venue?.includes(' · ')
     ? ev.venue.split(' · ')
@@ -2215,9 +2184,6 @@ function VenueRow({ ev, favorited, onFavorite, onOpen, t }) {
             }}>
               Fechado
             </span>
-          )}
-          {price && (
-            <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>{price.text}</span>
           )}
           {ev.kidsWelcome && (
             <span style={{
