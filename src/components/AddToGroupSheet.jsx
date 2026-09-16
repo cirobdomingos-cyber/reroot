@@ -24,6 +24,13 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   // R3 P29 + P31: without it, users open WhatsApp instead — leak of crew
   // conversation outside the platform.
   const [note, setNote] = useState('')
+  // groupId → how many people the backend actually pushed to, for the
+  // groups added in THIS session. The reason people don't use groups is
+  // that nothing tells them adding an event pings the crew — so the row
+  // says so afterwards. The count comes from the response, never from
+  // member_count: three of the endpoint's four exits send no push, and
+  // a locally-computed number would claim otherwise on all of them.
+  const [notified, setNotified] = useState({})
 
   useEffect(() => {
     if (!open || !googleId) return
@@ -45,7 +52,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   }, [open, googleId, event?.id])
 
   // Reset the note when the sheet closes/reopens for a different event.
-  useEffect(() => { if (!open) setNote('') }, [open])
+  useEffect(() => { if (!open) { setNote(''); setNotified({}) } }, [open])
 
   async function handlePick(group) {
     if (submittingId || !event) return
@@ -70,6 +77,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
       // groups. Mark this group as linked so the row flips to
       // "Adicionado · toque pra remover" immediately.
       setLinkedGroupIds(prev => new Set([...prev, group.id]))
+      setNotified(prev => ({ ...prev, [group.id]: result?.notified_count ?? 0 }))
       setDoneId(group.id)
       setTimeout(() => setDoneId(null), 900)
       // If the backend returned a relinked event with a different id
@@ -182,6 +190,17 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                     {note.length} / 280
                   </div>
                 )}
+                {/* Said up front, not asked. Adding an event already
+                    pushes to every member — people just had no way to
+                    know that, which is half of why the group sits
+                    unused. A confirm dialog here would put a brake on
+                    the exact thing worth encouraging. */}
+                <div style={{
+                  fontSize: 11, color: 'var(--charcoal-mid)',
+                  marginTop: 8, lineHeight: 1.4,
+                }}>
+                  🔔 Todo mundo do grupo é avisado na hora.
+                </div>
               </div>
             )}
 
@@ -227,6 +246,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                   // — handlePick for link, handleUnlink for the
                   // sage-pale removal action.
                   const alreadyLinked = linkedGroupIds.has(g.id)
+                  const justNotified = notified[g.id] || 0
                   return (
                     <button
                       key={g.id}
@@ -255,7 +275,17 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                           {g.name}
                         </div>
                         <div style={{ fontSize: 11, color: alreadyLinked ? 'var(--sage)' : 'var(--charcoal-mid)', marginTop: 1 }}>
-                          {alreadyLinked ? 'Adicionado · toque pra remover' : (
+                          {alreadyLinked ? (
+                            // Only for a group added in THIS session, and
+                            // only when the backend says a push actually
+                            // went out. A group that was already linked
+                            // when the sheet opened was notified whenever
+                            // that happened — not now — so it keeps the
+                            // plain label.
+                            justNotified > 0
+                              ? `${justNotified} ${justNotified === 1 ? 'avisado' : 'avisados'} · toque pra remover`
+                              : 'Adicionado · toque pra remover'
+                          ) : (
                             <>
                               {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}
                               {g.visibility === 'private' && ' · 🔒'}
