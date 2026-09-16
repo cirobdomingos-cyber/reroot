@@ -5,7 +5,6 @@ import { useApp } from './context/AppContext'
 import { useT } from './i18n'
 import StatusBar from './components/StatusBar'
 import BottomNav from './components/BottomNav'
-import InstallBanner from './components/InstallBanner'
 // Companion chat (LLM) disabled — kept in the codebase as dead code so the
 // surface is easy to bring back, but unmounted here so users can't open it
 // and burn API tokens. Re-enable by restoring the import + FAB + mount.
@@ -96,7 +95,6 @@ export default function App() {
   return (
     <div className="phone-shell">
       <StatusBar dark={isOnboarding} />
-      <InstallBanner />
 
       {/* Screen area — AnimatePresence key on pathname triggers exit/enter */}
       <div className="app-screen-area" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
