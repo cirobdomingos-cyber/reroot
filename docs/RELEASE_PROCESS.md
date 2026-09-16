@@ -10,6 +10,9 @@ How a change gets from an idea to the people using auê. The goal is simple:
 | Production | `main` | everyone (web + iPhone app) | production volume |
 | Staging | `dev` | us, for testing | its own volume — safe to break |
 
+- Production: https://reroot-production.up.railway.app (and auecuritiba.com)
+- Staging: https://aue-staging.up.railway.app
+
 Known-good production points are tagged `prod-YYYY-MM-DD`. The first one,
 `prod-2026-09-15`, is the baseline this process started from.
 
@@ -37,7 +40,7 @@ feat/<name>  ──PR──▶  dev (staging)  ──release PR──▶  main (
 - Merge when green. Railway deploys staging.
 
 ### 3. Test on staging
-Open the staging URL (Railway → reroot → staging → Settings → Domains) and
+Open https://aue-staging.up.railway.app and
 go through the pull request's checklist on:
 - a PC browser,
 - your phone's browser, logged in.
