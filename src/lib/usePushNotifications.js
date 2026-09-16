@@ -114,7 +114,18 @@ export function usePushNotifications() {
         // no; anything else ('prompt', 'prompt-with-rationale') means no
         // decision was made and the ask is worth repeating — see the
         // 'denied' sentinel return below.
-        const permResult = await PushNotifications.requestPermissions()
+        //
+        // Timeout-raced for the same reason as the web branch below: if
+        // the native permission dialog never appears (or the plugin
+        // never calls back), this was the one unguarded await standing
+        // between a fresh install and a screen with no tab bar and no
+        // way out.
+        const permResult = await Promise.race([
+          PushNotifications.requestPermissions(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Pedido de permissão travou (15s). Tenta de novo.')), 15000)
+          ),
+        ])
         if (permResult.receive !== 'granted') {
           if (permResult.receive === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
           return permResult.receive === 'denied' ? 'denied' : false
@@ -178,7 +189,20 @@ export function usePushNotifications() {
       // dismissed without a choice (e.g. the user navigated away) — not
       // a no, so callers shouldn't treat it as one. See the 'denied'
       // sentinel return below.
-      const permission = await Notification.requestPermission()
+      //
+      // Timeout-raced like serviceWorker.ready below: on some PWA/webview
+      // contexts the system dialog can fail to appear at all, and this
+      // promise never settles. Onboarding's push-primer step is the one
+      // screen in the app with no tab bar and no way out — a caller
+      // stuck awaiting this forever (and reflecting that in `loading`)
+      // was a real dead end, recoverable only by force-quitting and
+      // reinstalling the app.
+      const permission = await Promise.race([
+        Notification.requestPermission(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Pedido de permissão travou (15s). Tenta de novo.')), 15000)
+        ),
+      ])
       if (permission !== 'granted') {
         if (permission === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
         return permission === 'denied' ? 'denied' : false
