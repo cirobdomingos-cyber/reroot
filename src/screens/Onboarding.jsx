@@ -324,16 +324,24 @@ function PushPrimerStep({ dispatch, onDone }) {
         >
           {loading ? '...' : '✓ Pode avisar'}
         </button>
+        {/* Never disabled by `loading` — Onboarding is the one screen in
+            the app with no tab bar and no back button, so this is the
+            only escape hatch if handleAllow's subscribe() ever hangs.
+            It used to share the same disabled={loading} as the Allow
+            button above, which meant a hung permission prompt disabled
+            BOTH buttons at once — the underlying hang is now
+            timeout-raced (see usePushNotifications.subscribe), but this
+            button stays independently enabled as a second line of
+            defense against a stuck first launch. */}
         <button
           onClick={handleDecline}
-          disabled={loading}
           className="neon-mono"
           style={{
             width: '100%', padding: '12px 16px', borderRadius: 12,
             background: 'transparent', border: '1px solid var(--line)',
             color: 'var(--text2)',
             fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
-            cursor: 'pointer', opacity: loading ? 0.6 : 1,
+            cursor: 'pointer',
           }}
         >
           Agora não

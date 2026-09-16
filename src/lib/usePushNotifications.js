@@ -91,6 +91,13 @@ export function usePushNotifications() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Returns true on success, the string 'denied' when the user (or a past
+  // session) explicitly refused the permission prompt, or false for any
+  // other failure — network, misconfigured VAPID key, SW timeout, server
+  // error. Callers that permanently stop asking on failure (the Home
+  // banner) MUST only do that for 'denied' — a transient false is worth
+  // retrying next session, and used to get treated identically to a real
+  // no, which is most of why so few of our accounts have push enabled.
   const subscribe = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -103,11 +110,25 @@ export function usePushNotifications() {
       if (IS_NATIVE) {
         const { PushNotifications } = await import('@capacitor/push-notifications')
         // Permission first — APNs returns "granted" on iOS only after
-        // the user accepts the system prompt.
-        const permResult = await PushNotifications.requestPermissions()
+        // the user accepts the system prompt. 'denied' is an explicit
+        // no; anything else ('prompt', 'prompt-with-rationale') means no
+        // decision was made and the ask is worth repeating — see the
+        // 'denied' sentinel return below.
+        //
+        // Timeout-raced for the same reason as the web branch below: if
+        // the native permission dialog never appears (or the plugin
+        // never calls back), this was the one unguarded await standing
+        // between a fresh install and a screen with no tab bar and no
+        // way out.
+        const permResult = await Promise.race([
+          PushNotifications.requestPermissions(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Pedido de permissão travou (15s). Tenta de novo.')), 15000)
+          ),
+        ])
         if (permResult.receive !== 'granted') {
-          dispatch({ type: 'SET_PUSH_DISMISSED' })
-          return false
+          if (permResult.receive === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
+          return permResult.receive === 'denied' ? 'denied' : false
         }
 
         // Listen for the registration event before calling register() —
@@ -164,10 +185,27 @@ export function usePushNotifications() {
       }
 
       // ── Web (browser/PWA) channel ────────────────────────────
-      const permission = await Notification.requestPermission()
+      // 'denied' is an explicit no. 'default' means the prompt was
+      // dismissed without a choice (e.g. the user navigated away) — not
+      // a no, so callers shouldn't treat it as one. See the 'denied'
+      // sentinel return below.
+      //
+      // Timeout-raced like serviceWorker.ready below: on some PWA/webview
+      // contexts the system dialog can fail to appear at all, and this
+      // promise never settles. Onboarding's push-primer step is the one
+      // screen in the app with no tab bar and no way out — a caller
+      // stuck awaiting this forever (and reflecting that in `loading`)
+      // was a real dead end, recoverable only by force-quitting and
+      // reinstalling the app.
+      const permission = await Promise.race([
+        Notification.requestPermission(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Pedido de permissão travou (15s). Tenta de novo.')), 15000)
+        ),
+      ])
       if (permission !== 'granted') {
-        dispatch({ type: 'SET_PUSH_DISMISSED' })
-        return false
+        if (permission === 'denied') dispatch({ type: 'SET_PUSH_DISMISSED' })
+        return permission === 'denied' ? 'denied' : false
       }
 
       const keyRes = await fetch(`${API_BASE}/push/vapid-public-key`)
