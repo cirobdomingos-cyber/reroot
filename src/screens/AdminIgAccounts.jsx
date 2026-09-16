@@ -32,6 +32,8 @@ export default function AdminIgAccounts() {
   const [curators, setCurators] = useState([])
   const [feedback, setFeedback] = useState([])
   const [usage, setUsage] = useState(null)
+  // Full user directory (founder-only) — replaces "last 10 logins".
+  const [users, setUsers] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
   const [isFounder, setIsFounder] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -74,6 +76,10 @@ export default function AdminIgAccounts() {
           const usageRes = await fetch(withEmail(`${API_BASE}/admin/usage-stats`, email))
           if (usageRes.ok) setUsage(await usageRes.json())
         } catch { /* usage fetch is best-effort */ }
+        try {
+          const usersRes = await fetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
+          if (usersRes.ok) setUsers(await usersRes.json())
+        } catch { /* user directory is best-effort */ }
       }
       setError(null)
     } catch (e) {
@@ -310,7 +316,7 @@ export default function AdminIgAccounts() {
           3. Feedback — read what users said.
           4. Active handles — operational list at the bottom; adding new
              handles lives on the Sources page now (no duplicate form). */}
-      {isFounder && usage && <UsageSection usage={usage} />}
+      {isFounder && usage && <UsageSection usage={usage} users={users} />}
 
       {/* Leaderboard — founder sales tool. Sits right under "Uso do
           app" since both panels are the founder's "where do I focus
@@ -582,7 +588,7 @@ function statusBtn(color) {
 // ── UsageSection — founder dashboard ──────────────────────
 // DAU/WAU/MAU + funnel + 30-day daily series + recent logins.
 // Charts are simple inline SVG bars to avoid a chart-library dep.
-function UsageSection({ usage }) {
+function UsageSection({ usage, users }) {
   const maxDaily = Math.max(1, ...usage.daily.map(d => d.active))
   const maxFunnel = Math.max(1, ...usage.funnel.map(f => f.count))
   return (
@@ -610,16 +616,28 @@ function UsageSection({ usage }) {
         background: 'var(--white)', borderRadius: 12, padding: 14,
         border: '1px solid var(--border)', marginBottom: 14,
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 2 }}>
           USUÁRIOS ATIVOS POR DIA
+        </div>
+        {/* Was grouped by user_states.updated_at, which is overwritten on
+            every save — so each user landed on their last active day and
+            every earlier day read as empty. Now from user_activity (one
+            row per user per day), split into first-day vs returning. */}
+        <div style={{ fontSize: 10, color: 'var(--charcoal-light)', marginBottom: 8 }}>
+          <span style={{ color: 'var(--terra)', fontWeight: 700 }}>■</span> novos ·{' '}
+          <span style={{ color: 'var(--sage)', fontWeight: 700 }}>■</span> voltaram ·
+          série começa no deploy desta medição
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 92 }}>
           {usage.daily.map(d => {
+            const newUsers = d.new ?? 0
+            const returning = d.returning ?? d.active
             const h = Math.max(2, (d.active / maxDaily) * 70)
+            const newH = d.active > 0 ? (newUsers / d.active) * h : 0
             return (
               <div
                 key={d.date}
-                title={`${d.date}: ${d.active} ativo(s)`}
+                title={`${d.date}: ${d.active} ativo(s) — ${newUsers} novo(s), ${returning} de volta`}
                 style={{
                   flex: 1, display: 'flex', flexDirection: 'column',
                   alignItems: 'center', justifyContent: 'flex-end',
@@ -637,11 +655,10 @@ function UsageSection({ usage }) {
                 }}>
                   {d.active > 0 ? d.active : ''}
                 </span>
-                <div style={{
-                  width: '100%', background: 'var(--sage)',
-                  height: `${h}px`, borderRadius: '3px 3px 0 0',
-                  transition: 'all 0.15s',
-                }}/>
+                <div style={{ width: '100%', borderRadius: '3px 3px 0 0', overflow: 'hidden' }}>
+                  <div style={{ width: '100%', background: 'var(--terra)', height: `${newH}px` }} />
+                  <div style={{ width: '100%', background: 'var(--sage)', height: `${h - newH}px` }} />
+                </div>
               </div>
             )
           })}
@@ -685,11 +702,23 @@ function UsageSection({ usage }) {
 
       {/* Counts strip */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <Metric label="Novos hoje" value={usage.new_today} small />
         <Metric label="RSVPs" value={usage.counts.rsvps} small />
         <Metric label="Amizades" value={usage.counts.friendships} small />
         <Metric label="Grupos" value={usage.counts.groups} small />
         <Metric label="Feedback" value={usage.counts.feedback} small />
+        {usage.retention && (
+          <Metric
+            label={`Voltaram (${usage.retention.returned}/${usage.retention.eligible})`}
+            value={`${usage.retention.pct}%`}
+            small
+          />
+        )}
       </div>
+
+      {/* Every user and what they've done. The "últimos logins" list
+          below stays as the quick glance; this is the full picture. */}
+      <UsersTable data={users} />
 
       {/* Recent logins */}
       <div style={{
@@ -743,6 +772,130 @@ function UsageSection({ usage }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ── UsersTable — who the users are, not just how many ─────
+// The dashboard could only show the ten most recent logins. This is the
+// whole list with per-user activity, sorted client-side (tens of rows).
+function UsersTable({ data }) {
+  const [sort, setSort] = useState('last_seen')
+  const [query, setQuery] = useState('')
+  if (!data) return null
+
+  const cols = [
+    { key: 'joined', label: 'Entrou', num: false },
+    { key: 'last_seen', label: 'Visto', num: false },
+    { key: 'days_active', label: 'Dias', num: true },
+    { key: 'rsvps', label: 'RSVPs', num: true },
+    { key: 'friends', label: 'Amigos', num: true },
+    { key: 'groups', label: 'Grupos', num: true },
+    { key: 'events_created', label: 'Criou', num: true },
+  ]
+  const q = query.trim().toLowerCase()
+  const rows = (data.users || [])
+    .filter(u => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (sort === 'name') return (a.name || a.email || '').localeCompare(b.name || b.email || '')
+      const av = a[sort] ?? '', bv = b[sort] ?? ''
+      return av < bv ? 1 : av > bv ? -1 : 0
+    })
+
+  const fmtDay = iso => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '—')
+  const th = active => ({
+    textAlign: 'left', padding: '6px 6px', fontSize: 10, fontWeight: 700,
+    color: active ? 'var(--terra)' : 'var(--charcoal-light)',
+    textTransform: 'uppercase', letterSpacing: 0.4, cursor: 'pointer',
+    whiteSpace: 'nowrap', background: 'none', border: 'none',
+  })
+
+  return (
+    <div style={{
+      background: 'var(--white)', borderRadius: 12, padding: 14,
+      border: '1px solid var(--border)', marginBottom: 14,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 10, marginBottom: 10, flexWrap: 'wrap',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
+          USUÁRIOS · {data.total}
+        </div>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar nome ou email"
+          style={{ ...inputStyle, flex: '0 1 200px', padding: '6px 10px', fontSize: 12 }}
+        />
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
+              <th style={{ textAlign: 'left' }}>
+                <button onClick={() => setSort('name')} style={th(sort === 'name')}>Pessoa</button>
+              </th>
+              {cols.map(c => (
+                <th key={c.key} style={{ textAlign: c.num ? 'right' : 'left' }}>
+                  <button onClick={() => setSort(c.key)} style={th(sort === c.key)}>{c.label}</button>
+                </th>
+              ))}
+              <th style={{ textAlign: 'right' }}>
+                <span style={{ ...th(false), cursor: 'default' }}>Push</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(u => (
+              <tr key={u.google_id} style={{ borderBottom: '1px solid var(--cream)' }}>
+                <td style={{ padding: '6px 6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 160 }}>
+                    {u.picture ? (
+                      <img src={u.picture} alt="" referrerPolicy="no-referrer"
+                        style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{
+                        width: 22, height: 22, borderRadius: '50%', background: 'var(--cream)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, flexShrink: 0,
+                      }}>{(u.name || u.email || '?')[0]?.toUpperCase()}</div>
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{
+                        fontWeight: 600, color: 'var(--charcoal)',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
+                      }}>
+                        {u.name || u.email || u.google_id.slice(0, 10)}
+                      </div>
+                      {u.email && u.email !== u.name && (
+                        <div style={{
+                          fontSize: 10, color: 'var(--charcoal-light)',
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
+                        }}>{u.email}</div>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmtDay(u.joined)}</td>
+                <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmtDay(u.last_seen)}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.days_active}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.rsvps}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.friends}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.groups}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.events_created}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right' }}>{u.push_devices > 0 ? '🔔' : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--charcoal-light)', paddingTop: 8 }}>
+          Nenhum usuário encontrado.
+        </div>
+      )}
     </div>
   )
 }
