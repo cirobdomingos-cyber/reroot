@@ -1830,52 +1830,58 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         />
       )}
 
-      {/* LEFT — day anchor. Color tracks the stripe so the kind reads
-          from the day number too: terra for one-off, purple for
-          recurring, sage for group. Width fixed at 42px so the
-          center column starts on a consistent x across rows. */}
+      {/* LEFT — day + flyer as ONE unit: "which event is this", before
+          the text answers "what is it". They sit on a tighter gap than
+          the card's own, so proximity groups them; with everything on
+          the same 14px the card read as three loose columns and nothing
+          belonged to anything. Both centre on the same line, which is
+          the other half of the fix — a top-aligned date next to a
+          centred photo looks crooked the moment a title wraps to two
+          lines. */}
       <div style={{
-        flexShrink: 0, width: 42, textAlign: 'left',
-        display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
+        flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <div style={{
-          fontSize: 26, fontWeight: 800, lineHeight: 1,
-          // Day color matches the stripe — sage for group, purple for
-          // one-off (mirrors the "Só únicos" filter chip), terra-light
-          // blue for ongoing.
-          color: isGroupEvent ? 'var(--sage)'
-               : isOngoing ? 'var(--terra-light)'
-               : '#7E57C2',
-          letterSpacing: -0.5,
-        }}>
-          {day}
+        {/* Fixed width so rows without a flyer still start their text on
+            a consistent x, and a single-digit day doesn't shift the row
+            left. 36px is that width with no slack to spare: the widest
+            thing in here is a two-digit day at 35.2px (the weekday is
+            27px), measured, not eyeballed. */}
+        <div style={{ width: 36, textAlign: 'left' }}>
+          <div style={{
+            fontSize: 26, fontWeight: 800, lineHeight: 1,
+            // Day color matches the stripe — sage for group, purple for
+            // one-off (mirrors the "Só únicos" filter chip), terra-light
+            // blue for ongoing.
+            color: isGroupEvent ? 'var(--sage)'
+                 : isOngoing ? 'var(--terra-light)'
+                 : '#7E57C2',
+            letterSpacing: -0.5,
+          }}>
+            {day}
+          </div>
+          <div style={{
+            fontSize: 10, fontWeight: 700, marginTop: 2,
+            color: 'var(--charcoal-mid)', letterSpacing: 1,
+          }}>
+            {weekday}
+          </div>
         </div>
-        <div style={{
-          fontSize: 10, fontWeight: 700, marginTop: 2,
-          color: 'var(--charcoal-mid)', letterSpacing: 1,
-        }}>
-          {weekday}
-        </div>
-      </div>
 
-      {/* Flyer thumb — between the day and the name, not out on the far
-          margin past the price/badges. Reads as "this is what the event
-          looks like" right where you're already looking, instead of a
-          detail you notice last. */}
-      {showThumb && (
-        <img
-          src={ev.imageUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setImgBroken(true)}
-          style={{
-            flexShrink: 0, width: 56, height: 56,
-            objectFit: 'cover', borderRadius: 10,
-            background: 'var(--bg2)', alignSelf: 'center',
-          }}
-        />
-      )}
+        {showThumb && (
+          <img
+            src={ev.imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => setImgBroken(true)}
+            style={{
+              flexShrink: 0, width: 56, height: 56,
+              objectFit: 'cover', borderRadius: 10,
+              background: 'var(--bg2)', display: 'block',
+            }}
+          />
+        )}
+      </div>
 
       {/* CENTER — name + single metadata row */}
       <div style={{ flex: 1, minWidth: 0 }}>
