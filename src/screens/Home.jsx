@@ -215,8 +215,10 @@ export default function Home() {
     .map(([id]) => id)
   const rsvpCount = upcomingRsvpIds.length
 
-  // upcomingRsvps drives "Seus próximos eventos" — every planned event
-  // beyond the END of the week the calendar is currently showing. Catalog
+  // upcomingRsvps — every planned event beyond the END of the week the
+  // calendar is currently showing. Drives the "Depois" line under the
+  // calendar; it used to be a whole "Seus próximos eventos" section that
+  // read as a second calendar. Catalog
   // RSVPs + accepted group/personal-plan invites; events inside the
   // visible week already render under "Seus eventos essa semana" so we
   // drop them here to avoid the same row appearing in both places.
@@ -383,19 +385,17 @@ export default function Home() {
   // "rolando" = total events in the live catalog; falls back to a
   // skeleton zero while the fetch resolves.
   const rolandoCount = allEvents.filter(ev => !hiddenByFollows(ev, hiddenSources)).length
-  // CWB.NIGHT.LOG version stamp. ISO week of year, padded — matches the
-  // mockup's `V.207` format. Live so it stays current without a deploy.
+  // Week of year for the calendar's "SEMANA 38" label.
   const _now = new Date()
   const _start = new Date(_now.getFullYear(), 0, 1)
   const _weekOfYear = Math.ceil((((_now - _start) / 86400000) + _start.getDay() + 1) / 7)
-  const versionStamp = `V.${String(_now.getFullYear() % 100).padStart(2, '0')}${String(_weekOfYear).padStart(2, '0')}`
   const semana = String(_weekOfYear).padStart(2, '0')
 
   // ── Home sections ──
   // Built once, placed by layout. Phones stack them in the original order.
   // On a PC (useIsDesktop) the things to act on and plan with — greeting,
   // pendências, calendar, suggestions — fill the main column, and the
-  // social signals (friends going, your next events, community) sit in a
+  // social signals (friends going, community) sit in a
   // sticky right rail.
   const homeGreeting = (
     <div className={isDesktop ? 'home-hero--desktop' : undefined}>
@@ -625,72 +625,42 @@ export default function Home() {
         onGroupRsvp={handleAcceptInvite}
       />
 
-    </>
-  )
-  const homeUpcoming = (
-    <>
-      {/* Upcoming RSVPs */}
-      {upcomingRsvps.length > 0 && (
-        <>
-          <div className="section-label" style={{
-            color: 'var(--lime)',
-            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-          }}>
-            <span>// {(t.home_upcoming_label ?? 'Seus próximos eventos').toUpperCase()} · {String(upcomingRsvps.length).padStart(2, '0')}</span>
-          </div>
-          <div style={{ margin: '0 18px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {upcomingRsvps.slice(0, 3).map(ev => {
-              const friends = friendsByEventId[ev.id] || []
-              return (
-              <HomeEventRow
-                key={ev.id}
-                name={ev.name}
-                dateStart={ev.dateStart}
-                time={ev.time}
-                venue={ev.venue}
-                isRecurring={!!ev.isRecurring}
-                dateEnd={ev.dateEnd}
-                featured={!!ev.featured}
-                isGroupEvent={!!ev.isGroupEvent}
-                onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
-                trailing={
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {friends.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {friends.slice(0, 3).map((friend, i) => (
-                          <div
-                            key={(friend.google_id || friend.name) + i}
-                            style={{
-                              marginLeft: i === 0 ? 0 : -8,
-                              boxShadow: '0 0 0 2px var(--bg2)',
-                              borderRadius: '50%',
-                            }}
-                          >
-                            <Avatar name={friend.name} src={friend.picture} size={22} />
-                          </div>
-                        ))}
-                        <span className="neon-mono" style={{
-                          fontSize: 10, color: 'var(--magenta)',
-                          marginLeft: 5, letterSpacing: '0.1em',
-                        }}>
-                          {friends.length}
-                        </span>
-                      </div>
-                    )}
-                    <span className="neon-pill" style={{
-                      color: 'var(--lime)', background: 'var(--lime-soft)',
-                      flexShrink: 0,
-                    }}>
-                      ✓ ON
-                    </span>
-                  </div>
-                }
-              />
-              )
-            })}
-          </div>
-        </>
-      )}
+      {/* What comes after the visible week, as one line instead of a
+          second list. Tap → RSVPs, which has everything. */}
+      {upcomingRsvps.length > 0 && (() => {
+        const next = upcomingRsvps[0]
+        const d = new Date(next.dateStart || next.date_start || '')
+        const when = Number.isNaN(d.getTime())
+          ? ''
+          : d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+        const more = upcomingRsvps.length - 1
+        return (
+          <button
+            onClick={() => navigate('/my-rsvps')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              width: 'calc(100% - 32px)', margin: '-4px 16px 14px',
+              padding: '10px 12px', borderRadius: 12,
+              background: 'transparent', border: '1px dashed var(--line)',
+              color: 'var(--text2)', fontSize: 12, textAlign: 'left', cursor: 'pointer',
+            }}
+          >
+            <span className="neon-mono" style={{
+              fontSize: 10, letterSpacing: '0.16em', color: 'var(--lime)', flexShrink: 0,
+            }}>
+              {(t.home_after_label ?? 'Depois').toUpperCase()}
+            </span>
+            <span style={{
+              flex: 1, minWidth: 0,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {next.name}{when ? ` · ${when}` : ''}
+            </span>
+            {more > 0 && <span style={{ flexShrink: 0, color: 'var(--text3)' }}>+{more}</span>}
+            <span style={{ flexShrink: 0, color: 'var(--cyan)' }}>→</span>
+          </button>
+        )
+      })()}
 
     </>
   )
@@ -702,7 +672,7 @@ export default function Home() {
         color: 'var(--cyan)',
         display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
       }}>
-        <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()} · {String(rolandoCount).padStart(2, '0')}</span>
+        <span>// {(t.home_suggested_label ?? 'Pra você').toUpperCase()}</span>
       </div>
       <div style={isDesktop
         ? { margin: '0 18px 12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }
@@ -798,30 +768,24 @@ export default function Home() {
 
   return (
     <div>
-      {/* Brand block — Neon Boteco direction. 84px "auê" wordmark in
-          magenta with magenta glow, mono caption underneath. Avatar tap
-          shortcuts to Profile (replaces the old Perfil nav tab). */}
-      <div style={{ padding: '20px 18px 16px' }}>
+      {/* Brand block — "auê" wordmark in magenta glow + avatar (tap →
+          Perfil). Was an 84px wordmark with a "CWB.NIGHT.LOG // V.2638"
+          caption; with the ticker below, half the first screen went by
+          before a single event. */}
+      <div style={{ padding: '16px 18px 12px' }}>
         <div style={{
-          display: 'flex', alignItems: 'flex-start',
+          display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', gap: 12,
         }}>
           <div style={{ minWidth: 0 }}>
             {/* On a PC the sidebar already carries the wordmark. */}
             {!isDesktop && (
               <div className="neon-display neon-glow-mag" style={{
-                fontSize: 84, lineHeight: 0.85,
+                fontSize: 48, lineHeight: 0.85,
               }}>
                 auê
               </div>
             )}
-            <div className="neon-mono" style={{
-              fontSize: 10, marginTop: 8,
-              letterSpacing: '0.24em', textTransform: 'uppercase',
-              color: 'var(--cyan)',
-            }}>
-              ▸ CWB.NIGHT.LOG // {versionStamp}
-            </div>
           </div>
           <button
             onClick={() => navigate('/profile')}
@@ -829,7 +793,6 @@ export default function Home() {
             style={{
               background: 'none', border: 'none', cursor: 'pointer',
               padding: 0, flexShrink: 0, borderRadius: '50%',
-              marginTop: 6,
             }}
           >
             <Avatar
@@ -841,36 +804,41 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Activity ticker — three colored counts in mono, separated by
-          line dividers top + bottom. Replaces the old stat tiles; the
-          tile-tap routes are folded into the friends/confirmed section
-          headers below (each "Ver tudo →" jumps to /my-rsvps). */}
-      <div className="neon-mono" style={{
-        borderTop: '1px solid var(--line)',
-        borderBottom: '1px solid var(--line)',
-        padding: '8px 18px',
-        display: 'flex', gap: 20, overflowX: 'auto',
-        scrollbarWidth: 'none',
-      }}>
-        <span style={{
-          fontSize: 11, color: 'var(--lime)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {rsvpCount} {rsvpCount === 1 ? 'confirmado' : 'confirmados'}
-        </span>
-        <span style={{
-          fontSize: 11, color: 'var(--magenta)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {friendGoingCount} {friendGoingCount === 1 ? 'amigo vai' : 'amigos vão'}
-        </span>
-        <span style={{
-          fontSize: 11, color: 'var(--cyan)', letterSpacing: '0.1em',
-          whiteSpace: 'nowrap',
-        }}>
-          ● {rolandoCount} rolando
-        </span>
-      </div>
+      {/* Activity ticker — only the counts that aren't zero, and no row
+          at all when every count is. A new user used to be greeted with
+          "0 confirmados · 0 amigos vão" before a single event. */}
+      {(() => {
+        const items = [
+          rsvpCount > 0 && {
+            color: 'var(--lime)',
+            text: `${rsvpCount} ${rsvpCount === 1 ? 'confirmado' : 'confirmados'}`,
+          },
+          friendGoingCount > 0 && {
+            color: 'var(--magenta)',
+            text: `${friendGoingCount} ${friendGoingCount === 1 ? 'amigo vai' : 'amigos vão'}`,
+          },
+          rolandoCount > 0 && { color: 'var(--cyan)', text: `${rolandoCount} rolando` },
+        ].filter(Boolean)
+        if (items.length === 0) return null
+        return (
+          <div className="neon-mono" style={{
+            borderTop: '1px solid var(--line)',
+            borderBottom: '1px solid var(--line)',
+            padding: '8px 18px',
+            display: 'flex', gap: 20, overflowX: 'auto',
+            scrollbarWidth: 'none',
+          }}>
+            {items.map(item => (
+              <span key={item.text} style={{
+                fontSize: 11, color: item.color, letterSpacing: '0.1em',
+                whiteSpace: 'nowrap',
+              }}>
+                ● {item.text}
+              </span>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Push permission banner — sits between the activity ticker and
           the greeting for users who haven't opted in (skipped the
@@ -889,7 +857,6 @@ export default function Home() {
           </div>
           <aside className="home-desktop-rail">
             {homeFriends}
-            {homeUpcoming}
             {homeCommunity}
           </aside>
         </div>
@@ -899,7 +866,6 @@ export default function Home() {
           {homePending}
           {homeFriends}
           {homeCalendar}
-          {homeUpcoming}
           {homeSuggested}
           {homeCommunity}
         </>

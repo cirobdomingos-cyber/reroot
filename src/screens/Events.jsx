@@ -29,6 +29,18 @@ import { VENUE_CATEGORIES, SOURCE_CONFIG } from '../data/eventSources'
 // VENUE_CATEGORIES + SOURCE_CONFIG moved to data/eventSources.js so
 // EventDetail can import them without a cycle back through this file.
 
+// Records a filter change, skipping the first render (which is the
+// default, not a choice). The header carries three rows of filters and
+// nothing measured whether they earn the space — /analytics/funnel counts
+// by event name, so each control gets its own name.
+function useFilterUsage(eventName, value) {
+  const settled = useRef(false)
+  useEffect(() => {
+    if (!settled.current) { settled.current = true; return }
+    trackEvent(eventName, { value: String(value) })
+  }, [eventName, value])
+}
+
 const VENUE_SUBTYPES = [
   { id: 'all',  label: 'Todos' },
   { id: 'cafe', label: '☕ Cafés' },
@@ -203,6 +215,14 @@ export default function Events() {
   // List mode shows BOTH (range pills above, week strip below) so the
   // user can either zoom by range or pick a specific day.
   const [dateRange, setDateRange] = useState('all')  // 'today' | 'weekend' | 'week' | 'all'
+
+  // Which of these three rows of filters people actually touch.
+  useFilterUsage('events_filter_category', activeFilter)
+  useFilterUsage('events_filter_price', priceFilter)
+  useFilterUsage('events_filter_kids', kidsFilter)
+  useFilterUsage('events_filter_oneoff', oneOffOnly)
+  useFilterUsage('events_filter_date', dateRange)
+  useFilterUsage('events_view_mode', viewMode)
   // Filters collapsed by default. Three stacked rows of pills (category,
   // price/kids, date) ate the top third of the phone before a single
   // event showed — and in Mapa mode they pushed the map's own controls

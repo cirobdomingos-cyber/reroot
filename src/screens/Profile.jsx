@@ -267,9 +267,6 @@ export default function Profile() {
       {/* Compartilhar / Instalar — drives PWA distribution to friends */}
       <ShareInstallSection />
 
-      {/* Running-bundle diagnostic (native only) */}
-      <BundleInfo />
-
       {/* Notifications — placed right above Conquistas so the push opt-in
           is the first decision after the share card. Earlier we had it
           below Privacy at the bottom of the screen, which left it
@@ -288,8 +285,15 @@ export default function Profile() {
       {/* Feedback — only visible to users granted the feedbacker role */}
       <FeedbackSection state={state} />
 
+      {/* Settings you set once and forget: language, accessibility,
+          privacy. They used to sit open between Conquistas and the
+          sources link, which made the screen read as a settings dump.
+          Notifications stays outside — it's an opt-in people need to
+          stumble on. */}
+      <SettingsGroup t={t}>
+
       {/* Language toggle */}
-      <div style={{ margin: '16px 16px 12px' }} className="card">
+      <div style={{ margin: '0 16px 12px' }} className="card">
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 12 }}>
           {t.profile_language_label}
         </div>
@@ -392,6 +396,8 @@ export default function Profile() {
         })}
       </div>
 
+      </SettingsGroup>
+
       {/* Transparency: link to the sources catalog */}
       <div style={{ margin: '0 16px 12px' }} className="card">
         <button
@@ -413,6 +419,11 @@ export default function Profile() {
           <span style={{ fontSize: 16, color: 'var(--charcoal-light)' }}>→</span>
         </button>
       </div>
+
+      {/* Running-bundle diagnostic (native only). Down here with the
+          other developer affordances — it's also where you find the
+          device id to put in OTA_CANARY_DEVICES. */}
+      <BundleInfo />
 
       {/* Redo onboarding + Reset (dev affordances) */}
       <div style={{ padding: '4px 16px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
@@ -466,6 +477,32 @@ export default function Profile() {
         </div>
       </div>
     </div>
+  )
+}
+
+
+// One collapsed row instead of three open cards of settings. Closed by
+// default: these are decisions you make once.
+function SettingsGroup({ t, children }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="card"
+        style={{
+          margin: '16px 16px 12px', width: 'calc(100% - 32px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
+          ⚙️ {t.profile_settings_label ?? 'Configurações'}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && children}
+    </>
   )
 }
 
