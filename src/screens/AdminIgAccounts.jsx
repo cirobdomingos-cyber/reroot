@@ -384,6 +384,22 @@ export default function AdminIgAccounts() {
         </button>
       )}
 
+      {/* Venue pins. The bairro rendered next to a venue comes from the
+          geocoded row, so an unresolved venue shows the extraction's
+          guess instead — this is where that gets fixed. */}
+      {isCurator && (
+        <button
+          onClick={() => navigate('/admin/venues')}
+          style={{
+            display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
+            borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
+            color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
+          }}
+        >
+          📍 Locais e pins →
+        </button>
+      )}
+
       {isCurator && <PostDebugSection email={email} />}
       {!isCurator && !loading && (
         <NotACuratorMessage email={email} />
