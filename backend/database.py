@@ -2648,12 +2648,19 @@ def _replay_edited_fields(ev: EnrichedEvent, stored_payload: str,
         return ev
 
 
-def update_catalog_event(event_id: str, fields: dict) -> Optional[EnrichedEvent]:
-    """Apply a curator's corrections to a catalog event and pin them.
+def update_catalog_event(event_id: str, fields: dict,
+                         pin: bool = True) -> Optional[EnrichedEvent]:
+    """Apply changes to a catalog event's payload.
 
     `fields` is already validated and derived by the caller (price tier
     and the category label/emoji/gradient follow from price and kind).
-    Returns the updated event, or None when the id doesn't exist."""
+    Returns the updated event, or None when the id doesn't exist.
+
+    `pin` records the fields in edited_fields so a re-scrape can't undo
+    them. That's right for a curator's correction and wrong for a
+    machine fill: edited_fields means "a human decided this", and
+    pinning a backfilled value would freeze a guess the next enrichment
+    pass might well improve on."""
     if not fields:
         return get_event_by_id(event_id)
     with get_conn() as conn:
@@ -2667,17 +2674,59 @@ def update_catalog_event(event_id: str, fields: dict) -> Optional[EnrichedEvent]
         # Validate before writing — a bad date string should 500 here
         # rather than poison every later read of this row.
         event = EnrichedEvent(**payload)
-        try:
-            already = json.loads(row["edited_fields"] or "[]")
-        except (ValueError, TypeError):
-            already = []
-        pinned = sorted({*already, *fields.keys()})
-        conn.execute(
-            "UPDATE events SET payload = ?, edited_fields = ? WHERE id = ?",
-            (event.model_dump_json(), json.dumps(pinned), event_id),
-        )
+        if pin:
+            try:
+                already = json.loads(row["edited_fields"] or "[]")
+            except (ValueError, TypeError):
+                already = []
+            pinned = sorted({*already, *fields.keys()})
+            conn.execute(
+                "UPDATE events SET payload = ?, edited_fields = ? WHERE id = ?",
+                (event.model_dump_json(), json.dumps(pinned), event_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE events SET payload = ? WHERE id = ?",
+                (event.model_dump_json(), event_id),
+            )
         conn.commit()
     return event
+
+
+def list_events_needing_genre(limit: int = 200) -> list[dict]:
+    """Upcoming events with no genre tag yet.
+
+    Scoped to upcoming on purpose: events are perishable, and the whole
+    point of paying for this pass is that a channel assembled from tags
+    has enough in it *this week*. Reprocessing history would cost the
+    same and show nobody anything.
+
+    Skips events whose genre a curator already set — edited_fields is
+    the record of a human decision, and a batch classifier shouldn't
+    overrule one.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id,
+                      json_extract(payload, '$.name')        AS name,
+                      json_extract(payload, '$.description') AS description,
+                      json_extract(payload, '$.venue_name')  AS venue_name
+               FROM events
+               WHERE COALESCE(json_extract(payload, '$.genre'), '') = ''
+                 AND edited_fields NOT LIKE '%"genre"%'
+                 AND (
+                   (json_extract(payload, '$.date_end') IS NULL
+                    AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+                   OR (json_extract(payload, '$.date_end') IS NOT NULL
+                       AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+                   OR json_extract(payload, '$.is_recurring') = 1
+                 )
+               ORDER BY json_extract(payload, '$.date_start') ASC
+               LIMIT ?""",
+            (today, today, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_catalog_edited_fields(event_id: str) -> list[str]:

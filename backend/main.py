@@ -5573,6 +5573,65 @@ def admin_reject_account_request(request_id: int, req: AccountRequestDecision):
     return {"ok": True, "status": "rejected"}
 
 
+@app.post("/admin/events/backfill-genre")
+def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
+                         dry_run: bool = False):
+    """Tag upcoming events that have no genre yet.
+
+    Genre ships per event from the enrichment pass, but events scraped
+    before the field existed have nothing, and the catalog only re-tags
+    as it turns over. Measured 19 Sep: 32 of 128 upcoming events carried
+    a tag, so a channel assembled from tags alone would have opened with
+    six events.
+
+    That's why this reverses the earlier "no genre backfill" call. The
+    reasoning then was that events are perishable and the catalog
+    refreshes itself — true, and still true for history, which this
+    leaves alone. What changed is that channels depend on tag density
+    now, and "it'll be fine in a month" isn't density.
+
+    Founder-only because it spends money, bounded by `limit` because it
+    spends it per event. `dry_run` reports what would be tagged without
+    calling Claude at all.
+
+    Writes without pinning: edited_fields means a human decided, and a
+    machine fill shouldn't be frozen against a future enrichment pass
+    that might do better. A genre a curator set by hand is skipped
+    entirely — see list_events_needing_genre."""
+    _require_founder(requesting_email)
+    pending = db.list_events_needing_genre(limit=limit)
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_tag": len(pending),
+            "sample": [p["name"] for p in pending[:10]],
+        }
+    if not pending:
+        return {"considered": 0, "tagged": 0, "by_genre": {}}
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY não configurada")
+
+    from enrichment import EnrichmentPipeline
+    pipeline = EnrichmentPipeline(settings.anthropic_api_key)
+    assigned = pipeline.classify_genres(pending)
+
+    by_genre: dict[str, int] = {}
+    tagged = 0
+    for event_id, genre in assigned.items():
+        if db.update_catalog_event(event_id, {"genre": genre}, pin=False):
+            tagged += 1
+            by_genre[genre] = by_genre.get(genre, 0) + 1
+    log.info(f"Genre backfill by {requesting_email}: {tagged}/{len(pending)} tagged")
+    return {
+        "considered": len(pending),
+        "tagged": tagged,
+        # The gap between the two is events the model answered "nenhum"
+        # for — not a failure. Most of the catalog isn't a music night.
+        "left_untagged": len(pending) - tagged,
+        "by_genre": dict(sorted(by_genre.items(), key=lambda kv: -kv[1])),
+    }
+
+
 @app.delete("/admin/events/{event_id}")
 def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
     """Hard-delete a catalog event by id. Used to fix LLM mis-extractions
