@@ -139,6 +139,11 @@ function normalizeBackendEvent(ev) {
     description: ev.description || '',
     price: ev.price,
     priceTier: ev.priceTier,
+    // Raw bounds behind the formatted `price` string. Only the curator
+    // edit sheet reads these; this normalizer is a whitelist, so a field
+    // missing here is silently dropped no matter what the API sends.
+    priceMin: ev.priceMin ?? null,
+    priceMax: ev.priceMax ?? null,
     kidsWelcome: ev.kidsWelcome ?? false,
     hasFood: ev.hasFood,
     isLowPressure: ev.isLowPressure,
@@ -1171,6 +1176,31 @@ export async function updateGroupEvent(eventId, googleId, fields) {
     },
   )
   if (!res.ok) throw new Error(`Update group event failed: ${res.status}`)
+  return res.json()
+}
+
+// Curator correction of a CATALOG event (PATCH /admin/events/:id) — a
+// different endpoint and a different permission model from
+// updateGroupEvent above, which edits a group's own fork. Only the
+// fields passed are changed, and the backend pins them so the next
+// scrape of that Instagram post doesn't undo the fix.
+//
+// Errors carry the backend's message: validation here is server-side
+// (dates, price ordering, known category/genre) and the sheet shows
+// whatever came back rather than guessing.
+export async function updateCatalogEvent(eventId, requestingEmail, fields) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/admin/events/${encodeURIComponent(eventId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requesting_email: requestingEmail, ...fields }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Update catalog event failed: ${res.status}`)
+  }
   return res.json()
 }
 

@@ -274,7 +274,7 @@ export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
   )
 }
 
-export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, userNeighborhood, t }) {
+export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   // "Não vou" is offered to invitees of a private event who haven't
   // answered yet. Hosts delete instead of declining.
@@ -1086,7 +1086,10 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
                   cursor: 'pointer',
                 }}
               >
-                ✏️ Editar evento
+                {/* Named by the caller: a creator editing their own plan
+                    and a curator correcting the catalog are different
+                    acts, and the button is the only place that says so. */}
+                {editLabel || '✏️ Editar evento'}
               </button>
             )}
 
