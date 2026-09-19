@@ -377,6 +377,18 @@ def init_db():
                 created_at   TEXT NOT NULL
             )
         """)
+        # Migration: `kind` separates a private crew from an auê-curated
+        # channel. One table on purpose — a channel is structurally the
+        # same thing (a container of events with people attached), and
+        # forking the schema would mean forking every event-attach and
+        # notify path that already works. What differs is affordances,
+        # not storage: see the guards in main.py.
+        try:
+            conn.execute(
+                "ALTER TABLE groups ADD COLUMN kind TEXT NOT NULL DEFAULT 'group'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -3764,8 +3776,10 @@ def get_friends(google_id: str) -> list[dict]:
 
 # ── Groups ────────────────────────────────────────────────
 
-def create_group(google_id: str, name: str, description: str = "", visibility: str = "private") -> dict:
-    """Create a group and add the creator as admin. Returns the new group dict."""
+def create_group(google_id: str, name: str, description: str = "",
+                 visibility: str = "private", kind: str = "group") -> dict:
+    """Create a group (or an auê channel) and add the creator as admin.
+    Returns the new row."""
     now = datetime.now(timezone.utc).isoformat()
     group_id = f"grp_{secrets.token_hex(8)}"
     invite_code = secrets.token_hex(4).upper()  # 8 chars, WhatsApp-friendly
@@ -3773,9 +3787,11 @@ def create_group(google_id: str, name: str, description: str = "", visibility: s
 
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO groups (id, name, description, visibility, invite_code, feed_token, created_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (group_id, name, description, visibility, invite_code, feed_token, google_id, now),
+            """INSERT INTO groups (id, name, description, visibility, invite_code,
+                                   feed_token, created_by, created_at, kind)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (group_id, name, description, visibility, invite_code, feed_token,
+             google_id, now, kind),
         )
         conn.execute(
             "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'admin', ?)",
@@ -3797,7 +3813,13 @@ def get_groups_for_user(google_id: str) -> list[dict]:
     Sort: most-recent activity first, where "activity" = MAX of the
     group's most-recent event creation and the group's created_at. This
     keeps active crews at the top, while a brand-new empty group still
-    surfaces (its created_at acts as the floor)."""
+    surfaces (its created_at acts as the floor).
+
+    Channels are excluded. Following one puts a row in group_members
+    exactly like joining a crew does, so without this filter every
+    channel you follow would show up under "meus grupos" with a member
+    count — which is precisely the confusion the two-shapes-one-word
+    design exists to prevent. Channels come from list_channels."""
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT g.*, gm.role,
@@ -3816,6 +3838,7 @@ def get_groups_for_user(google_id: str) -> list[dict]:
                FROM groups g
                JOIN group_members gm ON g.id = gm.group_id
                WHERE gm.google_id = ?
+                 AND g.kind = 'group'
                ORDER BY last_activity_at DESC""",
             (google_id,),
         ).fetchall()
@@ -4071,6 +4094,97 @@ def get_group_members(group_id: str) -> list[dict]:
 
 
 # ── Group Events ──────────────────────────────────────────
+
+# ── Channels ──────────────────────────────────────────────────────
+# A channel is a row in `groups` with kind='channel'. Same table, same
+# event-attach and notify plumbing; what changes is who can join, how,
+# and which affordances render. Deliberately not a second table — every
+# group feature would otherwise need an "...unless it's a channel"
+# branch, which is the failure mode this design was chosen to avoid.
+#
+# Members of a channel are followers. They sit in group_members with
+# role='follower', which keeps the existing member queries working
+# (count, "am I in this") without teaching them a new concept.
+
+def get_user_id_by_email(email: str) -> Optional[str]:
+    """The internal user id for a signed-in email, or None.
+
+    Channels are owned by the founder's own account rather than a
+    synthetic "auê" user, so that every existing group query — admin
+    checks, member counts, event authorship — keeps working unchanged
+    against a real row."""
+    cleaned = (email or "").strip().lower()
+    if not cleaned:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE LOWER(email) = ? ORDER BY created_at ASC LIMIT 1",
+            (cleaned,),
+        ).fetchone()
+    return row["id"] if row else None
+
+
+def list_channels(google_id: str = "") -> list[dict]:
+    """Every channel, with follower count and whether the caller follows.
+
+    Unlike groups, channels are listed to everyone — discovery is the
+    whole point. A group is invisible without an invite code; a channel
+    has to be findable or nobody can opt in."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT g.*,
+                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id)
+                        AS follower_count,
+                      EXISTS(SELECT 1 FROM group_members
+                             WHERE group_id = g.id AND google_id = ?)
+                        AS is_following
+               FROM groups g
+               WHERE g.kind = 'channel'
+               ORDER BY follower_count DESC, g.name ASC""",
+            (google_id or "",),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_following"] = bool(d["is_following"])
+        out.append(d)
+    return out
+
+
+def follow_channel(group_id: str, google_id: str) -> bool:
+    """Add a follower. Idempotent — following twice is a no-op, not an
+    error, because the button can be double-tapped."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO group_members (group_id, google_id, role, joined_at)
+               VALUES (?, ?, 'follower', ?)""",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def unfollow_channel(group_id: str, google_id: str) -> bool:
+    """Remove a follower. Never removes the channel itself, and never
+    touches an 'admin' row — auê's own membership isn't a follow."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """DELETE FROM group_members
+               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+            (group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def is_channel(group_id: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT kind FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+    return bool(row) and row["kind"] == "channel"
+
 
 def create_group_event(
     group_id: Optional[str], google_id: str, name: str, description: str = "",
