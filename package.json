@@ -13,7 +13,8 @@
     "open:ios": "npx cap open ios",
     "postinstall": "patch-package",
     "lint": "eslint src",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@capacitor-community/apple-sign-in": "^7.1.0",
@@ -45,6 +46,7 @@
     "patch-package": "^8.0.1",
     "sharp": "^0.34.5",
     "vite": "^5.2.0",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^1.6.1"
   }
 }
