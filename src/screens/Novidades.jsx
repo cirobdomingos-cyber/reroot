@@ -165,13 +165,16 @@ export default function Novidades() {
         )}
 
         {(events || []).map(ev => (
+          // `venue` already carries the bairro, and since Sep 2026 it's the
+          // GEOCODED one, not the enrichment guess (_venue_label in
+          // backend/main.py) — appending ev.bairro here printed it twice.
           <HomeEventRow
             key={ev.id}
             name={ev.name}
             dateStart={ev.dateStart}
             dateEnd={ev.dateEnd}
             time={ev.time}
-            venue={ev.bairro ? `${ev.venue} · ${ev.bairro}` : ev.venue}
+            venue={ev.venue}
             isRecurring={ev.isRecurring}
             isGroupEvent={ev.isGroupEvent}
             featured={ev.featured}
