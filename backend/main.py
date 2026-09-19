@@ -3548,6 +3548,53 @@ def _next_recurring_occurrence(reference_dt: datetime, days: list) -> datetime:
     return reference_dt
 
 
+# Bairros the enrichment pass is allowed to claim it found. The prompt
+# field is literally called `neighborhood_guess` (enrichment.py), and the
+# model answers even with nothing to go on: it hedges ("Centro ou
+# Mercês"), answers with the city ("Curitiba"), or invents outright — one
+# @barfolia post produced both "Bar Folia · Centro" and "Bar Folia · Água
+# Verde". Measured Sep 2026: 100 of 123 catalog events disagreed with the
+# geocoded bairro, and the geocoder was the one telling the truth.
+#
+# `venues.bairro` (Nominatim) is the real answer; this only runs for
+# venues that were never geocoded. Showing no bairro beats showing a
+# confident wrong one, so anything reading as a hedge is dropped.
+_NEIGHBORHOOD_HEDGE_RE = re.compile(r"\bou\b|/|,|\(", re.IGNORECASE)
+
+
+def _clean_neighborhood_guess(value: str) -> str:
+    """Keep only unhedged, single-bairro guesses from the enrichment pass."""
+    guess = (value or "").strip(" ·")
+    if not guess:
+        return ""
+    # "Curitiba" is the city, not a bairro — the model's way of saying it
+    # doesn't know. Also catches "Centro ou região central de Curitiba".
+    # Costs us the real bairro "Cidade Industrial de Curitiba", which is a
+    # fair trade: that one loses its suffix, the other 99 stop lying.
+    if "curitiba" in guess.casefold():
+        return ""
+    if _NEIGHBORHOOD_HEDGE_RE.search(guess):
+        return ""
+    # A bairro name is short. Anything longer is prose, not an answer.
+    if len(guess) > 28:
+        return ""
+    return guess
+
+
+def _venue_label(venue_name: str, geocoded_bairro: str, guessed_bairro: str) -> str:
+    """The "Bar Folia · Água Verde" string the card and detail row show.
+
+    Preference is geocoded > guessed > name alone. Kept as a single
+    string because several readers parse that shape (badges.py,
+    Events.jsx); splitting `venue` into two fields is a wider change
+    than this fix warrants."""
+    name = (venue_name or "").strip()
+    bairro = (geocoded_bairro or "").strip() or _clean_neighborhood_guess(guessed_bairro)
+    if not name:
+        return bairro
+    return f"{name} · {bairro}" if bairro else name
+
+
 def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) -> dict:
     """
     Converte EnrichedEvent para o formato que o React espera.
@@ -3603,13 +3650,21 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     else:
         date_label = _format_event_date(effective_start)
 
+    # Resolved before `out` so the venue label can prefer the geocoded
+    # bairro over the enrichment guess — see _venue_label.
+    coords = None
+    if venue_coords and ev.venue_name:
+        coords = venue_coords.get(db._normalize_venue_key(ev.venue_name))
+
     out = {
         "id": ev.id,
         "name": ev.name,
         "category": ev.kind,
         "categoryLabel": ev.category_label,
         "categoryEmoji": ev.category_emoji,
-        "venue": f"{ev.venue_name} · {ev.neighborhood}",
+        "venue": _venue_label(
+            ev.venue_name, (coords or {}).get("bairro") or "", ev.neighborhood
+        ),
         "date": date_label,
         "time": "" if (is_original or is_ongoing) else effective_start.strftime("%H:%M"),
         "duration": "" if (is_original or is_ongoing) else _duration(ev),
@@ -3662,10 +3717,6 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
     # bairro on the event card chip ("📍 Batel"). Bairro from the
     # venues cache is the canonical source — feeds the Explorer badge
     # and the "from this neighborhood" filter (TBD).
-    coords = None
-    if venue_coords and ev.venue_name:
-        key = db._normalize_venue_key(ev.venue_name)
-        coords = venue_coords.get(key)
     out["lat"] = coords["lat"] if coords else None
     out["lng"] = coords["lng"] if coords else None
     out["bairro"] = (coords or {}).get("bairro") or ""

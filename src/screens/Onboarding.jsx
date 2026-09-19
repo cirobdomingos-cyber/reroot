@@ -396,8 +396,9 @@ function TeaserCard() {
                 fontSize: 11, color: '#5B5B5B',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
+                {/* ev.venue is "Nome · Bairro" already — see _venue_label
+                    in backend/main.py. */}
                 📍 {ev.venue}
-                <span style={{ color: '#9A9A9A' }}> · {ev.bairro}</span>
               </div>
               <div style={{
                 fontSize: 11, fontWeight: 600, color: '#E8623F', marginTop: 1,
