@@ -21,6 +21,38 @@
     <meta name="description" content="auê — Curitiba que acontece. Todos os eventos da cidade num lugar só, com a galera junto." />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <title>auê — Curitiba que acontece</title>
+
+    <!-- Link preview (Open Graph + Twitter). Until these existed a
+         shared auê link unfurled as a bare URL, which is why sharing
+         the App Store link looked like the better option — and that one
+         is worse, because Apple forces the slug "au%C3%AA" into the URL
+         and shows that unreadable string in the card.
+
+         URLs here are absolute and hard-coded to the canonical origin
+         on purpose. og:url is meant to name the canonical page whatever
+         host served the request, and unfurlers won't resolve a relative
+         og:image at all. Staging therefore advertises production's
+         card, which is correct: nobody should be sharing a staging
+         link, and if they do it shouldn't unfurl as a second product.
+
+         The card itself is public/og-image.svg, rendered to PNG by
+         scripts/render-icons.js — unfurlers don't render SVG. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="auê" />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:title" content="auê — Curitiba que acontece" />
+    <meta property="og:description" content="Todos os eventos da cidade num lugar só. Shows, exposições, feiras, oficinas — atualizado todo dia." />
+    <meta property="og:url" content="https://auecuritiba.com/" />
+    <meta property="og:image" content="https://auecuritiba.com/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="auê — Curitiba que acontece" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="auê — Curitiba que acontece" />
+    <meta name="twitter:description" content="Todos os eventos da cidade num lugar só. Shows, exposições, feiras, oficinas — atualizado todo dia." />
+    <meta name="twitter:image" content="https://auecuritiba.com/og-image.png" />
+    <link rel="canonical" href="https://auecuritiba.com/" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />

@@ -1,8 +1,10 @@
 /**
- * One-shot render of the auê app icons from public/icon.svg.
+ * One-shot render of the auê raster brand assets from their SVG sources.
  *
  * Outputs:
  *   - public/icon-{192,512,1024}x.png (PWA manifest fallbacks)
+ *   - public/og-image.png (1200×630 link preview card — unfurlers don't
+ *     render SVG, most reject it outright, so og:image must be a PNG)
  *   - ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
  *     (iOS native app icon — 1024×1024 universal, all sizes derived
  *      from this single asset since iOS 15+)
@@ -23,6 +25,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
 const SVG_PATH = path.join(ROOT, 'public', 'icon.svg')
 const SIZES = [192, 512, 1024]
+
+const OG_SVG_PATH = path.join(ROOT, 'public', 'og-image.svg')
+const OG_PNG_PATH = path.join(ROOT, 'public', 'og-image.png')
+const OG_SIZE = { width: 1200, height: 630 }
 
 const IOS_ICON_DIR = path.join(
   ROOT, 'ios', 'App', 'App', 'Assets.xcassets', 'AppIcon.appiconset',
@@ -62,6 +68,16 @@ async function main() {
     if (err.code !== 'ENOENT') throw err
     console.warn(`(skipped iOS icon copy: ${IOS_ICON_DIR} not present)`)
   }
+
+  // Link preview card. Rendered at its exact final size rather than
+  // resized from a square — 1200×630 is the ratio every unfurler crops
+  // to, and letting sharp resize would letterbox it.
+  const ogSvg = await readFile(OG_SVG_PATH)
+  await sharp(ogSvg, { density: 300 })
+    .resize(OG_SIZE.width, OG_SIZE.height)
+    .png()
+    .toFile(OG_PNG_PATH)
+  console.log(`✓ ${path.relative(ROOT, OG_PNG_PATH)}`)
 }
 
 main().catch(err => {
