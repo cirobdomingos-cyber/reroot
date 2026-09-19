@@ -328,7 +328,7 @@ export default function WeekCalendar({
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--terra)' }} />
             <span style={{ fontSize: 10, color: 'var(--charcoal-light)' }}>
-              {language === 'pt' ? 'Convite de grupo' : 'Group invite'}
+              {language === 'pt' ? 'Convite de canal' : 'Group invite'}
             </span>
           </div>
         </div>

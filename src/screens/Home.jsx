@@ -719,12 +719,12 @@ export default function Home() {
               <div className="neon-display" style={{
                 fontSize: 18, color: 'var(--text)', marginBottom: 4,
               }}>
-                {t.home_community_cta ?? 'Amigos & Grupos'}
+                {t.home_community_cta ?? 'Amigos & Canais'}
               </div>
               <div className="neon-mono" style={{
                 fontSize: 11, color: 'var(--text2)', letterSpacing: '0.04em',
               }}>
-                {t.home_community_sub ?? 'Conecte-se com pessoas e entre em grupos'}
+                {t.home_community_sub ?? 'Conecte-se com pessoas e entre em canais'}
               </div>
             </div>
             <span className="neon-mono" style={{
