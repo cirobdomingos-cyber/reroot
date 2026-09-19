@@ -4118,6 +4118,112 @@ class PersonalPlanCreateRequest(BaseModel):
     post: Optional[dict] = None
 
 
+# ── Channels ──────────────────────────────────────────────────────
+# Curated collections people follow. Same `groups` table as a private
+# crew (kind='channel'), because a channel is structurally the same
+# thing and forking the schema would fork every event-attach and notify
+# path that already works.
+#
+# The caution recorded in docs/NEXT.md was that a curated channel must
+# not read as a crew — people arriving at what looks like a group and
+# finding a bot feed. Since both are now called "canal", that gets
+# solved by shape rather than vocabulary:
+#
+#   canal privado  -> membros, convite, nudge pra convidar
+#   canal do auê   -> seguidores, descoberta aberta, nunca um nudge
+#
+# The guards below are what make that real rather than a UI convention.
+
+def _is_curator_google_id(google_id: str) -> bool:
+    """Curator check by user id rather than email — the group endpoints
+    identify callers by google_id, while the curators table is keyed by
+    email."""
+    if not google_id:
+        return False
+    user = db.get_user_profile(google_id) or {}
+    return db.is_curator(user.get("email") or "")
+
+
+def _founder_google_id() -> str:
+    """The founder's user id, used as the owner of every auê channel.
+
+    Returns "" when the founder has never signed into the app, which is
+    a real state on a fresh environment — the curators table is seeded
+    from settings at boot, but `users` only gets a row on first login.
+    The caller turns that into a 409 with an instruction rather than a
+    500."""
+    return db.get_user_id_by_email(settings.founder_email) or ""
+
+
+class ChannelCreate(BaseModel):
+    requesting_email: str
+    name: str
+    description: str = ""
+
+
+class ChannelFollow(BaseModel):
+    google_id: str
+
+
+@app.get("/channels")
+def list_channels(google_id: str = ""):
+    """Every channel, with follower count and whether the caller follows.
+
+    Open to anyone, signed in or not. A group is invisible without an
+    invite code; a channel that isn't findable can't be opted into, and
+    opt-in is the entire model — nobody is ever enrolled automatically."""
+    return {"channels": db.list_channels(google_id)}
+
+
+@app.post("/admin/channels")
+def create_channel(req: ChannelCreate):
+    """Create an auê channel. Founder-only.
+
+    User-created channels are deferred on purpose (docs/NEXT.md): a
+    user's channel would be private, which is what a group already is,
+    and an empty channel with an audience is the same stall that groups
+    already measure. Curated first, prove it retains, then open it up."""
+    _require_founder(req.requesting_email)
+    name = req.name.strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    founder_id = _founder_google_id()
+    if not founder_id:
+        raise HTTPException(
+            status_code=409,
+            detail="A conta do auê ainda não entrou no app — entra uma vez e tenta de novo.",
+        )
+    channel = db.create_group(
+        google_id=founder_id,
+        name=name,
+        description=req.description.strip()[:500],
+        visibility="public",   # discovery is the point
+        kind="channel",
+    )
+    return {"channel": channel}
+
+
+@app.post("/channels/{group_id}/follow")
+def follow_channel(group_id: str, req: ChannelFollow):
+    """Follow a channel. Idempotent: the button can be double-tapped."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta pra seguir")
+    db.follow_channel(group_id, req.google_id)
+    return {"ok": True, "following": True}
+
+
+@app.delete("/channels/{group_id}/follow")
+def unfollow_channel(group_id: str, google_id: str = ""):
+    """Stop following. Only removes a 'follower' row, so auê's own admin
+    membership on its channel can't be deleted by an unfollow."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    db.unfollow_channel(group_id, google_id)
+    return {"ok": True, "following": False}
+
+
 @app.post("/groups")
 def create_group(req: GroupCreateRequest):
     """Create a new group. Creator becomes admin automatically."""
@@ -4240,9 +4346,16 @@ def get_group_by_invite(invite_code: str):
 
 @app.post("/groups/join")
 def join_group(req: GroupJoinRequest):
-    """Join a group via invite code."""
+    """Join a group via invite code.
+
+    Channels are excluded even though they carry an invite_code column
+    (every row does). You follow a channel from the open list; there is
+    no code to pass around, and honouring one here would create a second
+    way in that no UI offers and no guard covers."""
     group = db.get_group_by_invite_code(req.invite_code)
     if not group:
+        return {"status": "not_found"}
+    if group.get("kind") == "channel":
         return {"status": "not_found"}
     already = not db.join_group(group["id"], req.google_id)
     if already:
@@ -4574,6 +4687,14 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
 
     Pushes go to everyone in the resolved invitee list — outsiders
     included — so an invite always surfaces as a notification."""
+    # A channel is curated: following it must not grant the right to
+    # publish into it. Without this, "seguir" would be an open write to
+    # a feed every other follower sees.
+    if db.is_channel(group_id) and not _is_curator_google_id(req.google_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Só a curadoria do auê publica num canal do auê",
+        )
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")

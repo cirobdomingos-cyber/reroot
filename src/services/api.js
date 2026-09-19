@@ -1188,6 +1188,44 @@ export async function updateGroupEvent(eventId, googleId, fields) {
 // Errors carry the backend's message: validation here is server-side
 // (dates, price ordering, known category/genre) and the sheet shows
 // whatever came back rather than guessing.
+// ── Channels ──────────────────────────────────────────────
+// Curated collections people follow. Same backend table as a private
+// group, but a different relationship: you follow a channel, you don't
+// join it, and following never grants the right to publish into it.
+//
+// Listing is open to signed-out visitors too — a channel that isn't
+// findable can't be opted into, and opt-in is the whole model.
+export async function fetchChannels(googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/channels?google_id=${encodeURIComponent(googleId || '')}`,
+    )
+    if (!res.ok) return []
+    return (await res.json()).channels || []
+  } catch {
+    // Offline-first: no channels is a valid render, not an error state.
+    return []
+  }
+}
+
+export async function setChannelFollow(channelId, googleId, following) {
+  const url = `${BASE_URL}/channels/${encodeURIComponent(channelId)}/follow`
+  const res = following
+    ? await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ google_id: googleId }),
+      })
+    : await fetchWithTimeout(
+        `${url}?google_id=${encodeURIComponent(googleId)}`, { method: 'DELETE' },
+      )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Follow failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function updateCatalogEvent(eventId, requestingEmail, fields) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/admin/events/${encodeURIComponent(eventId)}`,

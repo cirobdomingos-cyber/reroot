@@ -5,6 +5,7 @@ import { useT } from '../i18n'
 import Friends from './Friends'
 import Groups from './Groups'
 import FriendsFeed from '../components/FriendsFeed'
+import ChannelList from '../components/ChannelList'
 
 export default function Community() {
   const t = useT()
@@ -67,7 +68,15 @@ export default function Community() {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.18 }}
       >
-        {tab === 'friends' ? <FriendsInline /> : <GroupsInline />}
+        {tab === 'friends' ? <FriendsInline /> : (
+          <>
+            {/* Channels sit above your own groups, not mixed into them.
+                They're a different relationship — you follow one, you
+                don't join it — and the list hides itself when empty. */}
+            <ChannelList />
+            <GroupsInline />
+          </>
+        )}
       </motion.div>
     </div>
   )
