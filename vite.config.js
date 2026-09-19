@@ -67,6 +67,10 @@ export default defineConfig({
       filename: 'sw.js',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The link-preview card is fetched by unfurlers, never by the
+        // app — precaching it costs every install ~45KB for a file no
+        // user ever loads.
+        globIgnores: ['**/og-image.*'],
       },
       // Register the SW in dev too — without this, navigator.serviceWorker.ready
       // never resolves (no SW is ever installed), and the push subscribe
