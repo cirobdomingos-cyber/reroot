@@ -28,6 +28,7 @@ import JoinGroup      from './screens/JoinGroup'
 import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
 import AdminIgAccounts from './screens/AdminIgAccounts'
+import AdminVenues from './screens/AdminVenues'
 import AddFriend       from './screens/AddFriend'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
@@ -154,6 +155,7 @@ export default function App() {
             <Route path="/venue/:handle" element={<AnimatedPage><VenueDashboard /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
+            <Route path="/admin/venues" element={<AnimatedPage><AdminVenues /></AnimatedPage>} />
             <Route path="/curadoria" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="/curadoria/:requestId" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

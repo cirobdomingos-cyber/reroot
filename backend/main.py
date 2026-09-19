@@ -6250,11 +6250,66 @@ def admin_list_venues(requesting_email: str = "", status: str = "all"):
     return {"venues": db.list_venues(status=status)}
 
 
+# Coordinate formats a curator can paste. The workflow this exists for:
+# find the place in Google Maps, right-click, "copiar coordenadas" — or
+# just copy the URL out of the address bar. Asking someone to pull two
+# floats out of a URL by hand is how a pin ends up with the longitude in
+# the latitude field.
+#
+# Parsed on the backend rather than in the sheet because this is all
+# edge cases, and the repo's tests are pytest — there is no JS unit
+# runner (only eslint + Playwright), so a frontend parser would ship
+# untested.
+#
+# Deliberately NOT supported: Brazilian decimal commas ("-25,42, -49,27").
+# The comma is also the pair separator, so "-25,42,-49,27" is genuinely
+# ambiguous and guessing wrong puts the pin in another state.
+_COORD_PAIR = r"(-?\d{1,3}\.\d+)"
+_COORD_PATTERNS = (
+    # Place pin in a Maps URL (.../data=...!3d-25.42!4d-49.27). This is
+    # the place itself, so it beats the viewport center below.
+    re.compile(rf"!3d{_COORD_PAIR}!4d{_COORD_PAIR}"),
+    # Explicit query: ?q=lat,lng / ?query=lat,lng / ?ll=lat,lng
+    re.compile(rf"[?&](?:q|query|ll)={_COORD_PAIR}%2C\s*{_COORD_PAIR}", re.IGNORECASE),
+    re.compile(rf"[?&](?:q|query|ll)={_COORD_PAIR},\s*{_COORD_PAIR}", re.IGNORECASE),
+    # Viewport center (.../@-25.42,-49.27,17z) — the map's center, which
+    # is close enough when there's no place pin in the URL.
+    re.compile(rf"@{_COORD_PAIR},{_COORD_PAIR}"),
+    # Bare "lat, lng", which is what "copiar coordenadas" puts on the
+    # clipboard. Anchored so a longer string doesn't match by accident.
+    re.compile(rf"^\s*{_COORD_PAIR}\s*,\s*{_COORD_PAIR}\s*$"),
+)
+
+
+def _parse_coords_text(text: str) -> Optional[tuple[float, float]]:
+    """Pull (lat, lng) out of pasted text — a Google Maps URL or a bare
+    "lat, lng" pair. None when nothing parses.
+
+    Range-checks only what's universally true (lat +-90, lng +-180); the
+    caller applies the Curitiba bounds, so the error a curator sees for a
+    pin in the wrong city says that, not "invalid format"."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    for pattern in _COORD_PATTERNS:
+        m = pattern.search(raw)
+        if not m:
+            continue
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+    return None
+
+
 class VenueUpdateRequest(BaseModel):
     requesting_email: str
     lat: Optional[float] = None
     lng: Optional[float] = None
     address: Optional[str] = None  # when set, persisted for future Nominatim retries
+    # A pasted Google Maps URL or "lat, lng" pair, parsed server-side.
+    # Takes precedence over lat/lng when both arrive — a curator who
+    # pasted something meant that, not whatever was in the fields.
+    coords_text: Optional[str] = None
 
 
 @app.put("/admin/venues/{name_normalized}")
@@ -6270,20 +6325,30 @@ def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
     the next geocode retry has cleaner input); when omitted the existing
     address is left untouched."""
     _require_curator(req.requesting_email)
-    if (req.lat is None) != (req.lng is None):
+    lat, lng = req.lat, req.lng
+    # A pasted URL/pair wins over the numeric fields — see coords_text.
+    if (req.coords_text or "").strip():
+        parsed = _parse_coords_text(req.coords_text)
+        if not parsed:
+            raise HTTPException(
+                status_code=400,
+                detail="Não consegui ler as coordenadas. Cole o link do Google Maps ou \"-25.42, -49.27\".",
+            )
+        lat, lng = parsed
+    if (lat is None) != (lng is None):
         raise HTTPException(status_code=400, detail="lat and lng must both be provided or both omitted")
-    if req.lat is not None:
+    if lat is not None:
         # Sanity check — Curitiba lives roughly between (-25.7, -49.5)
         # and (-25.2, -49.0). Accepting anything in Brazil's lat range
         # would drop pins on the wrong continent if a typo creeps in.
-        if not (-26.5 <= req.lat <= -24.5 and -50.5 <= req.lng <= -48.0):
+        if not (-26.5 <= lat <= -24.5 and -50.5 <= lng <= -48.0):
             raise HTTPException(
                 status_code=400,
                 detail="Coordenadas fora da região de Curitiba — verifica antes de salvar",
             )
     ok = db.update_venue_manual(
         name_normalized=name_normalized,
-        lat=req.lat, lng=req.lng,
+        lat=lat, lng=lng,
         address=req.address,
     )
     if not ok:

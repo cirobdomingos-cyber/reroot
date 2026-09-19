@@ -4971,14 +4971,14 @@ def list_venues(status: str = "all") -> list[dict]:
         where = "WHERE v.geocode_status != 'ok'"
     elif status == "ok":
         where = "WHERE v.geocode_status = 'ok'"
+    # `bairro` is what the catalog actually renders next to the venue
+    # name, so a curator fixing a pin has to be able to see it — dropping
+    # a correct pin that reverse-geocodes to no bairro still leaves the
+    # event showing the enrichment guess.
     sql = f"""
         SELECT v.name_normalized, v.name_original, v.address,
-               v.lat, v.lng, v.geocode_status, v.geocode_source,
-               v.attempt_count, v.last_attempt_at,
-               (SELECT COUNT(*) FROM events e
-                WHERE LOWER(json_extract(e.payload, '$.venue_name')) IS NOT NULL
-                  AND json_extract(e.payload, '$.venue_name') != ''
-               ) AS _total_events_unused
+               v.lat, v.lng, v.bairro, v.geocode_status, v.geocode_source,
+               v.attempt_count, v.last_attempt_at
         FROM venues v
         {where}
         ORDER BY v.attempt_count ASC, v.name_original ASC
@@ -4991,7 +4991,7 @@ def list_venues(status: str = "all") -> list[dict]:
     counts = _venue_event_counts()
     for r in rows:
         d = dict(r)
-        d.pop("_total_events_unused", None)
+        d["bairro"] = d.get("bairro") or ""
         d["event_count"] = counts.get(d["name_normalized"], 0)
         out.append(d)
     # Sort: high-event-count first within the result so the curator's
