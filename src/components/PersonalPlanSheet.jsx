@@ -92,7 +92,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
     })
     // fetchGroups resolves to the ARRAY of groups, not { groups: [...] }.
     // This destructured `{ groups }` off an array, got undefined every
-    // time, and fell through to []. Net effect: the "Conectar a um grupo"
+    // time, and fell through to []. Net effect: the "Conectar a um canal"
     // control never rendered for anyone, for any account — so every event
     // created from Home has silently been a standalone plan, never
     // group-tagged. The .catch(() => {}) hid it from the console too.
@@ -184,7 +184,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
       })
       setShowGroupPicker(false)
     } catch (e) {
-      setError(e?.message || 'Não consegui carregar o grupo')
+      setError(e?.message || 'Não consegui carregar o canal')
     } finally {
       setConnectingGroupId(null)
     }
@@ -504,7 +504,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                     🔒 {selected.size === 1 ? 'A pessoa convidada de fora' : `As ${selected.size} pessoas convidadas de fora`}
                     {' '}não {selected.size === 1 ? 'faz' : 'fazem'} parte de{' '}
                     <strong style={{ color: 'var(--text2)' }}>{connectedGroup.name}</strong>
-                    {' '}— {selected.size === 1 ? 'ela vê' : 'elas veem'} só este evento, sem saber que o grupo existe.
+                    {' '}— {selected.size === 1 ? 'ela vê' : 'elas veem'} só este evento, sem saber que o canal existe.
                   </div>
                 )}
               </div>
@@ -522,7 +522,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}
                 >
-                  <span>🔗 Conectar a um grupo (opcional)</span>
+                  <span>🔗 Conectar a um canal (opcional)</span>
                   <span style={{ fontSize: 11 }}>{showGroupPicker ? '▲' : '▼'}</span>
                 </button>
                 {showGroupPicker && (
@@ -568,7 +568,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
               }}>
                 {googleId ? (
                   <>
-                    🔗 Você ainda não tem grupos.{' '}
+                    🔗 Você ainda não tem canais.{' '}
                     <button
                       type="button"
                       onClick={() => { onClose?.(); navigate('/community') }}
@@ -578,12 +578,12 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                         cursor: 'pointer', textDecoration: 'underline',
                       }}
                     >
-                      Criar um grupo
+                      Criar um canal
                     </button>{' '}
                     pra convidar a galera toda de uma vez.
                   </>
                 ) : (
-                  <>🔗 Entra com o Google pra convidar amigos e conectar grupos.</>
+                  <>🔗 Entra com o Google pra convidar amigos e conectar canais.</>
                 )}
               </div>
             )}
@@ -612,7 +612,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                   fontSize: 12, color: 'var(--charcoal-mid)', textAlign: 'center',
                 }}>
                   {connectedGroup
-                    ? 'Sem amigos de fora pra adicionar — só o crew do grupo então.'
+                    ? 'Sem amigos de fora pra adicionar — só o crew do canal então.'
                     : 'Você ainda não tem amigos no auê. Adicione alguns na aba Comunidade primeiro.'}
                 </div>
               ) : eligibleFriends.length === 0 ? (
@@ -620,7 +620,7 @@ export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, 
                   padding: '12px', background: 'var(--cream)', borderRadius: 10,
                   fontSize: 12, color: 'var(--charcoal-mid)', textAlign: 'center',
                 }}>
-                  Todos os seus amigos já estão no grupo.
+                  Todos os seus amigos já estão no canal.
                 </div>
               ) : visibleFriends.length === 0 ? (
                 <div style={{ padding: 12, fontSize: 12, color: 'var(--charcoal-light)', textAlign: 'center' }}>

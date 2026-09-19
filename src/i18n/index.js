@@ -11,7 +11,7 @@ export const T = {
     nav_friends: 'Amigos',
     nav_community: 'Comunidade',
     community_tab_friends: 'Amigos',
-    community_tab_groups: 'Grupos',
+    community_tab_groups: 'Canais',
     nav_profile: 'Perfil',
 
     // ── Onboarding ────────────────────────────────────────
@@ -501,17 +501,31 @@ export const T = {
     friends_count_one:       'amigo',
     friends_count_many:      'amigos',
 
-    // ── Groups ───────────────────────────────────────────────
-    nav_groups:             'Grupos',
-    groups_title:           'Meus Grupos',
-    groups_empty:           'Você ainda não faz parte de nenhum grupo.',
-    groups_empty_sub:       'Crie um grupo ou entre com um código de convite.',
-    groups_create:          'Criar Grupo',
-    groups_create_title:    'Novo Grupo',
-    groups_name:            'Nome do grupo',
+    // ── Channels (keys still say `groups_`) ──────────────────
+    // Renamed in the copy only, Sep 2026: a user-created channel is
+    // private, which is what a group already was, so carrying two
+    // words for one structure taught people a distinction that does
+    // not exist. The KEYS keep their old names on purpose — they're
+    // code identifiers read by ~12 files, and renaming them would be
+    // a large diff with no user-visible effect and a real chance of
+    // missing one. Same reasoning holds for the /groups/* routes
+    // (shared links must keep working) and the group_* analytics
+    // events (renaming them would break the funnel measurement this
+    // sprint is waiting on).
+    //
+    // 'membros' and 'convite' stay: those belong to a PRIVATE
+    // channel. An auê channel has seguidores and no invite at all —
+    // see ChannelList.jsx.
+    nav_groups:             'Canais',
+    groups_title:           'Meus canais',
+    groups_empty:           'Você ainda não faz parte de nenhum canal.',
+    groups_empty_sub:       'Crie um canal ou entre com um código de convite.',
+    groups_create:          'Criar canal',
+    groups_create_title:    'Novo canal',
+    groups_name:            'Nome do canal',
     groups_name_placeholder:'ex: Yoga às sextas, Trilheiros CWB...',
     groups_description:     'Descrição (opcional)',
-    groups_desc_placeholder:'Sobre o que é esse grupo...',
+    groups_desc_placeholder:'Sobre o que é esse canal...',
     groups_visibility:      'Visibilidade',
     groups_public:          'Público',
     groups_private:         'Privado',
@@ -523,13 +537,13 @@ export const T = {
     groups_next_event:      'Próximo evento',
     groups_no_events:       'Sem eventos futuros',
     groups_invite:          'Convidar',
-    groups_invite_title:    'Convidar para o grupo',
+    groups_invite_title:    'Convidar para o canal',
     groups_invite_code:     'Código de convite',
     groups_invite_copy:     'Copiar código',
     groups_invite_copied:   'Copiado!',
     groups_invite_whatsapp: 'Enviar via WhatsApp',
     groups_calendar:        'Assinar Calendário',
-    groups_calendar_title:  'Assinar calendário do grupo',
+    groups_calendar_title:  'Assinar calendário do canal',
     groups_calendar_google: 'Google Calendar',
     groups_calendar_ics:    'Copiar link iCal',
     groups_calendar_copied: 'Link copiado!',
@@ -540,14 +554,14 @@ export const T = {
     groups_event_end:       'Fim (opcional)',
     groups_event_desc:      'Descrição (opcional)',
     groups_event_save:      'Criar evento',
-    groups_leave:           'Sair do grupo',
-    groups_delete:          'Excluir grupo',
-    groups_delete_confirm:  'Excluir este grupo? Todos os membros vão perder acesso e todos os eventos serão removidos. Não dá pra desfazer.',
-    groups_delete_error:    'Falha ao excluir o grupo. Tenta de novo.',
+    groups_leave:           'Sair do canal',
+    groups_delete:          'Excluir canal',
+    groups_delete_confirm:  'Excluir este canal? Todos os membros vão perder acesso e todos os eventos serão removidos. Não dá pra desfazer.',
+    groups_delete_error:    'Falha ao excluir o canal. Tenta de novo.',
     groups_admin:           'Admin',
-    groups_join_title:      'Entrar no grupo',
-    groups_join_success:    'Você entrou no grupo!',
-    groups_join_already:    'Você já faz parte deste grupo.',
+    groups_join_title:      'Entrar no canal',
+    groups_join_success:    'Você entrou no canal!',
+    groups_join_already:    'Você já faz parte deste canal.',
     groups_join_not_found:  'Código de convite não encontrado.',
     groups_join_btn:        'Entrar',
     groups_join_code_label: 'Código de convite',

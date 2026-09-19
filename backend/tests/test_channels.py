@@ -242,3 +242,38 @@ def test_creating_a_channel_before_the_founder_has_ever_signed_in_explains_itsel
                     json={"requesting_email": FOUNDER_EMAIL, "name": "Rockzão"})
     assert r.status_code == 409
     assert "entra" in r.json()["detail"].lower()
+
+
+# -- 7. the frontend needs `kind` to gate the crew machinery ---------
+#
+# GroupDetail renders channels and groups from the same payload. It
+# hides the invite button, the "convida a galera" nudge and the
+# "membros" label for a channel — all of which hang off this one field.
+# If the detail payload ever stopped carrying it, every one of those
+# would silently come back.
+
+def test_group_detail_reports_its_kind(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+
+    channel = client.get(f"/groups/{cid}?google_id=u_ana").json()
+    group = client.get(f"/groups/{g['id']}?google_id=u_ana").json()
+
+    assert channel["kind"] == "channel"
+    assert group["kind"] == "group"
+
+
+def test_a_non_follower_can_still_open_a_channel(api):
+    """Discovery means you can look before you follow. A private group
+    refuses a non-member; a channel must not."""
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get(f"/groups/{cid}?google_id=u_bia").status_code == 200
+
+
+def test_a_private_group_still_refuses_a_non_member(api):
+    _db, _main, client = api
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    r = client.get(f"/groups/{g['id']}?google_id=u_bia")
+    assert r.status_code in (403, 404)

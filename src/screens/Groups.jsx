@@ -60,7 +60,7 @@ export default function Groups({ embedded = false }) {
       navigate(`/groups/${group.id}`)
     } catch (err) {
       console.error('[Groups] create failed', err)
-      alert(t.groups_create_error ?? 'Erro ao criar grupo. Verifique sua conexão.')
+      alert(t.groups_create_error ?? 'Erro ao criar canal. Verifique sua conexão.')
     }
   }
 
@@ -90,7 +90,7 @@ export default function Groups({ embedded = false }) {
           border: '1px solid var(--border)', textAlign: 'center',
           color: 'var(--charcoal-mid)', fontSize: 13, lineHeight: 1.5,
         }}>
-          {t.groups_login_required ?? 'Entre com Google para criar e participar de grupos.'}
+          {t.groups_login_required ?? 'Entre com Google para criar e participar de canais.'}
         </div>
       </div>
     )

@@ -817,7 +817,7 @@ function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) 
         <Metric label="Novos hoje" value={usage.new_today} small />
         <Metric label="RSVPs" value={usage.counts.rsvps} small />
         <Metric label="Amizades" value={usage.counts.friendships} small />
-        <Metric label="Grupos" value={usage.counts.groups} small />
+        <Metric label="Canais" value={usage.counts.groups} small />
         <Metric label="Feedback" value={usage.counts.feedback} small />
         {usage.retention && (
           <Metric
@@ -937,7 +937,7 @@ function UsersTable({ data, error, onRetry }) {
     { key: 'days_active', label: 'Dias', num: true },
     { key: 'rsvps', label: 'RSVPs', num: true },
     { key: 'friends', label: 'Amigos', num: true },
-    { key: 'groups', label: 'Grupos', num: true },
+    { key: 'groups', label: 'Canais', num: true },
     { key: 'events_created', label: 'Criou', num: true },
   ]
   const q = query.trim().toLowerCase()

@@ -8,7 +8,7 @@ import { joinGroup, lookupGroupInvite, trackEvent } from '../services/api'
 //
 // Flow:
 //   1. Look up the group's public info from the code (no commit yet).
-//   2. Show "Entrar no grupo X?" with a confirm/cancel.
+//   2. Show "Entrar no canal X?" with a confirm/cancel.
 //   3. On confirm, call /groups/join.
 //
 // Different from the old auto-join behavior — users now actively decide.
@@ -104,7 +104,7 @@ function GroupCard({ group, big = false }) {
       <div style={{
         fontSize: big ? 18 : 15, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 4,
       }}>
-        👥 {group?.name || 'Grupo'}
+        👥 {group?.name || 'Canal'}
       </div>
       {group?.description && (
         <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 6 }}>
@@ -133,7 +133,7 @@ function NotFound({ onBack }) {
   return (
     <>
       <div style={{ fontSize: 48, marginBottom: 12 }}>🤷</div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Grupo não encontrado</div>
+      <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Canal não encontrado</div>
       <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 24 }}>
         Esse convite não existe ou já foi revogado. Peça um novo pra quem te chamou.
       </div>
@@ -147,7 +147,7 @@ function NeedSignIn({ group, onSignIn }) {
     <>
       <GroupCard group={group} big />
       <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 20 }}>
-        Pra entrar no grupo, faça login com Google primeiro.
+        Pra entrar no canal, faça login com Google primeiro.
       </div>
       <PrimaryBtn label="Entrar com Google" onClick={onSignIn} />
     </>
@@ -159,9 +159,9 @@ function Confirm({ group, onConfirm, onCancel }) {
     <>
       <GroupCard group={group} big />
       <div style={{ fontSize: 14, color: 'var(--charcoal-mid)', marginBottom: 20 }}>
-        Entrar nesse grupo?
+        Entrar nesse canal?
       </div>
-      <PrimaryBtn label="Entrar no grupo" onClick={onConfirm} />
+      <PrimaryBtn label="Entrar no canal" onClick={onConfirm} />
       <div style={{ height: 10 }} />
       <SecondaryBtn label="Agora não" onClick={onCancel} />
     </>
@@ -173,12 +173,12 @@ function Success({ group, already, onOpen }) {
     <>
       <div style={{ fontSize: 32, marginBottom: 12 }}>{already ? '👥' : '🎉'}</div>
       <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>
-        {already ? 'Você já está nesse grupo' : `Bem-vindo a ${group?.name || 'esse grupo'}!`}
+        {already ? 'Você já está nesse canal' : `Bem-vindo a ${group?.name || 'esse canal'}!`}
       </div>
       <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.5, marginBottom: 24 }}>
-        Os eventos do grupo aparecem na Home + na tela do grupo.
+        Os eventos do canal aparecem na Home + na tela do canal.
       </div>
-      <PrimaryBtn label="Abrir grupo →" onClick={onOpen} />
+      <PrimaryBtn label="Abrir canal →" onClick={onOpen} />
     </>
   )
 }

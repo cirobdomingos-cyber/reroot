@@ -11,7 +11,7 @@ export default function Community() {
   const t = useT()
   // Callers can deep-link a sub-tab — navigate('/community', { state: { tab: 'friends' } }).
   // Home's friend-request notice uses it so the aviso lands on the list
-  // that has the Aceitar buttons instead of on Grupos.
+  // that has the Aceitar buttons instead of on Canais.
   const location = useLocation()
   const [tab, setTab] = useState(
     location.state?.tab === 'friends' ? 'friends' : 'groups',
