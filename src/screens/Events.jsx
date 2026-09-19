@@ -18,6 +18,7 @@ import { compressImageForUpload } from '../lib/image-compress'
 import AddToGroupSheet from '../components/AddToGroupSheet'
 import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
+import EditCatalogEventSheet from '../components/EditCatalogEventSheet'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
@@ -253,6 +254,10 @@ export default function Events() {
   const [addToGroupEvent, setAddToGroupEvent] = useState(null)
   // Edit-event sheet target. null = sheet closed.
   const [editEvent, setEditEvent] = useState(null)
+  // Catalog correction is a separate sheet with a separate permission:
+  // curators fix the shared catalog, creators edit their own fork.
+  const [editCatalogEvent, setEditCatalogEvent] = useState(null)
+  const [isCurator, setIsCurator] = useState(false)
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -269,6 +274,22 @@ export default function Events() {
     })
     return () => { cancelled = true }
   }, [state.googleUser?.id])
+
+  // Curator status gates the "corrigir evento" affordance on catalog
+  // events. Curator, not founder: the people who notice a wrong venue
+  // are the ones already curating handles, and every correction is
+  // pinned and reversible. Same endpoint BottomNav uses for its founder
+  // check — it returns both flags.
+  useEffect(() => {
+    const email = state.googleUser?.email
+    if (!email) { setIsCurator(false); return }
+    let cancelled = false
+    fetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setIsCurator(!!(d?.is_curator || d?.is_founder)) })
+      .catch(() => { if (!cancelled) setIsCurator(false) })
+    return () => { cancelled = true }
+  }, [state.googleUser?.email])
 
   // Build the IG handle → category map once so the filter chips below
   // can use the same source taxonomy the Sources page uses.
@@ -1504,15 +1525,24 @@ export default function Events() {
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
                 onEdit={
-                  // Same permission set as image management — creator or
-                  // co-host of any user-created event (group or personal).
+                  // Two different edits behind one slot. A creator or
+                  // co-host edits their own fork of an event; a curator
+                  // corrects the shared catalog row everyone sees. An
+                  // event is only ever one of the two.
                   !!(state.googleUser?.id &&
                   detailEvent.isGroupEvent && (
                     detailEvent.createdBy === state.googleUser.id ||
                     (detailEvent.coHostIds || []).includes(state.googleUser.id)
                   ))
                     ? () => setEditEvent(detailEvent)
-                    : null
+                    : (isCurator && !detailEvent.isGroupEvent)
+                      ? () => setEditCatalogEvent(detailEvent)
+                      : null
+                }
+                editLabel={
+                  (isCurator && !detailEvent.isGroupEvent)
+                    ? '🛠 Corrigir evento (curadoria)'
+                    : undefined
                 }
                 onDelete={
                   // Delete affordance for any user-created event the
@@ -1621,6 +1651,23 @@ export default function Events() {
         open={!!addToGroupEvent}
         onClose={() => setAddToGroupEvent(null)}
         event={addToGroupEvent}
+      />
+
+      {/* Curator correction of a catalog event. Separate sheet from
+          EditEventSheet above: different endpoint, different permission,
+          and the fields differ (no invitee note, but category and genre). */}
+      <EditCatalogEventSheet
+        open={!!editCatalogEvent}
+        onClose={() => setEditCatalogEvent(null)}
+        event={editCatalogEvent}
+        requestingEmail={state.googleUser?.email}
+        onSaved={(updated) => {
+          // The backend returns the same shape the catalog serves, so
+          // mirror it into the open detail panel and the loaded list
+          // instead of refetching the whole catalog for one row.
+          setDetailEvent(prev => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev))
+          setEvents(prev => (prev || []).map(e => (e.id === updated.id ? { ...e, ...updated } : e)))
+        }}
       />
 
       <EditEventSheet

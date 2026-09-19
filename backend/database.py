@@ -3,6 +3,7 @@ SQLite simples com TTL. Sem ORM — sqlite3 puro é suficiente aqui.
 Grain: um evento enriquecido por (source, external_id).
 """
 import hashlib
+import logging
 import os
 import secrets
 import sqlite3
@@ -12,6 +13,11 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 from models import EnrichedEvent
+
+# This module is otherwise silent by design — it's the data layer. The one
+# thing worth a line in the log is losing a curator's correction, which is
+# invisible from anywhere else (see _replay_edited_fields).
+log = logging.getLogger("aue")
 
 # Path is overridable via DB_PATH env var so production can mount the DB on
 # a persistent volume (e.g. Railway volume at /data/reroot_events.db). Local
@@ -49,6 +55,17 @@ def init_db():
             conn.execute("ALTER TABLE events RENAME COLUMN good_for_reroot TO is_curated")
         except sqlite3.OperationalError:
             pass
+        # Migration: `edited_fields` (JSON array of EnrichedEvent field
+        # names a curator corrected by hand). upsert_event replaces the
+        # whole payload on every re-scrape, so without this a manual fix
+        # survives only until the next time that Instagram post is read.
+        # Mirrors the same column on group_events.
+        try:
+            conn.execute(
+                "ALTER TABLE events ADD COLUMN edited_fields TEXT NOT NULL DEFAULT '[]'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS refresh_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2589,16 +2606,110 @@ def get_events_by_ids(ids: list[str]) -> list[dict]:
     return [by_id[i] for i in ids if i in by_id]
 
 
+# Fields a curator is allowed to correct on a catalog event, plus the
+# ones we recompute from them. Anything outside this set is the
+# extraction's business, not a human's.
+CATALOG_EDITABLE_FIELDS = {
+    "name", "description", "venue_name", "neighborhood",
+    "date_start", "date_end", "price_min", "price_max",
+    "kind", "genre",
+}
+
+
+def _replay_edited_fields(ev: EnrichedEvent, stored_payload: str,
+                          edited_fields: str) -> EnrichedEvent:
+    """Overlay hand-edited fields from the stored row onto a freshly
+    scraped event.
+
+    upsert_event replaces the whole payload, so a correction would live
+    only until the next read of that Instagram post. Everything nobody
+    touched still refreshes normally — this pins the corrections, not
+    the row."""
+    try:
+        pinned = json.loads(edited_fields or "[]")
+    except (ValueError, TypeError):
+        return ev
+    if not pinned:
+        return ev
+    try:
+        stored = json.loads(stored_payload or "{}")
+    except (ValueError, TypeError):
+        return ev
+    incoming = ev.model_dump(mode="json")
+    for field in pinned:
+        if field in stored:
+            incoming[field] = stored[field]
+    try:
+        return EnrichedEvent(**incoming)
+    except Exception:
+        # A pinned value that no longer validates (field removed from the
+        # model, say) must not cost us the whole scrape.
+        log.warning(f"Could not replay edited fields for {ev.id}; keeping scraped values")
+        return ev
+
+
+def update_catalog_event(event_id: str, fields: dict) -> Optional[EnrichedEvent]:
+    """Apply a curator's corrections to a catalog event and pin them.
+
+    `fields` is already validated and derived by the caller (price tier
+    and the category label/emoji/gradient follow from price and kind).
+    Returns the updated event, or None when the id doesn't exist."""
+    if not fields:
+        return get_event_by_id(event_id)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT payload, edited_fields FROM events WHERE id = ?", (event_id,)
+        ).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload"])
+        payload.update(fields)
+        # Validate before writing — a bad date string should 500 here
+        # rather than poison every later read of this row.
+        event = EnrichedEvent(**payload)
+        try:
+            already = json.loads(row["edited_fields"] or "[]")
+        except (ValueError, TypeError):
+            already = []
+        pinned = sorted({*already, *fields.keys()})
+        conn.execute(
+            "UPDATE events SET payload = ?, edited_fields = ? WHERE id = ?",
+            (event.model_dump_json(), json.dumps(pinned), event_id),
+        )
+        conn.commit()
+    return event
+
+
+def get_catalog_edited_fields(event_id: str) -> list[str]:
+    """Which fields on this catalog event were corrected by hand."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT edited_fields FROM events WHERE id = ?", (event_id,)
+        ).fetchone()
+    if not row:
+        return []
+    try:
+        return json.loads(row["edited_fields"] or "[]")
+    except (ValueError, TypeError):
+        return []
+
+
 def upsert_event(ev: EnrichedEvent) -> bool:
     """Insert or update by (source, external_id). Returns True when a new row
     was inserted, False when an existing row was updated. The flag drives the
     truthful "novos vs atualizados" count in the post-scrape summary email."""
     with get_conn() as conn:
         existing = conn.execute(
-            "SELECT 1 FROM events WHERE source = ? AND external_id = ?",
+            "SELECT payload, edited_fields FROM events WHERE source = ? AND external_id = ?",
             (ev.source, ev.external_id),
         ).fetchone()
         was_new = existing is None
+        # A re-scrape re-enriches the post from scratch, so anything a
+        # curator fixed by hand would silently revert. Replay the pinned
+        # fields from the stored row over the incoming one — the scrape
+        # still refreshes everything nobody has touched.
+        if existing is not None:
+            ev = _replay_edited_fields(ev, existing["payload"], existing["edited_fields"])
         conn.execute("""
             INSERT INTO events (id, source, external_id, payload, fetched_at, enriched_at, is_curated)
             VALUES (?, ?, ?, ?, ?, ?, ?)
