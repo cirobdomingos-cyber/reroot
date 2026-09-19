@@ -3617,6 +3617,11 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "icon": _category_icon(ev.kind),
         "price": price_label,
         "priceTier": ev.price_tier,
+        # Raw bounds alongside the formatted label: the curator edit sheet
+        # needs numbers to prefill, and `price` is already prose by then
+        # ("Grátis", "R$ 40 a R$ 80").
+        "priceMin": ev.price_min,
+        "priceMax": ev.price_max,
         "kidsWelcome": ev.kids_welcome,
         "hasFood": ev.has_food,
         "isLowPressure": ev.is_low_pressure,
@@ -5530,6 +5535,148 @@ def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
     if not ok:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
     return {"ok": True, "event_id": event_id}
+
+
+class CatalogEventUpdate(BaseModel):
+    """A curator's corrections to a catalog event. Every field is
+    optional — only what's sent is changed, and only what's changed gets
+    pinned against the next re-scrape."""
+    requesting_email: str = ""
+    name: Optional[str] = None
+    description: Optional[str] = None
+    venue_name: Optional[str] = None
+    neighborhood: Optional[str] = None
+    date_start: Optional[str] = None       # ISO 8601
+    date_end: Optional[str] = None         # ISO 8601, or "" to clear
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
+    kind: Optional[str] = None             # quiet_social | active | creative | community
+    genre: Optional[str] = None            # see GENRES in enrichment.py
+
+
+def _price_tier_for(price_min: float) -> str:
+    """Same ladder the partner-submission path uses, kept in one place
+    so an edited price lands in the same bucket a submitted one would."""
+    if price_min <= 0:
+        return "free"
+    if price_min <= 50:
+        return "low"
+    if price_min <= 150:
+        return "medium"
+    return "high"
+
+
+@app.patch("/admin/events/{event_id}")
+def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate):
+    """Correct a catalog event's facts by hand.
+
+    Until now the only lever over a bad extraction was DELETE, which
+    throws away a real event because one field is wrong. The trigger was
+    a user reporting an event "in the wrong place" (Sep 2026).
+
+    Curator-level rather than founder-only: the people who notice a wrong
+    venue are the ones already curating handles, and every change is
+    pinned and reversible. DELETE stays founder-only — it destroys.
+
+    Edits survive re-scrapes: `edited_fields` records which fields a
+    human set, and upsert_event replays them over the freshly enriched
+    payload. Fields nobody touched keep refreshing from Instagram.
+
+    Propagates for free into groups. `_merge_group_event_with_catalog`
+    already reads facts from the catalog row for any group event forked
+    from it, so fixing the catalog fixes every fork that didn't override
+    the field itself.
+
+    Not here: the map pin. Coordinates live on the `venues` row, keyed by
+    venue name, and a venue is shared by many events — PUT
+    /admin/venues/{name_normalized} is the right lever, and it validates
+    that the pin lands in Curitiba."""
+    # Local import mirrors the rest of main.py — enrichment pulls in the
+    # Anthropic client, which shouldn't load just to serve an edit.
+    from enrichment import CATEGORY_GRADIENTS, CATEGORY_META, GENRES
+
+    email = _require_curator(req.requesting_email)
+    existing = db.get_event_by_id(event_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+
+    fields: dict = {}
+    sent = req.model_dump(exclude={"requesting_email"}, exclude_none=True)
+
+    for key, limit in (("name", 200), ("description", 1000),
+                       ("venue_name", 200), ("neighborhood", 100)):
+        if key in sent:
+            fields[key] = (sent[key] or "").strip()[:limit]
+    if "name" in fields and not fields["name"]:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    if "venue_name" in fields and not fields["venue_name"]:
+        raise HTTPException(status_code=400, detail="Local não pode ficar vazio")
+
+    for key in ("date_start", "date_end"):
+        if key not in sent:
+            continue
+        raw = (sent[key] or "").strip()
+        if not raw:
+            # Only date_end is clearable — an event without a start is
+            # not an event, and the model won't accept it either.
+            if key == "date_start":
+                raise HTTPException(status_code=400, detail="Data de início não pode ficar vazia")
+            fields[key] = None
+            continue
+        try:
+            fields[key] = datetime.fromisoformat(raw.replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Data inválida: {raw}")
+
+    if "price_min" in sent or "price_max" in sent:
+        pmin = sent.get("price_min", existing.price_min) or 0.0
+        pmax = sent.get("price_max", existing.price_max) or 0.0
+        if pmin < 0 or pmax < 0:
+            raise HTTPException(status_code=400, detail="Preço não pode ser negativo")
+        if pmax and pmax < pmin:
+            raise HTTPException(status_code=400, detail="Preço máximo não pode ser menor que o mínimo")
+        fields["price_min"] = pmin
+        fields["price_max"] = pmax
+        # Derived, so it can't drift out of step with the price it labels.
+        fields["price_tier"] = _price_tier_for(pmin)
+
+    if "kind" in sent:
+        kind = (sent["kind"] or "").strip()
+        if kind not in CATEGORY_META:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Categoria inválida: {kind}. Use uma de {sorted(CATEGORY_META)}",
+            )
+        emoji, label = CATEGORY_META[kind]
+        # The label, emoji and gradient all follow from kind. Setting them
+        # together keeps a re-scrape from restoring a gradient that
+        # belongs to the category we just edited away from.
+        fields["kind"] = kind
+        fields["category_emoji"] = emoji
+        fields["category_label"] = label
+        fields["header_gradient"] = CATEGORY_GRADIENTS.get(kind, CATEGORY_GRADIENTS["community"])
+
+    if "genre" in sent:
+        genre = (sent["genre"] or "").strip().lower()
+        if genre and genre not in GENRES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Gênero inválido: {genre}. Use uma de {sorted(GENRES)} ou vazio",
+            )
+        fields["genre"] = genre
+
+    if not fields:
+        raise HTTPException(status_code=400, detail="Nada pra editar")
+
+    updated = db.update_catalog_event(event_id, fields)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Evento não encontrado")
+    log.info(f"Catalog event {event_id} edited by {email}: {sorted(fields)}")
+    return {
+        "ok": True,
+        "event": _to_frontend(updated, detail=True, venue_coords=db.get_venue_coords_map()),
+        "edited_fields": db.get_catalog_edited_fields(event_id),
+    }
 
 
 class IgClaimUpdate(BaseModel):
