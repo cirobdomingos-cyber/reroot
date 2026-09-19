@@ -29,6 +29,7 @@ import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
 import AdminIgAccounts from './screens/AdminIgAccounts'
 import AdminVenues from './screens/AdminVenues'
+import Notifications from './screens/Notifications'
 import AddFriend       from './screens/AddFriend'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
@@ -142,6 +143,7 @@ export default function App() {
                 Eventos wearing a filter. Events.jsx keeps the legacy
                 ?digest= handling for pushes already out in the wild. */}
             <Route path="/novidades/:digestId" element={<AnimatedPage><Novidades /></AnimatedPage>} />
+            <Route path="/notifications" element={<AnimatedPage><Notifications /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />

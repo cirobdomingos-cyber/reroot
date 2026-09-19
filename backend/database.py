@@ -3319,6 +3319,54 @@ def delete_rsvp(google_id: str, event_id: str) -> None:
         conn.commit()
 
 
+def get_unanswered_invites(google_id: str) -> list[dict]:
+    """Upcoming events this user was invited to and hasn't answered.
+
+    "Answered" is either an RSVP (going) or a decline. Neither is a
+    pending item any more, which is what makes this countable: the
+    number goes down because the person acted, not because they looked
+    at it.
+
+    Scoped to upcoming — an invite to something that already happened
+    isn't waiting on anyone."""
+    if not google_id:
+        return []
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ge.id, ge.name, ge.venue, ge.date_start, ge.group_id,
+                      ge.created_by, ge.extra_invitee_ids, ge.declined_ids
+               FROM group_events ge
+               WHERE substr(ge.date_start, 1, 10) >= ?
+                 AND ge.created_by != ?
+                 AND ge.extra_invitee_ids LIKE ?
+                 AND NOT EXISTS (
+                       SELECT 1 FROM rsvps r
+                       WHERE r.google_id = ? AND r.event_id = ge.id)
+               ORDER BY ge.date_start ASC""",
+            (today, google_id, f'%"{google_id}"%', google_id),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        # The LIKE above is a cheap prefilter on a JSON column; confirm
+        # membership properly so a google_id that merely appears as a
+        # substring of another can't sneak in.
+        try:
+            invitees = json.loads(d.get("extra_invitee_ids") or "[]")
+            declined = json.loads(d.get("declined_ids") or "[]")
+        except (ValueError, TypeError):
+            continue
+        if google_id not in invitees or google_id in declined:
+            continue
+        out.append({
+            "id": d["id"], "name": d["name"], "venue": d.get("venue") or "",
+            "date_start": d["date_start"], "group_id": d.get("group_id"),
+            "created_by": d["created_by"],
+        })
+    return out
+
+
 def get_rsvps_for_user(google_id: str) -> list[dict]:
     """Return all RSVPs for a single user."""
     with get_conn() as conn:
