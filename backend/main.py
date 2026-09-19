@@ -3239,6 +3239,107 @@ def friends_request_accept(from_google_id: str, req: FriendRequestAction):
             "new_badges": _on_friendship_accepted(req.google_id, from_google_id)}
 
 
+# ── Notifications ─────────────────────────────────────────────────
+# The inbox behind the Notificações tab, and the number on its badge.
+#
+# Everything countable here is DERIVED from existing state rather than
+# stored as a row when something happens. That's the whole design:
+#
+#   - It can't drift. There's no producer to forget to call, no backfill
+#     for anything that happened before this shipped, and no way for the
+#     badge to disagree with the screen it opens.
+#   - It clears for the right reason. A derived count goes down when the
+#     person ACTS — answers the invite, accepts the friend — not when
+#     they glance at the tab. A badge you can clear by looking teaches
+#     people that looking is enough, and then it stops being read at all.
+#
+# So the rule the badge follows is: count only what needs YOU. An event
+# invite with no answer needs you. A new venue being tracked does not.
+# "There is new stuff" never reaches zero, and a badge that never
+# reaches zero is one people stop seeing within a week.
+#
+# Informational items still appear in the list — they're worth a look,
+# just not a number. They carry actionable=false and are excluded from
+# the count.
+
+@app.get("/notifications")
+def list_notifications(google_id: str = "", email: str = ""):
+    """The notification inbox: what's waiting on you, plus what's new.
+
+    One call for the whole screen AND the badge, so the two can never
+    show different numbers.
+
+    Curation items are included only for curators, and a non-curator
+    gets silence rather than a 403 — same reasoning as /me/pending:
+    "nothing pending" and "not yours to see" should look identical."""
+    items: list[dict] = []
+
+    if google_id:
+        for ev in db.get_unanswered_invites(google_id):
+            items.append({
+                "kind": "event_invite",
+                "actionable": True,
+                "id": f"invite:{ev['id']}",
+                "ref_id": ev["id"],
+                "title": ev["name"],
+                "body": ev.get("venue") or "",
+                "at": ev["date_start"],
+            })
+        for req in db.get_incoming_friend_requests(google_id):
+            items.append({
+                "kind": "friend_request",
+                "actionable": True,
+                "id": f"friend:{req.get('google_id')}",
+                "ref_id": req.get("google_id"),
+                # get_incoming_friend_requests returns `name`, not `display_name`.
+                "title": req.get("name") or "Alguém",
+                "body": "quer ser teu amigo no auê",
+                "at": req.get("created_at") or "",
+            })
+
+    if email and db.is_curator(email):
+        pending_events = len(db.list_catalog_requests("review"))
+        pending_accounts = len(db.list_account_requests("review"))
+        if pending_events:
+            items.append({
+                "kind": "curation_events", "actionable": True,
+                "id": "curation:events", "ref_id": "",
+                "title": f"{pending_events} evento(s) pra revisar",
+                "body": "Sugestões da comunidade esperando curadoria",
+                "at": "",
+            })
+        if pending_accounts:
+            items.append({
+                "kind": "curation_accounts", "actionable": True,
+                "id": "curation:accounts", "ref_id": "",
+                "title": f"{pending_accounts} conta(s) sugerida(s)",
+                "body": "Perfis do Instagram esperando aprovação",
+                "at": "",
+            })
+
+    # Informational: worth a look, never a number on the badge.
+    latest = db.get_latest_daily_digest()
+    if latest and latest.get("event_ids"):
+        count = len(latest["event_ids"])
+        items.append({
+            "kind": "digest",
+            "actionable": False,
+            "id": f"digest:{latest['id']}",
+            "ref_id": latest["id"],
+            "title": f"{count} novidade(s) no catálogo",
+            "body": "O que entrou desde ontem",
+            "at": latest.get("created_at") or "",
+        })
+
+    # Actionable first, then most recent. An item with no date sorts
+    # last within its group rather than jumping to the top on "".
+    items.sort(key=lambda i: (not i["actionable"], i["at"] == "", i["at"]), reverse=False)
+    return {
+        "items": items,
+        "unread_count": sum(1 for i in items if i["actionable"]),
+    }
+
+
 @app.get("/me/pending")
 def me_pending(google_id: str = "", email: str = ""):
     """Everything waiting on this user — powers the Pendências block on Home.

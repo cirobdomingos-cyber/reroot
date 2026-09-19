@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 
 import { API_BASE } from '../lib/apiBase'
+import { fetchNotifications } from '../services/api'
 import { useIsDesktop } from '../lib/useIsDesktop'
 
 // Bottom tab bar on phones; on a PC the same component renders as the left
@@ -38,6 +39,31 @@ export default function BottomNav() {
   // shadow glow filter; inactive strokes text3. Stroke is set via CSS var
   // resolution so we get the live theme color without re-reading the
   // value here.
+  // Unread count for the Notificações badge. Derived server-side from
+  // the same query the inbox renders, so the number on the tab and the
+  // list behind it can't disagree.
+  //
+  // Refetched when the tab regains focus rather than polled: acting on
+  // an item happens on another screen, and a badge still showing what
+  // you just answered is how people learn to ignore it.
+  const [unread, setUnread] = useState(0)
+  const googleId = state.googleUser?.id
+
+  useEffect(() => {
+    if (!googleId) { setUnread(0); return }
+    let cancelled = false
+    const load = () => fetchNotifications(googleId, email)
+      .then(d => { if (!cancelled) setUnread(d.unread_count || 0) })
+    load()
+    window.addEventListener('focus', load)
+    document.addEventListener('visibilitychange', load)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', load)
+      document.removeEventListener('visibilitychange', load)
+    }
+  }, [googleId, email, pathname])
+
   const stroke = (active) => active ? 'var(--magenta)' : 'var(--text3)'
   const glowStyle = (active) => active
     ? { filter: 'drop-shadow(0 0 6px rgba(255, 43, 214, 0.7))' }
@@ -69,6 +95,20 @@ export default function BottomNav() {
           <line x1="16" y1="2" x2="16" y2="6"/>
           <line x1="8"  y1="2" x2="8"  y2="6"/>
           <line x1="3"  y1="10" x2="21" y2="10"/>
+        </svg>
+      ),
+    },
+    {
+      path: '/notifications',
+      label: 'Avisos',
+      badge: unread,
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          style={glowStyle(active)}
+          stroke={stroke(active)}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 01-3.46 0"/>
         </svg>
       ),
     },
@@ -138,7 +178,7 @@ export default function BottomNav() {
           auê
         </div>
       )}
-      {NAV_ITEMS.map(({ path, label, icon }) => {
+      {NAV_ITEMS.map(({ path, label, icon, badge }) => {
         const active = pathname === path || (path === '/admin/ig' && pathname.startsWith('/admin'))
         return (
           <div
@@ -146,7 +186,23 @@ export default function BottomNav() {
             className={`nav-item${active ? ' nav-item--active' : ''}`}
             onClick={() => navigate(path)}
           >
-            {icon(active)}
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              {icon(active)}
+              {/* Only ever a count of things that need YOU. Capped so a
+                  backlog renders as "9+" instead of stretching the tab. */}
+              {badge > 0 && (
+                <span style={{
+                  position: 'absolute', top: -5, right: -7,
+                  minWidth: 16, height: 16, padding: '0 4px',
+                  borderRadius: 8, background: 'var(--magenta)',
+                  color: 'var(--bg)', fontSize: 10, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 8px rgba(255, 43, 214, 0.6)',
+                }}>
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
+            </span>
             <span className={`nav-item__label${a11y ? ' nav-item__label--a11y' : ''}`}>{label}</span>
           </div>
         )

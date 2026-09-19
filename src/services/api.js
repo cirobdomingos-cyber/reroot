@@ -1188,6 +1188,28 @@ export async function updateGroupEvent(eventId, googleId, fields) {
 // Errors carry the backend's message: validation here is server-side
 // (dates, price ordering, known category/genre) and the sheet shows
 // whatever came back rather than guessing.
+// ── Notifications ─────────────────────────────────────────
+// One call serves both the inbox screen and the tab badge, so the two
+// can't show different numbers. Everything countable is derived
+// server-side from existing state — see GET /notifications.
+export async function fetchNotifications(googleId, email) {
+  const empty = { items: [], unread_count: 0 }
+  if (!googleId) return empty
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/notifications?google_id=${encodeURIComponent(googleId)}`
+      + `&email=${encodeURIComponent(email || '')}`,
+    )
+    if (!res.ok) return empty
+    return await res.json()
+  } catch {
+    // Offline-first: an empty inbox is a valid render. A badge that
+    // shows a stale number when the backend is unreachable is worse
+    // than no badge.
+    return empty
+  }
+}
+
 // ── Channels ──────────────────────────────────────────────
 // Curated collections people follow. Same backend table as a private
 // group, but a different relationship: you follow a channel, you don't

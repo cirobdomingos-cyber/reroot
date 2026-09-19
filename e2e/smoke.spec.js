@@ -11,6 +11,7 @@ import { test, expect } from '@playwright/test'
 const SCREENS = [
   { name: 'Home', path: '/#/home' },
   { name: 'Eventos', path: '/#/events' },
+  { name: 'Avisos', path: '/#/notifications' },
   { name: 'Comunidade', path: '/#/community' },
   { name: 'RSVPs', path: '/#/my-rsvps' },
   { name: 'Perfil', path: '/#/profile' },
