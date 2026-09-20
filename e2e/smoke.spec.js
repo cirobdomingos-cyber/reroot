@@ -91,11 +91,39 @@ test('the old /home route still lands somewhere real', async ({ page }) => {
   await expect(page).toHaveURL(/#\/events/)
 })
 
-test('the tab bar carries exactly the four screens it should', async ({ page }) => {
+test('the tab bar carries exactly the four screens it should, in order', async ({ page }) => {
   await page.goto('/#/events')
   const labels = await page.locator('.bottom-nav .nav-item__label').allTextContents()
   // Admin only renders for a signed-in founder; these tests are signed out.
-  expect(labels).toEqual(['Eventos', 'Avisos', 'Comunidade', 'Perfil'])
+  //
+  // Notificações sits near the end: it's where you go when the badge
+  // says to, not somewhere you browse. Perfil keeps the last slot,
+  // which is where every other app puts it.
+  expect(labels).toEqual(['Eventos', 'Comunidade', 'Notificações', 'Perfil'])
+})
+
+test('no tab falls off the bar on a narrow phone', async ({ page }) => {
+  // This replaces a test that measured each LABEL's own overflow and
+  // always passed, because a label with no width constraint is never
+  // wider than itself — the overflow was on the container. At 360px a
+  // signed-out user was losing Perfil entirely and nothing reported it.
+  //
+  // 360px is a real device width (iPhone SE, most budget Androids).
+  await page.setViewportSize({ width: 360, height: 740 })
+  await page.goto('/#/events')
+  await expect(page.locator('.bottom-nav')).toBeVisible()
+
+  const offscreen = await page.evaluate(() => {
+    const nav = document.querySelector('.bottom-nav')
+    return {
+      over: nav.scrollWidth - nav.clientWidth,
+      lost: [...nav.querySelectorAll('.nav-item')]
+        .filter(i => i.getBoundingClientRect().right > window.innerWidth + 0.5)
+        .map(i => i.textContent.trim()),
+    }
+  })
+  expect(offscreen.lost, 'tabs pushed off the screen').toEqual([])
+  expect(offscreen.over, 'the bar is wider than the screen').toBeLessThanOrEqual(0)
 })
 
 // The Canais tab has to explain the word before the list uses it. The

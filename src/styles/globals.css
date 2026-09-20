@@ -239,7 +239,15 @@ input  { font-family: inherit; }
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px 18px;
+  /* Share the bar equally and be allowed to shrink. The padding used to
+     be a fixed 18px each side with no flex, so items sized to their
+     content and simply ran off the edge: at 360px a signed-out user lost
+     Perfil, and the founder lost Perfil AND Admin. Nothing reported it,
+     because the overflow is on the container while the labels each fit
+     their own box fine. */
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 4px;
   border-radius: 14px;
   transition: background 0.15s;
   -webkit-tap-highlight-color: transparent;
@@ -255,6 +263,26 @@ input  { font-family: inherit; }
   text-transform: uppercase;
   color: var(--text3);
   transition: color 0.15s;
+  /* Last line of defence: if a future label still doesn't fit its slot,
+     it ellipsises inside the bar instead of pushing a whole tab off the
+     screen. Losing the end of a word beats losing a destination. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A long label ("NOTIFICAÇÕES") clips at 360px against the 0.18em
+   tracking the short ones need to read as mono. Tighten the tracking
+   for those rather than shrink every label to fit the longest one —
+   9px is already the floor for legibility here. */
+.nav-item__label--long {
+  /* "NOTIFICAÇÕES" is 12 characters against a ~70px slot when the
+     founder's Admin tab makes it five. Mono has no narrow glyphs to
+     fall back on, so the size goes down with the tracking — only for
+     the long ones, so the short labels keep the spacing that makes the
+     bar read as mono in the first place. */
+  font-size: 8px;
+  letter-spacing: 0.02em;
 }
 .nav-item--active .nav-item__label {
   color: var(--text);
