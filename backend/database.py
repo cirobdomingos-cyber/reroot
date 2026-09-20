@@ -389,6 +389,17 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: per-follower push preference for channels. Defaults
+        # to 1 because following IS the opt-in — someone who just tapped
+        # "seguir" and then gets nothing has no idea the switch exists.
+        # Recorded from the first follow so the pilot push targets real
+        # choices instead of assuming consent at send time.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN notify INTEGER NOT NULL DEFAULT 1"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -4186,6 +4197,9 @@ def list_channels(google_id: str = "") -> list[dict]:
                       EXISTS(SELECT 1 FROM group_members
                              WHERE group_id = g.id AND google_id = ?)
                         AS is_following,
+                      COALESCE((SELECT notify FROM group_members
+                                WHERE group_id = g.id AND google_id = ?), 1)
+                        AS notify,
                       -- What's actually in it. A channel advertised as
                       -- "12 seguindo" with nothing scheduled is worse
                       -- than one that says so, and the empty state on
@@ -4197,12 +4211,14 @@ def list_channels(google_id: str = "") -> list[dict]:
                FROM groups g
                WHERE g.kind = 'channel'
                ORDER BY follower_count DESC, g.name ASC""",
-            (google_id or "", datetime.now(timezone.utc).date().isoformat()),
+            (google_id or "", google_id or "",
+             datetime.now(timezone.utc).date().isoformat()),
         ).fetchall()
     out = []
     for r in rows:
         d = dict(r)
         d["is_following"] = bool(d["is_following"])
+        d["notify"] = bool(d["notify"])
         out.append(d)
     return out
 
@@ -4232,6 +4248,48 @@ def unfollow_channel(group_id: str, google_id: str) -> bool:
         )
         conn.commit()
     return cur.rowcount > 0
+
+
+def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
+    """Turn a channel's pushes on or off for one follower.
+
+    Only touches a 'follower' row: auê's own admin membership on its
+    channel isn't a subscription and has no preference to set."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE group_members SET notify = ?
+               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+            (1 if notify else 0, group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def get_channel_notify(group_id: str, google_id: str) -> bool:
+    """Whether this follower wants pushes. True when they aren't
+    following — the toggle renders pre-armed, so tapping "seguir"
+    doesn't silently land you in a state you didn't pick."""
+    if not google_id:
+        return True
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT notify FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+    return bool(row["notify"]) if row else True
+
+
+def get_channel_followers_to_notify(group_id: str) -> list[str]:
+    """google_ids to push for this channel. Followers only, and only
+    those who left the switch on — auê's own admin row is never a
+    recipient of its own channel."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT google_id FROM group_members
+               WHERE group_id = ? AND role = 'follower' AND notify = 1""",
+            (group_id,),
+        ).fetchall()
+    return [r["google_id"] for r in rows]
 
 
 def is_channel(group_id: str) -> bool:
