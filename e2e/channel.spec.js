@@ -18,8 +18,11 @@ const CHANNEL = {
   channel: {
     id: 'grp_rock', name: 'Rockzão', kind: 'channel',
     description: 'Tudo que tem guitarra em Curitiba, num lugar só.',
-    follower_count: 128, is_following: true, notify: true,
+    follower_count: 2, is_following: true, notify: true,
     upcoming_event_count: 2, feed_token: 'tok_abc', can_curate: false,
+    // Matches the followers array below: the hero reads the count,
+    // the sheet counts the array, and a fixture where they disagree
+    // tests a state the backend never produces.
     is_public: true, viewer_role: null,
   },
   events: [
@@ -29,7 +32,10 @@ const CHANNEL = {
       time: '22:00', venue: 'Hard Rock Café · Batel' },
   ],
   past_events: [],
-  followers: [],
+  followers: [
+    { google_id: 'u9', name: 'Marina Lima', picture: '', role: 'admin' },
+    { google_id: 'u8', name: 'Pedro Sax', picture: '', role: 'member' },
+  ],
 }
 
 async function openChannel(page, overrides = {}) {
@@ -64,7 +70,7 @@ test('a channel leads with what it publishes', async ({ page }) => {
   await expect(page.getByText(/Tudo que tem guitarra/)).toBeVisible()
   // What's in it before who else is in it — a channel reporting only
   // followers asks for a follow without saying what for.
-  await expect(page.getByText(/2 rolês · 128 seguindo/i)).toBeVisible()
+  await expect(page.getByText(/2 rolês · 2 seguindo/i)).toBeVisible()
   await expect(page.getByText('Terno Rei na Pedreira')).toBeVisible()
   await expect(page.getByText('Noite Grunge')).toBeVisible()
 })
@@ -77,23 +83,16 @@ test('a channel shows none of the crew machinery', async ({ page }) => {
   }
 })
 
-test('following is the one action, and it carries a notification choice', async ({ page }) => {
+test('following is the one action, and it is the only one', async ({ page }) => {
   await openChannel(page)
   await expect(page.getByRole('button', { name: /Seguindo/ })).toBeVisible()
-  // The notification choice is an icon now, not a row with a sentence.
-  // Six full-width rows pushed the first event to 478px of an 844px
-  // screen; the meaning lives in the accessible name instead.
-  await expect(
-    page.getByRole('button', { name: /Avisamos quando entrar rolê novo/ }),
-  ).toBeVisible()
-})
-
-test('the notification switch only exists once you follow', async ({ page }) => {
-  // A switch for something you don't receive is a setting with no
-  // subject.
-  await openChannel(page, { is_following: false })
-  await expect(page.getByRole('button', { name: /^Seguir$/ })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Avisamos quando/ })).toHaveCount(0)
+  // The 🔔 and ⭐ switches are gone. Notification moved to the daily
+  // novidades push, which says how many of the day's events came from
+  // your channels — one push, not one per channel. Ordering stopped
+  // being a setting: a switch for "put the channel I joined at the top"
+  // asks people to turn on the reason they joined.
+  await expect(page.getByTitle(/Avisamos|Sem aviso/)).toHaveCount(0)
+  await expect(page.getByTitle(/Aparece no topo|Só aqui dentro/)).toHaveCount(0)
 })
 
 test('an empty channel says what following would get you', async ({ page }) => {
@@ -155,8 +154,10 @@ test('your own private channels sit in Seguindo, not a section of their own', as
   await expect(page.getByText('Meus canais')).toHaveCount(0)
   await expect(page.getByText('Role do Sax')).toBeVisible()
   // Same card, counting members instead of followers — the difference
-  // is the badge and the noun, not the layout.
-  await expect(page.getByText(/3 rolês · 8 membros/)).toBeVisible()
+  // is the badge and the noun, not the layout. What's on is the number
+  // on the right; the subtitle stopped repeating it in words.
+  await expect(page.getByText(/8 membros/)).toBeVisible()
+  await expect(page.getByTitle('3 rolês por vir')).toBeVisible()
 })
 
 test('the split does not appear before the first follow', async ({ page }) => {
@@ -243,9 +244,14 @@ test('anyone can pass a channel along, follower or not', async ({ page }) => {
 test('the curator-only actions stay curator-only', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: false })
   await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toHaveCount(0)
-  // But the calendar is for anyone following — a channel with a
-  // schedule is more useful in a calendar than a private one is.
-  await expect(page.getByRole('button', { name: /Assinar calendário/ })).toBeVisible()
+})
+
+test('no channel offers a calendar subscription any more', async ({ page }) => {
+  // One place puts a night in your calendar: Meus rolês, next to the
+  // ones you said yes to. Subscribing to a whole channel's schedule was
+  // a calendar decision taken while deciding whether to follow.
+  await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByRole('button', { name: /Assinar calendário/ })).toHaveCount(0)
 })
 
 test('a curator gets the catalog picker', async ({ page }) => {
@@ -494,4 +500,176 @@ test('a channel event keeps both answers', async ({ page }) => {
   await openDetail(page, { groupEvents: PRIVATE_FORK, id: 'Terno Rei na Pedreira' })
   await expect(page.getByRole('button', { name: 'Vou', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Não vou', exact: true })).toBeVisible()
+})
+
+// ── Who else is here ──
+//
+// The faces used to be tappable only on a private channel, so on an auê
+// one there was no way to see who else was there — and on a private one
+// the target was three 22px circles with nothing saying they were a
+// button. Who is in a channel is most of the answer to "is this worth
+// following", which is the question the screen exists to answer.
+
+test('an auê channel tells you who else is following it', async ({ page }) => {
+  await openChannel(page, { is_following: true })
+  await page.getByText(/2 seguindo/).click()
+  await expect(page.getByText('Marina Lima')).toBeVisible()
+  await expect(page.getByText('Pedro Sax')).toBeVisible()
+})
+
+test('a private channel does too, and calls them members', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await page.getByText(/2 membros/).click()
+  await expect(page.getByText('Marina Lima')).toBeVisible()
+})
+
+test('the list is read-only for someone who does not run the channel', async ({ page }) => {
+  // Names and "+ amigo" is what a follower came for. Promote and remove
+  // belong to whoever runs it.
+  await openChannel(page, { is_following: true, viewer_role: null })
+  await page.getByText(/2 seguindo/).click()
+  await expect(page.getByText('Marina Lima')).toBeVisible()
+  await expect(page.getByRole('button', { name: /remover/i })).toHaveCount(0)
+})
+
+// ── Leaving is not unfollowing ──
+//
+// A private channel carried a "Seguir / ✓ Seguindo" button that could
+// not be turned off: unfollow_channel only deletes rows with
+// role='follower', and a member's row says 'member'. The button had
+// nothing to undo. Follow is a public-channel decision — you find one
+// and opt in — and a private channel isn't found, you're let in.
+
+test('a private channel offers no follow button', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member', is_following: true })
+  await expect(page.getByRole('button', { name: /Seguindo|^Seguir$/ })).toHaveCount(0)
+})
+
+test('it offers the action that actually exists: leaving', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await expect(page.getByRole('button', { name: 'Sair do canal' })).toBeVisible()
+})
+
+test('leaving asks first, because it costs you the way back in', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  let asked = ''
+  page.on('dialog', d => { asked = d.message(); d.dismiss() })
+  await page.getByRole('button', { name: 'Sair do canal' }).click()
+  await page.waitForTimeout(400)
+  expect(asked).toContain('Sair de')
+  expect(asked).toMatch(/convidar de novo/)
+})
+
+test('a private channel carries no switches either', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await expect(page.getByTitle(/Avisamos|Sem aviso/)).toHaveCount(0)
+  await expect(page.getByTitle(/Aparece no topo|Só aqui dentro/)).toHaveCount(0)
+})
+
+// ── One night, one row, whatever produced the copies ──
+//
+// Reported from production: the same event rendered three identical
+// cards. Adding a night to three channels writes three group_events
+// rows — the per-group dedupe only stops a second copy in the SAME
+// channel — and nothing downstream knew they were one post.
+
+const THREE_FORKS = ['A', 'B', 'C'].map((k, i) => ({
+  id: `grp_ev_${k}`, name: 'Masterclass DJ', sourceEventId: 'instagram_ig_x_A',
+  isGroupEvent: true, groupId: `g_${k}`, groupName: `Canal ${k}`,
+  groupNames: [`Canal ${k}`], groupIds: [`g_${k}`], viewerGroupCount: 1,
+  dateStart: '2099-10-04T21:00:00', time: '21:00',
+  date: 'Sáb, 04 Out', venue: `MACRO ${i}`,
+}))
+
+test('three forks of one night render one row', async ({ page }) => {
+  await openEvents(page, [], THREE_FORKS)
+  await expect(page.getByText('Masterclass DJ')).toHaveCount(1)
+})
+
+test('and that row still names all three channels', async ({ page }) => {
+  // Collapsing without merging the names would silently drop two of the
+  // three channels the night actually came from.
+  await openEvents(page, [], THREE_FORKS)
+  await expect(page.getByText('Canal A')).toHaveCount(1)
+  await expect(page.getByText('Canal B')).toHaveCount(1)
+})
+
+test('an event from a channel is never labelled Plano', async ({ page }) => {
+  // isPersonalPlan means "the viewer is in none of this event's groups",
+  // which is the right rule for hiding a private channel's name and the
+  // wrong one for calling something your plan.
+  await openEvents(page, [], [{
+    ...THREE_FORKS[0], isPersonalPlan: true, groupNames: [], groupName: '',
+  }])
+  await expect(page.getByText('Masterclass DJ')).toHaveCount(1)
+  await expect(page.getByText('PLANO')).toHaveCount(0)
+})
+
+test('a plan with no channel at all is still called Plano', async ({ page }) => {
+  await openEvents(page, [], [{
+    id: 'grp_ev_solo', name: 'Jantar em casa', sourceEventId: '',
+    isGroupEvent: true, isPersonalPlan: true,
+    groupId: null, groupIds: [], groupNames: [],
+    dateStart: '2099-10-04T21:00:00', time: '21:00', date: 'Sáb, 04 Out',
+  }])
+  await expect(page.getByText('Plano')).toBeVisible()
+})
+
+// ── The Canais tab answers "what's on", not just "what exists" ──
+
+const CHANNEL_ROWS = {
+  channels: [
+    { id: 'c1', name: 'auê Rockzera', kind: 'channel', description: 'Guitarra',
+      follower_count: 12, is_following: true, upcoming_event_count: 7,
+      can_curate: false, visibility: 'public' },
+    { id: 'c2', name: 'auê Deu Risada', kind: 'channel', description: 'Comédia',
+      follower_count: 4, is_following: false, upcoming_event_count: 0,
+      can_curate: false, visibility: 'public' },
+  ],
+}
+
+async function openChannels(page) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType()
+    return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
+      ? route.continue() : route.abort()
+  })
+  await page.route('**/groups?**', route => route.fulfill({ json: { groups: [] } }))
+  await page.route('**/channels?**', route => route.fulfill({ json: CHANNEL_ROWS }))
+  await page.addInitScript(() =>
+    localStorage.setItem('aue_state', JSON.stringify({
+      hasJoined: true, googleUser: { id: 'u1', email: 'a@b.com', name: 'Ana' },
+    })))
+  await page.goto('/#/community')
+  await page.waitForTimeout(1400)
+}
+
+test('a channel with events leads with the number', async ({ page }) => {
+  await openChannels(page)
+  await expect(page.getByTitle('7 rolês por vir')).toBeVisible()
+})
+
+test('a channel with nothing coming up shows no number at all', async ({ page }) => {
+  // A zero is a number competing for the same attention as a seven.
+  await openChannels(page)
+  await expect(page.getByText('auê Deu Risada')).toBeVisible()
+  await expect(page.getByTitle(/0 rolês/)).toHaveCount(0)
+})
+
+test('Seguindo groups by kind before counting events', async ({ page }) => {
+  // Sorting by count alone interleaved the two kinds — a busy auê
+  // channel above your own crew — so the list had no shape and the
+  // badge was the only thing telling you which was which.
+  await openTab(page, [
+    { id: 'c1', name: 'auê Movimentado', kind: 'channel', follower_count: 9,
+      is_following: true, upcoming_event_count: 40, visibility: 'public' },
+  ], [
+    { id: 'g1', name: 'Crew Parada', member_count: 3, visibility: 'private',
+      upcoming_event_count: 1, role: 'admin' },
+  ])
+  const [crewY, aueY] = await Promise.all([
+    page.getByText('Crew Parada').boundingBox().then(b => b.y),
+    page.getByText('auê Movimentado').boundingBox().then(b => b.y),
+  ])
+  expect(crewY).toBeLessThan(aueY)
 })

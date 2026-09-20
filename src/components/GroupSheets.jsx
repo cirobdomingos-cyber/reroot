@@ -366,7 +366,12 @@ export function InviteSheet({ open, onClose, group, t }) {
   )
 }
 
-export function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, onRoleChanged }) {
+export function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, onRoleChanged,
+  // What these people are called on this channel. A public one has
+  // followers, a private one has members, and the sheet is the same
+  // sheet — so the word is a prop rather than a branch. Falls back to
+  // the i18n string for the callers that predate the channel screen.
+  peopleWord = '' }) {
   const members = group?.members || []
   const sorted = [...members].sort((a, b) => {
     const ra = (a.role === 'admin') ? 0 : 1
@@ -455,7 +460,11 @@ export function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoo
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={`${members.length} ${t.groups_members}`}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={`${members.length} ${peopleWord || t.groups_members}`}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8 }}>
         {error && (
           <div style={{

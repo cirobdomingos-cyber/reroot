@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 // Shared event row used across Home + RSVPs surfaces. Implements the
 // NeonRow component from the Neon Boteco direction: date column on the
 // left (chunky display number with accent-color glow), title + mono
@@ -35,9 +37,14 @@ export default function HomeEventRow({
   isGroupEvent = false,
   featured = false,
   trailing = null,
+  // Optional flyer, shown between the date column and the text — the
+  // same 56px square Eventos uses, so a night looks like itself on
+  // whichever screen you meet it.
+  thumbUrl = '',
   onClick,
   muted = false,
 }) {
+  const [imgBroken, setImgBroken] = useState(false)
   const { day, weekday } = _dayLabels(dateStart)
   const dsKey = (dateStart || '').slice(0, 10)
   const deKey = (dateEnd || '').slice(0, 10)
@@ -89,6 +96,23 @@ export default function HomeEventRow({
           {weekday}
         </span>
       </div>
+      {thumbUrl && !imgBroken && (
+        <img
+          src={thumbUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgBroken(true)}
+          style={{
+            flexShrink: 0, width: 56, height: 56,
+            objectFit: 'cover', borderRadius: 10,
+            background: 'var(--bg2)', display: 'block',
+            // Pulls left against the row's 14px gap so the flyer reads
+            // as belonging to the date, not as a third loose column.
+            marginLeft: -4,
+          }}
+        />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           className="neon-display"
