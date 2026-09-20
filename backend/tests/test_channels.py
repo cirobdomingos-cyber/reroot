@@ -954,3 +954,79 @@ def test_publishing_into_a_public_channel_is_still_curators_only(api):
         "google_id": "u_ana", "name": "Meu show", "date_start": "2099-01-01T20:00:00",
     })
     assert r.status_code == 403
+
+
+# -- 10. "already added" has to see channels -------------------------
+#
+# AddToGroupSheet lists the crews you're in AND the channels you curate,
+# then asks /catalog-events/{id}/groups which of them already hold the
+# event. The scan ran over get_groups_for_user, whose docstring says in
+# so many words that it excludes channels — so the answer was wrong for
+# exactly the rows a curator uses most: an auê channel that already had
+# the event kept offering to add it again.
+
+def _add_to(client, gid, who, name="Masterclass DJ", src="instagram_ig_x_A"):
+    r = client.post(f"/groups/{gid}/events", json={
+        "google_id": who, "name": name, "venue": "MACRO",
+        "date_start": "2099-09-24T20:00:00", "source_event_id": src,
+    })
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _linked(client, event_id, who):
+    r = client.get(f"/catalog-events/{event_id}/groups?google_id={who}")
+    assert r.status_code == 200, r.text
+    return set(r.json()["linked_group_ids"])
+
+
+def test_a_channel_holding_the_event_is_reported_as_linked(api):
+    _db, _main, client = api
+    cid = _channel(client, "auê Samba e Pagode")
+    _add_to(client, cid, "u_founder")
+    assert cid in _linked(client, "instagram_ig_x_A", "u_founder")
+
+
+def test_a_crew_and_a_channel_are_both_reported(api):
+    """The shape that showed the bug: one private, one auê, same night.
+    The private one came back linked and the channel didn't, so the
+    sheet showed a tick on one row and a plus on the other."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_founder", "name": "Curitiba na real"}).json()["id"]
+    cid = _channel(client, "auê Samba e Pagode")
+    _add_to(client, gid, "u_founder")
+    _add_to(client, cid, "u_founder")
+    assert _linked(client, "instagram_ig_x_A", "u_founder") == {gid, cid}
+
+
+def test_asking_with_a_fork_id_answers_for_the_catalog_event(api):
+    """Once an event is in a channel, the row the user is looking at in
+    Eventos IS the fork — so the sheet asks with grp_ev_…, not with the
+    catalog id. Both questions have the same answer."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_founder", "name": "Curitiba na real"}).json()["id"]
+    cid = _channel(client, "auê Samba e Pagode")
+    fork = _add_to(client, gid, "u_founder")
+    _add_to(client, cid, "u_founder")
+    assert _linked(client, fork["id"], "u_founder") == {gid, cid}
+
+
+def test_a_channel_without_the_event_is_not_reported(api):
+    """Guards the fix from the lazy version: returning every channel id
+    would pass the tests above and tick every row in the sheet."""
+    _db, _main, client = api
+    cid = _channel(client, "auê Samba e Pagode")
+    other = _channel(client, "auê Rockzera")
+    _add_to(client, cid, "u_founder")
+    linked = _linked(client, "instagram_ig_x_A", "u_founder")
+    assert cid in linked and other not in linked
+
+
+def test_someone_elses_private_crew_is_never_reported(api):
+    """Channels are scanned for everyone because what a public channel
+    holds is public. A crew is not — and the caller's own membership is
+    still what decides."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role da Ana"}).json()["id"]
+    _add_to(client, gid, "u_ana")
+    assert _linked(client, "instagram_ig_x_A", "u_bia") == set()

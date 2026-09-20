@@ -734,28 +734,36 @@ export default function Events() {
   // Both render identically. The difference between a channel run by
   // auê and one run by a friend is who may post in it, and that is not
   // something the reader of a list needs to be told twice.
-  const channelNamesFor = (ev) => {
+  // Where a row came from: a name AND which kind of channel it is, so
+  // the card can colour each name for itself. Kind is derived, not
+  // stored: /events/group excludes public-channel events, so anything
+  // arriving as isGroupEvent is private by construction, and anything
+  // in publicChannelsBySourceId came from the followed-channel feed.
+  const channelSourcesFor = (ev) => {
     // A personal plan carries isGroupEvent too (it reuses the private
     // styling) but belongs to no channel. It still isn't part of the
     // city catalog, so it stays in the first section rather than being
-    // buried under Explorar — labelled for what it is.
-    if (ev.isPersonalPlan) return ['Plano']
-    const names = []
-    const add = (n) => { if (n && !names.includes(n)) names.push(n) }
+    // buried under Explorar — labelled for what it is, and counted as
+    // private: nothing is more yours than a plan you made.
+    if (ev.isPersonalPlan) return [{ name: 'Plano', kind: 'private' }]
+    const out = []
+    const add = (name, kind) => {
+      if (name && !out.some(o => o.name === name)) out.push({ name, kind })
+    }
     if (ev.isGroupEvent) {
       const own = ev.groupNames?.length
         ? ev.groupNames
         : (ev.groupName ? [ev.groupName] : ['Canal'])
-      own.forEach(add)
+      own.forEach(n => add(n, 'private'))
       // The same post can sit in a private channel AND a public one.
       // The private row is the one that survives the dedupe below, so
       // it has to carry the public channel's name too — otherwise the
       // name disappears along with the row it was attached to.
-      ;(publicChannelsBySourceId.get(ev.sourceEventId) || []).forEach(add)
+      ;(publicChannelsBySourceId.get(ev.sourceEventId) || []).forEach(n => add(n, 'aue'))
     } else {
-      ;(publicChannelsBySourceId.get(ev.id) || []).forEach(add)
+      ;(publicChannelsBySourceId.get(ev.id) || []).forEach(n => add(n, 'aue'))
     }
-    return names
+    return out
   }
 
 
@@ -766,8 +774,8 @@ export default function Events() {
   // prominence and drop the second shape: the same row either way,
   // named on the right.
   filteredEvents = dropMirroredOriginals(filteredEvents)
-  const myChannelEvents = filteredEvents.filter(ev => channelNamesFor(ev).length > 0)
-  const exploreEvents = filteredEvents.filter(ev => channelNamesFor(ev).length === 0)
+  const myChannelEvents = filteredEvents.filter(ev => channelSourcesFor(ev).length > 0)
+  const exploreEvents = filteredEvents.filter(ev => channelSourcesFor(ev).length === 0)
 
   // Day-keyed sets for the strip's social signals. RSVP set comes from
   // local state.rsvps (which stores dateStart per RSVP). Friend set comes
@@ -893,7 +901,7 @@ export default function Events() {
                     // Which channels brought it — public or private,
                     // same slot, same styling. The section above says
                     // these are yours; this says which of yours.
-                    fromChannels={channelNamesFor(ev)}
+                    fromChannels={channelSourcesFor(ev)}
                     rsvped={rsvped}
                     friendsGoing={friendsByEventId[ev.id] || []}
                     personalChip={getPersonalChip(ev, state.rsvps)}
@@ -1486,13 +1494,22 @@ export default function Events() {
                   <ListSectionHeading
                     label="Dos teus canais"
                     count={myChannelEvents.length}
-                    accent="var(--sage)"
+                    // Takes the strongest colour in the section, so the
+                    // heading and the rows under it agree. A section of
+                    // auê rows headed in private cyan would promise a
+                    // closeness none of them have.
+                    accent={
+                      myChannelEvents.some(e => channelSourcesFor(e)
+                        .some(c => c.kind === 'private'))
+                        ? 'var(--from-private)'
+                        : 'var(--from-aue)'
+                    }
                   />
                   {myChannelEvents.map(renderEventNode)}
                   <ListSectionHeading
                     label="Explorar"
                     count={exploreEvents.length}
-                    accent="var(--charcoal-mid)"
+                    accent="var(--from-catalog)"
                   />
                 </>
               )}
@@ -1636,6 +1653,11 @@ export default function Events() {
             ) : (
               <EventDetail
                 event={detailEvent}
+                // Same source of truth the card uses, so the row and
+                // the panel can't disagree about where a night came
+                // from — the panel has no way to work out the public
+                // half on its own.
+                fromChannels={channelSourcesFor(detailEvent)}
                 googleId={state.googleUser?.id || ''}
                 viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
                 viewerPicture={myPicture(state)}
@@ -1952,6 +1974,13 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
   const deKey = (ev.dateEnd || '').slice(0, 10)
   const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
   const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
+  // The dominant kind decides the row's one accent: an event in a
+  // private channel AND an auê one is still, first, something people
+  // you know are going to. Each name below keeps its own colour, so
+  // the second source is named without being hidden.
+  const fromKind = fromChannels.some(c => c.kind === 'private') ? 'private'
+                 : fromChannels.length > 0 ? 'aue'
+                 : null
 
   // For recurring events, the parent passes the strip-picked day so
   // the card shows the specific occurrence the user is looking at,
@@ -1998,9 +2027,16 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         // The channel's own identity stays magenta (the badge, the
         // channel screen); lime is "this one is picked out for you",
         // which is what it already means on free/going/confirmados.
-        boxShadow: (isGroupEvent || fromChannels.length > 0) ? 'inset 3px 0 0 var(--sage)'
+        // Provenance stripe. Width and glow carry the ranking that the
+        // hue alone can't: private announces itself, auê is present,
+        // the catalog is just marked. An ongoing event keeps its "no
+        // stripe" tell, which is what separates it from a one-off.
+        boxShadow: fromKind === 'private'
+                    ? 'inset 4px 0 0 var(--from-private), -1px 0 14px -6px var(--from-private-glow)'
+                  : fromKind === 'aue'
+                    ? 'inset 3px 0 0 var(--from-aue), -1px 0 12px -7px var(--from-aue-glow)'
                   : isOngoing ? 'none'
-                  : 'inset 3px 0 0 #7E57C2',
+                  : 'inset 3px 0 0 var(--from-catalog)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         // The cover variant needs the image on its own line above the
         // row; wrapping + flex-basis 100% does that without restructuring
@@ -2050,9 +2086,13 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             // Day color matches the stripe — sage for group, purple for
             // one-off (mirrors the "Só únicos" filter chip), terra-light
             // blue for ongoing.
-            color: (isGroupEvent || fromChannels.length > 0) ? 'var(--sage)'
-                 : isOngoing ? 'var(--terra-light)'
-                 : '#7E57C2',
+            // Same scale as the stripe. Ongoing events used to take
+            // --terra-light, a magenta tint, which now reads as "from
+            // an auê channel" — so they join the catalog colour and
+            // keep the missing stripe as their only tell.
+            color: fromKind === 'private' ? 'var(--from-private)'
+                 : fromKind === 'aue' ? 'var(--from-aue)'
+                 : 'var(--from-catalog)',
             letterSpacing: -0.5,
           }}>
             {day}
@@ -2163,21 +2203,26 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           // most are short enough that stacking costs nothing. Two shown,
           // the rest counted — the full list is in the tooltip.
           <div
-            title={`De ${fromChannels.join(' · ')}`}
+            title={`De ${fromChannels.map(c => c.name).join(' · ')}`}
             style={{
               display: 'flex', flexDirection: 'column',
               alignItems: 'flex-end', gap: 1, maxWidth: '100%',
             }}
           >
-            {fromChannels.slice(0, 2).map(nm => (
-              <div key={nm} className="neon-mono" style={{
+            {fromChannels.slice(0, 2).map(c => (
+              // Coloured per source, not per row. A night that reached
+              // you through a friend's channel and an auê one says both,
+              // and says which was which — the stripe can only answer
+              // once, and it answers for the stronger of the two.
+              <div key={c.name} className="neon-mono" style={{
                 fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: 'var(--sage)', textAlign: 'right', lineHeight: 1.25,
+                color: c.kind === 'private' ? 'var(--from-private)' : 'var(--from-aue)',
+                textAlign: 'right', lineHeight: 1.25,
                 maxWidth: '100%',
                 display: '-webkit-box', WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical', overflow: 'hidden',
               }}>
-                {nm}
+                {c.name}
               </div>
             ))}
             {fromChannels.length > 2 && (

@@ -274,7 +274,7 @@ export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
   )
 }
 
-export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
+export default function EventDetail({ event: ev, fromChannels = [], googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   // "Não vou" is offered to invitees of a private event who haven't
   // answered yet. Hosts delete instead of declining.
@@ -759,14 +759,51 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           // an absent line than one asserting "Grátis" off a flag the
           // extractor sets whenever a caption is silent about money.
           const costValue = ev.price || null
+          // FONTE is where the post came from — the IG account that
+          // published it. It used to fall through to categoryLabel,
+          // which for anything private read "Grupo": a word the product
+          // retired, naming a thing the reader can't act on. A private
+          // event has no publisher, so the row is dropped rather than
+          // filled with a category. An absent line beats a wrong one,
+          // same reasoning as CUSTO above.
           const sourceValue = ev.source === 'instagram' && ev.igHandle
             ? `@${ev.igHandle}`
+            // A fork keeps the handle of the post it came from, so a
+            // catalog event added to a channel can still say who
+            // published it instead of dropping the row.
+            : ev.sourceIgHandle ? `@${ev.sourceIgHandle}`
+            : ev.isPersonalPlan ? 'Plano teu'
+            : ev.isGroupEvent ? null
             : (ev.isCustom ? 'auê plano' : (ev.categoryLabel || null))
+          // CANAL is the other half of that question: not who published
+          // it, but how it reached you. They're different answers — a
+          // show posted by @pedreira that came to you through Rockzão
+          // has both — so they get separate rows instead of one row
+          // picking a winner.
+          const channelValue = fromChannels.length > 0 ? (
+            <span>
+              {fromChannels.map((c, i) => (
+                <span key={c.name}>
+                  {i > 0 && <span style={{ color: 'var(--text3)' }}> · </span>}
+                  <span style={{
+                    color: c.kind === 'private'
+                      ? 'var(--from-private)' : 'var(--from-aue)',
+                  }}>
+                    {c.name}
+                  </span>
+                </span>
+              ))}
+            </span>
+          ) : null
+          const channelAccent = fromChannels.some(c => c.kind === 'private')
+            ? 'var(--from-private)'
+            : 'var(--from-aue)'
           const rows = [
-            ['ONDE',   venueValue,  'var(--cyan)'],
-            ['QUANDO', whenValue,   'var(--magenta)'],
-            ['CUSTO',  costValue,   'var(--lime)'],
-            ['FONTE',  sourceValue, 'var(--text2)'],
+            ['ONDE',   venueValue,    'var(--cyan)'],
+            ['QUANDO', whenValue,     'var(--magenta)'],
+            ['CUSTO',  costValue,     'var(--lime)'],
+            ['CANAL',  channelValue,  channelAccent],
+            ['FONTE',  sourceValue,   'var(--text2)'],
           ].filter(([, v]) => v)
           if (rows.length === 0) return null
           return (

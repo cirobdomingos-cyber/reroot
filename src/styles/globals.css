@@ -47,6 +47,30 @@
   --honey:        var(--cyan);
   --honey-pale:   rgba(0, 229, 255, 0.10);
 
+  /* Provenance — where an event came from. One scale, used by the
+     Eventos list and the Canais tab, which have to agree: a row in the
+     list and the channel it came from are the same thing seen twice.
+
+     Ranked by how much of your own choice is behind it. A private
+     channel is people you chose one by one, an auê channel is a curator
+     you opted into, the catalog is the city showing up uninvited. That
+     ranking is carried by the GLOW as much as the hue — all three are
+     legible, only the first two announce themselves — so the order
+     survives for anyone who reads the hues differently.
+
+     Cyan and magenta are not new here: they are already the private and
+     auê badges on the Canais tab. Lime is deliberately not in this
+     scale — it means "you said yes" (✓ vou, grátis, amigos vão), and
+     spending it on provenance is what made a channel row and an RSVP
+     look like the same claim. */
+  --from-private:      var(--cyan);
+  --from-private-glow: rgba(0, 229, 255, 0.55);
+  --from-private-soft: rgba(0, 229, 255, 0.10);
+  --from-aue:          var(--magenta);
+  --from-aue-glow:     rgba(255, 43, 214, 0.30);
+  --from-aue-soft:     rgba(255, 43, 214, 0.10);
+  --from-catalog:      #7E57C2;
+
   --cream:        var(--bg);
   --charcoal:     var(--text);
   --charcoal-mid: var(--text2);

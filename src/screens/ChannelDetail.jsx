@@ -174,6 +174,17 @@ export default function ChannelDetail() {
   // The single thing that differs between the two kinds. Everything
   // below reads from it instead of from a second screen existing.
   const isPrivate = channel.is_public === false
+  // The screen wears its channel's colour, the same one the Canais row
+  // and the Eventos stripe use. A private channel screen painted in
+  // auê magenta is the product telling you this is auê's, one tap
+  // after a cyan row told you it is yours.
+  const accent = isPrivate ? 'var(--from-private)' : 'var(--from-aue)'
+  const accentGlow = isPrivate
+    ? 'var(--from-private-glow)'
+    : 'var(--from-aue-glow)'
+  const accentSoft = isPrivate
+    ? 'var(--from-private-soft)'
+    : 'var(--from-aue-soft)'
   const peopleWord = isPrivate
     ? (channel.follower_count === 1 ? 'membro' : 'membros')
     : 'seguindo'
@@ -190,7 +201,7 @@ export default function ChannelDetail() {
         </h1>
         <span style={{
           fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 8,
-          background: isPrivate ? 'var(--cyan)' : 'var(--magenta)',
+          background: accent,
           color: 'var(--bg)', letterSpacing: '0.06em',
         }}>
           {isPrivate ? '🔒 privado' : 'auê'}
@@ -251,9 +262,9 @@ export default function ChannelDetail() {
               width: '100%', marginTop: 14, padding: '13px', borderRadius: 12,
               fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
               border: channel.is_following ? '1.5px solid var(--line)' : 'none',
-              background: channel.is_following ? 'transparent' : 'var(--magenta)',
+              background: channel.is_following ? 'transparent' : accent,
               color: channel.is_following ? 'var(--text2)' : 'var(--bg)',
-              boxShadow: channel.is_following ? 'none' : '0 0 18px rgba(255, 43, 214, 0.35)',
+              boxShadow: channel.is_following ? 'none' : `0 0 18px ${accentGlow}`,
               opacity: busy ? 0.7 : 1,
             }}
           >
@@ -264,7 +275,14 @@ export default function ChannelDetail() {
               title so the meaning is reachable without a label — the
               two toggles used to be full-width rows explaining
               themselves in a sentence each. */}
-          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{
+            display: 'flex', gap: 8, marginTop: 8,
+            // Passed down as custom properties rather than as a prop on
+            // each of the seven IconActions below — they all belong to
+            // the same channel, so the colour is a property of the row.
+            '--channel-accent': accent,
+            '--channel-accent-soft': accentSoft,
+          }}>
             {channel.is_following && (
               <IconAction
                 on={channel.notify}
@@ -448,7 +466,7 @@ function Switch({ on }) {
   return (
     <span style={{
       flexShrink: 0, width: 34, height: 20, borderRadius: 10,
-      background: on ? 'var(--magenta)' : 'var(--line)',
+      background: on ? 'var(--channel-accent, var(--from-aue))' : 'var(--line)',
       position: 'relative', transition: 'background 0.18s',
     }}>
       <span style={{
@@ -694,8 +712,11 @@ function IconAction({ children, onClick, disabled, on, accent, title }) {
       style={{
         flex: '1 1 0', minWidth: 0, padding: '10px 0', borderRadius: 12,
         fontSize: 17, lineHeight: 1, cursor: disabled ? 'wait' : 'pointer',
-        border: accent ? 'none' : `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}`,
-        background: accent ? 'var(--magenta)' : (on ? 'rgba(255, 43, 214, 0.10)' : 'var(--bg2)'),
+        border: accent ? 'none'
+          : `1px solid ${on ? 'var(--channel-accent, var(--from-aue))' : 'var(--line)'}`,
+        background: accent
+          ? 'var(--channel-accent, var(--from-aue))'
+          : (on ? 'var(--channel-accent-soft, var(--from-aue-soft))' : 'var(--bg2)'),
         opacity: disabled ? 0.6 : (on === false ? 0.55 : 1),
       }}
     >

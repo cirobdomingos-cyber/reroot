@@ -5109,21 +5109,51 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
 
 @app.get("/catalog-events/{source_event_id}/groups")
 def get_groups_with_source(source_event_id: str, google_id: str):
-    """For each group the caller belongs to, return whether that group
-    already has a fork of this catalog event. Drives the AddToGroupSheet
-    "already added" affordance — without it, users have no way to know
-    they've already added the event to a group except by checking each
-    group manually. Returns just the list of group ids that already
-    have a fork."""
+    """Which channels already hold a fork of this event. Drives the
+    "Adicionado · toque pra remover" state in AddToGroupSheet; without
+    it the only way to know is to open each channel and look.
+
+    Two things this has to get right, and used to get wrong:
+
+    1. Channels count. The scan ran over get_groups_for_user, which
+       deliberately excludes channels (see its docstring), while the
+       sheet lists every channel the caller curates right alongside the
+       crews. So an auê channel that already had the event sat there
+       offering to add it again, and the answer was wrong for exactly
+       the rows the curator uses most.
+
+    2. The id may already be a fork's. Once an event has been added
+       anywhere, the row the user is looking at in Eventos IS the fork,
+       so the sheet hands us `grp_ev_…` and not the catalog id. Resolve
+       through it, and count the fork's own channels while we're there.
+
+    Scanning every channel rather than only the curated ones is
+    deliberate: which events a public channel holds is public — you can
+    open it and read them — and the sheet renders rows only for the
+    channels it already listed, so extra ids here surface nothing."""
     if not google_id or not source_event_id:
         return {"linked_group_ids": []}
-    user_groups = db.get_groups_for_user(google_id) or []
     linked: list[str] = []
-    for g in user_groups:
+    catalog_id = source_event_id
+    fork = db.get_group_event(source_event_id)
+    if fork:
+        catalog_id = (fork.get("source_event_id") or "").strip() or source_event_id
+        for gid in [fork.get("group_id"), *(fork.get("group_ids") or [])]:
+            if gid and gid not in linked:
+                linked.append(gid)
+    candidates: list[str] = []
+    for g in (db.get_groups_for_user(google_id) or []):
         gid = g.get("id") or g.get("group_id")
-        if not gid:
+        if gid and gid not in candidates:
+            candidates.append(gid)
+    for c in (db.list_channels(google_id) or []):
+        gid = c.get("id")
+        if gid and gid not in candidates:
+            candidates.append(gid)
+    for gid in candidates:
+        if gid in linked:
             continue
-        if db.find_group_event_by_source(gid, source_event_id):
+        if db.find_group_event_by_source(gid, catalog_id):
             linked.append(gid)
     return {"linked_group_ids": linked}
 
