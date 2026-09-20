@@ -1406,26 +1406,46 @@ def test_followers_already_written_in_are_cleaned_up(api):
     assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
 
 
-# -- 16. a curator sees their own channel's marks ---------------------
+# -- 16. a curator reads their own channel like anyone else ------------
 #
-# auê holds an admin row on its own channels and deliberately doesn't
-# follow them — ownership isn't a subscription, and counting it opened
-# every channel at "1 seguindo". But the channel feed keyed on
-# following=1, so a curator's own channels never reached it: events they
-# had published sat in Eventos as plain catalog rows with nothing saying
-# where they came from. Reported from production.
+# Running a channel is about what you may do to it, not what your
+# Eventos shows. For one round the channel feed also admitted admin and
+# curator rows, so a curator's channels sat at the top of their Eventos
+# whether they followed or not — "a ordenação está travada só pro
+# admin". Following is the only thing that puts a channel in your list,
+# for the founder as for everyone.
 
-def test_a_curator_sees_their_own_channels_events_in_the_feed(api):
+def test_a_curator_who_does_not_follow_sees_no_marks(api):
     _db, _main, client = api
     cid = _channel(client)
     _add_to(client, cid, "u_founder")
-    got = _db.get_followed_channel_events("u_founder")
-    assert [e["name"] for e in got] == ["Masterclass DJ"]
+    assert _db.get_followed_channel_events("u_founder") == []
 
 
-def test_and_still_is_not_counted_as_a_follower(api):
-    """The fix must not reach the follower count — that's the number the
-    `following` column was split out to keep honest."""
+def test_a_curator_who_follows_sees_them_like_anyone(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    assert [e["name"] for e in _db.get_followed_channel_events("u_founder")] == ["Masterclass DJ"]
+
+
+def test_and_unfollowing_takes_them_out_again(api):
+    """The half that was stuck: an admin's unfollow cleared `following`
+    and the feed ignored it."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    client.delete(f"/channels/{cid}/follow?google_id=u_founder")
+    assert _db.get_followed_channel_events("u_founder") == []
+    # ...without costing them the channel they run.
+    assert _db.get_group_member_role(cid, "u_founder") == "admin"
+
+
+def test_an_admin_row_alone_is_not_a_follower(api):
+    """Ownership isn't a subscription: the founder's admin row must not
+    open every channel at "1 seguindo"."""
     _db, _main, client = api
     cid = _channel(client)
     ch = client.get(f"/channels/{cid}?google_id=u_founder").json()["channel"]
