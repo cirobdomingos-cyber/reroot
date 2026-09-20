@@ -3888,6 +3888,13 @@ def get_groups_for_user(google_id: str) -> list[dict]:
         rows = conn.execute(
             """SELECT g.*, gm.role,
                       (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+                      -- Same field name the channel list uses, so one row
+                      -- component can render both without knowing which
+                      -- kind it got.
+                      (SELECT COUNT(*) FROM group_events ge
+                        WHERE (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                          AND substr(ge.date_start, 1, 10) >= date('now'))
+                        AS upcoming_event_count,
                       COALESCE(
                           (SELECT MAX(created_at) FROM group_events WHERE group_id = g.id),
                           ''

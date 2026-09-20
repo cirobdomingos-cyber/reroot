@@ -27,7 +27,12 @@ function SheetPortal({ children }) {
   return createPortal(children, document.body)
 }
 
-export default function Groups({ embedded = false }) {
+// `actionsOnly` renders just Entrar / + Criar canal and their sheets.
+// The list moved into ChannelList, which now shows auê channels and
+// private ones in the same "Seguindo" pile — they're the same idea, and
+// two sections split by who created them made the reader do bookkeeping
+// the app should be doing.
+export default function Groups({ embedded = false, actionsOnly = false }) {
   const { state } = useApp()
   const t = useT()
   const navigate = useNavigate()
@@ -78,6 +83,10 @@ export default function Groups({ embedded = false }) {
   }
 
   if (!googleId) {
+    // ChannelList already tells a signed-out visitor what channels are
+    // and that signing in is how you follow one. Repeating it here put
+    // two prompts on one screen.
+    if (actionsOnly) return null
     return (
       <div style={{ padding: '16px 16px 100px' }}>
         {!embedded && (
@@ -97,9 +106,12 @@ export default function Groups({ embedded = false }) {
   }
 
   return (
-    <div style={{ padding: '16px 16px 100px' }}>
+    <div style={{ padding: actionsOnly ? '4px 16px 0' : '16px 16px 100px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: actionsOnly ? 0 : 16,
+      }}>
         {!embedded && (
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--charcoal)', margin: 0 }}>
             {t.groups_title}
@@ -120,8 +132,9 @@ export default function Groups({ embedded = false }) {
         </div>
       </div>
 
-      {/* List */}
-      {loading ? (
+      {/* List — skipped in actionsOnly: ChannelList renders these rows
+          now, in the same pile as the auê channels you follow. */}
+      {actionsOnly ? null : loading ? (
         <p style={{ color: 'var(--charcoal-mid)', textAlign: 'center', marginTop: 40 }}>{t.events_loading}</p>
       ) : groups.length === 0 ? (
         <div style={{ textAlign: 'center', marginTop: 60, color: 'var(--charcoal-mid)' }}>
