@@ -6636,6 +6636,105 @@ def catalog_export(token: str = "", event_limit: int = 5000):
     return db.export_catalog(event_limit=min(event_limit, 20000))
 
 
+@app.get("/social-export")
+def social_export(token: str = ""):
+    """Production side of the social sync, anonymised before it leaves.
+
+    Same token gate as /catalog-export, and the same 404-when-unset
+    behaviour: with CATALOG_SYNC_TOKEN missing this looks like it was
+    never deployed.
+
+    The scrubbing happens in db.export_social, on this side, on purpose.
+    Real names, emails and photos never travel and never sit in a
+    response body — anonymising on the staging side would mean the real
+    data made the trip and only got cleaned on arrival, which protects
+    nobody. The token doubles as the pseudonym salt, so the same person
+    maps to the same fake person on every pull and staging's graph lines
+    up instead of piling up.
+
+    The founder's own row passes through untouched, so they can sign
+    into staging as themselves and appear in the graph they're testing.
+    That's their data and their call; nobody else is in that position.
+    """
+    if not settings.catalog_sync_token:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not secrets.compare_digest(token, settings.catalog_sync_token):
+        raise HTTPException(status_code=404, detail="Not found")
+    return db.export_social(
+        salt=settings.catalog_sync_token,
+        keep_real=(settings.founder_email,),
+    )
+
+
+@app.post("/admin/sync-social")
+def admin_sync_social(requesting_email: str = ""):
+    """Staging side. Replaces this environment's social graph with
+    production's anonymised one.
+
+    Founder-only, a step up from sync-catalog's curator gate: this drops
+    every user, friendship, channel and RSVP in the environment before
+    writing. The catalog sync is additive and recoverable by re-running
+    it; this one is not.
+
+    Direction is enforced twice, which is deliberate for something whose
+    wrong direction would overwrite production's users:
+
+      1. env_name must not be "production" — and it DEFAULTS to
+         "production", so a service with the variable missing refuses
+         rather than importing over real people.
+      2. db.import_social refuses a payload not marked anonymised, so a
+         misconfigured origin isn't enough on its own.
+
+    There is no staging-to-production path, and adding one would mean
+    writing an endpoint that doesn't exist.
+    """
+    _require_founder(requesting_email)
+    if settings.env_name == "production":
+        raise HTTPException(
+            status_code=400,
+            detail="Sync só roda fora da produção — é ela que é a fonte.",
+        )
+    if not settings.catalog_sync_token:
+        raise HTTPException(
+            status_code=400,
+            detail="CATALOG_SYNC_TOKEN não configurado neste serviço.",
+        )
+
+    url = f"{settings.catalog_sync_origin.rstrip('/')}/social-export"
+    try:
+        resp = httpx.get(url, params={"token": settings.catalog_sync_token}, timeout=120.0)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Não consegui falar com a produção: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Produção respondeu {resp.status_code} — token errado ou origem errada?",
+        )
+    try:
+        payload = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+
+    try:
+        counts = db.import_social(payload)
+    except ValueError as e:
+        # The anonymised guard. A 400 rather than a 500: nothing broke,
+        # we refused.
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.exception("Social sync: import_social falhou")
+        raise HTTPException(status_code=500, detail=f"Import falhou: {type(e).__name__}: {e}")
+
+    log.info(f"Social sync de {settings.catalog_sync_origin}: {counts}")
+    return {
+        "ok": True,
+        "source": settings.catalog_sync_origin,
+        "anonymised": True,
+        "kept_real": payload.get("kept_real") or [],
+        **counts,
+    }
+
+
 @app.post("/admin/sync-catalog")
 def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
     """Staging side. Pulls production's catalog and upserts it here.
