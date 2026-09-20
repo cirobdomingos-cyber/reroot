@@ -5704,6 +5704,245 @@ _IG_EXPORT_COLUMNS = (
 )
 
 
+# -- Social export, anonymised at the source -----------------------
+#
+# Staging needs a realistic graph — friendships that exist, channels
+# with real sizes, RSVPs with a real distribution — because most bugs in
+# this app are relational and an empty staging hides them.
+#
+# What it does NOT need is who those people actually are. So the
+# anonymisation happens HERE, on the production side, before anything
+# leaves: real names, emails and photos never travel over the wire and
+# never sit in a response body. Scrubbing on the staging side would mean
+# the real data made the trip and only got cleaned on arrival, which
+# protects nothing.
+#
+# Pseudonyms are a salted hash of the real id, so they are stable across
+# pulls: the same person is the same fake person every time, and the
+# graph lines up with what staging already has instead of duplicating.
+#
+# Never copied at all:
+#   push_subscriptions / apns_device_tokens — staging has SMTP and push
+#     configured, so a test digest reaching a real device is not a
+#     hypothetical, it is the scheduler doing its job in the wrong place
+#   auth_providers — nobody should be able to sign in as a copy
+#   feedback — free text, written by people who expected one reader
+
+_ANON_FIRST = [
+    "Ana", "Bruno", "Carla", "Diego", "Elisa", "Fabio", "Gabi", "Heitor",
+    "Iris", "Joao", "Katia", "Lucas", "Marina", "Nando", "Olivia", "Pedro",
+    "Rafa", "Sofia", "Teo", "Vera",
+]
+_ANON_LAST = [
+    "Alves", "Barros", "Cardoso", "Dias", "Esteves", "Franco", "Gomes",
+    "Horta", "Iizuka", "Jardim", "Lima", "Moreira", "Nunes", "Peixoto",
+]
+
+
+def _pseudonym(real_id: str, salt: str) -> dict:
+    """A stable fake identity for one real user id.
+
+    Deterministic so repeated pulls produce the same graph — someone who
+    was "Marina Lima" last sync is still Marina Lima this sync, and
+    staging rows keep lining up rather than piling up.
+    """
+    digest = hashlib.sha256(f"{salt}:{real_id}".encode()).hexdigest()
+    n = int(digest[:12], 16)
+    first = _ANON_FIRST[n % len(_ANON_FIRST)]
+    last = _ANON_LAST[(n // len(_ANON_FIRST)) % len(_ANON_LAST)]
+    short = digest[:10]
+    return {
+        "id": f"anon_{short}",
+        "name": f"{first} {last}",
+        # .invalid is reserved by RFC 2606 and can never resolve, so a
+        # stray send from staging bounces instead of reaching anyone.
+        "email": f"{first.lower()}.{short}@staging.invalid",
+    }
+
+
+def export_social(salt: str, keep_real: tuple = ()) -> dict:
+    """The relational shape of production, with the people scrubbed.
+
+    `keep_real` is emails whose rows pass through untouched — the
+    founder's own account, so they can sign into staging as themselves
+    and appear in the graph they are testing. It is their data and their
+    call; nobody else is in that position.
+    """
+    with get_conn() as conn:
+        users = [dict(r) for r in conn.execute(
+            "SELECT id, display_name, email, picture, created_at FROM users"
+        )]
+        wanted = {e.strip().lower() for e in keep_real if e}
+        keep = {u["id"] for u in users
+                if (u.get("email") or "").strip().lower() in wanted}
+
+        alias = {}
+        out_users = []
+        for u in users:
+            if u["id"] in keep:
+                out_users.append(u)
+                alias[u["id"]] = {"id": u["id"], "name": u.get("display_name") or "",
+                                  "email": u.get("email") or ""}
+                continue
+            fake = _pseudonym(u["id"], salt)
+            alias[u["id"]] = fake
+            out_users.append({
+                "id": fake["id"],
+                "display_name": fake["name"],
+                "email": fake["email"],
+                "picture": "",          # real faces do not travel
+                "created_at": u["created_at"],
+            })
+
+        def a(real_id):
+            """Real id to exported id, or None when the row should drop."""
+            entry = alias.get(real_id or "")
+            return entry["id"] if entry else None
+
+        def rows(sql):
+            return [dict(r) for r in conn.execute(sql)]
+
+        friendships = []
+        for f in rows("SELECT * FROM friendships"):
+            ua, ub = a(f["user_a"]), a(f["user_b"])
+            if not ua or not ub:
+                continue
+            friendships.append({**f, "user_a": ua, "user_b": ub,
+                                "initiated_by": a(f["initiated_by"]) or ua})
+
+        groups = []
+        for g in rows("SELECT * FROM groups"):
+            owner = a(g["created_by"])
+            if owner:
+                groups.append({**g, "created_by": owner})
+
+        members = []
+        for m in rows("SELECT * FROM group_members"):
+            gid = a(m["google_id"])
+            if gid:
+                members.append({**m, "google_id": gid})
+
+        group_events = []
+        for e in rows("SELECT * FROM group_events"):
+            creator = a(e["created_by"])
+            if not creator:
+                continue
+            try:
+                invitees = [a(i) for i in json.loads(e.get("extra_invitee_ids") or "[]")]
+                declined = [a(i) for i in json.loads(e.get("declined_ids") or "[]")]
+            except (ValueError, TypeError):
+                invitees, declined = [], []
+            group_events.append({
+                **e,
+                "created_by": creator,
+                "extra_invitee_ids": json.dumps([i for i in invitees if i]),
+                "declined_ids": json.dumps([i for i in declined if i]),
+            })
+
+        rsvps = []
+        for r in rows("SELECT * FROM rsvps"):
+            gid = a(r["google_id"])
+            if gid:
+                rsvps.append({**r, "google_id": gid})
+
+        # user_states carries the profile blob the app reads for names
+        # and pictures, so it has to agree with the scrubbed users table
+        # — otherwise staging renders real names out of a clean database.
+        states = []
+        for s in rows("SELECT * FROM user_states"):
+            gid = a(s["google_id"])
+            if not gid:
+                continue
+            if s["google_id"] in keep:
+                states.append(dict(s))
+                continue
+            fake = alias[s["google_id"]]
+            try:
+                blob = json.loads(s["state_json"])
+            except (ValueError, TypeError):
+                blob = {}
+            blob["userName"] = fake["name"]
+            google_user = blob.get("googleUser")
+            if isinstance(google_user, dict):
+                blob["googleUser"] = {
+                    **google_user,
+                    "name": fake["name"],
+                    "givenName": fake["name"].split()[0],
+                    "email": fake["email"],
+                    "picture": "",
+                }
+            # Keep every other column (updated_at, created_at) — they're
+            # NOT NULL, and they're the timestamps the activity views
+            # read, so a realistic graph needs them intact.
+            states.append({**s, "google_id": gid, "state_json": json.dumps(blob)})
+
+    return {
+        "users": out_users,
+        "user_states": states,
+        "friendships": friendships,
+        "groups": groups,
+        "group_members": members,
+        "group_events": group_events,
+        "rsvps": rsvps,
+        "anonymised": True,
+        "kept_real": sorted(keep),
+    }
+
+
+def import_social(payload: dict) -> dict:
+    """Replace this environment's social graph with an exported one.
+
+    Overwrite, not merge. A merge would leave behind whatever staging
+    had from the last round of manual testing, and the point of pulling
+    production is looking at production's shape — not at production plus
+    residue.
+
+    Refuses a payload that is not marked anonymised. The guard lives on
+    the importing side as well as the exporting one because this writes
+    real identities into a database with weaker protections, and a
+    single misconfigured origin should not be enough to do it.
+    """
+    if not payload.get("anonymised"):
+        raise ValueError("Refusing a social payload that is not anonymised")
+
+    tables = (
+        ("rsvps", "google_id, event_id, event_name, event_venue, event_date,"
+                  " event_url, created_at"),
+        ("group_events", None),
+        ("group_members", None),
+        ("groups", None),
+        ("friendships", "user_a, user_b, status, initiated_by, created_at"),
+        ("user_states", None),
+        ("users", "id, display_name, email, picture, created_at"),
+    )
+    counts = {}
+    with get_conn() as conn:
+        # Wipe children before parents, then insert parents before
+        # children, so nothing points at a row that is not there yet.
+        for name, _ in tables:
+            conn.execute(f"DELETE FROM {name}")
+        for name, _ in reversed(tables):
+            incoming = payload.get(name) or []
+            counts[name] = len(incoming)
+            for row in incoming:
+                cols = list(row.keys())
+                placeholders = ", ".join("?" for _ in cols)
+                conn.execute(
+                    f"INSERT OR REPLACE INTO {name} ({', '.join(cols)})"
+                    f" VALUES ({placeholders})",
+                    [row[c] for c in cols],
+                )
+        # Devices belong to whoever was really holding them. Anything
+        # already registered here pointed at ids that no longer exist,
+        # and a copied graph must never inherit a way to reach someone.
+        for name in ("push_subscriptions", "apns_device_tokens"):
+            try:
+                conn.execute(f"DELETE FROM {name}")
+            except sqlite3.OperationalError:
+                pass
+        conn.commit()
+    return counts
+
 def export_catalog(event_limit: int = 5000) -> dict:
     """The catalog and nothing else — events, venues, tracked IG handles.
 
