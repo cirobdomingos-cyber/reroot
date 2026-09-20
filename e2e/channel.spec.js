@@ -35,6 +35,13 @@ async function openChannel(page, overrides = {}) {
     return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
       ? route.continue() : route.abort()
   })
+  await page.route('**/groups/**/stats**', route => route.fulfill({
+    json: {
+      events_total: 7, events_upcoming: 3, events_past: 4, rsvps_total: 21,
+      // Populated, so the avatar branch actually renders.
+      top_organizer: { google_id: 'u9', name: 'Marina Lima', picture: '', events: 4 },
+    },
+  }))
   await page.route('**/channels/**', route => route.fulfill({
     json: { ...CHANNEL, channel: { ...CHANNEL.channel, ...overrides } },
   }))
@@ -231,9 +238,16 @@ test('the curator-only actions stay curator-only', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Assinar calendário/ })).toBeVisible()
 })
 
-test('a curator gets the catalog picker', async ({ page }) => {
+test('a curator gets the catalog picker and the activity panel', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: true })
   await expect(page.getByRole('button', { name: /Do catálogo/ })).toBeVisible()
+  // top_organizer POPULATED on purpose. The first version of this test
+  // stubbed it as null, which is exactly the branch that renders an
+  // <Avatar> — so it passed while the panel threw "Avatar is not
+  // defined" in the browser. A stub that avoids the interesting branch
+  // is a test that certifies the bug as absent.
+  await expect(page.getByText('Mural do canal')).toBeVisible()
+  await expect(page.getByText("Quem mais bota evento aqui")).toBeVisible()
 })
 
 test('a channel never offers to invite people into it', async ({ page }) => {

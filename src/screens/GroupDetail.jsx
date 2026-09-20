@@ -7,7 +7,9 @@ import { useT } from '../i18n'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
 import EditEventSheet from '../components/EditEventSheet'
-import { CalendarSheet, CatalogPickerSheet, GroupStatsPanel } from '../components/GroupSheets'
+import {
+  BottomSheet, CalendarSheet, CatalogPickerSheet, GroupStatsPanel, SheetButton,
+} from '../components/GroupSheets'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
 import { shareLink, appLink } from '../lib/share'

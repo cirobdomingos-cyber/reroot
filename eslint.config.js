@@ -37,6 +37,18 @@ export default [
       // Only this one rule from eslint-plugin-react, not its recommended
       // set — this file's job is catching bugs, not style arguments.
       'react/jsx-uses-vars': 'warn',
+      // The mirror of the rule above, and the one that was missing.
+      // no-undef doesn't see <Avatar /> as a reference to Avatar, so a
+      // component used in JSX but never imported survives lint AND the
+      // build, then throws in the browser.
+      //
+      // Third bug of the same shape this session: extracting
+      // GroupStatsPanel into its own file left <Avatar /> behind
+      // without its import. Lint passed, the build passed, and the
+      // Playwright test passed too — because the stub I wrote had
+      // top_organizer: null, which is exactly the branch that renders
+      // the avatar. Tested around the bug.
+      'react/jsx-no-undef': 'error',
       // Hook dependency mistakes are the other silent-at-build-time class.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'off',
