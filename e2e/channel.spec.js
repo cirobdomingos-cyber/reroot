@@ -262,3 +262,69 @@ test('a channel never offers to invite people into it', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: true })
   await expect(page.getByText(/convidar/i)).toHaveCount(0)
 })
+
+// A catalog event added to a channel becomes a separate row — a fork
+// carrying source_event_id — so without a marker the same night shows
+// in the band above and again down the list with nothing connecting
+// them.
+
+const CATALOG = { events: [
+  { id: 'instagram_ig_x_A', name: 'Terno Rei na Pedreira', category: 'community',
+    categoryLabel: 'Comunidade', categoryEmoji: '🤝', venue: 'Pedreira · Abranches',
+    date: 'Sáb, 04 Out', time: '21:00', dateStart: '2099-10-04T21:00:00',
+    headerBg: 'g', icon: '🎵', price: 'R$ 40', priceTier: 'low', source: 'instagram',
+    url: 'u', vibeSummary: '', pitch: '', attendeesConfirmed: 0, expectedSize: 'medium',
+    hasFood: false, isLowPressure: false, kidsWelcome: false, bairro: 'Abranches' },
+  { id: 'instagram_ig_y_B', name: 'Feira do Passeio', category: 'community',
+    categoryLabel: 'Comunidade', categoryEmoji: '🤝', venue: 'Passeio · Centro',
+    date: 'Dom, 05 Out', time: '10:00', dateStart: '2099-10-05T10:00:00',
+    headerBg: 'g', icon: '🛍', price: 'Grátis', priceTier: 'free', source: 'instagram',
+    url: 'u', vibeSummary: '', pitch: '', attendeesConfirmed: 0, expectedSize: 'medium',
+    hasFood: false, isLowPressure: false, kidsWelcome: false, bairro: 'Centro' } ] }
+
+async function openEvents(page, channelEvents) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType()
+    return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
+      ? route.continue() : route.abort()
+  })
+  await page.route('**/events?**', route => route.fulfill({ json: CATALOG }))
+  await page.route('**/channels/feed**', route =>
+    route.fulfill({ json: { events: channelEvents } }))
+  await page.addInitScript(() =>
+    localStorage.setItem('aue_state', JSON.stringify({
+      hasJoined: true, googleUser: { id: 'u1', email: 'a@b.com', name: 'Ana' },
+    })))
+  await page.goto('/#/events')
+  await page.waitForTimeout(1800)
+}
+
+const FROM_CHANNEL = [{
+  id: 'grp_ev_1', name: 'Terno Rei na Pedreira', sourceEventId: 'instagram_ig_x_A',
+  groupName: 'auê Rockzera', dateStart: '2099-10-04T21:00:00', time: '21:00',
+  date: 'Sáb, 04 Out', venue: 'Pedreira · Abranches',
+}]
+
+test('the band sits above the catalog, not inside the filters panel', async ({ page }) => {
+  // It spent one round mounted inside {filtersOpen && ...}, which meant
+  // it only appeared while the filter panel was open — invisible in
+  // every normal visit.
+  await openEvents(page, FROM_CHANNEL)
+  await expect(page.getByText('Dos teus canais')).toBeVisible()
+})
+
+test('a catalog row names the channel it came from', async ({ page }) => {
+  await openEvents(page, FROM_CHANNEL)
+  // Named, not badged generically: "auê Rockzera" says why it's here,
+  // "de um canal" doesn't.
+  await expect(page.getByText('auê Rockzera', { exact: false }).first()).toBeVisible()
+  // Only the row that's actually in the channel.
+  const marked = await page.getByText(/▌auê Rockzera/i).count()
+  expect(marked).toBe(1)
+})
+
+test('nothing is marked when you follow no channel', async ({ page }) => {
+  await openEvents(page, [])
+  await expect(page.getByText('Dos teus canais')).toHaveCount(0)
+  await expect(page.getByText(/▌/)).toHaveCount(0)
+})

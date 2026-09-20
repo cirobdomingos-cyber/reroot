@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, myPicture } from '../context/AppContext'
@@ -6,7 +6,7 @@ import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -259,6 +259,13 @@ export default function Events() {
   // curators fix the shared catalog, creators edit their own fork.
   const [editCatalogEvent, setEditCatalogEvent] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
+  // The channel feed, fetched once and used twice: the band above the
+  // list, and a marker on the catalog rows that came from a channel you
+  // follow. A catalog event added to a channel is a separate row
+  // (a fork carrying source_event_id), so without the marker the same
+  // night appears in the band and again in the list with nothing
+  // connecting them.
+  const [channelEvents, setChannelEvents] = useState([])
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -275,6 +282,24 @@ export default function Events() {
     })
     return () => { cancelled = true }
   }, [state.googleUser?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchChannelFeed(state.googleUser?.id).then(list => {
+      if (!cancelled) setChannelEvents(list || [])
+    })
+    return () => { cancelled = true }
+  }, [state.googleUser?.id])
+
+  // Which catalog event came from which channel you follow. Keyed by
+  // the catalog id the channel's copy points at.
+  const channelBySourceId = useMemo(() => {
+    const map = new Map()
+    for (const ev of channelEvents) {
+      if (ev.sourceEventId) map.set(ev.sourceEventId, ev.groupName || 'um canal')
+    }
+    return map
+  }, [channelEvents])
 
   // Curator status gates the "corrigir evento" affordance on catalog
   // events. Curator, not founder: the people who notice a wrong venue
@@ -1221,14 +1246,18 @@ export default function Events() {
           Fontes/🔍) so it's always reachable from the chrome without
           stealing list real estate. */}
 
+      </>)}
+
       {/* A band, not a merge. Mixing followed channels into the list and
           floating them to the top would bury the city for anyone
           following three of them — the catalog below stays exactly what
           it was, and the band takes a fixed amount of room above it.
-          Hides itself when there's nothing in it. */}
-      <ChannelBand />
+          Hides itself when there's nothing in it.
 
-      </>)}
+          Mounted HERE, not inside the filters block above: it spent one
+          round living inside {filtersOpen && ...}, which meant it only
+          appeared while the filter panel was open. */}
+      {!loading && <ChannelBand events={channelEvents} />}
 
       {/* ── Loading skeletons ── */}
       {loading && (
@@ -1352,6 +1381,11 @@ export default function Events() {
                 >
                   <EventCard
                     ev={ev}
+                    // Named when this catalog event also lives in a
+                    // channel the viewer follows. Without it the same
+                    // night shows in the band above and again down the
+                    // list with nothing saying they're the same thing.
+                    fromChannel={channelBySourceId.get(ev.id) || null}
                     rsvped={rsvped}
                     friendsGoing={friendsByEventId[ev.id] || []}
                     personalChip={getPersonalChip(ev, state.rsvps)}
@@ -1795,7 +1829,7 @@ function _parseDayLabels(iso) {
   }
 }
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, fromChannel = null, t }) {
   // Flyer treatment — staging experiment, see lib/cardVariant.js.
   const cardVariant = eventCardVariant()
   const [imgBroken, setImgBroken] = useState(false)
@@ -1951,6 +1985,19 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {isGroupEvent && '🔒 '}
           {ev.name}
         </div>
+
+        {/* Which channel of yours this came from. Named rather than
+            badged generically: "Rockzão" tells you why it's here and
+            "de um canal" doesn't. */}
+        {fromChannel && (
+          <div className="neon-mono" style={{
+            fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: 'var(--magenta)', marginBottom: 4,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            ▌{fromChannel}
+          </div>
+        )}
 
         {/* Single metadata row: time · 📍 venue · bairro. Truncates
             with ellipsis on narrow screens. Pin glyph on the venue half
