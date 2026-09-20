@@ -4185,11 +4185,19 @@ def list_channels(google_id: str = "") -> list[dict]:
                         AS follower_count,
                       EXISTS(SELECT 1 FROM group_members
                              WHERE group_id = g.id AND google_id = ?)
-                        AS is_following
+                        AS is_following,
+                      -- What's actually in it. A channel advertised as
+                      -- "12 seguindo" with nothing scheduled is worse
+                      -- than one that says so, and the empty state on
+                      -- the tab depends on knowing this.
+                      (SELECT COUNT(*) FROM group_events ge
+                        WHERE (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                          AND substr(ge.date_start, 1, 10) >= ?)
+                        AS upcoming_event_count
                FROM groups g
                WHERE g.kind = 'channel'
                ORDER BY follower_count DESC, g.name ASC""",
-            (google_id or "",),
+            (google_id or "", datetime.now(timezone.utc).date().isoformat()),
         ).fetchall()
     out = []
     for r in rows:

@@ -4369,12 +4369,26 @@ def get_group(group_id: str, google_id: str):
     if group["visibility"] == "private" and not is_member:
         raise HTTPException(status_code=403, detail="This is a private group")
 
-    members = db.get_group_members(group_id) if is_member else []
-    # Events tagged to this group AND the viewer is invited. Members who
-    # weren't on a specific event's invite list (e.g. excluded for a
-    # subset event before the create flow auto-disconnects the group)
-    # won't see it here. Non-members see no events.
-    raw_events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
+    # A channel is a published feed, not a private crew. Its events are
+    # visible to everyone — follower or not, invited or not — because
+    # nobody is ever on their invite list: auê creates them with no
+    # invitees. Running them through the crew gate showed an empty
+    # channel to its own followers, which is the opposite of the point
+    # and made "seguir" look broken.
+    #
+    # Its followers are public for the same reason: the count is social
+    # proof, and you should be able to see it before deciding to follow.
+    channel = group.get("kind") == "channel"
+    if channel:
+        members = db.get_group_members(group_id)
+        raw_events = db.get_group_events(group_id, viewer_google_id=None)
+    else:
+        members = db.get_group_members(group_id) if is_member else []
+        # Events tagged to this group AND the viewer is invited. Members
+        # who weren't on a specific event's invite list (e.g. excluded
+        # for a subset event before the create flow auto-disconnects the
+        # group) won't see it here. Non-members see no events.
+        raw_events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
     # Shaped exactly like /events/group and the catalog, rather than
     # handed over as raw DB rows. The frontend renders group events with
     # the same component as everything else, and it should not need a
