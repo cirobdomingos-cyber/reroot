@@ -112,3 +112,24 @@ test('a curator asking for a founder section is told so', async ({ page }) => {
   await openAdmin(page, { founder: false, path: '/#/admin/pessoas' })
   await expect(page.getByText('Essa parte é do fundador.')).toBeVisible()
 })
+
+// ── The tab is called what the person is ──
+
+test('the founder\'s tab says Admin', async ({ page }) => {
+  await openAdmin(page, { founder: true })
+  await expect(page.locator('h1')).toHaveText('Admin')
+  await expect(page.getByText('Admin', { exact: true })).toHaveCount(2)   // title + tab
+  await expect(page.getByText('Curadoria', { exact: true })).toHaveCount(0)
+})
+
+test('a curator\'s tab says Curadoria, not Admin', async ({ page }) => {
+  // Same route, same menu — the menu already narrows itself. A tab
+  // called "Admin" reads as someone else's; this one is theirs.
+  await openAdmin(page, { founder: false })
+  // Both the screen's title and the tab follow the role — so assert
+  // each on its own. One getByText('Curadoria') resolves to both and
+  // trips strict mode, which is how this test first "failed".
+  await expect(page.locator('h1')).toHaveText('Curadoria')
+  await expect(page.getByText('Curadoria', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('Admin', { exact: true })).toHaveCount(0)
+})
