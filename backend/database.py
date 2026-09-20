@@ -5138,6 +5138,24 @@ def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str])
     return get_group_event(event_id)
 
 
+def find_orphaned_fork(google_id: str, source_event_id: str) -> Optional[dict]:
+    """This person's own copy of a catalog event that belongs to no
+    channel. Used when adding that event to a channel: re-link the copy
+    instead of writing a second one beside it."""
+    if not google_id or not source_event_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT * FROM group_events
+                WHERE created_by = ? AND source_event_id = ?
+                  AND (group_id IS NULL OR group_id = '')
+                  AND (group_ids IS NULL OR group_ids IN ('[]', ''))
+                LIMIT 1""",
+            (google_id, source_event_id),
+        ).fetchone()
+    return _hydrate_invitees(dict(row)) if row else None
+
+
 def unlink_event_from_group(event_id: str, group_id: str) -> Optional[dict]:
     """Remove a group from an event's group_ids list. If the removed
     group was the primary (group_id), promote the next remaining group
