@@ -200,7 +200,7 @@ export default function BottomNav() {
             <span className={
               'nav-item__label'
               + (a11y ? ' nav-item__label--a11y' : '')
-              + (label.length > 10 ? ' nav-item__label--long' : '')
+              + (label.length >= 10 ? ' nav-item__label--long' : '')
             }>{label}</span>
           </div>
         )

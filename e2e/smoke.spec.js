@@ -102,19 +102,28 @@ test('the tab bar carries exactly the four screens it should, in order', async (
   expect(labels).toEqual(['Eventos', 'Comunidade', 'Notificações', 'Perfil'])
 })
 
-test('no tab label clips on a narrow phone', async ({ page }) => {
-  // "NOTIFICAÇÕES" is 12 characters against a 90px slot at 360px, which
-  // is where it clipped to "NOTIFICAÇÕ" before the tracking on long
-  // labels was tightened. 360px is a real device width (iPhone SE and
-  // most budget Androids), not a hypothetical.
+test('no tab falls off the bar on a narrow phone', async ({ page }) => {
+  // This replaces a test that measured each LABEL's own overflow and
+  // always passed, because a label with no width constraint is never
+  // wider than itself — the overflow was on the container. At 360px a
+  // signed-out user was losing Perfil entirely and nothing reported it.
+  //
+  // 360px is a real device width (iPhone SE, most budget Androids).
   await page.setViewportSize({ width: 360, height: 740 })
   await page.goto('/#/events')
   await expect(page.locator('.bottom-nav')).toBeVisible()
 
-  const clipped = await page.locator('.bottom-nav .nav-item__label').evaluateAll(
-    els => els.filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.textContent),
-  )
-  expect(clipped, 'labels wider than their slot').toEqual([])
+  const offscreen = await page.evaluate(() => {
+    const nav = document.querySelector('.bottom-nav')
+    return {
+      over: nav.scrollWidth - nav.clientWidth,
+      lost: [...nav.querySelectorAll('.nav-item')]
+        .filter(i => i.getBoundingClientRect().right > window.innerWidth + 0.5)
+        .map(i => i.textContent.trim()),
+    }
+  })
+  expect(offscreen.lost, 'tabs pushed off the screen').toEqual([])
+  expect(offscreen.over, 'the bar is wider than the screen').toBeLessThanOrEqual(0)
 })
 
 // The Canais tab has to explain the word before the list uses it. The
