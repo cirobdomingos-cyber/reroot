@@ -2021,18 +2021,22 @@ def list_user_group_events(google_id: str):
         ds = ge.get("date_start") or ""
         if ds and ds[:10] < today:
             continue
-        # A channel's events are not the curator's personal plans, even
-        # though the curator created the row. Without this, whoever
-        # publishes into a channel gets every one of those events back
-        # in their own private feed — sorted above the catalog with the
-        # "your plan" treatment, while everyone else sees an ordinary
-        # card. Reported as "aparece com banner e em primeiro só no
-        # perfil admin".
+        # A PUBLIC channel's events are not the curator's personal
+        # plans, even though the curator created the row. Without this,
+        # whoever publishes into one gets every event back in their own
+        # private feed — sorted above the catalog with the "your plan"
+        # treatment, while everyone else sees an ordinary card.
         #
-        # The channel's events reach people through the band above
-        # Eventos and the marker on the catalog row, which is the same
-        # for the curator as for anyone else.
-        if any(db.is_channel(gid) for gid in
+        # They reach people through the band above Eventos and the
+        # marker on the catalog row, which is the same for the curator
+        # as for anyone else.
+        #
+        # Private channels are the opposite case and must NOT be
+        # excluded: their events reach members through exactly this
+        # feed, because members were invited to them. Scoping this to
+        # public channels is the difference, and getting it wrong
+        # emptied every crew's feed at once.
+        if any(db.is_public_channel(gid) for gid in
                {ge.get("group_id"), *(ge.get("group_ids") or [])} if gid):
             continue
         out.append(_group_event_to_frontend(
@@ -4468,19 +4472,43 @@ class ChannelCuratorAdd(BaseModel):
     google_id: str
 
 
-def _can_curate_channel(group_id: str, email: str) -> bool:
-    """Who may edit a channel and publish into it: the founder, or
-    someone made a curator OF THAT CHANNEL.
+def _require_channel_owner(group_id: str, email: str) -> str:
+    """Only the owner appoints curators — auê on a public channel, the
+    creator on a private one.
 
-    Global curators are deliberately NOT included. That role is "can
-    touch the catalog" — approve suggestions, edit events, add IG
-    handles. Running Rockzão is a different job, and the whole point of
-    per-channel curators is being able to hand out the second without
-    the first."""
-    if db.is_founder(email):
-        return True
+    Not curators themselves: a curator who can appoint curators makes
+    the roster ungovernable, and there is exactly one person who owns
+    that decision for any given channel."""
     google_id = db.get_user_id_by_email(email)
-    return bool(google_id) and db.is_channel_curator(group_id, google_id)
+    owner = db.channel_owner(group_id)
+    if google_id and owner and google_id == owner:
+        return google_id
+    if db.is_public_channel(group_id) and db.is_founder(email):
+        return google_id or ""
+    raise HTTPException(
+        status_code=403,
+        detail="Só quem criou esse canal pode escolher a curadoria",
+    )
+
+
+def _can_curate_channel(group_id: str, email: str) -> bool:
+    """Who may edit a channel: its owner, or someone the owner
+    appointed.
+
+    The founder counts only on a PUBLIC channel, because that's one auê
+    owns. Letting the founder edit anyone's private channel would make
+    "private" mean something it doesn't — and the unification is about
+    both kinds working the same way with a different owner, not about
+    one owner outranking the other.
+
+    Global curators are deliberately not included either. That role is
+    "can touch the catalog" — approve suggestions, edit events, add IG
+    handles. Running a channel is a different job, and the point of
+    per-channel curators is handing out the second without the first."""
+    google_id = db.get_user_id_by_email(email)
+    if google_id and db.is_channel_curator(group_id, google_id):
+        return True
+    return db.is_public_channel(group_id) and db.is_founder(email)
 
 
 @app.put("/channels/{group_id}")
@@ -4508,7 +4536,7 @@ def list_channel_curators(group_id: str, requesting_email: str = ""):
     see the roster, and it's a list of real people."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(requesting_email)
+    _require_channel_owner(group_id, requesting_email)
     return {"curators": db.list_channel_curators(group_id)}
 
 
@@ -4519,7 +4547,7 @@ def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
     person who owns that decision."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(req.requesting_email)
+    _require_channel_owner(group_id, req.requesting_email)
     if not db.get_user_profile(req.google_id):
         raise HTTPException(status_code=404, detail="Pessoa não encontrada")
     db.add_channel_curator(group_id, req.google_id)
@@ -4532,7 +4560,7 @@ def remove_channel_curator(group_id: str, google_id: str, requesting_email: str 
     ownership of the channel survives this being called on it."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(requesting_email)
+    _require_channel_owner(group_id, requesting_email)
     db.remove_channel_curator(group_id, google_id)
     return {"ok": True, "curators": db.list_channel_curators(group_id)}
 
@@ -4684,10 +4712,16 @@ def get_group(group_id: str, google_id: str):
 
 @app.put("/groups/{group_id}")
 def update_group(group_id: str, req: GroupUpdateRequest):
-    """Update group info. Requires admin role."""
-    role = db.get_group_member_role(group_id, req.google_id)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update the group")
+    """Rename a channel or rewrite its description.
+
+    Owner or curator. Curators used to exist only on auê's channels,
+    so a private one had exactly one person who could change anything —
+    which is the gap the unification closes."""
+    if not db.is_channel_curator(group_id, req.google_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Só quem cuida desse canal pode editar",
+        )
     db.update_group(group_id, name=req.name, description=req.description, visibility=req.visibility)
     return {"ok": True}
 
@@ -5073,7 +5107,14 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # A channel is curated: following it must not grant the right to
     # publish into it. Without this, "seguir" would be an open write to
     # a feed every other follower sees.
-    if db.is_channel(group_id) and not (
+    # PUBLIC channels only. Publishing into one is publishing to
+    # everyone who follows it, so it belongs to whoever runs it.
+    #
+    # A private channel stays open to its members, which is the whole
+    # point of it — control here means administration, not publishing.
+    # Only 3 of 38 accounts have ever created an event, and narrowing
+    # who may add one is the opposite of what that number asks for.
+    if db.is_public_channel(group_id) and not (
         _is_curator_google_id(req.google_id)
         or db.is_channel_curator(group_id, req.google_id)
     ):

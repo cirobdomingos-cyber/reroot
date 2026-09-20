@@ -141,11 +141,32 @@ def test_unfollowing_cannot_remove_aues_own_ownership(api):
     assert _db.get_group_member_role(cid, "u_founder") == "admin"
 
 
-def test_following_something_that_is_not_a_channel_is_404(api):
+def test_following_an_id_that_is_not_a_channel_at_all_is_404(api):
+    """Every group IS a channel since the unification, so the 404 is now
+    about the id not existing rather than about the row being the wrong
+    kind. A private channel is followable — that's what puts it in your
+    list and in the band, same as a public one."""
+    _db, _main, client = api
+    assert client.post("/channels/grp_nope/follow",
+                       json={"google_id": "u_ana"}).status_code == 404
+
+
+def test_a_private_channel_can_be_followed_by_its_members(api):
     _db, _main, client = api
     g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
-    r = client.post(f"/channels/{g['id']}/follow", json={"google_id": "u_bia"})
-    assert r.status_code == 404
+    assert client.post(f"/channels/{g['id']}/follow",
+                       json={"google_id": "u_ana"}).status_code == 200
+
+
+def test_a_private_channel_is_still_not_discoverable(api):
+    """The one thing visibility decides. Every pre-existing crew was
+    migrated to private regardless of what its visibility column said —
+    'public' used to mean 'anyone with the LINK', and letting that
+    retroactively mean 'listed to everyone' would have published groups
+    whose creators chose link-sharing."""
+    _db, _main, client = api
+    client.post("/groups", json={"google_id": "u_ana", "name": "Role"})
+    assert client.get("/channels?google_id=u_bia").json()["channels"] == []
 
 
 # -- 3. following is not a write permission --------------------------
@@ -801,3 +822,107 @@ def test_a_real_private_plan_still_reaches_its_creator(api):
     })
     feed = client.get("/events/group?google_id=u_ana").json()["events"]
     assert [e["name"] for e in feed] == ["Churrasco"]
+
+
+# -- 15. one model, two owners ---------------------------------------
+#
+# Public and private were two parallel implementations of one idea:
+# different screens, different endpoints, different words for the people
+# inside, and curators that existed on one side only. Now `visibility`
+# decides discovery and nothing else differs — except who the owner is.
+#
+#     público   dono = auê,        curadores nomeados por auê
+#     privado   dono = quem criou, curadores nomeados por quem criou
+
+def _private(client, owner="u_ana", name="Role do Sax"):
+    return client.post("/groups", json={"google_id": owner, "name": name}).json()["id"]
+
+
+def test_the_creator_of_a_private_channel_can_appoint_curators(api):
+    """The gap this closes: a private channel used to have exactly one
+    person who could change anything."""
+    _db, _main, client = api
+    cid = _private(client)
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    assert r.status_code == 200
+    assert _db.is_channel_curator(cid, "u_bia")
+
+
+def test_that_curator_can_edit_the_private_channel(api):
+    _db, _main, client = api
+    cid = _private(client)
+    client.post(f"/channels/{cid}/curators",
+                json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    r = client.put(f"/groups/{cid}", json={
+        "google_id": "u_bia", "name": "Role do Sax — 2026", "description": "",
+    })
+    assert r.status_code == 200
+    assert _db.get_group(cid)["name"] == "Role do Sax — 2026"
+
+
+def test_the_founder_cannot_touch_someone_elses_private_channel(api):
+    """auê owns the public channels. Letting the founder edit anyone's
+    private one would make "private" mean something it doesn't — the
+    unification is two owners working the same way, not one outranking
+    the other."""
+    _db, _main, client = api
+    cid = _private(client)
+    assert client.put(f"/channels/{cid}", json={
+        "requesting_email": FOUNDER_EMAIL, "name": "Tomado",
+    }).status_code == 403
+    assert client.post(f"/channels/{cid}/curators", json={
+        "requesting_email": FOUNDER_EMAIL, "google_id": "u_bia",
+    }).status_code == 403
+
+
+def test_the_founder_still_owns_the_public_ones(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.put(f"/channels/{cid}", json={
+        "requesting_email": FOUNDER_EMAIL, "name": "Rockzão 2",
+    }).status_code == 200
+
+
+def test_a_curator_cannot_appoint_more_curators_on_a_private_channel(api):
+    """Same rule both sides: one person owns that decision."""
+    _db, _main, client = api
+    cid = _private(client)
+    client.post(f"/channels/{cid}/curators",
+                json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "bia@example.com", "google_id": "u_founder"})
+    assert r.status_code == 403
+
+
+def test_an_ordinary_member_cannot_edit_the_channel(api):
+    _db, _main, client = api
+    cid = _private(client)
+    code = _db.get_group(cid)["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    r = client.put(f"/groups/{cid}", json={"google_id": "u_bia", "name": "Meu agora"})
+    assert r.status_code == 403
+
+
+def test_but_an_ordinary_member_can_still_publish(api):
+    """Control means administration, not publishing. Only 3 of 38
+    accounts have ever created an event — restricting who may add one is
+    the opposite of what that number asks for."""
+    _db, _main, client = api
+    cid = _private(client)
+    code = _db.get_group(cid)["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_bia", "name": "Churrasco", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_publishing_into_a_public_channel_is_still_curators_only(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_ana", "name": "Meu show", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 403
