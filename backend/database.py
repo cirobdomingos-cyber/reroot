@@ -4251,6 +4251,14 @@ def list_channels(google_id: str = "") -> list[dict]:
                       COALESCE((SELECT notify FROM group_members
                                 WHERE group_id = g.id AND google_id = ?), 1)
                         AS notify,
+                      -- Whether this viewer runs the channel. Lets the
+                      -- "adicionar a um canal" sheet offer the channels
+                      -- you curate alongside your private ones, instead
+                      -- of making you open each channel to publish.
+                      EXISTS(SELECT 1 FROM group_members
+                             WHERE group_id = g.id AND google_id = ?
+                               AND role IN ('curator', 'admin'))
+                        AS can_curate,
                       -- What's actually in it. A channel advertised as
                       -- "12 seguindo" with nothing scheduled is worse
                       -- than one that says so, and the empty state on
@@ -4262,7 +4270,7 @@ def list_channels(google_id: str = "") -> list[dict]:
                FROM groups g
                WHERE g.kind = 'channel'
                ORDER BY follower_count DESC, g.name ASC""",
-            (google_id or "", google_id or "",
+            (google_id or "", google_id or "", google_id or "",
              datetime.now(timezone.utc).date().isoformat()),
         ).fetchall()
     out = []
@@ -4270,6 +4278,7 @@ def list_channels(google_id: str = "") -> list[dict]:
         d = dict(r)
         d["is_following"] = bool(d["is_following"])
         d["notify"] = bool(d["notify"])
+        d["can_curate"] = bool(d["can_curate"])
         out.append(d)
     return out
 
