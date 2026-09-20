@@ -4190,13 +4190,57 @@ def update_group(group_id: str, name: Optional[str] = None, description: Optiona
         return cur.rowcount > 0
 
 
-def delete_group(group_id: str) -> None:
-    """Delete a group and all its members and events."""
+def delete_group(group_id: str) -> dict:
+    """Delete a group and everything that only exists because of it.
+
+    Used to delete events by primary group_id alone, which left three
+    kinds of residue behind — each of which later surfaced as a bug:
+      - forks that listed this group in group_ids but had another as
+        primary kept a reference to a group that no longer existed;
+      - the deleted forks' RSVPs stayed, as rows pointing at nothing,
+        which the friends feed still counted as "vai";
+      - channel_curators rows for the group were never touched.
+
+    An event in several groups is not deleted, only unlinked from this
+    one: it still belongs to the others. Returns counts, so the caller
+    can say what happened rather than "ok".
+    """
     with get_conn() as conn:
-        conn.execute("DELETE FROM group_events WHERE group_id = ?", (group_id,))
-        conn.execute("DELETE FROM group_members WHERE group_id = ?", (group_id,))
+        rows = conn.execute(
+            """SELECT id, group_id, group_ids FROM group_events
+                WHERE group_id = ? OR group_ids LIKE '%"' || ? || '"%'""",
+            (group_id, group_id),
+        ).fetchall()
+        deleted = unlinked = 0
+        for r in rows:
+            try:
+                gids = json.loads(r["group_ids"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                gids = []
+            remaining = [g for g in gids if g and g != group_id]
+            if remaining:
+                conn.execute(
+                    "UPDATE group_events SET group_id = ?, group_ids = ? WHERE id = ?",
+                    (remaining[0], json.dumps(remaining), r["id"]),
+                )
+                unlinked += 1
+            else:
+                conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
+                conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
+                deleted += 1
+        members = conn.execute(
+            "DELETE FROM group_members WHERE group_id = ?", (group_id,)
+        ).rowcount
+        try:
+            curators = conn.execute(
+                "DELETE FROM channel_curators WHERE group_id = ?", (group_id,)
+            ).rowcount
+        except sqlite3.OperationalError:
+            curators = 0
         conn.execute("DELETE FROM groups WHERE id = ?", (group_id,))
         conn.commit()
+    return {"events_deleted": deleted, "events_unlinked": unlinked,
+            "members_removed": members, "curators_removed": curators}
 
 
 def get_group_member_role(group_id: str, google_id: str) -> Optional[str]:

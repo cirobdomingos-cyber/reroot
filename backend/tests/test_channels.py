@@ -1569,3 +1569,47 @@ def test_an_event_still_in_a_channel_is_untouched(api):
     ev = _add_to(client, cid, "u_founder")
     _db.init_db()
     assert _db.get_group_event(ev["id"]) is not None
+
+
+# -- 19. deleting a channel leaves nothing behind ----------------------
+
+def test_deleting_a_channel_takes_its_forks_and_their_rsvps(api):
+    _db, _main, client = api
+    gid = _crew(client, "u_founder")           # private: auto-RSVPs
+    ev = _add_to(client, gid, "u_founder")
+    with _db.get_conn() as conn:
+        assert conn.execute("SELECT 1 FROM rsvps WHERE event_id = ?", (ev["id"],)).fetchone()
+    out = _db.delete_group(gid)
+    assert out["events_deleted"] == 1
+    assert _db.get_group_event(ev["id"]) is None
+    with _db.get_conn() as conn:
+        assert conn.execute("SELECT 1 FROM rsvps WHERE event_id = ?", (ev["id"],)).fetchone() is None
+        assert conn.execute("SELECT 1 FROM group_members WHERE group_id = ?", (gid,)).fetchone() is None
+
+
+def test_an_event_also_in_another_group_is_unlinked_not_deleted(api):
+    _db, _main, client = api
+    a = _crew(client, "u_ana", "A")
+    b = _crew(client, "u_ana", "B")
+    ev = _crew_event(client, a)
+    client.post(f"/groups/{b}/events", json={
+        "google_id": "u_ana", "source_event_id": ev["id"], "name": ev["name"],
+        "venue": "Quintal", "date_start": "2099-11-01T18:00:00",
+    })
+    out = _db.delete_group(a)
+    assert out == {"events_deleted": 0, "events_unlinked": 1,
+                   "members_removed": 1, "curators_removed": 0}
+    row = _db.get_group_event(ev["id"])
+    assert row is not None and row["group_id"] == b and row["group_ids"] == [b]
+
+
+def test_the_admin_endpoint_is_founder_only_and_public_only(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    gid = _crew(client)
+    assert client.delete(f"/admin/channels/{cid}?requesting_email=ana@example.com").status_code in (401, 403)
+    assert client.delete(f"/admin/channels/{gid}?requesting_email={FOUNDER_EMAIL}").status_code == 404
+    r = client.delete(f"/admin/channels/{cid}?requesting_email={FOUNDER_EMAIL}")
+    assert r.status_code == 200 and r.json()["ok"] is True
+    assert client.get("/channels").json()["channels"] == []
+    assert _db.get_group(gid) is not None

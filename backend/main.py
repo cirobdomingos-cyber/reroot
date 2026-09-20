@@ -4816,8 +4816,23 @@ def delete_group(group_id: str, google_id: str):
     role = db.get_group_member_role(group_id, google_id)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Only group admins can delete the group")
-    db.delete_group(group_id)
-    return {"ok": True}
+    return {"ok": True, **db.delete_group(group_id)}
+
+
+@app.delete("/admin/channels/{group_id}")
+def admin_delete_channel(group_id: str, requesting_email: str):
+    """Delete an auê channel with everything that only exists because of
+    it. Founder-only, and only for public channels: a private crew is
+    its members' and is deleted by its own admin through /groups/{id}.
+
+    Exists so a channel can be rebuilt from the catalog cleanly rather
+    than corrected in place — every kind of leftover a channel can
+    accumulate (orphaned forks, stale invitee lists, curator RSVPs) has
+    now shown up once as a production bug."""
+    _require_founder(requesting_email)
+    if not db.is_public_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    return {"ok": True, **db.delete_group(group_id)}
 
 
 @app.get("/groups/by-invite/{invite_code}")
