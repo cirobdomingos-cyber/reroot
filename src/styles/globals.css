@@ -256,6 +256,13 @@ input  { font-family: inherit; }
   color: var(--text3);
   transition: color 0.15s;
 }
+/* A long label ("NOTIFICAÇÕES") clips at 360px against the 0.18em
+   tracking the short ones need to read as mono. Tighten the tracking
+   for those rather than shrink every label to fit the longest one —
+   9px is already the floor for legibility here. */
+.nav-item__label--long {
+  letter-spacing: 0.06em;
+}
 .nav-item--active .nav-item__label {
   color: var(--text);
 }
