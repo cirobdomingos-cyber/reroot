@@ -1514,3 +1514,54 @@ def test_a_fork_someone_built_on_is_still_a_plan(api):
     names = [e["name"] for e in
              client.get("/events/group?google_id=u_founder").json()["events"]]
     assert names == ["Masterclass DJ"]
+
+
+# -- 18. and the ghosts already written are cleared -------------------
+
+def test_the_migration_removes_an_orphan(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    _db.init_db()                      # re-run migrations, as a deploy does
+    assert _db.get_group_event(ev["id"]) is None
+
+
+def test_the_rsvp_moves_to_the_catalog_event(api):
+    """Adding to a channel auto-RSVPs the creator, and that "vou" was
+    about the night — which still exists in the catalog. Deleting the
+    row without moving it would quietly un-confirm them."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    def _rsvped(event_id):
+        with _db.get_conn() as conn:
+            return conn.execute(
+                "SELECT 1 FROM rsvps WHERE google_id = ? AND event_id = ?",
+                ("u_founder", event_id),
+            ).fetchone() is not None
+
+    assert _rsvped(ev["id"])
+    _db.init_db()
+    assert _rsvped("instagram_ig_x_A")
+    assert not _rsvped(ev["id"])
+
+
+def test_a_fork_someone_built_on_survives_the_migration(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_founder", "name": "Masterclass DJ", "venue": "MACRO",
+        "date_start": "2099-09-24T20:00:00", "source_event_id": "instagram_ig_x_A",
+        "note": "bora nessa",
+    })
+    _db.unlink_event_from_group(r.json()["id"], cid)
+    _db.init_db()
+    assert _db.get_group_event(r.json()["id"]) is not None
+
+
+def test_an_event_still_in_a_channel_is_untouched(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _add_to(client, cid, "u_founder")
+    _db.init_db()
+    assert _db.get_group_event(ev["id"]) is not None
