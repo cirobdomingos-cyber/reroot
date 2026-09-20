@@ -403,7 +403,12 @@ export default function ChannelDetail() {
       )}
 
       {/* ── Curadoria ── */}
-      {channel.can_curate && (
+      {/* Founder-only, not curator-only: with a single curator role
+          this panel exists to hand ONE channel to someone who isn't a
+          curator, and that's the founder's call. A curator seeing it
+          would read it as "appoint my co-curators", which isn't a
+          thing any more. */}
+      {channel.viewer_is_founder && (
         <ChannelCuration
           channel={channel}
           email={state.googleUser?.email}

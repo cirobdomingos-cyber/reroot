@@ -4557,10 +4557,19 @@ def get_channel(group_id: str, google_id: str = ""):
             "is_public": public,
             "viewer_role": role,
             # Whether this viewer may edit the channel and publish into
-            # it: the founder, or a curator OF THIS CHANNEL.
+            # it. One curator role (Sep 2026): a curator curates every
+            # channel — you don't have to be the rock specialist to add
+            # a show to Rockzera, and a curator who wants to help another
+            # channel along is welcome. Per-channel appointment still
+            # exists underneath, for handing a single channel to someone
+            # who isn't a curator; it's the founder's tool, so the screen
+            # needs to know who the founder is.
             "can_curate": bool(google_id) and (
-                db.is_channel_curator(group_id, google_id)
-                or db.is_founder((db.get_user_profile(google_id) or {}).get("email") or "")
+                _is_curator_google_id(google_id)
+                or db.is_channel_curator(group_id, google_id)
+            ),
+            "viewer_is_founder": bool(google_id) and db.is_founder(
+                (db.get_user_profile(google_id) or {}).get("email") or ""
             ),
         },
         "events": upcoming,
@@ -4616,6 +4625,11 @@ def _can_curate_channel(group_id: str, email: str) -> bool:
     "can touch the catalog" — approve suggestions, edit events, add IG
     handles. Running a channel is a different job, and the point of
     per-channel curators is handing out the second without the first."""
+    # One curator role (Sep 2026): a general curator edits any channel.
+    # The docstring above records why they were once kept apart; the
+    # split turned out to be more roles than the team needs.
+    if db.is_curator(email):
+        return True
     google_id = db.get_user_id_by_email(email)
     if google_id and db.is_channel_curator(group_id, google_id):
         return True
