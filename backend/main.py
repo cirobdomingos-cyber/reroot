@@ -6636,6 +6636,36 @@ def catalog_export(token: str = "", event_limit: int = 5000):
     return db.export_catalog(event_limit=min(event_limit, 20000))
 
 
+def _sync_payload_or_502(resp, endpoint: str) -> dict:
+    """Parse a sync response, or fail with something worth reading.
+
+    The origin serves a SPA, and its catch-all answers any unknown path
+    with index.html and a 200. So an endpoint that hasn't been deployed
+    there yet doesn't 404 — it returns a page, and the only symptom is
+    JSON parsing dying on "<". That reads as "production is broken"
+    when it means "production doesn't have this yet", which is the
+    normal state for the exporting half of a new sync: it lives in
+    production, so production has to ship first.
+    """
+    try:
+        return resp.json()
+    except Exception:
+        body = (resp.text or "")[:80].lstrip().lower()
+        if body.startswith("<!doctype") or body.startswith("<html"):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"A produção devolveu a página do app em {endpoint}, não dados — "
+                    "esse endpoint ainda não foi pra produção. A metade que exporta "
+                    "precisa estar lá antes desta aqui funcionar."
+                ),
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Produção respondeu algo que não é JSON em {endpoint}.",
+        )
+
+
 @app.get("/social-export")
 def social_export(token: str = ""):
     """Production side of the social sync, anonymised before it leaves.
@@ -6710,10 +6740,7 @@ def admin_sync_social(requesting_email: str = ""):
             status_code=502,
             detail=f"Produção respondeu {resp.status_code} — token errado ou origem errada?",
         )
-    try:
-        payload = resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+    payload = _sync_payload_or_502(resp, "/social-export")
 
     try:
         counts = db.import_social(payload)
@@ -6789,10 +6816,7 @@ def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
             ),
         )
 
-    try:
-        payload = resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+    payload = _sync_payload_or_502(resp, "/catalog-export")
 
     try:
         result = db.import_catalog(payload)
