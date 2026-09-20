@@ -2021,6 +2021,20 @@ def list_user_group_events(google_id: str):
         ds = ge.get("date_start") or ""
         if ds and ds[:10] < today:
             continue
+        # A channel's events are not the curator's personal plans, even
+        # though the curator created the row. Without this, whoever
+        # publishes into a channel gets every one of those events back
+        # in their own private feed — sorted above the catalog with the
+        # "your plan" treatment, while everyone else sees an ordinary
+        # card. Reported as "aparece com banner e em primeiro só no
+        # perfil admin".
+        #
+        # The channel's events reach people through the band above
+        # Eventos and the marker on the catalog row, which is the same
+        # for the curator as for anyone else.
+        if any(db.is_channel(gid) for gid in
+               {ge.get("group_id"), *(ge.get("group_ids") or [])} if gid):
+            continue
         out.append(_group_event_to_frontend(
             ge,
             group_name=_resolve_group_name(ge.get("group_id")),

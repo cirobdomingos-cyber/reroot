@@ -1889,7 +1889,12 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: ev.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
-        boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
+        // Lime for anything highlighted FOR you — your own plans, and
+        // now the catalog rows that came from a channel you follow.
+        // The channel's own identity stays magenta (the badge, the
+        // channel screen); lime is "this one is picked out for you",
+        // which is what it already means on free/going/confirmados.
+        boxShadow: (isGroupEvent || fromChannel) ? 'inset 3px 0 0 var(--sage)'
                   : isOngoing ? 'none'
                   : 'inset 3px 0 0 #7E57C2',
         display: 'flex', alignItems: 'stretch', gap: 14,
@@ -1941,7 +1946,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             // Day color matches the stripe — sage for group, purple for
             // one-off (mirrors the "Só únicos" filter chip), terra-light
             // blue for ongoing.
-            color: isGroupEvent ? 'var(--sage)'
+            color: (isGroupEvent || fromChannel) ? 'var(--sage)'
                  : isOngoing ? 'var(--terra-light)'
                  : '#7E57C2',
             letterSpacing: -0.5,
@@ -1992,10 +1997,10 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         {fromChannel && (
           <div className="neon-mono" style={{
             fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
-            color: 'var(--magenta)', marginBottom: 4,
+            color: 'var(--sage)', marginBottom: 4,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>
-            ▌{fromChannel}
+            {fromChannel}
           </div>
         )}
 

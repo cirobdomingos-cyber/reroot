@@ -33,7 +33,7 @@ export default function ChannelBand({ events = [] }) {
       }}>
         <h2 className="neon-mono" style={{
           fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
-          color: 'var(--magenta)', margin: 0,
+          color: 'var(--sage)', margin: 0,
         }}>
           Dos teus canais
         </h2>
@@ -53,14 +53,16 @@ export default function ChannelBand({ events = [] }) {
               flex: '0 0 auto', width: 190, textAlign: 'left', cursor: 'pointer',
               background: 'var(--bg2)', border: '1px solid var(--line)',
               borderRadius: 14, padding: '11px 12px',
-              // Same magenta edge the channel rows use, so the band and
-              // the channel list read as one thing.
-              boxShadow: 'inset 3px 0 0 var(--magenta)',
+              // Lime, matching the marked catalog rows below — one
+              // colour for "picked out for you" across both surfaces.
+              // Magenta stays the channel's own identity: the badge,
+              // the channel screen, the auê mark.
+              boxShadow: 'inset 3px 0 0 var(--sage)',
             }}
           >
             <span className="neon-mono" style={{
               display: 'block', fontSize: 9, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: 'var(--magenta)',
+              textTransform: 'uppercase', color: 'var(--sage)',
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {ev.groupName || 'Canal'}
