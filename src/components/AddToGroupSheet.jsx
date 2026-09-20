@@ -11,7 +11,7 @@ import { fetchGroups, fetchChannels, createGroupEvent, fetchGroupsWithSource, un
 //
 // The catalog event is mirrored into the group's events table — same
 // flow as the channel screen's "Do catálogo" button.
-export default function AddToGroupSheet({ open, onClose, event }) {
+export default function AddToGroupSheet({ open, onClose, event, occurrenceDay = null }) {
   const { state } = useApp()
   const navigate = useNavigate()
   const googleId = state.googleUser?.id
@@ -74,14 +74,25 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     try {
       const desc = (event.description || '').trim()
       const urlSuffix = event.url ? `\n\nVer original: ${event.url}` : ''
+      // A run — a residency, a week-long programação — is one catalog row
+      // rendered on each day it covers. Adding it from the 18th has to
+      // fork the 18th: the row's own dateStart is the day the run
+      // STARTED, so without this the event arrived in the channel
+      // already past and nobody could see it.
+      //
+      // date_end goes with it. The fork is the night the reader picked,
+      // not the whole run, so carrying the range would put the series
+      // back and re-open the same question inside the channel. When
+      // there is no occurrence day the event is a one-off or a run
+      // added as a run, and the range is carried as before — dropping
+      // it unconditionally is what once collapsed every multi-day
+      // event to its opening day.
+      const startTime = (event.dateStart || '').slice(11) || '00:00:00'
       const result = await createGroupEvent(group.id, googleId, {
         name: event.name,
         venue: event.venue || '',
-        date_start: event.dateStart,
-        // Carry the range across the fork. Hardcoding null here collapsed
-        // every multi-day catalog event (Carnaval, a week-long exhibition)
-        // to its opening day the moment someone added it to a group.
-        date_end: event.dateEnd || null,
+        date_start: occurrenceDay ? `${occurrenceDay}T${startTime}` : event.dateStart,
+        date_end: occurrenceDay ? null : (event.dateEnd || null),
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
         note: note.trim().slice(0, 280),

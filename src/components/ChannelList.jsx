@@ -90,12 +90,22 @@ export default function ChannelList() {
   // is noise. Same reasoning the other way — once you follow all of
   // them, "Descobrir" has nothing to show and goes away.
   // One pile for "channels in my life": the auê ones you follow and the
-  // private ones you're in. Ordered by what's actually happening in
-  // them, so the section leads with the one worth opening.
+  // private ones you're in.
+  //
+  // Kind first, then what's on. Sorting by count alone interleaved the
+  // two — a busy auê channel above your own crew — so the list had no
+  // shape and the badge was the only thing telling you which was which.
+  // Private leads, the same order the colour scale ranks them in: a
+  // channel of people you know outranks one auê curates, however much
+  // is in it. Inside each kind, most upcoming first.
   const following = [
     ...channels.filter(c => c.is_following).map(c => ({ ...c, _aue: true })),
     ...mine.map(g => ({ ...g, _aue: false })),
-  ].sort((a, b) => (b.upcoming_event_count || 0) - (a.upcoming_event_count || 0))
+  ].sort((a, b) => (
+    (a._aue === b._aue)
+      ? (b.upcoming_event_count || 0) - (a.upcoming_event_count || 0)
+      : (a._aue ? 1 : -1)
+  ))
 
   const explore = channels.filter(c => !c.is_following)
 
@@ -250,12 +260,10 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
-          {/* What's in it comes first. A channel that only reports how
-              many people are in it is asking for a tap without saying
-              what for. */}
-          {events > 0 ? `${events} ${events === 1 ? 'rolê' : 'rolês'}` : 'sem rolê marcado'}
+          {/* What's on is the number on the right now, so saying it
+              again here in words was the same fact twice in one row. */}
           {people != null && (
-            <> · {people} {aue ? 'seguindo' : (people === 1 ? 'membro' : 'membros')}</>
+            <>{people} {aue ? 'seguindo' : (people === 1 ? 'membro' : 'membros')}</>
           )}
         </div>
         {channel.description && (
@@ -266,6 +274,40 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
           </div>
         )}
       </div>
+
+      {/* How much is on, as a number rather than a clause.
+      
+          It was "3 rolês" in 12px grey, third in a sentence after the
+          channel's name — which made the tab a list of names when the
+          question it answers is which of them has something coming up.
+          Counts upcoming only: the backend's count already filters to
+          date_start >= today, so a channel that was busy last month
+          reads as quiet, which is the truth you want here.
+      
+          Takes the channel's own colour, so the number says whose it is
+          at the same time as how much. */}
+      {events > 0 && (
+        <div
+          onClick={onOpen}
+          title={`${events} ${events === 1 ? 'rolê' : 'rolês'} por vir`}
+          style={{
+            flexShrink: 0, cursor: 'pointer', textAlign: 'center',
+            minWidth: 30, marginLeft: 4,
+          }}
+        >
+          <div className="neon-display" style={{
+            fontSize: 22, lineHeight: 1, color: accent,
+          }}>
+            {events}
+          </div>
+          <div className="neon-mono" style={{
+            fontSize: 8, letterSpacing: '0.14em', textTransform: 'uppercase',
+            color: 'var(--text3)', marginTop: 2,
+          }}>
+            {events === 1 ? 'rolê' : 'rolês'}
+          </div>
+        </div>
+      )}
 
       {/* Only auê channels have a follow to toggle. A private one you're
           already in has no equivalent action here — you leave it from

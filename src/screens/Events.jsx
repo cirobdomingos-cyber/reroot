@@ -8,7 +8,6 @@ import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
 import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
-import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
 import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
@@ -557,6 +556,26 @@ export default function Events() {
   // landing in the middle of the Friday block.
   const sortFloor = getAnchorToday().getTime()
   const todayIsoForSort = getAnchorTodayIso()
+
+  // Which day of a run the reader is looking at.
+  //
+  // A residency or a week-long programação is ONE row in the catalog,
+  // shown on each day it covers — the card's date column is an override,
+  // not a different event. So "the 18th" and "the 14th" are the same
+  // row, and anything that acts on what the reader sees has to be told
+  // which day that was. Returns null for a one-off, whose own dateStart
+  // is already the answer.
+  const occurrenceDayFor = (ev) => {
+    if (!ev) return null
+    const isMultiDay = !!(
+      ev.dateEnd && ev.dateStart
+      && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10)
+    )
+    if (!ev.isRecurring && !isMultiDay) return null
+    if (selectedDay) return selectedDay
+    const todayIso = getAnchorTodayIso()
+    return eventCoversDay(ev, todayIso) ? todayIso : null
+  }
   function effectiveStartTs(ev) {
     const raw = ev.dateStart ? Date.parse(ev.dateStart) : NaN
     if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
@@ -705,12 +724,46 @@ export default function Events() {
   // category filter drops private rows, and a set built upstream would
   // still hold their source ids — taking the catalog original down with
   // rows that are no longer there, and making the event vanish entirely.
+  // Every private channel a night reached the viewer through, keyed by
+  // the catalog event its forks point at. Built before the collapse
+  // below, which keeps one fork and discards its siblings.
+  const forkNamesBySource = useMemo(() => {
+    const map = new Map()
+    for (const ev of groupEvents) {
+      if (!ev.sourceEventId) continue
+      const names = ev.groupNames?.length
+        ? ev.groupNames
+        : (ev.groupName ? [ev.groupName] : [])
+      if (!names.length) continue
+      const list = map.get(ev.sourceEventId) || []
+      for (const n of names) if (!list.includes(n)) list.push(n)
+      map.set(ev.sourceEventId, list)
+    }
+    return map
+  }, [groupEvents])
+
   const dropMirroredOriginals = (list) => {
     const mirrored = new Set(
       list.filter(e => e.isGroupEvent && e.sourceEventId).map(e => e.sourceEventId)
     )
-    if (mirrored.size === 0) return list
-    return list.filter(ev => ev.isGroupEvent || !mirrored.has(ev.id))
+    // ...and collapse forks of the SAME catalog event down to one.
+    //
+    // Adding a night to three channels writes three group_events rows —
+    // the per-group dedupe only stops a second copy in the SAME channel.
+    // So the same night rendered three identical cards. One row stands
+    // for all of them; channelSourcesFor already names every channel a
+    // row came from, so nothing is lost by dropping the rest.
+    const seenFork = new Set()
+    const out = []
+    for (const ev of list) {
+      if (!ev.isGroupEvent && mirrored.has(ev.id)) continue
+      if (ev.isGroupEvent && ev.sourceEventId) {
+        if (seenFork.has(ev.sourceEventId)) continue
+        seenFork.add(ev.sourceEventId)
+      }
+      out.push(ev)
+    }
+    return out
   }
 
   // Snapshot for the week strip's count badges — reflects every active
@@ -745,7 +798,20 @@ export default function Events() {
     // city catalog, so it stays in the first section rather than being
     // buried under Explorar — labelled for what it is, and counted as
     // private: nothing is more yours than a plan you made.
-    if (ev.isPersonalPlan) return [{ name: 'Plano', kind: 'private' }]
+    // "Plano" only when there is genuinely no channel behind it.
+    //
+    // isPersonalPlan is computed from the VIEWER's membership — it means
+    // "you are not in any group this event is tagged with", which is the
+    // right rule for hiding a private channel's name from an outsider
+    // and the wrong one for calling something your plan. An event you
+    // were invited to, from a channel you're not in, is not a plan you
+    // made. Where the backend won't name the channel, the honest label
+    // is no label at all.
+    const hasChannel = !!(ev.groupId || (ev.groupIds || []).length
+                          || (ev.groupNames || []).length)
+    if (ev.isPersonalPlan) {
+      return hasChannel ? [] : [{ name: 'Plano', kind: 'private' }]
+    }
     const out = []
     const add = (name, kind) => {
       if (name && !out.some(o => o.name === name)) out.push({ name, kind })
@@ -753,8 +819,12 @@ export default function Events() {
     if (ev.isGroupEvent) {
       const own = ev.groupNames?.length
         ? ev.groupNames
-        : (ev.groupName ? [ev.groupName] : ['Canal'])
+        : (ev.groupName ? [ev.groupName] : [])
       own.forEach(n => add(n, 'private'))
+      // Names from the sibling forks this row now stands for. Collapsing
+      // three rows into one without this would silently drop two of the
+      // three channels the night actually came from.
+      ;(forkNamesBySource.get(ev.sourceEventId) || []).forEach(n => add(n, 'private'))
       // The same post can sit in a private channel AND a public one.
       // The private row is the one that survives the dedupe below, so
       // it has to carry the public channel's name too — otherwise the
@@ -916,17 +986,7 @@ export default function Events() {
                     //     2026 reads as "happening today" instead of "May 2,
                     //     past"). One-off events fall through and keep their
                     //     own dateStart.
-                    displayDate={(() => {
-                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
-                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
-                        return selectedDay
-                      }
-                      const todayIso = getAnchorTodayIso()
-                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
-                        return todayIso
-                      }
-                      return null
-                    })()}
+                    displayDate={occurrenceDayFor(ev)}
                     t={t}
                   />
                 </motion.div>
@@ -1797,6 +1857,11 @@ export default function Events() {
         open={!!addToGroupEvent}
         onClose={() => setAddToGroupEvent(null)}
         event={addToGroupEvent}
+        // The day the reader was on, not the row's dateStart. Adding
+        // "Semana do Consumidor" from its 18th to a channel used to
+        // fork it on the 14th — the day the run started — so it landed
+        // in the channel already over.
+        occurrenceDay={occurrenceDayFor(addToGroupEvent)}
       />
 
       {/* Curator correction of a catalog event. Separate sheet from

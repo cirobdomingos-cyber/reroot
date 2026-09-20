@@ -154,8 +154,10 @@ test('your own private channels sit in Seguindo, not a section of their own', as
   await expect(page.getByText('Meus canais')).toHaveCount(0)
   await expect(page.getByText('Role do Sax')).toBeVisible()
   // Same card, counting members instead of followers — the difference
-  // is the badge and the noun, not the layout.
-  await expect(page.getByText(/3 rolês · 8 membros/)).toBeVisible()
+  // is the badge and the noun, not the layout. What's on is the number
+  // on the right; the subtitle stopped repeating it in words.
+  await expect(page.getByText(/8 membros/)).toBeVisible()
+  await expect(page.getByTitle('3 rolês por vir')).toBeVisible()
 })
 
 test('the split does not appear before the first follow', async ({ page }) => {
@@ -242,9 +244,14 @@ test('anyone can pass a channel along, follower or not', async ({ page }) => {
 test('the curator-only actions stay curator-only', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: false })
   await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toHaveCount(0)
-  // But the calendar is for anyone following — a channel with a
-  // schedule is more useful in a calendar than a private one is.
-  await expect(page.getByRole('button', { name: /Assinar calendário/ })).toBeVisible()
+})
+
+test('no channel offers a calendar subscription any more', async ({ page }) => {
+  // One place puts a night in your calendar: Meus rolês, next to the
+  // ones you said yes to. Subscribing to a whole channel's schedule was
+  // a calendar decision taken while deciding whether to follow.
+  await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByRole('button', { name: /Assinar calendário/ })).toHaveCount(0)
 })
 
 test('a curator gets the catalog picker', async ({ page }) => {
@@ -557,4 +564,112 @@ test('a private channel carries no switches either', async ({ page }) => {
   await openChannel(page, { is_public: false, viewer_role: 'member' })
   await expect(page.getByTitle(/Avisamos|Sem aviso/)).toHaveCount(0)
   await expect(page.getByTitle(/Aparece no topo|Só aqui dentro/)).toHaveCount(0)
+})
+
+// ── One night, one row, whatever produced the copies ──
+//
+// Reported from production: the same event rendered three identical
+// cards. Adding a night to three channels writes three group_events
+// rows — the per-group dedupe only stops a second copy in the SAME
+// channel — and nothing downstream knew they were one post.
+
+const THREE_FORKS = ['A', 'B', 'C'].map((k, i) => ({
+  id: `grp_ev_${k}`, name: 'Masterclass DJ', sourceEventId: 'instagram_ig_x_A',
+  isGroupEvent: true, groupId: `g_${k}`, groupName: `Canal ${k}`,
+  groupNames: [`Canal ${k}`], groupIds: [`g_${k}`], viewerGroupCount: 1,
+  dateStart: '2099-10-04T21:00:00', time: '21:00',
+  date: 'Sáb, 04 Out', venue: `MACRO ${i}`,
+}))
+
+test('three forks of one night render one row', async ({ page }) => {
+  await openEvents(page, [], THREE_FORKS)
+  await expect(page.getByText('Masterclass DJ')).toHaveCount(1)
+})
+
+test('and that row still names all three channels', async ({ page }) => {
+  // Collapsing without merging the names would silently drop two of the
+  // three channels the night actually came from.
+  await openEvents(page, [], THREE_FORKS)
+  await expect(page.getByText('Canal A')).toHaveCount(1)
+  await expect(page.getByText('Canal B')).toHaveCount(1)
+})
+
+test('an event from a channel is never labelled Plano', async ({ page }) => {
+  // isPersonalPlan means "the viewer is in none of this event's groups",
+  // which is the right rule for hiding a private channel's name and the
+  // wrong one for calling something your plan.
+  await openEvents(page, [], [{
+    ...THREE_FORKS[0], isPersonalPlan: true, groupNames: [], groupName: '',
+  }])
+  await expect(page.getByText('Masterclass DJ')).toHaveCount(1)
+  await expect(page.getByText('PLANO')).toHaveCount(0)
+})
+
+test('a plan with no channel at all is still called Plano', async ({ page }) => {
+  await openEvents(page, [], [{
+    id: 'grp_ev_solo', name: 'Jantar em casa', sourceEventId: '',
+    isGroupEvent: true, isPersonalPlan: true,
+    groupId: null, groupIds: [], groupNames: [],
+    dateStart: '2099-10-04T21:00:00', time: '21:00', date: 'Sáb, 04 Out',
+  }])
+  await expect(page.getByText('Plano')).toBeVisible()
+})
+
+// ── The Canais tab answers "what's on", not just "what exists" ──
+
+const CHANNEL_ROWS = {
+  channels: [
+    { id: 'c1', name: 'auê Rockzera', kind: 'channel', description: 'Guitarra',
+      follower_count: 12, is_following: true, upcoming_event_count: 7,
+      can_curate: false, visibility: 'public' },
+    { id: 'c2', name: 'auê Deu Risada', kind: 'channel', description: 'Comédia',
+      follower_count: 4, is_following: false, upcoming_event_count: 0,
+      can_curate: false, visibility: 'public' },
+  ],
+}
+
+async function openChannels(page) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType()
+    return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
+      ? route.continue() : route.abort()
+  })
+  await page.route('**/groups?**', route => route.fulfill({ json: { groups: [] } }))
+  await page.route('**/channels?**', route => route.fulfill({ json: CHANNEL_ROWS }))
+  await page.addInitScript(() =>
+    localStorage.setItem('aue_state', JSON.stringify({
+      hasJoined: true, googleUser: { id: 'u1', email: 'a@b.com', name: 'Ana' },
+    })))
+  await page.goto('/#/community')
+  await page.waitForTimeout(1400)
+}
+
+test('a channel with events leads with the number', async ({ page }) => {
+  await openChannels(page)
+  await expect(page.getByTitle('7 rolês por vir')).toBeVisible()
+})
+
+test('a channel with nothing coming up shows no number at all', async ({ page }) => {
+  // A zero is a number competing for the same attention as a seven.
+  await openChannels(page)
+  await expect(page.getByText('auê Deu Risada')).toBeVisible()
+  await expect(page.getByTitle(/0 rolês/)).toHaveCount(0)
+})
+
+test('Seguindo groups by kind before counting events', async ({ page }) => {
+  // Sorting by count alone interleaved the two kinds — a busy auê
+  // channel above your own crew — so the list had no shape and the
+  // badge was the only thing telling you which was which.
+  await openTab(page, [
+    { id: 'c1', name: 'auê Movimentado', kind: 'channel', follower_count: 9,
+      is_following: true, upcoming_event_count: 40, visibility: 'public' },
+  ], [
+    { id: 'g1', name: 'Crew Parada', member_count: 3, visibility: 'private',
+      upcoming_event_count: 1, role: 'admin' },
+  ])
+  const [crewY, aueY] = await Promise.all([
+    page.getByText('Crew Parada').boundingBox().then(b => b.y),
+    page.getByText('auê Movimentado').boundingBox().then(b => b.y),
+  ])
+  expect(crewY).toBeLessThan(aueY)
 })

@@ -325,6 +325,31 @@ def init_db():
                 PRIMARY KEY (google_id, event_id)
             )
         """)
+        # Strip followers out of public channels' invitee lists.
+        #
+        # Publishing into a channel expanded `extra_invitee_ids` to every
+        # member, and following a channel writes a member row — so a
+        # channel's whole programme arrived as personal invitations. New
+        # events stopped doing this (see create_group_event); the ones
+        # already written have to be corrected, because nothing else
+        # reads the list to mean anything but "was invited".
+        try:
+            rows = conn.execute(
+                """SELECT ge.id FROM group_events ge
+                     JOIN groups g
+                       ON (ge.group_id = g.id
+                           OR ge.group_ids LIKE '%"' || g.id || '"%')
+                    WHERE g.visibility = 'public'
+                      AND ge.extra_invitee_ids NOT IN ('[]', '')"""
+            ).fetchall()
+            for r in rows:
+                conn.execute(
+                    "UPDATE group_events SET extra_invitee_ids = '[]' WHERE id = ?",
+                    (r["id"],),
+                )
+        except sqlite3.OperationalError:
+            pass  # tables not created yet on a fresh DB
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS submitted_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1049,6 +1074,35 @@ def set_group_event_source(event_id: str, source_event_id: str) -> bool:
         )
         conn.commit()
         return cur.rowcount == 1
+
+
+def pin_group_event_fields(event_id: str, fields: list[str]) -> bool:
+    """Mark fields on a private event as humanly decided.
+
+    _merge_source_event reads a fork's facts back off the catalog row it
+    points at — that's what keeps a forked event's name, time and cover
+    correct as the scrape improves them. edited_fields is the opt-out,
+    and it exists for the case where the person meant something the
+    catalog doesn't say."""
+    if not fields:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT edited_fields FROM group_events WHERE id = ?", (event_id,)
+        ).fetchone()
+        if not row:
+            return False
+        try:
+            already = json.loads(row["edited_fields"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            already = []
+        merged = list(already) + [f for f in fields if f not in already]
+        conn.execute(
+            "UPDATE group_events SET edited_fields = ? WHERE id = ?",
+            (json.dumps(merged), event_id),
+        )
+        conn.commit()
+    return True
 
 
 def count_upcoming_events(city: str) -> int:
@@ -4474,7 +4528,15 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
                    ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
                  JOIN group_members gm
                    ON gm.group_id = g.id AND gm.google_id = ?
-                WHERE gm.following = 1
+                  -- Following, OR running it. auê holds an admin row on
+                  -- its own channels and deliberately doesn't follow them
+                  -- (ownership isn't a subscription, and counting it
+                  -- opened every channel at "1 seguindo"). But that also
+                  -- meant a curator's own channels never reached this
+                  -- feed, so events they had published sat in Eventos
+                  -- looking like plain catalog rows with nothing saying
+                  -- where they came from — reported from production.
+                WHERE (gm.following = 1 OR gm.role IN ('admin', 'curator'))
                   AND gm.prioritize = 1
                   -- Public only. A private channel's events already
                   -- reach Eventos through /events/group, and now that

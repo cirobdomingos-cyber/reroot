@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, declineEventInvite, deletePersonalPlan, deleteGroupEvent } from '../services/api'
 import Avatar from '../components/Avatar'
 import HomeEventRow from '../components/HomeEventRow'
+import AddToCalendar from '../components/AddToCalendar'
 
 // All RSVPs in one place — yours + your friends'.
 //
@@ -565,6 +566,21 @@ function RsvpRow({ entry, friends = [], onOpen, onCancel, muted, undated }) {
           background: 'var(--sage-pale)', padding: '4px 8px', borderRadius: 6,
         }}>
           Confirmado
+        </span>
+      )}
+      {/* The only place a single event goes to your calendar.
+      
+          It used to sit on the event screen and on every channel (as a
+          feed subscription), which meant deciding about your calendar
+          while deciding whether to go. You add a night to your calendar
+          because you're going — so it lives with the list of nights you
+          said yes to, and nowhere else. */}
+      {!undated && (
+        <span onClick={(e) => e.stopPropagation()}>
+          <AddToCalendar event={{
+            name: entry.name, venue: entry.venue,
+            dateStart: entry.dateStart, url: entry.url,
+          }} />
         </span>
       )}
       <button

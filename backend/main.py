@@ -5313,7 +5313,23 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             # out then, not now.
             return {**existing, "notified_count": 0}
 
-    if req.invitee_google_ids is None:
+    # Nobody is invited to a public channel.
+    #
+    # Publishing into one used to write every follower into
+    # extra_invitee_ids, because a channel is a `groups` row and this
+    # expanded members. But that list is what every personal surface
+    # keys off — "esperando você", "ver convite", the creator-or-invitee
+    # visibility rule, isPersonalPlan — so following auê Rockzera turned
+    # its whole programme into a pile of personal invitations, and an
+    # event you were "invited" to by a channel you aren't a member of
+    # came back labelled as your own plan.
+    #
+    # Following is not being invited. A channel's events reach you
+    # through the channel screen and the Eventos section, neither of
+    # which consults this list.
+    if db.is_public_channel(group_id):
+        invitees = []
+    elif req.invitee_google_ids is None:
         invitees = [
             m["google_id"]
             for m in db.get_group_members(group_id)
@@ -5346,6 +5362,25 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         source_event_id=(req.source_event_id or "").strip(),
     )
     event = _attach_instagram_post(event, req.image_url, req.source_url)
+    # A fork reads its facts back off the catalog row it points at, so
+    # that a forked event's name, time and cover keep improving as the
+    # scrape does. That is right for everything except a date the caller
+    # chose on purpose.
+    #
+    # A run — a residency, a week-long programação — is one catalog row
+    # shown on every day it covers. Adding it from the 18th forks the
+    # 18th, but the catalog row still says the run STARTED on the 14th,
+    # and the merge would quietly put the 14th back: the event arrives
+    # in the channel already over, which is how it was reported. Pinning
+    # is the existing way to say "a human decided this".
+    if src_id and (req.date_start or "")[:10]:
+        catalog_row = db.get_event_by_id(src_id)
+        catalog_day = _as_iso(getattr(catalog_row, "date_start", ""))[:10] if catalog_row else ""
+        if catalog_day and catalog_day != req.date_start[:10]:
+            db.pin_group_event_fields(event["id"], ["date_start", "date_end"])
+            event["edited_fields"] = list(
+                set((event.get("edited_fields") or []) + ["date_start", "date_end"])
+            )
     _queue_catalog_request(event, req, background_tasks)
 
     # Auto-RSVP the creator — same contract as create_personal_plan.

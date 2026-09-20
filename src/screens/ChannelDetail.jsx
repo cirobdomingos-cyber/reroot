@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
 import {
-  CalendarSheet, CatalogPickerSheet, InviteSheet, MembersSheet,
+  CatalogPickerSheet, InviteSheet, MembersSheet,
 } from '../components/GroupSheets'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
@@ -12,7 +12,7 @@ import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
-  createGroupEvent, getGroupCalendarFeedUrl, leaveGroup,
+  createGroupEvent, leaveGroup,
 } from '../services/api'
 
 // The channel screen — the only one, for both kinds.
@@ -46,7 +46,6 @@ export default function ChannelDetail() {
   const googleId = state.googleUser?.id
 
   const [data, setData] = useState(null)   // null = loading
-  const [showCalendar, setShowCalendar] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
   // Private-channel affordances. They live on the same screen as the
   // public ones and differ by permission, not by existing somewhere
@@ -345,12 +344,6 @@ export default function ChannelDetail() {
                 
                 A private channel still pushes at the moment. There the
                 event IS the message. */}
-            {channel.feed_token
-              && (channel.is_following || channel.can_curate || isPrivate) && (
-              <IconAction onClick={() => setShowCalendar(true)} title="Assinar calendário">
-                📅
-              </IconAction>
-            )}
             {/* Invite belongs to a private channel only: you follow a
                 public one from an open list, and there is nobody to
                 invite into something anyone can already find. */}
@@ -464,13 +457,7 @@ export default function ChannelDetail() {
         onCreated={() => { setShowNewEvent(false); load() }}
       />
 
-      <CalendarSheet
-        open={showCalendar}
-        onClose={() => setShowCalendar(false)}
-        group={channel}
-        feedUrl={getGroupCalendarFeedUrl(channel.feed_token)}
-        t={{}}
-      />
+
       <CatalogPickerSheet
         open={showCatalog}
         onClose={() => setShowCatalog(false)}
@@ -508,6 +495,7 @@ function ChannelRow({ ev, navigate }) {
       time={ev.time}
       venue={ev.venue}
       isRecurring={ev.isRecurring}
+      thumbUrl={ev.imageUrl || ''}
       // Not a private event here — a channel's events are published, and
       // the padlock this flag draws would say the opposite.
       isGroupEvent={false}
