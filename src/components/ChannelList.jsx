@@ -107,9 +107,7 @@ export default function ChannelList() {
         aue={item._aue !== false}
         canFollow={!!googleId}
         busy={pending === item.id}
-        onOpen={() => navigate(
-          item._aue === false ? `/groups/${item.id}` : `/channels/${item.id}`,
-        )}
+        onOpen={() => navigate(`/channels/${item.id}`)}
         onToggle={() => toggle(item)}
       />
     )
@@ -202,12 +200,11 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
   // both "yours" — same marker, because to the reader they're the same
   // state.
   const isMine = aue ? channel.is_following : true
-  // Brand split: magenta is the primary accent — the logo, the active
-  // nav, auê itself — so auê's channels carry it. Private ones take
-  // cyan, the secondary accent. Both are already in the palette, so
-  // the distinction reads as the product rather than as two arbitrary
-  // colours, and it survives a glance that never reaches the badge.
-  const accent = aue ? 'var(--magenta)' : 'var(--cyan)'
+  // The provenance scale, same one the Eventos list uses: a row here
+  // and a row there are the same channel seen twice, so they cannot
+  // disagree about its colour. auê keeps magenta (the logo, the active
+  // nav, auê itself); private takes cyan.
+  const accent = aue ? 'var(--from-aue)' : 'var(--from-private)'
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
@@ -229,23 +226,26 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
               style={{
                 flexShrink: 0, fontSize: 10, fontWeight: 800,
                 padding: '2px 7px', borderRadius: 7,
-                background: 'var(--magenta)', color: 'var(--bg)',
+                background: 'var(--from-aue)', color: 'var(--bg)',
                 letterSpacing: '0.06em',
               }}
             >
               auê
             </span>
           ) : (
+            // "seu" was wrong — you can be in a private channel you
+            // didn't create. The badge names what the channel IS, not
+            // whose it is, which is also all the reader needs from it.
             <span
-              title="Canal privado — só quem você convidar"
+              title="Canal privado — só quem for convidado"
               style={{
                 flexShrink: 0, fontSize: 10, fontWeight: 800,
                 padding: '2px 7px', borderRadius: 7,
-                background: 'var(--cyan)', color: 'var(--bg)',
+                background: 'var(--from-private)', color: 'var(--bg)',
                 letterSpacing: '0.06em',
               }}
             >
-              🔒 seu
+              🔒 privado
             </span>
           )}
         </div>
@@ -278,7 +278,7 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
             flexShrink: 0, padding: '8px 14px', borderRadius: 10,
             fontSize: 12, fontWeight: 700, cursor: 'pointer',
             border: channel.is_following ? '1.5px solid var(--line)' : 'none',
-            background: channel.is_following ? 'transparent' : 'var(--magenta)',
+            background: channel.is_following ? 'transparent' : accent,
             color: channel.is_following ? 'var(--text2)' : 'var(--bg)',
             opacity: busy ? 0.6 : 1,
           }}

@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../context/AppContext'
-import { fetchGroups, createGroupEvent, fetchGroupsWithSource, unlinkEventFromGroup } from '../services/api'
+import { fetchGroups, fetchChannels, createGroupEvent, fetchGroupsWithSource, unlinkEventFromGroup } from '../services/api'
 
 // Reusable bottom sheet for "add this catalog event to one of my groups".
 // Lists the user's groups; tap one to add the event. Hidden when not
 // signed in (groups need a google_id).
 //
 // The catalog event is mirrored into the group's events table — same
-// flow as the GroupDetail "Do catálogo" button.
+// flow as the channel screen's "Do catálogo" button.
 export default function AddToGroupSheet({ open, onClose, event }) {
   const { state } = useApp()
   const navigate = useNavigate()
@@ -42,9 +42,19 @@ export default function AddToGroupSheet({ open, onClose, event }) {
       // event?.id might be empty for some weird flows — fetch returns []
       // gracefully so we don't gate on the result.
       fetchGroupsWithSource(event?.id || '', googleId),
-    ]).then(([gs, linked]) => {
+      // Channels you curate belong in this list too: publishing an
+      // event into Rockzão is the same act as adding it to your own
+      // channel, and making you open the channel first to do it was an
+      // extra screen for no reason. Only the ones you may write to —
+      // can_curate is computed server-side, and the backend refuses
+      // the rest anyway.
+      fetchChannels(googleId),
+    ]).then(([gs, linked, channels]) => {
       if (cancelled) return
-      setGroups(gs || [])
+      const curated = (channels || [])
+        .filter(c => c.can_curate)
+        .map(c => ({ ...c, _aue: true }))
+      setGroups([...curated, ...(gs || [])])
       setLinkedGroupIds(new Set(linked?.linked_group_ids || []))
       setLoading(false)
     })
@@ -190,17 +200,6 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                     {note.length} / 280
                   </div>
                 )}
-                {/* Said up front, not asked. Adding an event already
-                    pushes to every member — people just had no way to
-                    know that, which is half of why the group sits
-                    unused. A confirm dialog here would put a brake on
-                    the exact thing worth encouraging. */}
-                <div style={{
-                  fontSize: 11, color: 'var(--charcoal-mid)',
-                  marginTop: 8, lineHeight: 1.4,
-                }}>
-                  🔔 Todo mundo do canal é avisado na hora.
-                </div>
               </div>
             )}
 
@@ -269,10 +268,28 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                       <span style={{ fontSize: 22 }}>👥</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
                           fontSize: 14, fontWeight: 700, color: 'var(--charcoal)',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         }}>
-                          {g.name}
+                          <span style={{
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {g.name}
+                          </span>
+                          {/* Same badge the channel list uses, so a
+                              curator can tell at a glance that picking
+                              this publishes to everyone following it
+                              rather than to a handful of friends. */}
+                          {g._aue && (
+                            <span style={{
+                              flexShrink: 0, fontSize: 9, fontWeight: 800,
+                              padding: '2px 6px', borderRadius: 6,
+                              background: 'var(--magenta)', color: 'white',
+                              letterSpacing: '0.06em',
+                            }}>
+                              auê
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: alreadyLinked ? 'var(--sage)' : 'var(--charcoal-mid)', marginTop: 1 }}>
                           {alreadyLinked ? (

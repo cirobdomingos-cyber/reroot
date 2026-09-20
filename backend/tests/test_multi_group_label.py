@@ -115,6 +115,28 @@ def test_someone_in_both_gets_a_name_and_a_count(world):
     assert ev["viewerGroupCount"] == 2
 
 
+def test_someone_in_both_gets_both_names(world):
+    """A count answers "how many", not "which". The Eventos list shows
+    one row per night and names every channel it came from, so it needs
+    the names — and it can't look them up itself, because the whole
+    point of viewer-scoping is that it never sees the other channel."""
+    _db, client, ids = world
+    ev = _feed(client, "ana")
+    assert sorted(ev["groupNames"]) == ["Turma A", "Turma B"]
+    # The visible one leads, so a screen that shows a single name and a
+    # list that shows all of them agree on which comes first.
+    assert ev["groupNames"][0] == ev["groupName"]
+
+
+def test_a_member_of_one_channel_is_told_about_that_one_only(world):
+    """The names carry the same viewer-scoping as the ids. Leaking the
+    full list here would hand an outsider the name of a private channel
+    they were never in — the exact leak groupIds was narrowed to fix."""
+    _db, client, ids = world
+    assert _feed(client, "bia")["groupNames"] == ["Turma B"]
+    assert _feed(client, "caio")["groupNames"] == ["Turma A"]
+
+
 # -- 2. a channel's screen names itself ------------------------------
 
 @pytest.mark.parametrize("who,key,expected", [

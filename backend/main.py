@@ -1883,6 +1883,22 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         visible_group_name = group_name        # caller already resolved it
     else:
         visible_group_name = (db.get_group(visible_group_id) or {}).get("name") or ""
+    # Every channel of the viewer's this event sits in, named, with the
+    # visible one first. groupName names exactly one of them, which is
+    # right for a screen that is already inside a channel and wrong for
+    # a list: there the card has to say where the night came from, and
+    # an event in two channels was answering that question twice — once
+    # per row, because each channel's copy arrived by its own path.
+    visible_group_names: list[str] = []
+    if show_group:
+        ordered = [visible_group_id] + [
+            gid for gid in viewer_group_ids if gid != visible_group_id
+        ]
+        for gid in ordered:
+            nm = (visible_group_name if gid == visible_group_id
+                  else (db.get_group(gid) or {}).get("name") or "")
+            if nm and nm not in visible_group_names:
+                visible_group_names.append(nm)
     # Personal-event mode (frontend uses this to pick "Convite de Ciro"
     # over a group label, and to bypass group-membership UI affordances).
     # Now defined per-viewer: an outsider on a group-tagged event sees
@@ -1954,6 +1970,9 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # ship to everyone, which handed an outsider the ids of groups
         # the three lines above go out of their way to hide.
         "groupIds": viewer_group_ids,
+        # Names for those ids, visible one first. See above: a list row
+        # names all of them, a channel screen names the one you're on.
+        "groupNames": visible_group_names,
         # How many of the viewer's own groups this single event belongs
         # to. Lets the card say "Turma A +1" instead of implying the
         # event lives in one place.
@@ -2020,6 +2039,24 @@ def list_user_group_events(google_id: str):
     for ge in db.get_events_visible_to_user(google_id):
         ds = ge.get("date_start") or ""
         if ds and ds[:10] < today:
+            continue
+        # A PUBLIC channel's events are not the curator's personal
+        # plans, even though the curator created the row. Without this,
+        # whoever publishes into one gets every event back in their own
+        # private feed — sorted above the catalog with the "your plan"
+        # treatment, while everyone else sees an ordinary card.
+        #
+        # They reach people through the band above Eventos and the
+        # marker on the catalog row, which is the same for the curator
+        # as for anyone else.
+        #
+        # Private channels are the opposite case and must NOT be
+        # excluded: their events reach members through exactly this
+        # feed, because members were invited to them. Scoping this to
+        # public channels is the difference, and getting it wrong
+        # emptied every crew's feed at once.
+        if any(db.is_public_channel(gid) for gid in
+               {ge.get("group_id"), *(ge.get("group_ids") or [])} if gid):
             continue
         out.append(_group_event_to_frontend(
             ge,
@@ -4390,12 +4427,24 @@ def get_channel(group_id: str, google_id: str = ""):
     Open to anyone, signed in or not: a channel that can't be looked at
     before following makes the follow a blind purchase."""
     channel = db.get_group(group_id)
-    if not channel or channel.get("kind") != "channel":
+    if not channel:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
 
-    # Published feed: everyone sees every event, follower or not. auê
-    # creates them with no invitees, so the crew visibility rule would
-    # return an empty list to the channel's own followers.
+    # One screen serves both kinds, so this endpoint has to gate the way
+    # the old group endpoint did: a private channel is for the people in
+    # it. A public one is open, because being able to look before you
+    # follow is the whole model.
+    public = channel.get("visibility") == "public"
+    role = db.get_group_member_role(group_id, google_id) if google_id else None
+    if not public and role is None:
+        raise HTTPException(status_code=403, detail="Esse canal é privado")
+
+    # A public channel is a published feed: everyone sees every event,
+    # follower or not, because auê creates them with no invitees and the
+    # crew visibility rule would hand its own followers an empty list.
+    #
+    # A private one keeps that rule — its events are the members', and
+    # an outsider invited to one specific night must not see the rest.
     events = [
         _group_event_to_frontend(
             e,
@@ -4403,7 +4452,8 @@ def get_channel(group_id: str, google_id: str = ""):
             viewer_google_id=google_id,
             prefer_group_id=group_id,
         )
-        for e in db.get_group_events(group_id, viewer_google_id=None)
+        for e in db.get_group_events(
+            group_id, viewer_google_id=None if public else google_id)
     ]
     today = datetime.now(timezone.utc).date().isoformat()
     upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
@@ -4414,7 +4464,11 @@ def get_channel(group_id: str, google_id: str = ""):
     # role='follower' — so auê saw "Seguindo" on one screen and "Seguir"
     # on the other, for the same channel.
     members = db.get_group_members(group_id)
-    followers = [m for m in members if m.get("following")]
+    # "Followers" on a public channel, "members" on a private one — same
+    # rows, and the screen picks the word. On a private channel everyone
+    # in it counts, because being a member IS being in it; following is
+    # only about whether it also shows up in your lists.
+    followers = [m for m in members if (m.get("following") or not public)]
     is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
 
     return {
@@ -4427,6 +4481,11 @@ def get_channel(group_id: str, google_id: str = ""):
             "notify": db.get_channel_notify(group_id, google_id),
             "prioritize": db.get_channel_prioritize(group_id, google_id),
             "upcoming_event_count": len(upcoming),
+            # The screen needs to know which shape to render: a public
+            # channel has followers and no invite, a private one has
+            # members and an invite code.
+            "is_public": public,
+            "viewer_role": role,
             # Whether this viewer may edit the channel and publish into
             # it: the founder, or a curator OF THIS CHANNEL.
             "can_curate": bool(google_id) and (
@@ -4454,19 +4513,43 @@ class ChannelCuratorAdd(BaseModel):
     google_id: str
 
 
-def _can_curate_channel(group_id: str, email: str) -> bool:
-    """Who may edit a channel and publish into it: the founder, or
-    someone made a curator OF THAT CHANNEL.
+def _require_channel_owner(group_id: str, email: str) -> str:
+    """Only the owner appoints curators — auê on a public channel, the
+    creator on a private one.
 
-    Global curators are deliberately NOT included. That role is "can
-    touch the catalog" — approve suggestions, edit events, add IG
-    handles. Running Rockzão is a different job, and the whole point of
-    per-channel curators is being able to hand out the second without
-    the first."""
-    if db.is_founder(email):
-        return True
+    Not curators themselves: a curator who can appoint curators makes
+    the roster ungovernable, and there is exactly one person who owns
+    that decision for any given channel."""
     google_id = db.get_user_id_by_email(email)
-    return bool(google_id) and db.is_channel_curator(group_id, google_id)
+    owner = db.channel_owner(group_id)
+    if google_id and owner and google_id == owner:
+        return google_id
+    if db.is_public_channel(group_id) and db.is_founder(email):
+        return google_id or ""
+    raise HTTPException(
+        status_code=403,
+        detail="Só quem criou esse canal pode escolher a curadoria",
+    )
+
+
+def _can_curate_channel(group_id: str, email: str) -> bool:
+    """Who may edit a channel: its owner, or someone the owner
+    appointed.
+
+    The founder counts only on a PUBLIC channel, because that's one auê
+    owns. Letting the founder edit anyone's private channel would make
+    "private" mean something it doesn't — and the unification is about
+    both kinds working the same way with a different owner, not about
+    one owner outranking the other.
+
+    Global curators are deliberately not included either. That role is
+    "can touch the catalog" — approve suggestions, edit events, add IG
+    handles. Running a channel is a different job, and the point of
+    per-channel curators is handing out the second without the first."""
+    google_id = db.get_user_id_by_email(email)
+    if google_id and db.is_channel_curator(group_id, google_id):
+        return True
+    return db.is_public_channel(group_id) and db.is_founder(email)
 
 
 @app.put("/channels/{group_id}")
@@ -4494,7 +4577,7 @@ def list_channel_curators(group_id: str, requesting_email: str = ""):
     see the roster, and it's a list of real people."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(requesting_email)
+    _require_channel_owner(group_id, requesting_email)
     return {"curators": db.list_channel_curators(group_id)}
 
 
@@ -4505,7 +4588,7 @@ def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
     person who owns that decision."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(req.requesting_email)
+    _require_channel_owner(group_id, req.requesting_email)
     if not db.get_user_profile(req.google_id):
         raise HTTPException(status_code=404, detail="Pessoa não encontrada")
     db.add_channel_curator(group_id, req.google_id)
@@ -4518,7 +4601,7 @@ def remove_channel_curator(group_id: str, google_id: str, requesting_email: str 
     ownership of the channel survives this being called on it."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_founder(requesting_email)
+    _require_channel_owner(group_id, requesting_email)
     db.remove_channel_curator(group_id, google_id)
     return {"ok": True, "curators": db.list_channel_curators(group_id)}
 
@@ -4670,10 +4753,16 @@ def get_group(group_id: str, google_id: str):
 
 @app.put("/groups/{group_id}")
 def update_group(group_id: str, req: GroupUpdateRequest):
-    """Update group info. Requires admin role."""
-    role = db.get_group_member_role(group_id, req.google_id)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update the group")
+    """Rename a channel or rewrite its description.
+
+    Owner or curator. Curators used to exist only on auê's channels,
+    so a private one had exactly one person who could change anything —
+    which is the gap the unification closes."""
+    if not db.is_channel_curator(group_id, req.google_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Só quem cuida desse canal pode editar",
+        )
     db.update_group(group_id, name=req.name, description=req.description, visibility=req.visibility)
     return {"ok": True}
 
@@ -5020,21 +5109,51 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
 
 @app.get("/catalog-events/{source_event_id}/groups")
 def get_groups_with_source(source_event_id: str, google_id: str):
-    """For each group the caller belongs to, return whether that group
-    already has a fork of this catalog event. Drives the AddToGroupSheet
-    "already added" affordance — without it, users have no way to know
-    they've already added the event to a group except by checking each
-    group manually. Returns just the list of group ids that already
-    have a fork."""
+    """Which channels already hold a fork of this event. Drives the
+    "Adicionado · toque pra remover" state in AddToGroupSheet; without
+    it the only way to know is to open each channel and look.
+
+    Two things this has to get right, and used to get wrong:
+
+    1. Channels count. The scan ran over get_groups_for_user, which
+       deliberately excludes channels (see its docstring), while the
+       sheet lists every channel the caller curates right alongside the
+       crews. So an auê channel that already had the event sat there
+       offering to add it again, and the answer was wrong for exactly
+       the rows the curator uses most.
+
+    2. The id may already be a fork's. Once an event has been added
+       anywhere, the row the user is looking at in Eventos IS the fork,
+       so the sheet hands us `grp_ev_…` and not the catalog id. Resolve
+       through it, and count the fork's own channels while we're there.
+
+    Scanning every channel rather than only the curated ones is
+    deliberate: which events a public channel holds is public — you can
+    open it and read them — and the sheet renders rows only for the
+    channels it already listed, so extra ids here surface nothing."""
     if not google_id or not source_event_id:
         return {"linked_group_ids": []}
-    user_groups = db.get_groups_for_user(google_id) or []
     linked: list[str] = []
-    for g in user_groups:
+    catalog_id = source_event_id
+    fork = db.get_group_event(source_event_id)
+    if fork:
+        catalog_id = (fork.get("source_event_id") or "").strip() or source_event_id
+        for gid in [fork.get("group_id"), *(fork.get("group_ids") or [])]:
+            if gid and gid not in linked:
+                linked.append(gid)
+    candidates: list[str] = []
+    for g in (db.get_groups_for_user(google_id) or []):
         gid = g.get("id") or g.get("group_id")
-        if not gid:
+        if gid and gid not in candidates:
+            candidates.append(gid)
+    for c in (db.list_channels(google_id) or []):
+        gid = c.get("id")
+        if gid and gid not in candidates:
+            candidates.append(gid)
+    for gid in candidates:
+        if gid in linked:
             continue
-        if db.find_group_event_by_source(gid, source_event_id):
+        if db.find_group_event_by_source(gid, catalog_id):
             linked.append(gid)
     return {"linked_group_ids": linked}
 
@@ -5059,7 +5178,14 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # A channel is curated: following it must not grant the right to
     # publish into it. Without this, "seguir" would be an open write to
     # a feed every other follower sees.
-    if db.is_channel(group_id) and not (
+    # PUBLIC channels only. Publishing into one is publishing to
+    # everyone who follows it, so it belongs to whoever runs it.
+    #
+    # A private channel stays open to its members, which is the whole
+    # point of it — control here means administration, not publishing.
+    # Only 3 of 38 accounts have ever created an event, and narrowing
+    # who may add one is the opposite of what that number asks for.
+    if db.is_public_channel(group_id) and not (
         _is_curator_google_id(req.google_id)
         or db.is_channel_curator(group_id, req.google_id)
     ):
@@ -5140,7 +5266,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
                             try:
                                 _send_push_to_user(
                                     invitee_id, title=title, body=body,
-                                    url=f"/#/groups/{group_id}", tag=tag,
+                                    url=f"/#/channels/{group_id}", tag=tag,
                                 )
                             except Exception as exc:
                                 log.warning(
@@ -5255,7 +5381,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # already gates groupId/groupName on membership, and GET /groups/{id}
     # 403s non-members — but the push bypassed both: it put the private
     # group's NAME in the title and deep-linked every recipient to
-    # /#/groups/{id}, a page outsiders are then refused. So the one
+    # /#/channels/{id}, a page outsiders are then refused. So the one
     # channel that reaches you before you open the app was the one
     # leaking. Members get the group framing; outsiders get the creator's
     # name and a link to the event itself.
@@ -5272,7 +5398,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
                     invitee_id,
                     title=f"🎲 {group_name}" if is_member else "🎲 Convite",
                     body=body if is_member else outsider_body,
-                    url=f"/#/groups/{group_id}" if is_member else _event_deep_link(event["id"]),
+                    url=f"/#/channels/{group_id}" if is_member else _event_deep_link(event["id"]),
                     tag=tag,
                 )
             except Exception as exc:

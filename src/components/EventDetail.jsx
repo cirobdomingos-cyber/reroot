@@ -1,7 +1,7 @@
 /**
  * The event detail view — one implementation, both entry points.
  *
- * Lived inside Events.jsx as DetailPanel while GroupDetail.jsx carried a
+ * Lived inside Events.jsx as DetailPanel while the crew screen carried a
  * 421-line near-copy called GroupEventHero. Same event, two renderings:
  * the group one used a 180px hero against the feed's 240px, and its
  * no-image fallback was still `linear-gradient(135deg, var(--sage),
@@ -10,10 +10,10 @@
  *
  * The copy was never necessary: this component has always handled group
  * events (the feed lists them and opens them here) and already takes
- * canInvite / canEdit / onCoHostsChanged / onDelete. GroupDetail just
+ * canInvite / canEdit / onCoHostsChanged / onDelete. The channel screen just
  * grew its own before that was true.
  *
- * Callers pass the frontend-normalized camelCase event shape. GroupDetail
+ * Callers pass the frontend-normalized camelCase event shape. ChannelDetail
  * holds raw snake_case DB rows from /groups/{id}, so it normalizes at the
  * call site — see toDetailShape there.
  */
@@ -274,7 +274,7 @@ export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
   )
 }
 
-export default function EventDetail({ event: ev, googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
+export default function EventDetail({ event: ev, fromChannels = [], googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   // "Não vou" is offered to invitees of a private event who haven't
   // answered yet. Hosts delete instead of declining.
@@ -759,14 +759,51 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           // an absent line than one asserting "Grátis" off a flag the
           // extractor sets whenever a caption is silent about money.
           const costValue = ev.price || null
+          // FONTE is where the post came from — the IG account that
+          // published it. It used to fall through to categoryLabel,
+          // which for anything private read "Grupo": a word the product
+          // retired, naming a thing the reader can't act on. A private
+          // event has no publisher, so the row is dropped rather than
+          // filled with a category. An absent line beats a wrong one,
+          // same reasoning as CUSTO above.
           const sourceValue = ev.source === 'instagram' && ev.igHandle
             ? `@${ev.igHandle}`
+            // A fork keeps the handle of the post it came from, so a
+            // catalog event added to a channel can still say who
+            // published it instead of dropping the row.
+            : ev.sourceIgHandle ? `@${ev.sourceIgHandle}`
+            : ev.isPersonalPlan ? 'Plano teu'
+            : ev.isGroupEvent ? null
             : (ev.isCustom ? 'auê plano' : (ev.categoryLabel || null))
+          // CANAL is the other half of that question: not who published
+          // it, but how it reached you. They're different answers — a
+          // show posted by @pedreira that came to you through Rockzão
+          // has both — so they get separate rows instead of one row
+          // picking a winner.
+          const channelValue = fromChannels.length > 0 ? (
+            <span>
+              {fromChannels.map((c, i) => (
+                <span key={c.name}>
+                  {i > 0 && <span style={{ color: 'var(--text3)' }}> · </span>}
+                  <span style={{
+                    color: c.kind === 'private'
+                      ? 'var(--from-private)' : 'var(--from-aue)',
+                  }}>
+                    {c.name}
+                  </span>
+                </span>
+              ))}
+            </span>
+          ) : null
+          const channelAccent = fromChannels.some(c => c.kind === 'private')
+            ? 'var(--from-private)'
+            : 'var(--from-aue)'
           const rows = [
-            ['ONDE',   venueValue,  'var(--cyan)'],
-            ['QUANDO', whenValue,   'var(--magenta)'],
-            ['CUSTO',  costValue,   'var(--lime)'],
-            ['FONTE',  sourceValue, 'var(--text2)'],
+            ['ONDE',   venueValue,    'var(--cyan)'],
+            ['QUANDO', whenValue,     'var(--magenta)'],
+            ['CUSTO',  costValue,     'var(--lime)'],
+            ['CANAL',  channelValue,  channelAccent],
+            ['FONTE',  sourceValue,   'var(--text2)'],
           ].filter(([, v]) => v)
           if (rows.length === 0) return null
           return (
@@ -978,15 +1015,35 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
           />
         )}
 
-        {canDecline ? (
-          // The two answers, always both, with the current one marked.
-          // A toggle rather than a branch: whatever you picked, the other
-          // option is right there, so changing your mind never means
-          // hunting for a different control somewhere else.
+        {isVenue ? (
+          // A place, not a night — you save it, you don't attend it.
+          <button className="btn btn--primary" onClick={onRsvp}>
+            {rsvped ? t.events_venue_remove : t.events_venue_save}
+          </button>
+        ) : (
+          // One control for every event.
+          //
+          // A catalog event used to get a lone button reading "Confirmar
+          // presença", flipping to "Cancelar confirmação" — the same act
+          // as "Vou" in a different vocabulary, and the exact shape the
+          // pair below exists to avoid: the way out is a button whose
+          // label changed, not an option sitting there in the open.
+          //
+          // Now both start as "Vou" and mark themselves "✓ Vou". The
+          // difference left is the second button, and that one is real:
+          // "Não vou" answers an invitation. It takes you off an invitee
+          // list and tells the host. A catalog event has neither — the
+          // city posted a show, nobody asked you — so there is nothing
+          // there to answer, and POST /events/{id}/decline 404s on it.
           <>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={rsvped ? undefined : onRsvp}
+                // With no "Não vou" beside it this is the only way back
+                // out, so it toggles. With one, it doesn't: the pair is
+                // the toggle, and letting this un-RSVP too would add a
+                // third state ("no answer") reachable by a button that
+                // looks like it just undoes the other one.
+                onClick={rsvped && canDecline ? undefined : onRsvp}
                 aria-pressed={rsvped}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 12,
@@ -994,11 +1051,12 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
                   background: rsvped ? 'var(--sage)' : 'transparent',
                   color: rsvped ? 'var(--on-lime)' : 'var(--charcoal)',
                   fontSize: 14, fontWeight: 700,
-                  cursor: rsvped ? 'default' : 'pointer',
+                  cursor: rsvped && canDecline ? 'default' : 'pointer',
                 }}
               >
                 {rsvped ? '✓ Vou' : 'Vou'}
               </button>
+              {canDecline && (
               <button
                 onClick={youDeclined ? undefined : handleDecline}
                 aria-pressed={youDeclined}
@@ -1014,6 +1072,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
               >
                 {declining ? '…' : youDeclined ? '✓ Não vou' : 'Não vou'}
               </button>
+              )}
             </div>
             {youDeclined && ev.groupId && (
               <div style={{
@@ -1024,13 +1083,6 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
               </div>
             )}
           </>
-        ) : (
-          <button className="btn btn--primary" onClick={onRsvp}>
-            {rsvped
-              ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
-              : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
-            }
-          </button>
         )}
 
         {/* Compartilhar stays in the open — getting other people to an

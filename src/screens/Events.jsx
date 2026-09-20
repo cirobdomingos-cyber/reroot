@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, myPicture } from '../context/AppContext'
@@ -6,7 +6,7 @@ import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, BASE_URL } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import AddToCalendar from '../components/AddToCalendar'
 import PostEventAttendees from '../components/PostEventAttendees'
@@ -19,7 +19,6 @@ import AddToGroupSheet from '../components/AddToGroupSheet'
 import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
 import EditCatalogEventSheet from '../components/EditCatalogEventSheet'
-import ChannelBand from '../components/ChannelBand'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
@@ -259,6 +258,13 @@ export default function Events() {
   // curators fix the shared catalog, creators edit their own fork.
   const [editCatalogEvent, setEditCatalogEvent] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
+  // The channel feed. A catalog event added to a public channel is a
+  // separate row (a fork carrying source_event_id), so this is read as
+  // a lookup — which catalog id did one of my channels pick — rather
+  // than as a list to render. The catalog row stays the one that shows,
+  // carrying the channel's name; showing the fork as well is how the
+  // same night used to appear twice with nothing connecting them.
+  const [channelEvents, setChannelEvents] = useState([])
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -275,6 +281,30 @@ export default function Events() {
     })
     return () => { cancelled = true }
   }, [state.googleUser?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchChannelFeed(state.googleUser?.id).then(list => {
+      if (!cancelled) setChannelEvents(list || [])
+    })
+    return () => { cancelled = true }
+  }, [state.googleUser?.id])
+
+  // Which public channels of yours picked which catalog event, keyed by
+  // the catalog id their copy points at. A list per key, not one name:
+  // two channels can pick the same night, and keeping only the last one
+  // would quietly drop the other.
+  const publicChannelsBySourceId = useMemo(() => {
+    const map = new Map()
+    for (const ev of channelEvents) {
+      if (!ev.sourceEventId) continue
+      const list = map.get(ev.sourceEventId) || []
+      const name = ev.groupName || 'um canal'
+      if (!list.includes(name)) list.push(name)
+      map.set(ev.sourceEventId, list)
+    }
+    return map
+  }, [channelEvents])
 
   // Curator status gates the "corrigir evento" affordance on catalog
   // events. Curator, not founder: the people who notice a wrong venue
@@ -480,7 +510,7 @@ export default function Events() {
     setDetailEvent(null)
   }
 
-  // Esc-to-close lives in EventDetailDrawer now — shared with GroupDetail.
+  // Esc-to-close lives in EventDetailDrawer now — shared with ChannelDetail.
 
   function handleCategoryChange(id) {
     setActiveFilter(id)
@@ -660,10 +690,33 @@ export default function Events() {
   const beforeFollowFilter = filteredEvents.length
   filteredEvents = filteredEvents.filter(ev => !hiddenByFollows(ev, hiddenSources))
   const hiddenByFollowCount = beforeFollowFilter - filteredEvents.length
+  // One night, one row.
+  //
+  // A private channel's event and the catalog event it was forked from
+  // are the same post arriving by two paths — /events/group for the
+  // fork, /events for the original — so an event in one private channel
+  // and one public channel showed up twice. The fork wins: it already
+  // merges the catalog's facts (name, time, cover — see
+  // _merge_source_event) and adds the private layer on top, so dropping
+  // the original loses nothing and dropping the fork would lose the
+  // invitees, the note and the co-hosts.
+  //
+  // Computed from the ALREADY-FILTERED list, not from groupEvents. A
+  // category filter drops private rows, and a set built upstream would
+  // still hold their source ids — taking the catalog original down with
+  // rows that are no longer there, and making the event vanish entirely.
+  const dropMirroredOriginals = (list) => {
+    const mirrored = new Set(
+      list.filter(e => e.isGroupEvent && e.sourceEventId).map(e => e.sourceEventId)
+    )
+    if (mirrored.size === 0) return list
+    return list.filter(ev => ev.isGroupEvent || !mirrored.has(ev.id))
+  }
+
   // Snapshot for the week strip's count badges — reflects every active
   // filter *except* the per-day pick, so picking a day doesn't zero out
   // the other days' counts.
-  const eventsForStrip = filteredEvents
+  const eventsForStrip = dropMirroredOriginals(filteredEvents)
   if (!isVenueMode && selectedDay) {
     // Range events ("terça a domingo", multi-day exhibitions) cover every
     // day between dateStart and dateEnd inclusive — they should show up
@@ -671,6 +724,58 @@ export default function Events() {
     // (no dateEnd) keep the simple equality check.
     filteredEvents = filteredEvents.filter(ev => eventCoversDay(ev, selectedDay))
   }
+
+  // Which channel of yours an event came from — one answer for both
+  // kinds. A private channel's event IS the row (it arrives through
+  // /events/group carrying its channel's name). A public channel's is
+  // a fork of a catalog event, so the catalog row is the real one and
+  // channelBySourceId says which channel picked it.
+  //
+  // Both render identically. The difference between a channel run by
+  // auê and one run by a friend is who may post in it, and that is not
+  // something the reader of a list needs to be told twice.
+  // Where a row came from: a name AND which kind of channel it is, so
+  // the card can colour each name for itself. Kind is derived, not
+  // stored: /events/group excludes public-channel events, so anything
+  // arriving as isGroupEvent is private by construction, and anything
+  // in publicChannelsBySourceId came from the followed-channel feed.
+  const channelSourcesFor = (ev) => {
+    // A personal plan carries isGroupEvent too (it reuses the private
+    // styling) but belongs to no channel. It still isn't part of the
+    // city catalog, so it stays in the first section rather than being
+    // buried under Explorar — labelled for what it is, and counted as
+    // private: nothing is more yours than a plan you made.
+    if (ev.isPersonalPlan) return [{ name: 'Plano', kind: 'private' }]
+    const out = []
+    const add = (name, kind) => {
+      if (name && !out.some(o => o.name === name)) out.push({ name, kind })
+    }
+    if (ev.isGroupEvent) {
+      const own = ev.groupNames?.length
+        ? ev.groupNames
+        : (ev.groupName ? [ev.groupName] : ['Canal'])
+      own.forEach(n => add(n, 'private'))
+      // The same post can sit in a private channel AND a public one.
+      // The private row is the one that survives the dedupe below, so
+      // it has to carry the public channel's name too — otherwise the
+      // name disappears along with the row it was attached to.
+      ;(publicChannelsBySourceId.get(ev.sourceEventId) || []).forEach(n => add(n, 'aue'))
+    } else {
+      ;(publicChannelsBySourceId.get(ev.id) || []).forEach(n => add(n, 'aue'))
+    }
+    return out
+  }
+
+
+  // Two sections instead of a band. The band was horizontal so its
+  // length cost no vertical space, but it also made a channel's event
+  // look like a different species from the same event in the list
+  // below — two shapes, two colours, for one thing. Sections keep the
+  // prominence and drop the second shape: the same row either way,
+  // named on the right.
+  filteredEvents = dropMirroredOriginals(filteredEvents)
+  const myChannelEvents = filteredEvents.filter(ev => channelSourcesFor(ev).length > 0)
+  const exploreEvents = filteredEvents.filter(ev => channelSourcesFor(ev).length === 0)
 
   // Day-keyed sets for the strip's social signals. RSVP set comes from
   // local state.rsvps (which stores dateStart per RSVP). Friend set comes
@@ -735,6 +840,97 @@ export default function Events() {
     } else if (wasRsvped) {
       cancelEventReminder(ev.id)
     }
+  }
+
+  // One row renderer for both sections. The channel section and
+  // the catalog section render the SAME card — that is the point of
+  // splitting them by heading instead of by component.
+  const renderEventNode = (ev) => {
+              const rsvped = !!state.rsvps[ev.id]
+              const isVenue = VENUE_CATEGORIES.has(ev.category)
+
+              if (isVenue) {
+                return (
+                  <motion.div
+                    key={ev.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <VenueRow
+                      ev={ev}
+                      favorited={!!state.favorites?.[ev.id]}
+                      onFavorite={() => dispatch({
+                        type: 'TOGGLE_FAVORITE',
+                        payload: {
+                          placeId: ev.id, name: ev.name, venue: ev.venue,
+                          icon: ev.icon, headerBg: ev.headerBg,
+                        },
+                      })}
+                      onOpen={() => {
+                        // Tracked-IG venues: open the source page (shows
+                        // recent events from this handle's posts). Falls
+                        // back to the generic detail panel if igHandle
+                        // isn't present (defensive — shouldn't happen
+                        // since /places now always returns IG-backed venues).
+                        if (ev.igHandle) {
+                          navigate(`/sources/${encodeURIComponent('ig:' + ev.igHandle)}`)
+                        } else {
+                          openDetail(ev.id)
+                        }
+                      }}
+                      t={t}
+                    />
+                  </motion.div>
+                )
+              }
+
+              return (
+                <motion.div
+                  key={ev.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <EventCard
+                    ev={ev}
+                    // Which channels brought it — public or private,
+                    // same slot, same styling. The section above says
+                    // these are yours; this says which of yours.
+                    fromChannels={channelSourcesFor(ev)}
+                    rsvped={rsvped}
+                    friendsGoing={friendsByEventId[ev.id] || []}
+                    personalChip={getPersonalChip(ev, state.rsvps)}
+                    onOpen={() => openDetail(ev.id)}
+                    onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+                    onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
+                    onOpenGroup={(gid) => navigate(`/channels/${encodeURIComponent(gid)}`)}
+                    // Day shown on the card's date column:
+                    //   - When a specific strip day is picked: show that day.
+                    //   - Otherwise: for multi-day or recurring events that
+                    //     cover today, show TODAY (so a programação Maio
+                    //     2026 reads as "happening today" instead of "May 2,
+                    //     past"). One-off events fall through and keep their
+                    //     own dateStart.
+                    displayDate={(() => {
+                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
+                        return selectedDay
+                      }
+                      const todayIso = getAnchorTodayIso()
+                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
+                        return todayIso
+                      }
+                      return null
+                    })()}
+                    t={t}
+                  />
+                </motion.div>
+              )
   }
 
   return (
@@ -1221,13 +1417,6 @@ export default function Events() {
           Fontes/🔍) so it's always reachable from the chrome without
           stealing list real estate. */}
 
-      {/* A band, not a merge. Mixing followed channels into the list and
-          floating them to the top would bury the city for anyone
-          following three of them — the catalog below stays exactly what
-          it was, and the band takes a fixed amount of room above it.
-          Hides itself when there's nothing in it. */}
-      <ChannelBand />
-
       </>)}
 
       {/* ── Loading skeletons ── */}
@@ -1299,89 +1488,33 @@ export default function Events() {
               )}
             </motion.div>
           ) : (
-            filteredEvents.map(ev => {
-              const rsvped = !!state.rsvps[ev.id]
-              const isVenue = VENUE_CATEGORIES.has(ev.category)
-
-              if (isVenue) {
-                return (
-                  <motion.div
-                    key={ev.id}
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    <VenueRow
-                      ev={ev}
-                      favorited={!!state.favorites?.[ev.id]}
-                      onFavorite={() => dispatch({
-                        type: 'TOGGLE_FAVORITE',
-                        payload: {
-                          placeId: ev.id, name: ev.name, venue: ev.venue,
-                          icon: ev.icon, headerBg: ev.headerBg,
-                        },
-                      })}
-                      onOpen={() => {
-                        // Tracked-IG venues: open the source page (shows
-                        // recent events from this handle's posts). Falls
-                        // back to the generic detail panel if igHandle
-                        // isn't present (defensive — shouldn't happen
-                        // since /places now always returns IG-backed venues).
-                        if (ev.igHandle) {
-                          navigate(`/sources/${encodeURIComponent('ig:' + ev.igHandle)}`)
-                        } else {
-                          openDetail(ev.id)
-                        }
-                      }}
-                      t={t}
-                    />
-                  </motion.div>
-                )
-              }
-
-              return (
-                <motion.div
-                  key={ev.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <EventCard
-                    ev={ev}
-                    rsvped={rsvped}
-                    friendsGoing={friendsByEventId[ev.id] || []}
-                    personalChip={getPersonalChip(ev, state.rsvps)}
-                    onOpen={() => openDetail(ev.id)}
-                    onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
-                    onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
-                    onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
-                    // Day shown on the card's date column:
-                    //   - When a specific strip day is picked: show that day.
-                    //   - Otherwise: for multi-day or recurring events that
-                    //     cover today, show TODAY (so a programação Maio
-                    //     2026 reads as "happening today" instead of "May 2,
-                    //     past"). One-off events fall through and keep their
-                    //     own dateStart.
-                    displayDate={(() => {
-                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
-                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
-                        return selectedDay
-                      }
-                      const todayIso = getAnchorTodayIso()
-                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
-                        return todayIso
-                      }
-                      return null
-                    })()}
-                    t={t}
+            <>
+              {myChannelEvents.length > 0 && (
+                <>
+                  <ListSectionHeading
+                    label="Dos teus canais"
+                    count={myChannelEvents.length}
+                    // Takes the strongest colour in the section, so the
+                    // heading and the rows under it agree. A section of
+                    // auê rows headed in private cyan would promise a
+                    // closeness none of them have.
+                    accent={
+                      myChannelEvents.some(e => channelSourcesFor(e)
+                        .some(c => c.kind === 'private'))
+                        ? 'var(--from-private)'
+                        : 'var(--from-aue)'
+                    }
                   />
-                </motion.div>
-              )
-            })
+                  {myChannelEvents.map(renderEventNode)}
+                  <ListSectionHeading
+                    label="Explorar"
+                    count={exploreEvents.length}
+                    accent="var(--from-catalog)"
+                  />
+                </>
+              )}
+              {exploreEvents.map(renderEventNode)}
+            </>
           )}
         </AnimatePresence>
       )}
@@ -1411,7 +1544,7 @@ export default function Events() {
       </AnimatePresence>
 
       {/* Shared drawer shell — portal, overlay and the sticky nav strip
-          all live in components/EventDetail.jsx so GroupDetail renders
+          all live in components/EventDetail.jsx so ChannelDetail renders
           the identical chrome instead of a second copy. */}
       <EventDetailDrawer
         open={!!selectedEventId}
@@ -1520,6 +1653,11 @@ export default function Events() {
             ) : (
               <EventDetail
                 event={detailEvent}
+                // Same source of truth the card uses, so the row and
+                // the panel can't disagree about where a night came
+                // from — the panel has no way to work out the public
+                // half on its own.
+                fromChannels={channelSourcesFor(detailEvent)}
                 googleId={state.googleUser?.id || ''}
                 viewerName={state.googleUser?.given_name || state.googleUser?.name || 'Você'}
                 viewerPicture={myPicture(state)}
@@ -1558,7 +1696,7 @@ export default function Events() {
                   // plans AND group events. Routes to the right backend
                   // endpoint based on whether the event is tagged to a
                   // group. Group admins still have the full Excluir flow
-                  // inside GroupDetail; this button is the catalog-side
+                  // inside a channel; this button is the catalog-side
                   // shortcut for the same action.
                   state.googleUser?.id &&
                   detailEvent.isGroupEvent && (
@@ -1795,7 +1933,29 @@ function _parseDayLabels(iso) {
   }
 }
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, t }) {
+// A heading inside the list, not a band above it.
+//
+// Not sticky: the screen already has a sticky header at top:0, and a
+// second sticky element would scroll up and park underneath it —
+// present in the DOM, invisible on screen.
+function ListSectionHeading({ label, count, accent }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 8,
+      padding: '14px 16px 8px',
+    }}>
+      <h2 className="neon-mono" style={{
+        fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: accent, margin: 0,
+      }}>
+        {label}
+      </h2>
+      <span style={{ fontSize: 10, color: 'var(--text3)' }}>{count}</span>
+    </div>
+  )
+}
+
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, fromChannels = [], t }) {
   // Flyer treatment — staging experiment, see lib/cardVariant.js.
   const cardVariant = eventCardVariant()
   const [imgBroken, setImgBroken] = useState(false)
@@ -1814,6 +1974,13 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
   const deKey = (ev.dateEnd || '').slice(0, 10)
   const isMultiDayRange = !!(deKey && dsKey && deKey > dsKey)
   const isOngoing = (isRecurring || isMultiDayRange) && !isGroupEvent
+  // The dominant kind decides the row's one accent: an event in a
+  // private channel AND an auê one is still, first, something people
+  // you know are going to. Each name below keeps its own colour, so
+  // the second source is named without being hidden.
+  const fromKind = fromChannels.some(c => c.kind === 'private') ? 'private'
+                 : fromChannels.length > 0 ? 'aue'
+                 : null
 
   // For recurring events, the parent passes the strip-picked day so
   // the card shows the specific occurrence the user is looking at,
@@ -1855,9 +2022,21 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         margin: '0 16px 6px', padding: '12px 14px',
         borderRadius: 12,
         border: ev.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
-        boxShadow: isGroupEvent ? 'inset 3px 0 0 var(--sage)'
+        // Lime for anything highlighted FOR you — your own plans, and
+        // now the catalog rows that came from a channel you follow.
+        // The channel's own identity stays magenta (the badge, the
+        // channel screen); lime is "this one is picked out for you",
+        // which is what it already means on free/going/confirmados.
+        // Provenance stripe. Width and glow carry the ranking that the
+        // hue alone can't: private announces itself, auê is present,
+        // the catalog is just marked. An ongoing event keeps its "no
+        // stripe" tell, which is what separates it from a one-off.
+        boxShadow: fromKind === 'private'
+                    ? 'inset 4px 0 0 var(--from-private), -1px 0 14px -6px var(--from-private-glow)'
+                  : fromKind === 'aue'
+                    ? 'inset 3px 0 0 var(--from-aue), -1px 0 12px -7px var(--from-aue-glow)'
                   : isOngoing ? 'none'
-                  : 'inset 3px 0 0 #7E57C2',
+                  : 'inset 3px 0 0 var(--from-catalog)',
         display: 'flex', alignItems: 'stretch', gap: 14,
         // The cover variant needs the image on its own line above the
         // row; wrapping + flex-basis 100% does that without restructuring
@@ -1907,9 +2086,13 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             // Day color matches the stripe — sage for group, purple for
             // one-off (mirrors the "Só únicos" filter chip), terra-light
             // blue for ongoing.
-            color: isGroupEvent ? 'var(--sage)'
-                 : isOngoing ? 'var(--terra-light)'
-                 : '#7E57C2',
+            // Same scale as the stripe. Ongoing events used to take
+            // --terra-light, a magenta tint, which now reads as "from
+            // an auê channel" — so they join the catalog colour and
+            // keep the missing stripe as their only tell.
+            color: fromKind === 'private' ? 'var(--from-private)'
+                 : fromKind === 'aue' ? 'var(--from-aue)'
+                 : 'var(--from-catalog)',
             letterSpacing: -0.5,
           }}>
             {day}
@@ -2002,13 +2185,56 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         )}
       </div>
 
-      {/* RIGHT — Destaque badge / price / RSVP marker */}
+      {/* RIGHT — which channel this came from, then Destaque / RSVP.
+          The channel name sits here rather than under the title so the
+          left-to-right read stays "when · what · where", with "who
+          brought it to you" as the trailing answer. Capped so a long
+          channel name can't squeeze the title: it truncates, and the
+          section heading above already says these are yours. */}
       <div style={{
         flexShrink: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'flex-end', justifyContent: 'flex-start',
-        gap: 4,
+        gap: 4, maxWidth: 96,
       }}>
+        {fromChannels.length > 0 && (
+          // One line per channel rather than a joined string: two names
+          // run together read as one long name, and the ones that matter
+          // most are short enough that stacking costs nothing. Two shown,
+          // the rest counted — the full list is in the tooltip.
+          <div
+            title={`De ${fromChannels.map(c => c.name).join(' · ')}`}
+            style={{
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'flex-end', gap: 1, maxWidth: '100%',
+            }}
+          >
+            {fromChannels.slice(0, 2).map(c => (
+              // Coloured per source, not per row. A night that reached
+              // you through a friend's channel and an auê one says both,
+              // and says which was which — the stripe can only answer
+              // once, and it answers for the stronger of the two.
+              <div key={c.name} className="neon-mono" style={{
+                fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: c.kind === 'private' ? 'var(--from-private)' : 'var(--from-aue)',
+                textAlign: 'right', lineHeight: 1.25,
+                maxWidth: '100%',
+                display: '-webkit-box', WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}>
+                {c.name}
+              </div>
+            ))}
+            {fromChannels.length > 2 && (
+              <div className="neon-mono" style={{
+                fontSize: 9, letterSpacing: '0.1em',
+                color: 'var(--text3)', lineHeight: 1.25,
+              }}>
+                +{fromChannels.length - 2}
+              </div>
+            )}
+          </div>
+        )}
         {ev.featured && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <div
