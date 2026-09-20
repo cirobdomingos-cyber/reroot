@@ -1,15 +1,23 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { fetchVenueLeaderboard, checkBackendHealth } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 
-// Admin: collaborative curation of Instagram accounts.
-// - Anyone logged in can VIEW the catalog.
-// - Curators (whitelisted by the founder) can ADD / EDIT / REMOVE handles.
-// - The founder can also manage the curator list.
+// Admin: a menu first, then one screen per job.
+//
+// It used to be one long page — usage, leaderboard, curators, feedback,
+// accounts, tools — stacked in an order that made sense once and then
+// had to be scrolled past every visit. Three lists of people (usage
+// table, "últimos logins", curators) and two lists of @s (leaderboard
+// for the founder, "contas ativas" for curators) described the same
+// rows twice. Now: /admin is a menu whose cards carry the one number
+// that matters for each job, and /admin/<section> is that job.
+//
+// One curator role (Sep 2026): a curator sees Pedidos, Contas and
+// Locais; the founder sees everything.
 //
 // Identity comes from the existing Google OAuth (state.googleUser.email).
 // All mutating endpoints take a `requesting_email` so the backend can verify
@@ -60,9 +68,18 @@ export default function AdminIgAccounts() {
   // rows. Empty string = show everything.
   const [handleQuery, setHandleQuery] = useState('')
 
-  // Add-curator form state
-  const [newCuratorEmail, setNewCuratorEmail] = useState('')
-  const [newCuratorNotes, setNewCuratorNotes] = useState('')
+  // Which job this visit is for. No section = the menu.
+  const { section } = useParams()
+
+  // Counts for the menu cards: what's waiting in the two review queues.
+  // Both endpoints default to status=review, so length is the answer.
+  const [pendingCatalog, setPendingCatalog] = useState(null)
+  const [pendingAccounts, setPendingAccounts] = useState(null)
+
+  // Founder-only 30d activity per handle, overlaid on the one @ list.
+  // This is what the separate leaderboard used to be for.
+  const [metricsByHandle, setMetricsByHandle] = useState({})
+  const [accountSort, setAccountSort] = useState('eventos')
 
   // Standalone (not folded into `load` below) so the retry button in
   // UsersTable's error state can re-fetch just this endpoint instead of
@@ -93,6 +110,26 @@ export default function AdminIgAccounts() {
       setCurators(curData.curators || [])
       setIsCurator(!!accData.is_curator)
       setIsFounder(!!accData.is_founder)
+      if (accData.is_curator || accData.is_founder) {
+        // Best-effort: a missing count shows as "—", never blocks the page.
+        try {
+          const [cq, aq] = await Promise.all([
+            fetch(withEmail(`${API_BASE}/admin/catalog-requests`, email)),
+            fetch(withEmail(`${API_BASE}/admin/account-requests`, email)),
+          ])
+          setPendingCatalog(cq.ok ? ((await cq.json()).requests || []).length : null)
+          setPendingAccounts(aq.ok ? ((await aq.json()).requests || []).length : null)
+        } catch { /* counts are decoration */ }
+      }
+      if (accData.is_founder) {
+        try {
+          const lb = await fetchVenueLeaderboard(email, 30)
+          const map = {}
+          ;(lb.venues || []).forEach((v, i) => { map[v.handle] = { ...v, rank: i + 1 } })
+          setMetricsByHandle(map)
+          setAccountSort('atividade')
+        } catch { /* metrics are an overlay */ }
+      }
       // Founders also see submitted feedback. The feedback endpoint is
       // founder-gated server-side; we only fetch it when the previous
       // calls already confirmed founder status.
@@ -331,9 +368,14 @@ export default function AdminIgAccounts() {
     setBusy(false)
   }
 
-  async function addCurator(e) {
-    e?.preventDefault()
-    const target = newCuratorEmail.trim().toLowerCase()
+  // Grant from a row of the people table, never from a typed email.
+  // The old form took an address the founder remembered, and an Apple
+  // "Hide My Email" account signs in with a relay address that looks
+  // nothing like it — so the grant landed on an email no account used.
+  // Promoting the row you can see makes the address the one on file by
+  // construction.
+  async function grantCurator(targetEmail) {
+    const target = (targetEmail || '').trim().toLowerCase()
     if (!target) return
     setBusy(true)
     try {
@@ -341,20 +383,41 @@ export default function AdminIgAccounts() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: target, notes: newCuratorNotes.trim(),
-          requesting_email: email,
-          is_curator: true,        // role gates feedbacker-only rows; we only grant curator now
-          is_feedbacker: false,
+          email: target, notes: '', requesting_email: email,
+          is_curator: true, is_feedbacker: false,
         }),
       })
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
         throw new Error(body.detail || `HTTP ${r.status}`)
       }
-      setNewCuratorEmail(''); setNewCuratorNotes('')
       await load()
     } catch (e) {
-      setError(`Falha ao adicionar: ${e.message}`)
+      setError(`Falha ao liberar: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
+  // Promo code on a handle — founder's monetization tool, moved here
+  // from the leaderboard so the one @ list carries it.
+  async function setPromo(handle, code, perk) {
+    setBusy(true)
+    try {
+      const r = await fetch(
+        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/promo`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requesting_email: email, code, perk }),
+        },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      await load()
+    } catch (e) {
+      setError(`Falha ao salvar código: ${e.message}`)
     }
     setBusy(false)
   }
@@ -387,6 +450,27 @@ export default function AdminIgAccounts() {
 
   const enabledCount = accounts.filter(a => a.enabled).length
 
+  // The menu, or the one section this visit is for. Sections that are
+  // their own screens (Pedidos, Locais) just navigate.
+  const canSee = (s) => ({
+    pedidos: isCurator, contas: isCurator, locais: isCurator,
+    pessoas: isFounder, uso: isFounder, feedback: isFounder, ferramentas: isFounder,
+  })[s]
+
+  const menu = [
+    { id: 'pedidos', icon: '📋', label: 'Pedidos', to: '/curadoria',
+      count: pendingCatalog, hint: 'eventos e @s sugeridos, esperando revisão',
+      extra: pendingAccounts },
+    { id: 'contas', icon: '📷', label: 'Contas @', count: enabledCount, hint: 'as fontes do catálogo' },
+    { id: 'locais', icon: '📍', label: 'Locais e pins', to: '/admin/venues', hint: 'onde cada lugar fica no mapa' },
+    { id: 'pessoas', icon: '👥', label: 'Pessoas', count: users?.total, hint: 'quem usa, e quem cura' },
+    { id: 'uso', icon: '📊', label: 'Uso', count: usage?.dau, hint: 'ativos hoje' },
+    { id: 'feedback', icon: '💬', label: 'Feedback', count: feedback.length, hint: 'o que disseram' },
+    { id: 'ferramentas', icon: '🛠', label: 'Ferramentas', hint: 'refresh, sync, erros' },
+  ].filter(m => canSee(m.id))
+
+  const waiting = (pendingCatalog || 0) + (pendingAccounts || 0)
+
   return (
     <div style={{ padding: '20px 16px 80px', maxWidth: 720, margin: '0 auto' }}>
       <Header
@@ -411,132 +495,70 @@ export default function AdminIgAccounts() {
         </div>
       )}
 
-      {/* Entry to the catalog review queue, besides the push a curator
-          gets for each new suggestion. */}
-      {isCurator && (
-        <button
-          onClick={() => navigate('/curadoria')}
-          style={{
-            display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
-            borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
-            color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
-          }}
-        >
-          📋 Pedidos pro catálogo →
-        </button>
-      )}
-
-      {/* Venue pins. The bairro rendered next to a venue comes from the
-          geocoded row, so an unresolved venue shows the extraction's
-          guess instead — this is where that gets fixed. */}
-      {isCurator && (
-        <button
-          onClick={() => navigate('/admin/venues')}
-          style={{
-            display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
-            borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
-            color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
-          }}
-        >
-          📍 Locais e pins →
-        </button>
-      )}
-
-      {isCurator && <PostDebugSection email={email} />}
       {!isCurator && !loading && (
         <NotACuratorMessage email={email} />
       )}
 
-      {/* Section order (founder/curator view):
-          1. Statistics — usage dashboard up top so the founder lands on
-             the dial that matters most.
-          2. Curators — managing the team comes before content moderation.
-          3. Feedback — read what users said.
-          4. Active handles — operational list at the bottom; adding new
-             handles lives on the Sources page now (no duplicate form). */}
-      {isFounder && usage && (
-        <UsageSection
-          usage={usage} users={users} usersError={usersError} onRetryUsers={loadUsers}
-          clientErrors={clientErrors}
-        />
-      )}
-
-      {/* Leaderboard — founder sales tool. Sits right under "Uso do
-          app" since both panels are the founder's "where do I focus
-          next" surface (usage = product, leaderboard = monetization).
-          Every active handle ranked by views + RSVPs in the last 30d.
-          Tap a row to open that venue's Painel for the deep dive. */}
-      {isFounder && (
-        <VenueLeaderboard
-          email={email}
-          navigate={navigate}
-          busy={busy}
-          setBusy={setBusy}
-          onMutate={load}
-        />
-      )}
-
-      {isFounder && (
-        <CuratorsSection
-          curators={curators}
-          email={email}
-          users={users}
-          newCuratorEmail={newCuratorEmail}
-          setNewCuratorEmail={setNewCuratorEmail}
-          newCuratorNotes={newCuratorNotes}
-          setNewCuratorNotes={setNewCuratorNotes}
-          onAdd={addCurator}
-          onRemove={removeCurator}
-          busy={busy}
-        />
-      )}
-
-      {isFounder && (
-        <FeedbackSection
-          feedback={feedback}
-          email={email}
-          onReload={load}
-          busy={busy}
-          setBusy={setBusy}
-        />
-      )}
-
-      {/* "Contas ativas" merged into the leaderboard above for
-          founders — the leaderboard now carries star toggle / scrape
-          / delete + activity stats + event count. Curators who aren't
-          founders still see the legacy section below (no leaderboard
-          access since views/RSVPs are paid-placement metrics). */}
-      {isCurator && (
-        <section style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
-            📷 Contas ativas
-          </h2>
-          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
-            Adicionar novas contas é na aba <b>Fontes</b>.
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+      {isCurator && !section && (
+        <>
+          {/* The one line the menu opens with: is anything waiting. */}
+          {waiting > 0 && (
             <button
-              onClick={triggerRefresh}
-              disabled={busy}
-              style={ghostBtn('var(--sage)')}
+              onClick={() => navigate('/curadoria')}
+              style={{
+                display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
+                borderRadius: 12, border: '1px solid var(--magenta)', background: 'var(--magenta-soft)',
+                color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
+              }}
             >
-              ▶ Disparar refresh agora
+              {waiting} {waiting === 1 ? 'pedido esperando' : 'pedidos esperando'} você →
             </button>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+            {menu.map(m => (
+              <MenuCard
+                key={m.id}
+                {...m}
+                onClick={() => navigate(m.to || `/admin/${m.id}`)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {isCurator && section && !canSee(section) && (
+        <SectionShell title="Sem acesso" onBack={() => navigate('/admin')}>
+          <div style={{ fontSize: 13, color: 'var(--charcoal-light)' }}>
+            Essa parte é do fundador.
+          </div>
+        </SectionShell>
+      )}
+
+      {isCurator && section === 'contas' && (
+        <SectionShell title="📷 Contas @" onBack={() => navigate('/admin')}>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+            Adicionar novas contas é na aba <b>Fontes</b>. Aqui você edita,
+            desliga, scrapeia — e o 📍 leva ao pin do lugar no mapa.
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              value={handleQuery}
+              onChange={e => setHandleQuery(e.target.value)}
+              placeholder="🔍 Buscar conta (handle, nome, categoria…)"
+              style={{ ...inputStyle, flex: '1 1 200px', boxSizing: 'border-box' }}
+            />
+            <select
+              value={accountSort}
+              onChange={e => setAccountSort(e.target.value)}
+              title="Ordenar"
+              style={{ ...inputStyle, flex: '0 0 auto' }}
+            >
+              {isFounder && <option value="atividade">por atividade (30d)</option>}
+              <option value="eventos">mais eventos</option>
+              <option value="az">A–Z</option>
+            </select>
           </div>
 
-          {/* Search */}
-          <input
-            value={handleQuery}
-            onChange={e => setHandleQuery(e.target.value)}
-            placeholder="🔍 Buscar conta (handle, nome, categoria…)"
-            style={{
-              ...inputStyle, width: '100%', boxSizing: 'border-box',
-              flex: 'unset', marginBottom: 12,
-            }}
-          />
-
-          {/* Account list — filtered by handleQuery */}
           {loading ? (
             <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>Carregando…</div>
           ) : accounts.length === 0 ? (
@@ -545,14 +567,26 @@ export default function AdminIgAccounts() {
             </div>
           ) : (() => {
             const q = handleQuery.trim().toLowerCase()
-            const filtered = q
+            const filtered = (q
               ? accounts.filter(a =>
                   (a.handle || '').toLowerCase().includes(q) ||
                   (a.label || '').toLowerCase().includes(q) ||
                   (a.display_name || '').toLowerCase().includes(q) ||
                   (a.category || '').toLowerCase().includes(q)
                 )
-              : accounts
+              : accounts.slice()
+            ).sort((a, b) => {
+              if (accountSort === 'atividade') {
+                const ra = metricsByHandle[a.handle]?.rank ?? 9999
+                const rb = metricsByHandle[b.handle]?.rank ?? 9999
+                if (ra !== rb) return ra - rb
+              }
+              if (accountSort !== 'az') {
+                const d = (b.future_events ?? 0) - (a.future_events ?? 0)
+                if (d !== 0) return d
+              }
+              return (a.label || a.handle).localeCompare(b.label || b.handle)
+            })
             if (filtered.length === 0) {
               return (
                 <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
@@ -566,6 +600,7 @@ export default function AdminIgAccounts() {
                 <AccountRow
                   key={acc.handle}
                   acc={acc}
+                  metrics={isFounder ? metricsByHandle[acc.handle] : null}
                   busy={busy}
                   isFounder={isFounder}
                   onToggle={toggleEnabled}
@@ -573,56 +608,85 @@ export default function AdminIgAccounts() {
                   onScrape={scrapeOne}
                   onToggleFeatured={toggleFeatured}
                   onSave={saveAccount}
-                  // Admin tap on the handle row routes to the venue
-                  // dashboard (founder-only metrics) instead of the
-                  // public source page. The arrow icon on the right
-                  // still opens the external IG profile when needed.
-                  onOpenSource={(h) => navigate(`/venue/${encodeURIComponent(h)}`)}
+                  onSetPromo={isFounder ? setPromo : null}
+                  onOpenVenue={() => navigate('/admin/venues')}
+                  onOpenSource={(h) => navigate(isFounder ? `/venue/${encodeURIComponent(h)}` : `/sources/${encodeURIComponent('ig:' + h)}`)}
                 />
               ))}
             </div>
             )
           })()}
-        </section>
+        </SectionShell>
       )}
 
-      {/* Founder always has access to the manual refresh trigger —
-          slim row now that "Contas ativas" is merged into the
-          leaderboard. */}
-      {isFounder && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-          <button
-            onClick={triggerRefresh}
-            disabled={busy}
-            style={ghostBtn('var(--sage)')}
-          >
-            ▶ Disparar refresh agora
-          </button>
-          {envName && envName !== 'production' && (
-            <button
-              onClick={syncCatalog}
-              disabled={busy}
-              style={ghostBtn('var(--honey)')}
-              title="Só catálogo — usuários e push ficam na produção"
-            >
-              {syncing ? '⬇ Sincronizando…' : '⬇ Puxar catálogo da produção'}
+      {isFounder && section === 'pessoas' && (
+        <SectionShell title="👥 Pessoas" onBack={() => navigate('/admin')}>
+          <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
+            Todo mundo que entrou, o que fez, e quem cura. Liberar alguém
+            como curador é na linha da pessoa — assim o e-mail é o que a
+            conta usa de verdade, não um lembrado de cabeça.
+          </div>
+          <UsersTable
+            data={users}
+            error={usersError}
+            onRetry={loadUsers}
+            curators={curators}
+            selfEmail={email}
+            onGrant={grantCurator}
+            onRevoke={removeCurator}
+            busy={busy}
+          />
+        </SectionShell>
+      )}
+
+      {isFounder && section === 'uso' && usage && (
+        <SectionShell title="📊 Uso do app" onBack={() => navigate('/admin')}>
+          <UsageSection usage={usage} />
+        </SectionShell>
+      )}
+
+      {isFounder && section === 'feedback' && (
+        <SectionShell title="💬 Feedback" onBack={() => navigate('/admin')}>
+          <FeedbackSection
+            feedback={feedback}
+            email={email}
+            onReload={load}
+            busy={busy}
+            setBusy={setBusy}
+          />
+        </SectionShell>
+      )}
+
+      {isFounder && section === 'ferramentas' && (
+        <SectionShell title="🛠 Ferramentas" onBack={() => navigate('/admin')}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+            <button onClick={triggerRefresh} disabled={busy} style={ghostBtn('var(--sage)')}>
+              ▶ Disparar refresh agora
             </button>
-          )}
-          {/* People, separate from the catalog on purpose: this one
-              wipes the environment's whole social graph before writing,
-              and the catalog sync is additive. Same reason it's founder
-              -gated on the backend while the catalog one is not. */}
-          {envName && envName !== 'production' && (
-            <button
-              onClick={syncSocial}
-              disabled={busy}
-              style={ghostBtn('var(--cyan)')}
-              title="Anonimizado na produção antes de sair. Apaga o grafo deste ambiente."
-            >
-              {syncing ? '⬇ Sincronizando…' : '⬇ Puxar pessoas e canais'}
-            </button>
-          )}
-        </div>
+            {envName && envName !== 'production' && (
+              <button
+                onClick={syncCatalog}
+                disabled={busy}
+                style={ghostBtn('var(--honey)')}
+                title="Só catálogo — usuários e push ficam na produção"
+              >
+                {syncing ? '⬇ Sincronizando…' : '⬇ Puxar catálogo da produção'}
+              </button>
+            )}
+            {envName && envName !== 'production' && (
+              <button
+                onClick={syncSocial}
+                disabled={busy}
+                style={ghostBtn('var(--cyan)')}
+                title="Anonimizado na produção antes de sair. Apaga o grafo deste ambiente."
+              >
+                {syncing ? '⬇ Sincronizando…' : '⬇ Puxar pessoas e canais'}
+              </button>
+            )}
+          </div>
+          <ClientErrorsSection data={clientErrors} />
+          <PostDebugSection email={email} />
+        </SectionShell>
       )}
     </div>
   )
@@ -756,17 +820,11 @@ function statusBtn(color) {
 // ── UsageSection — founder dashboard ──────────────────────
 // DAU/WAU/MAU + funnel + 30-day daily series + recent logins.
 // Charts are simple inline SVG bars to avoid a chart-library dep.
-function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) {
+function UsageSection({ usage }) {
   const maxDaily = Math.max(1, ...usage.daily.map(d => d.active))
   const maxFunnel = Math.max(1, ...usage.funnel.map(f => f.count))
   return (
-    <div style={{
-      marginTop: 32, paddingTop: 24,
-      borderTop: '2px dashed var(--border)',
-    }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
-        📊 Uso do app
-      </h2>
+    <div>
       <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
         Métricas agregadas. Atividade = abriu o app / sincronizou estado nas últimas 24h/7d/30d.
       </p>
@@ -884,68 +942,6 @@ function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) 
         )}
       </div>
 
-      {/* Every user and what they've done. The "últimos logins" list
-          below stays as the quick glance; this is the full picture. */}
-      <UsersTable data={users} error={usersError} onRetry={onRetryUsers} />
-
-      {/* Client errors, grouped by message — /analytics/funnel only counts
-          by event_name, which collapses every distinct js_uncaught message
-          into one bucket. This is the panel that answers whether accounts
-          that never RSVP'd/friended/grouped crashed on first run. */}
-      <ClientErrorsSection data={clientErrors} />
-
-      {/* Recent logins */}
-      <div style={{
-        background: 'var(--white)', borderRadius: 12, padding: 14,
-        border: '1px solid var(--border)',
-      }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 10 }}>
-          ÚLTIMOS LOGINS
-        </div>
-        {usage.recent.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--charcoal-light)' }}>
-            Nenhum usuário ainda.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {usage.recent.map(u => (
-              <div key={u.google_id || u.email} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '6px 0',
-              }}>
-                {u.picture ? (
-                  <img src={u.picture} alt={u.name} referrerPolicy="no-referrer"
-                    style={{ width: 24, height: 24, borderRadius: '50%' }} />
-                ) : (
-                  <div style={{
-                    width: 24, height: 24, borderRadius: '50%', background: 'var(--cream)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10,
-                  }}>{(u.name || '?')[0]?.toUpperCase()}</div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 12, fontWeight: 600, color: 'var(--charcoal)',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {u.name || u.email || u.google_id?.slice(0, 12)}
-                  </div>
-                  {u.email && u.email !== u.name && (
-                    <div style={{
-                      fontSize: 10, color: 'var(--charcoal-light)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {u.email}
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--charcoal-light)', flexShrink: 0 }}>
-                  {new Date(u.last_seen).toLocaleString('pt-BR')}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
@@ -954,9 +950,20 @@ function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) 
 // ── UsersTable — who the users are, not just how many ─────
 // The dashboard could only show the ten most recent logins. This is the
 // whole list with per-user activity, sorted client-side (tens of rows).
-function UsersTable({ data, error, onRetry }) {
+function UsersTable({ data, error, onRetry, curators = [], selfEmail = '', onGrant, onRevoke, busy }) {
   const [sort, setSort] = useState('last_seen')
   const [query, setQuery] = useState('')
+  // Role by email, from the curators table. Feedbacker-only rows don't
+  // count as a role any more (feedback is open to everyone).
+  const roleOf = (u) => {
+    const c = curators.find(c => (c.email || '').toLowerCase() === (u.email || '').toLowerCase())
+    return c?.is_founder ? 'founder' : c?.is_curator ? 'curator' : null
+  }
+  // Curators who were granted by email but have never signed in have no
+  // row in the directory. They still need to be visible — and revocable.
+  const directoryEmails = new Set((data?.users || []).map(u => (u.email || '').toLowerCase()))
+  const grantedNeverSeen = curators.filter(c =>
+    (c.is_curator || c.is_founder) && !directoryEmails.has((c.email || '').toLowerCase()))
 
   // A failed fetch and "this endpoint isn't deployed yet" used to look
   // identical — both just rendered nothing. Show which one it actually is.
@@ -1023,7 +1030,7 @@ function UsersTable({ data, error, onRetry }) {
         gap: 10, marginBottom: 10, flexWrap: 'wrap',
       }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)' }}>
-          USUÁRIOS · {data.total}
+          PESSOAS · {data.total}
         </div>
         <input
           value={query}
@@ -1046,6 +1053,9 @@ function UsersTable({ data, error, onRetry }) {
               ))}
               <th style={{ textAlign: 'right' }}>
                 <span style={{ ...th(false), cursor: 'default' }}>Push</span>
+              </th>
+              <th style={{ textAlign: 'right' }}>
+                <span style={{ ...th(false), cursor: 'default' }}>Papel</span>
               </th>
             </tr>
           </thead>
@@ -1088,6 +1098,16 @@ function UsersTable({ data, error, onRetry }) {
                 <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.groups}</td>
                 <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.events_created}</td>
                 <td style={{ padding: '6px 6px', textAlign: 'right' }}>{u.push_devices > 0 ? '🔔' : '—'}</td>
+                <td style={{ padding: '6px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <RoleCell
+                    role={roleOf(u)}
+                    isSelf={(u.email || '').toLowerCase() === (selfEmail || '').toLowerCase()}
+                    canEdit={!!onGrant}
+                    busy={busy}
+                    onGrant={() => onGrant?.(u.email)}
+                    onRevoke={() => onRevoke?.(u.email)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1095,10 +1115,115 @@ function UsersTable({ data, error, onRetry }) {
       </div>
       {rows.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--charcoal-light)', paddingTop: 8 }}>
-          Nenhum usuário encontrado.
+          Nenhuma pessoa encontrada.
+        </div>
+      )}
+      {grantedNeverSeen.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px dashed var(--border)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)', marginBottom: 6 }}>
+            LIBERADOS QUE NUNCA ENTRARAM
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginBottom: 8, lineHeight: 1.4 }}>
+            Curadores por e-mail sem conta no diretório. Se a pessoa entrou
+            pela Apple com "Ocultar meu email", o endereço real dela é outro
+            — libera pela linha dela acima e remove este.
+          </div>
+          {grantedNeverSeen.map(c => (
+            <div key={c.email} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12 }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.email}{c.is_founder ? ' · fundador' : ''}
+              </span>
+              {!c.is_founder && onRevoke && (
+                <button onClick={() => onRevoke(c.email)} disabled={busy} title="Remover curador"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--charcoal-light)' }}>
+                  🗑
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
+  )
+}
+
+
+// A person's role, and the one action the founder has on it. Founder
+// rows and your own row carry no action: you can't demote yourself by
+// accident, and there is only one founder.
+function RoleCell({ role, isSelf, canEdit, busy, onGrant, onRevoke }) {
+  if (role === 'founder') {
+    return <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 5, background: '#FFF3E0', color: '#FF8F00' }}>FUNDADOR</span>
+  }
+  if (role === 'curator') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 5, background: 'var(--sage-pale)', color: 'var(--sage)' }}>CURADOR</span>
+        {canEdit && !isSelf && (
+          <button onClick={onRevoke} disabled={busy} title="Remover curador"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--charcoal-light)', padding: 0 }}>
+            🗑
+          </button>
+        )}
+      </span>
+    )
+  }
+  if (!canEdit) return <span style={{ color: 'var(--charcoal-light)' }}>—</span>
+  return (
+    <button onClick={onGrant} disabled={busy} title="Liberar como curador"
+      style={{ ...ghostBtn('var(--sage)'), padding: '3px 8px', fontSize: 10 }}>
+      + curador
+    </button>
+  )
+}
+
+
+// A menu card: the job, and the one number that says whether to open it.
+function MenuCard({ icon, label, hint, count, extra, onClick }) {
+  const n = (count ?? null) === null ? null : count + (extra || 0)
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        textAlign: 'left', cursor: 'pointer', padding: '14px 14px 12px',
+        borderRadius: 14, border: '1px solid var(--line)', background: 'var(--bg2)',
+        color: 'var(--text)', display: 'flex', flexDirection: 'column', gap: 4, minHeight: 92,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>{icon}</span>
+        {n !== null && (
+          <span className="neon-display" style={{
+            fontSize: 22, lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+            color: n > 0 ? 'var(--magenta)' : 'var(--text3)',
+          }}>{n}</span>
+        )}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.35 }}>{hint}</div>
+    </button>
+  )
+}
+
+
+// The frame every section sits in: a way back, and a title.
+function SectionShell({ title, onBack, children }) {
+  return (
+    <section>
+      <button
+        onClick={onBack}
+        className="neon-mono"
+        style={{
+          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+          color: 'var(--text3)', fontSize: 10, letterSpacing: '0.18em',
+          textTransform: 'uppercase', marginBottom: 10,
+        }}
+      >
+        ← Admin
+      </button>
+      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>{title}</h2>
+      {children}
+    </section>
   )
 }
 
@@ -1217,6 +1342,7 @@ const inputStyle = {
   padding: '8px 12px', borderRadius: 8,
   border: '1px solid var(--border)', fontSize: 13, outline: 'none',
 }
+
 
 const primaryBtn = (disabled) => ({
   padding: '8px 16px', borderRadius: 8, border: 'none',
@@ -1460,589 +1586,19 @@ function NotACuratorMessage({ email }) {
 // venue's catalog event count, monthly view/RSVP/conversion stats,
 // plus action affordances (⭐ Seleção auê toggle, manual scrape,
 // delete). Tap the row body → opens the venue's Painel.
-function VenueLeaderboard({ email, navigate, busy, setBusy, onMutate }) {
-  const [venues, setVenues] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState(false)
-  const [error, setError] = useState(null)
-
-  const reload = useCallback(async () => {
-    const d = await fetchVenueLeaderboard(email, 30)
-    setVenues(d.venues || [])
-    setLoading(false)
-  }, [email])
-
-  useEffect(() => {
-    let cancelled = false
-    fetchVenueLeaderboard(email, 30).then(d => {
-      if (cancelled) return
-      setVenues(d.venues || [])
-      setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [email])
-
-  async function toggleFeatured(v) {
-    setBusy?.(true)
-    try {
-      const r = await fetch(
-        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(v.handle)}/featured`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requesting_email: email, featured: !v.featured }),
-        },
-      )
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      await reload()
-      onMutate?.()
-    } catch (e) {
-      setError(`Falha ao atualizar Destaque: ${e.message}`)
-    }
-    setBusy?.(false)
-  }
-
-  async function scrapeOne(handle) {
-    setBusy?.(true)
-    try {
-      const r = await fetch(
-        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/scrape?requesting_email=${encodeURIComponent(email)}`,
-        { method: 'POST' },
-      )
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.detail || `HTTP ${r.status}`)
-      }
-      const result = await r.json()
-      alert(`@${handle}: ${result.events_extracted ?? 0} evento(s) extraído(s).`)
-      await reload()
-      onMutate?.()
-    } catch (e) {
-      setError(`Falha ao scrapear: ${e.message}`)
-    }
-    setBusy?.(false)
-  }
-
-  async function deleteOne(handle) {
-    if (!confirm(`Remover @${handle}? Os eventos cadastrados continuam, mas a conta sai do tracking.`)) return
-    setBusy?.(true)
-    try {
-      await fetch(
-        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}?requesting_email=${encodeURIComponent(email)}`,
-        { method: 'DELETE' },
-      )
-      await reload()
-      onMutate?.()
-    } catch (e) {
-      setError(`Falha ao remover: ${e.message}`)
-    }
-    setBusy?.(false)
-  }
-
-  // Edit name / category / notes straight from the leaderboard. This is
-  // where the founder actually works — the searchable account list with
-  // the same editor sits at the very bottom of the page, under usage,
-  // curators and feedback, which is a long way to scroll to fix a typo.
-  async function saveAccount(v, fields) {
-    setBusy?.(true)
-    try {
-      const r = await fetch(`${API_BASE}/admin/ig-accounts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          handle: v.handle,
-          // raw_label, never the display label — see get_venue_leaderboard.
-          label: fields.label ?? v.raw_label ?? '',
-          category: fields.category ?? v.category ?? '',
-          enabled: v.enabled !== false,
-          notes: fields.notes ?? v.notes ?? '',
-          requesting_email: email,
-        }),
-      })
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.detail || `HTTP ${r.status}`)
-      }
-      await reload()
-      onMutate?.()
-      return true
-    } catch (e) {
-      setError(`Falha ao salvar: ${e.message}`)
-      return false
-    } finally {
-      setBusy?.(false)
-    }
-  }
-
-  async function setPromo(handle, code, perk) {
-    setBusy?.(true)
-    try {
-      const r = await fetch(
-        `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/promo`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requesting_email: email, code, perk }),
-        },
-      )
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.detail || `HTTP ${r.status}`)
-      }
-      await reload()
-      onMutate?.()
-    } catch (e) {
-      setError(`Falha ao salvar código: ${e.message}`)
-    }
-    setBusy?.(false)
-  }
-
-  const visible = expanded ? venues : venues.slice(0, 8)
-  const hidden = venues.length - visible.length
-
-  return (
-    <section style={{ marginTop: 24, marginBottom: 8 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
-        🎯 Negociação · top venues
-      </h2>
-      <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
-        Atividade dos últimos 30 dias — topo da lista = melhor candidato
-        a Seleção auê pago. Toca o card pro Painel completo, ou usa os
-        botões à direita pra ações rápidas.
-      </div>
-      {error && (
-        <div style={{
-          background: '#FFEBEE', color: '#B71C1C', padding: '8px 12px',
-          borderRadius: 8, fontSize: 12, marginBottom: 8,
-        }}>
-          {error}
-        </div>
-      )}
-      {loading ? (
-        <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>Carregando…</div>
-      ) : venues.length === 0 ? (
-        <div style={{ color: 'var(--charcoal-light)', fontSize: 13 }}>
-          Nenhuma conta ativa.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {visible.map((v, i) => (
-            <LeaderboardRow
-              key={v.handle}
-              venue={v}
-              rank={i + 1}
-              busy={busy}
-              navigate={navigate}
-              onToggleFeatured={() => toggleFeatured(v)}
-              onScrape={() => scrapeOne(v.handle)}
-              onDelete={() => deleteOne(v.handle)}
-              onSetPromo={setPromo}
-              onSave={saveAccount}
-            />
-          ))}
-          {hidden > 0 && !expanded && (
-            <button
-              onClick={() => setExpanded(true)}
-              style={{
-                padding: '8px 12px', borderRadius: 10,
-                border: '1px dashed var(--border)', background: 'transparent',
-                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
-                cursor: 'pointer',
-              }}
-            >
-              + Ver todos os {venues.length} venues
-            </button>
-          )}
-          {expanded && venues.length > 8 && (
-            <button
-              onClick={() => setExpanded(false)}
-              style={{
-                padding: '8px 12px', borderRadius: 10,
-                border: '1px dashed var(--border)', background: 'transparent',
-                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
-                cursor: 'pointer',
-              }}
-            >
-              − Mostrar menos
-            </button>
-          )}
-        </div>
-      )}
-    </section>
-  )
-}
-
-
-function LeaderboardRow({ venue: v, rank, busy, navigate, onToggleFeatured, onScrape, onDelete, onSetPromo, onSave }) {
-  const conv = (v.conversion_rate * 100).toFixed(1)
-  const lastScrape = v.last_scraped_at
-    ? new Date(v.last_scraped_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    : '—'
-  const rawPic = v.profile_pic_url
-  const pic = (rawPic && API_BASE && rawPic.startsWith('/event-images/'))
-    ? `${API_BASE}${rawPic}`
-    : rawPic
-  // Inline two-step delete: first tap arms the trash icon (turns red,
-  // shows "?" suffix). Second tap within 3s fires the actual delete.
-  // Replaces window.confirm() because PWA standalone mode (iOS) and
-  // some Android shells suppress native dialogs silently — the founder
-  // would tap delete and the action would either fire instantly or
-  // not at all, no visible warning either way.
-  const [armed, setArmed] = useState(false)
-  useEffect(() => {
-    if (!armed) return
-    const t = setTimeout(() => setArmed(false), 3000)
-    return () => clearTimeout(t)
-  }, [armed])
-  function handleDeleteClick() {
-    if (!armed) {
-      setArmed(true)
-      return
-    }
-    setArmed(false)
-    onDelete?.()
-  }
-  // Name / category editor — same collapsed pattern as the promo panel.
-  const [editOpen, setEditOpen] = useState(false)
-  const [editLabel, setEditLabel] = useState(v.raw_label || '')
-  const [editCategory, setEditCategory] = useState(v.category || '')
-  const [editNotes, setEditNotes] = useState(v.notes || '')
-  async function submitEdit() {
-    const ok = await onSave(v, {
-      label: editLabel, category: editCategory, notes: editNotes,
-    })
-    if (ok) setEditOpen(false)
-  }
-
-  // Promo code editor — collapsed by default; tap 🎁 to expand the
-  // inline form, save persists via PUT /admin/ig-accounts/<handle>/promo.
-  // Visible only for founders (parent gates the prop).
+// The one row for a tracked @. It used to be two: a leaderboard row for
+// the founder (rank, 30d views/RSVPs, promo) and this one for curators.
+// Same handle, same edit, same scrape, same delete — so one row, and the
+// founder's extras are an overlay (`metrics`, `onSetPromo`) rather than
+// a second list.
+function AccountRow({ acc, metrics, busy, onToggle, onDelete, onScrape, onOpenSource, onOpenVenue, onToggleFeatured, onSave, onSetPromo, isFounder }) {
   const [promoOpen, setPromoOpen] = useState(false)
-  const [promoCode, setPromoCode] = useState(v.promo_code || '')
-  const [promoPerk, setPromoPerk] = useState(v.promo_perk || '')
+  const [promoCode, setPromoCode] = useState(acc.promo_code || '')
+  const [promoPerk, setPromoPerk] = useState(acc.promo_perk || '')
   useEffect(() => {
-    setPromoCode(v.promo_code || '')
-    setPromoPerk(v.promo_perk || '')
-  }, [v.promo_code, v.promo_perk])
-  return (
-    <div style={{
-      background: 'var(--white)', borderRadius: 10,
-      border: v.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
-      overflow: 'hidden',
-    }}>
-    <div style={{
-      padding: '8px 10px',
-      display: 'flex', alignItems: 'center', gap: 8,
-    }}>
-      {/* Rank medal — #1 honey, rest neutral */}
-      <div style={{
-        width: 22, height: 22, borderRadius: '50%',
-        background: rank === 1 ? 'var(--honey)' : 'var(--cream)',
-        color: rank === 1 ? 'var(--on-cyan)' : 'var(--charcoal-mid)',
-        fontSize: 10, fontWeight: 800, flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{rank}</div>
-      <Avatar src={pic} name={v.label} size={32} />
-
-      {/* Body — name + meta. Tap to open the venue Painel. */}
-      <button
-        onClick={() => navigate(`/venue/${encodeURIComponent(v.handle)}`)}
-        style={{
-          flex: 1, minWidth: 0, background: 'none', border: 'none',
-          padding: 0, cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <div style={{
-          fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          {v.label}
-          {v.claimed_by_email && (
-            <span title={`Reivindicado por ${v.claimed_by_email}`} style={{
-              marginLeft: 6, fontSize: 9, fontWeight: 800,
-              color: 'var(--sage)', letterSpacing: 0.5,
-            }}>✓</span>
-          )}
-        </div>
-        <div style={{
-          fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          @{v.handle}
-        </div>
-        <div style={{
-          fontSize: 10, color: 'var(--charcoal-light)', marginTop: 1,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>
-          📅 {lastScrape}
-        </div>
-      </button>
-
-      {/* Events column — surfaces "how big is this venue's catalog
-          right now" before the engagement stats. A venue with 12
-          upcoming events is structurally different from one with 1,
-          so it deserves its own column instead of being buried in
-          the meta line. */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center',
-        flexShrink: 0, minWidth: 38,
-      }}>
-        <span style={{
-          fontSize: 16, fontWeight: 800, color: 'var(--terra)',
-          fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-        }}>
-          {v.future_events}
-        </span>
-        <span style={{
-          fontSize: 8, fontWeight: 700, color: 'var(--charcoal-light)',
-          textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 2,
-        }}>
-          eventos
-        </span>
-      </div>
-
-      {/* Stats column — views / RSVPs / conversion. Tabular nums so
-          the column aligns across rows. */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 1,
-        flexShrink: 0, fontSize: 11, fontWeight: 800,
-        fontVariantNumeric: 'tabular-nums', textAlign: 'right',
-        minWidth: 56,
-      }}>
-        <span title={`${v.views} visualizações 30d`} style={{ color: 'var(--terra-light)' }}>
-          👀 {v.views}
-        </span>
-        <span title={`${v.rsvps} RSVPs 30d`} style={{ color: 'var(--sage)' }}>
-          🙌 {v.rsvps}
-        </span>
-        <span title="Conversão view→RSVP" style={{ fontSize: 9, color: 'var(--charcoal-light)' }}>
-          {conv}%
-        </span>
-      </div>
-
-      {/* Action column — star toggle (Seleção auê), manual scrape,
-          delete. Compact icons so the row stays single-line on
-          narrow viewports. */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 2,
-        flexShrink: 0, alignItems: 'center',
-      }}>
-        <button
-          onClick={onToggleFeatured}
-          disabled={busy}
-          title={v.featured ? 'Tirar Seleção auê' : 'Marcar como Seleção auê'}
-          style={{
-            background: v.featured ? 'var(--honey-pale)' : 'transparent',
-            border: v.featured ? '1px solid var(--honey)' : '1px solid var(--border)',
-            borderRadius: 999,
-            cursor: busy ? 'default' : 'pointer',
-            fontSize: 11, color: v.featured ? 'var(--honey)' : 'var(--charcoal-light)',
-            padding: '2px 6px', lineHeight: 1,
-          }}
-        >⭐</button>
-        {onSave && (
-          <button
-            onClick={() => setEditOpen(o => !o)}
-            disabled={busy}
-            title="Editar nome e categoria"
-            style={{
-              background: editOpen ? 'var(--sage-pale)' : 'transparent',
-              border: `1px solid ${editOpen ? 'var(--sage)' : 'var(--border)'}`,
-              borderRadius: 999,
-              cursor: busy ? 'default' : 'pointer',
-              fontSize: 11, color: editOpen ? 'var(--sage)' : 'var(--charcoal-light)',
-              padding: '2px 6px', lineHeight: 1,
-            }}
-          >✏️</button>
-        )}
-        {onSetPromo && (
-          <button
-            onClick={() => setPromoOpen(o => !o)}
-            disabled={busy}
-            title={v.promo_code ? `Editar cupom (${v.promo_code})` : 'Adicionar cupom'}
-            style={{
-              background: v.promo_code ? 'var(--sage-pale)' : 'transparent',
-              border: v.promo_code ? '1px solid var(--sage)' : '1px solid var(--border)',
-              borderRadius: 999,
-              cursor: busy ? 'default' : 'pointer',
-              fontSize: 11, color: v.promo_code ? 'var(--sage)' : 'var(--charcoal-light)',
-              padding: '2px 6px', lineHeight: 1,
-            }}
-          >🎁</button>
-        )}
-        <button
-          onClick={onScrape}
-          disabled={busy}
-          title="Scrapear esta conta agora"
-          style={{
-            background: 'none', border: 'none',
-            cursor: busy ? 'default' : 'pointer',
-            fontSize: 12, color: 'var(--charcoal-light)', padding: 1,
-          }}
-        >🔄</button>
-        <button
-          onClick={handleDeleteClick}
-          disabled={busy}
-          title={armed ? 'Toca de novo pra confirmar' : 'Remover do tracking'}
-          style={{
-            background: armed ? '#FFEBEE' : 'none',
-            border: armed ? '1px solid #B71C1C' : 'none',
-            borderRadius: armed ? 6 : 0,
-            cursor: busy ? 'default' : 'pointer',
-            fontSize: 12,
-            color: armed ? '#B71C1C' : 'var(--charcoal-light)',
-            padding: armed ? '1px 4px' : 1,
-            fontWeight: armed ? 800 : 400,
-          }}
-        >{armed ? '🗑 ?' : '🗑'}</button>
-      </div>
-      </div>
-      {/* Promo editor row — only when expanded. Sits below the row so
-          the main leaderboard line stays single-row. */}
-      {onSave && editOpen && (
-        <div style={{
-          padding: '8px 10px', borderTop: '1px dashed var(--border)',
-          background: 'var(--cream)',
-          display: 'flex', flexDirection: 'column', gap: 6,
-        }}>
-          <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 700 }}>
-            ✏️ Editar @{v.handle}
-          </div>
-          <input
-            value={editLabel}
-            onChange={e => setEditLabel(e.target.value.slice(0, 80))}
-            placeholder="Nome (ex. Bar do Sax)"
-            style={{
-              padding: '6px 8px', fontSize: 12, borderRadius: 6,
-              border: '1px solid var(--border)', outline: 'none',
-              background: 'var(--white)', color: 'var(--charcoal)',
-            }}
-          />
-          <select
-            value={editCategory}
-            onChange={e => setEditCategory(e.target.value)}
-            style={{
-              padding: '6px 8px', fontSize: 12, borderRadius: 6,
-              border: '1px solid var(--border)', outline: 'none',
-              background: 'var(--white)', color: 'var(--charcoal)',
-            }}
-          >
-            <option value="">— sem categoria —</option>
-            {CATEGORY_ORDER.map(c => (
-              <option key={c} value={c}>
-                {CATEGORY_META[c].emoji} {CATEGORY_META[c].label}
-              </option>
-            ))}
-          </select>
-          <input
-            value={editNotes}
-            onChange={e => setEditNotes(e.target.value.slice(0, 200))}
-            placeholder="Anotação interna (opcional)"
-            style={{
-              padding: '6px 8px', fontSize: 12, borderRadius: 6,
-              border: '1px solid var(--border)', outline: 'none',
-              background: 'var(--white)', color: 'var(--charcoal)',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={submitEdit} disabled={busy} style={{ ...ghostBtn('var(--sage)'), flex: 1 }}>
-              {busy ? '…' : '✓ Salvar'}
-            </button>
-            <button
-              onClick={() => {
-                setEditLabel(v.raw_label || ''); setEditCategory(v.category || '')
-                setEditNotes(v.notes || ''); setEditOpen(false)
-              }}
-              disabled={busy}
-              style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {onSetPromo && promoOpen && (
-        <div style={{
-          padding: '8px 10px', borderTop: '1px dashed var(--border)',
-          background: 'var(--cream)',
-          display: 'flex', flexDirection: 'column', gap: 6,
-        }}>
-          <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 700 }}>
-            🎁 Cupom Seleção auê para @{v.handle}
-          </div>
-          <input
-            value={promoCode}
-            onChange={e => setPromoCode(e.target.value.slice(0, 32))}
-            placeholder="Código (ex. AUE10)"
-            style={{
-              padding: '6px 8px', fontSize: 12, borderRadius: 6,
-              border: '1px solid var(--border)', outline: 'none',
-              fontFamily: 'monospace',
-            }}
-          />
-          <input
-            value={promoPerk}
-            onChange={e => setPromoPerk(e.target.value.slice(0, 120))}
-            placeholder="Vantagem (ex. 10% off no chopp)"
-            style={{
-              padding: '6px 8px', fontSize: 12, borderRadius: 6,
-              border: '1px solid var(--border)', outline: 'none',
-            }}
-          />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => {
-                onSetPromo(v.handle, promoCode.trim(), promoPerk.trim())
-                setPromoOpen(false)
-              }}
-              disabled={busy}
-              style={{
-                padding: '6px 10px', borderRadius: 6, border: 'none',
-                background: 'var(--sage)', color: '#14081E',
-                fontSize: 11, fontWeight: 700,
-                cursor: busy ? 'default' : 'pointer',
-              }}
-            >Salvar</button>
-            {(v.promo_code || promoCode) && (
-              <button
-                onClick={() => {
-                  onSetPromo(v.handle, '', '')
-                  setPromoCode(''); setPromoPerk('')
-                  setPromoOpen(false)
-                }}
-                disabled={busy}
-                style={{
-                  padding: '6px 10px', borderRadius: 6,
-                  border: '1px solid var(--border)', background: 'var(--white)',
-                  fontSize: 11, fontWeight: 700, color: 'var(--charcoal-mid)',
-                  cursor: busy ? 'default' : 'pointer',
-                }}
-              >Limpar</button>
-            )}
-            <button
-              onClick={() => setPromoOpen(false)}
-              style={{
-                padding: '6px 10px', borderRadius: 6,
-                border: 'none', background: 'transparent',
-                fontSize: 11, fontWeight: 700, color: 'var(--charcoal-light)',
-                cursor: 'pointer', marginLeft: 'auto',
-              }}
-            >Cancelar</button>
-          </div>
-          {!v.featured && (
-            <div style={{ fontSize: 10, color: 'var(--charcoal-light)', fontStyle: 'italic' }}>
-              ⚠️ Esse local não é Seleção auê — o código fica salvo mas não aparece pros usuários até você ativar a estrela.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-
-function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onToggleFeatured, onSave, isFounder }) {
+    setPromoCode(acc.promo_code || '')
+    setPromoPerk(acc.promo_perk || '')
+  }, [acc.promo_code, acc.promo_perk])
   const futureCount = acc.future_events ?? 0
   const [editing, setEditing] = useState(false)
   const [label, setLabel] = useState(acc.label || '')
@@ -2115,9 +1671,12 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
     : rawPic
   return (
     <div style={{
-      background: 'var(--white)', border: '1px solid var(--border)',
-      borderRadius: 12, padding: 12,
+      background: 'var(--white)', border: acc.featured ? '1.5px solid var(--honey)' : '1px solid var(--border)',
+      borderRadius: 12, overflow: 'hidden',
       opacity: acc.enabled ? 1 : 0.55,
+    }}>
+    <div style={{
+      padding: 12,
       display: 'flex', alignItems: 'center', gap: 12,
     }}>
       {/* Profile pic — captured from Apify; falls back to a cream-bg
@@ -2217,6 +1776,52 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
         {futureCount} →
       </button>
 
+      {/* Founder overlay: 30d views / RSVPs, from the leaderboard. */}
+      {metrics && (
+        <div
+          title={`${metrics.views} visualizações · ${metrics.rsvps} RSVPs · ${(metrics.conversion_rate * 100).toFixed(1)}% conversão (30d)`}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: 1, flexShrink: 0,
+            fontSize: 10, fontWeight: 800, fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+          }}
+        >
+          <span style={{ color: 'var(--terra-light)' }}>👀 {metrics.views}</span>
+          <span style={{ color: 'var(--sage)' }}>🙌 {metrics.rsvps}</span>
+        </div>
+      )}
+
+      {/* Where this place is on the map. Editing an @ includes fixing
+          its pin — the venue row lives on its own screen, this is the
+          door to it from the account. */}
+      {onOpenVenue && (
+        <button
+          onClick={onOpenVenue}
+          disabled={busy}
+          title="Localização no mapa (pin do local)"
+          style={{
+            background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer',
+            fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
+          }}
+        >
+          📍
+        </button>
+      )}
+
+      {onSetPromo && (
+        <button
+          onClick={() => setPromoOpen(o => !o)}
+          disabled={busy}
+          title={acc.promo_code ? `Editar cupom (${acc.promo_code})` : 'Adicionar cupom'}
+          style={{
+            background: acc.promo_code ? 'var(--sage-pale)' : 'none',
+            border: acc.promo_code ? '1px solid var(--sage)' : '1px solid var(--border)',
+            borderRadius: 999, cursor: busy ? 'default' : 'pointer',
+            fontSize: 11, color: acc.promo_code ? 'var(--sage)' : 'var(--charcoal-light)',
+            padding: '2px 6px', lineHeight: 1,
+          }}
+        >🎁</button>
+      )}
+
       {/* Founder-only Destaque toggle. Tapping flips the featured flag
           and immediately bumps the handle to the top of /sources and
           /events. Designed as a visual switch (filled star = active)
@@ -2278,132 +1883,50 @@ function AccountRow({ acc, busy, onToggle, onDelete, onScrape, onOpenSource, onT
         🗑
       </button>
     </div>
-  )
-}
-
-
-function CuratorsSection({
-  curators, email, users,
-  newCuratorEmail, setNewCuratorEmail,
-  newCuratorNotes, setNewCuratorNotes,
-  onAdd, onRemove, busy,
-}) {
-  // A curator added by the email the founder remembers doesn't reach them
-  // if their account actually signed in with a different one — an Apple
-  // "Hide My Email" relay address being the common case, since it looks
-  // nothing like the person's real address. Curator roles AND push
-  // targeting both key off users.email (see _notify_curators_of_request
-  // in backend/main.py), so a typed-from-memory email silently breaks
-  // both. Suggesting from the real user directory (already fetched for
-  // the usage panel) lets the founder pick the address actually on file
-  // instead of guessing it.
-  const emailInDirectory = !newCuratorEmail.trim() || (users?.users || [])
-    .some(u => (u.email || '').toLowerCase() === newCuratorEmail.trim().toLowerCase())
-  // Only show non-feedbacker-only rows. With feedback open to everyone,
-  // the curators table should reflect just curator status.
-  const visibleCurators = curators.filter(c => c.is_founder || c.is_curator)
-  return (
-    <div style={{
-      marginTop: 32, paddingTop: 24,
-      borderTop: '2px dashed var(--border)',
-    }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>
-        Curadores
-      </h2>
-      <p style={{ fontSize: 12, color: 'var(--charcoal-light)', margin: '0 0 14px' }}>
-        Apenas o fundador pode liberar ou remover curadores. Feedback agora
-        é aberto pra qualquer pessoa logada.
-      </p>
-
-      <form onSubmit={onAdd} style={{
-        background: 'var(--white)', borderRadius: 14, padding: 14,
-        border: '1px solid var(--border)', marginBottom: 14,
+    {onSetPromo && promoOpen && (
+      <div style={{
+        padding: '8px 12px', borderTop: '1px dashed var(--border)',
+        background: 'var(--cream)', display: 'flex', flexDirection: 'column', gap: 6,
       }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input
-            type="email"
-            list="curator-email-options"
-            value={newCuratorEmail}
-            onChange={e => setNewCuratorEmail(e.target.value)}
-            placeholder="email@exemplo.com"
-            style={{ ...inputStyle, flex: '2 1 220px' }}
-          />
-          {/* Suggests from the real user directory so the founder can pick
-              the email actually on file, not one typed from memory. */}
-          <datalist id="curator-email-options">
-            {(users?.users || []).map(u => (
-              <option key={u.google_id} value={u.email}>{u.name || u.email}</option>
-            ))}
-          </datalist>
-          <input
-            value={newCuratorNotes}
-            onChange={e => setNewCuratorNotes(e.target.value)}
-            placeholder="Nota (opcional)"
-            style={inputStyle}
-          />
+        <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', fontWeight: 700 }}>
+          🎁 Cupom Seleção auê para @{acc.handle}
+        </div>
+        <input
+          value={promoCode}
+          onChange={e => setPromoCode(e.target.value.slice(0, 32))}
+          placeholder="Código (ex. AUE10)"
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset', fontFamily: 'monospace' }}
+        />
+        <input
+          value={promoPerk}
+          onChange={e => setPromoPerk(e.target.value.slice(0, 120))}
+          placeholder="Vantagem (ex. 10% off no chopp)"
+          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+        />
+        <div style={{ display: 'flex', gap: 6 }}>
           <button
-            type="submit"
-            disabled={busy || !newCuratorEmail.trim()}
-            style={primaryBtn(busy || !newCuratorEmail.trim())}
-          >
-            Liberar
+            onClick={() => { onSetPromo(acc.handle, promoCode.trim(), promoPerk.trim()); setPromoOpen(false) }}
+            disabled={busy}
+            style={{ ...ghostBtn('var(--sage)'), flex: 1 }}
+          >Salvar</button>
+          {(acc.promo_code || promoCode) && (
+            <button
+              onClick={() => { onSetPromo(acc.handle, '', ''); setPromoCode(''); setPromoPerk(''); setPromoOpen(false) }}
+              disabled={busy}
+              style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}
+            >Limpar</button>
+          )}
+          <button onClick={() => setPromoOpen(false)} style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}>
+            Cancelar
           </button>
         </div>
-        {!emailInDirectory && (
-          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 8, lineHeight: 1.4 }}>
-            ⚠️ Nenhuma conta logada usa esse email. Se a pessoa entrou pela
-            Apple com "Ocultar meu email", o endereço real dela é outro
-            (tipo @privaterelay.appleid.com) — confere na lista de usuários
-            ou peça pra ela conferir em Perfil.
+        {!acc.featured && (
+          <div style={{ fontSize: 10, color: 'var(--charcoal-light)', fontStyle: 'italic' }}>
+            ⚠️ Esse local não é Seleção auê — o código fica salvo mas não aparece pros usuários até você ativar a estrela.
           </div>
         )}
-      </form>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {visibleCurators.map(c => (
-          <div
-            key={c.email}
-            style={{
-              background: 'var(--white)', border: '1px solid var(--border)',
-              borderRadius: 10, padding: '10px 12px',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontSize: 13, fontWeight: 700, color: 'var(--charcoal)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              }}>
-                {c.email}
-                {c.is_founder ? (
-                  <span style={{
-                    marginLeft: 8, fontSize: 9, fontWeight: 700, padding: '2px 6px',
-                    borderRadius: 5, background: '#FFF3E0', color: '#FF8F00',
-                  }}>FUNDADOR</span>
-                ) : null}
-              </div>
-              {c.notes && (
-                <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2 }}>
-                  {c.notes}
-                </div>
-              )}
-            </div>
-            {!c.is_founder && c.email !== email && (
-              <button
-                onClick={() => onRemove(c.email)}
-                disabled={busy}
-                title="Remover curador"
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: 14, color: 'var(--charcoal-light)', padding: 4,
-                }}
-              >
-                🗑
-              </button>
-            )}
-          </div>
-        ))}
       </div>
+    )}
     </div>
   )
 }

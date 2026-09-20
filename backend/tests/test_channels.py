@@ -1406,26 +1406,46 @@ def test_followers_already_written_in_are_cleaned_up(api):
     assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
 
 
-# -- 16. a curator sees their own channel's marks ---------------------
+# -- 16. a curator reads their own channel like anyone else ------------
 #
-# auê holds an admin row on its own channels and deliberately doesn't
-# follow them — ownership isn't a subscription, and counting it opened
-# every channel at "1 seguindo". But the channel feed keyed on
-# following=1, so a curator's own channels never reached it: events they
-# had published sat in Eventos as plain catalog rows with nothing saying
-# where they came from. Reported from production.
+# Running a channel is about what you may do to it, not what your
+# Eventos shows. For one round the channel feed also admitted admin and
+# curator rows, so a curator's channels sat at the top of their Eventos
+# whether they followed or not — "a ordenação está travada só pro
+# admin". Following is the only thing that puts a channel in your list,
+# for the founder as for everyone.
 
-def test_a_curator_sees_their_own_channels_events_in_the_feed(api):
+def test_a_curator_who_does_not_follow_sees_no_marks(api):
     _db, _main, client = api
     cid = _channel(client)
     _add_to(client, cid, "u_founder")
-    got = _db.get_followed_channel_events("u_founder")
-    assert [e["name"] for e in got] == ["Masterclass DJ"]
+    assert _db.get_followed_channel_events("u_founder") == []
 
 
-def test_and_still_is_not_counted_as_a_follower(api):
-    """The fix must not reach the follower count — that's the number the
-    `following` column was split out to keep honest."""
+def test_a_curator_who_follows_sees_them_like_anyone(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    assert [e["name"] for e in _db.get_followed_channel_events("u_founder")] == ["Masterclass DJ"]
+
+
+def test_and_unfollowing_takes_them_out_again(api):
+    """The half that was stuck: an admin's unfollow cleared `following`
+    and the feed ignored it."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    client.delete(f"/channels/{cid}/follow?google_id=u_founder")
+    assert _db.get_followed_channel_events("u_founder") == []
+    # ...without costing them the channel they run.
+    assert _db.get_group_member_role(cid, "u_founder") == "admin"
+
+
+def test_an_admin_row_alone_is_not_a_follower(api):
+    """Ownership isn't a subscription: the founder's admin row must not
+    open every channel at "1 seguindo"."""
     _db, _main, client = api
     cid = _channel(client)
     ch = client.get(f"/channels/{cid}?google_id=u_founder").json()["channel"]
@@ -1645,3 +1665,98 @@ def test_a_private_channels_event_is_still_private(api):
     gid = _crew(client, "u_ana")
     ev = _crew_event(client, gid)
     assert client.get(f"/events/{ev['id']}?google_id=u_bia").status_code == 403
+
+
+# -- 21. one curator role ----------------------------------------------
+#
+# A general curator has every power, channels included. You don't have
+# to be the rock specialist to add a show to Rockzera, and a curator who
+# wants to help another channel along is welcome. Per-channel
+# appointment still exists underneath — the founder's tool for handing
+# one channel to someone who isn't a curator.
+
+def _make_general_curator(_db, email):
+    with _db.get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO curators (email, added_by_email, added_at, notes,"
+            " is_founder, is_curator, is_feedbacker) VALUES (?,?,?,?,0,1,0)",
+            (email, FOUNDER_EMAIL, datetime.now(timezone.utc).isoformat(), "test"),
+        )
+        conn.commit()
+
+
+def test_a_curator_can_publish_into_any_channel(api):
+    _db, _main, client = api
+    _make_general_curator(_db, "ana@example.com")
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_ana", "name": "Show Pitty", "venue": "Igloo",
+        "date_start": "2099-10-14T19:00:00", "source_event_id": "cat_pitty",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_a_curator_can_edit_any_channel(api):
+    _db, _main, client = api
+    _make_general_curator(_db, "ana@example.com")
+    cid = _channel(client)
+    r = client.put(f"/channels/{cid}", json={
+        "requesting_email": "ana@example.com", "name": "auê Rock", "description": "Tudo com guitarra",
+    })
+    assert r.status_code == 200, r.text
+    assert client.get(f"/channels/{cid}").json()["channel"]["name"] == "auê Rock"
+
+
+def test_a_curator_is_told_they_can_curate(api):
+    _db, _main, client = api
+    _make_general_curator(_db, "ana@example.com")
+    cid = _channel(client)
+    ch = client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]
+    assert ch["can_curate"] is True
+    assert ch["viewer_is_founder"] is False
+
+
+def test_the_founder_is_told_they_are(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ch = client.get(f"/channels/{cid}?google_id=u_founder").json()["channel"]
+    assert ch["can_curate"] is True and ch["viewer_is_founder"] is True
+
+
+def test_a_plain_follower_still_cannot(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_bia"})
+    ch = client.get(f"/channels/{cid}?google_id=u_bia").json()["channel"]
+    assert ch["can_curate"] is False
+    assert client.put(f"/channels/{cid}", json={
+        "requesting_email": "bia@example.com", "name": "x", "description": "",
+    }).status_code == 403
+
+
+def test_appointing_per_channel_curators_stays_the_founders(api):
+    """The tool for handing ONE channel to a non-curator. A curator may
+    run every channel; they may not hand one out."""
+    _db, _main, client = api
+    _make_general_curator(_db, "ana@example.com")
+    cid = _channel(client)
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    assert r.status_code == 403
+
+
+def test_a_curator_does_not_get_someones_private_crew(api):
+    """Every power, over auê's channels. A private crew is its members'
+    — for the founder (who is a curator too) as much as for anyone."""
+    _db, _main, client = api
+    _make_general_curator(_db, "bia@example.com")
+    gid = _crew(client, "u_ana")
+    assert client.put(f"/channels/{gid}", json={
+        "requesting_email": "bia@example.com", "name": "x", "description": "",
+    }).status_code == 403
+    # Not even told they could: the screen would show edit affordances
+    # on a channel they can't touch.
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    assert client.get(f"/channels/{gid}?google_id=u_bia").json()["channel"]["can_curate"] is False
