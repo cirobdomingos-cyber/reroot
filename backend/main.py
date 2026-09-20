@@ -4816,8 +4816,23 @@ def delete_group(group_id: str, google_id: str):
     role = db.get_group_member_role(group_id, google_id)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Only group admins can delete the group")
-    db.delete_group(group_id)
-    return {"ok": True}
+    return {"ok": True, **db.delete_group(group_id)}
+
+
+@app.delete("/admin/channels/{group_id}")
+def admin_delete_channel(group_id: str, requesting_email: str):
+    """Delete an auê channel with everything that only exists because of
+    it. Founder-only, and only for public channels: a private crew is
+    its members' and is deleted by its own admin through /groups/{id}.
+
+    Exists so a channel can be rebuilt from the catalog cleanly rather
+    than corrected in place — every kind of leftover a channel can
+    accumulate (orphaned forks, stale invitee lists, curator RSVPs) has
+    now shown up once as a production bug."""
+    _require_founder(requesting_email)
+    if not db.is_public_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    return {"ok": True, **db.delete_group(group_id)}
 
 
 @app.get("/groups/by-invite/{invite_code}")
@@ -5436,17 +5451,24 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # Without this, "Adicionar a um grupo" leaves the creator showing
     # in their own Pendentes section, asking them to confirm an event
     # they just created. They're already going by definition.
-    try:
-        db.upsert_rsvp(
-            google_id=req.google_id,
-            event_id=event["id"],
-            event_name=req.name.strip(),
-            event_venue=event.get("venue", ""),
-            event_date=req.date_start,
-            event_url="",
-        )
-    except Exception as e:
-        log.warning(f"Group event {event['id']}: auto-RSVP failed: {e}")
+    #
+    # Except in a public channel, where they are not. Publishing into
+    # auê Rockzera is editorial work, not attendance: a curator clearing
+    # an afternoon's backlog ended up marked as going to fifteen nights
+    # across the city, and their friends saw it — "vou" is one of the
+    # few things this app says about you to other people.
+    if not db.is_public_channel(group_id):
+        try:
+            db.upsert_rsvp(
+                google_id=req.google_id,
+                event_id=event["id"],
+                event_name=req.name.strip(),
+                event_venue=event.get("venue", ""),
+                event_date=req.date_start,
+                event_url="",
+            )
+        except Exception as e:
+            log.warning(f"Group event {event['id']}: auto-RSVP failed: {e}")
 
     # Notify everyone on the invitee list (group members + outsiders).
     # Tag per (group, event) so accidental double-creates collapse
