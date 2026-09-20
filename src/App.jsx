@@ -176,8 +176,13 @@ export default function App() {
             <Route path="/sources/:sourceId" element={<AnimatedPage><SourceDetail /></AnimatedPage>} />
             <Route path="/venue/:handle" element={<AnimatedPage><VenueDashboard /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
-            <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
+            {/* Admin is a menu first; each job is a section. /admin/ig
+                was the old single page — it still opens, on the @ list. */}
+            <Route path="/admin" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
             <Route path="/admin/venues" element={<AnimatedPage><AdminVenues /></AnimatedPage>} />
+            <Route path="/admin/ig" element={<Navigate to="/admin/contas" replace />} />
+            <Route path="/admin/:section" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
+
             <Route path="/curadoria" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="/curadoria/:requestId" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

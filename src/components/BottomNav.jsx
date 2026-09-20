@@ -152,7 +152,7 @@ export default function BottomNav() {
     // shell. Rightmost slot when present (Profile lives behind the Home
     // avatar tap, not in this nav).
     isFounder && {
-      path: '/admin/ig',
+      path: '/admin',
       label: 'Admin',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
