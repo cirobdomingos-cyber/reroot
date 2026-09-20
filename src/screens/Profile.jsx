@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
-import { QRCodeSVG } from 'qrcode.react'
-import { useApp, PROFILES, myPicture } from '../context/AppContext'
+import { useNavigate } from 'react-router-dom'
+import { useApp, myPicture } from '../context/AppContext'
 import { compressImageForUpload } from '../lib/image-compress'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { Capacitor } from '@capacitor/core'
 import { API_BASE } from '../lib/apiBase'
-import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
-import { fetchBadgesCatalog, fetchUserBadges, fetchUserStats, deleteUserAccount, uploadAvatar } from '../services/api'
+import { getPublicOrigin } from '../lib/share'
+import { fetchUserStats, deleteUserAccount, uploadAvatar } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
@@ -25,7 +23,6 @@ const heroPillStyle = {
 export default function Profile() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
-  const location = useLocation()
   const t = useT()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(state.userName)
@@ -36,11 +33,6 @@ export default function Profile() {
   // settings footer. Both drive the same confirmation block, so the top
   // link expands it and scrolls it into view rather than duplicating the UI.
   const deleteSectionRef = useRef(null)
-  // Carried in via navigate('/profile', { state: { openBadge: '...' }})
-  // — currently from the badge-unlock toast. BadgesSection auto-opens
-  // the matching detail modal and scrolls into view.
-  const initialOpenBadge = location.state?.openBadge ?? null
-
   function saveName() {
     if (nameInput.trim()) dispatch({ type: 'SET_NAME', payload: nameInput.trim() })
     setEditingName(false)
@@ -261,23 +253,19 @@ export default function Profile() {
         )}
       </div>
 
-      {/* Minha vibe — profile picker */}
-      <VibeSection state={state} dispatch={dispatch} />
-
       {/* Compartilhar / Instalar — drives PWA distribution to friends */}
       <ShareInstallSection />
 
-      {/* Notifications — placed right above Conquistas so the push opt-in
-          is the first decision after the share card. Earlier we had it
-          below Privacy at the bottom of the screen, which left it
-          discoverable only to users who scrolled to settings. */}
+      {/* Notifications — high on the screen so the push opt-in is an
+          early decision. It used to sit below Privacy at the bottom,
+          which left it discoverable only to people who scrolled into
+          settings. */}
       <NotificationsCard t={t} state={state} dispatch={dispatch} />
 
-      {/* Conquistas — badges already earned + locked grid of what's possible */}
-      <BadgesSection
-        googleId={state.googleUser?.id}
-        initialOpenBadge={initialOpenBadge}
-      />
+      {/* Conquistas removed from the UI Sep 2026. The backend keeps
+          awarding and storing them (badges.py, /badges/*), so the
+          history is intact if it comes back — this is a display
+          decision, not a data one. */}
 
       {/* Recordes — lifetime counters that only go up. No streak anxiety. */}
       <RecordsSection googleId={state.googleUser?.id} />
@@ -286,8 +274,8 @@ export default function Profile() {
       <FeedbackSection state={state} />
 
       {/* Settings you set once and forget: language, accessibility,
-          privacy. They used to sit open between Conquistas and the
-          sources link, which made the screen read as a settings dump.
+          privacy. They used to sit open in the middle of the screen,
+          which made the whole thing read as a settings dump.
           Notifications stays outside — it's an opt-in people need to
           stumble on. */}
       <SettingsGroup t={t}>
@@ -746,90 +734,6 @@ function FeedbackSection({ state }) {
 }
 
 
-// ── "Minha vibe" — profile picker ─────────────────────────
-// Lets the user pick (or change) their profile any time. Profile drives
-// the default mood + the order of suggestions on Home. Setting null
-// clears the profile back to "no preference".
-function VibeSection({ state, dispatch }) {
-  const [editing, setEditing] = useState(false)
-  const profile = state.profile ? PROFILES[state.profile] : null
-  const profiles = Object.values(PROFILES)
-
-  function pick(profileId) {
-    dispatch({ type: 'SET_PROFILE', payload: profileId })
-    setEditing(false)
-  }
-
-  return (
-    <div style={{ margin: '16px 16px 0' }} className="card">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: editing ? 14 : 0 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
-            Minha vibe
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', marginTop: 2 }}>
-            {profile
-              ? `${profile.emoji} ${profile.label} · ${profile.blurb}`
-              : 'Sem preferência — sugestões em ordem de data.'}
-          </div>
-        </div>
-        <button
-          onClick={() => setEditing(v => !v)}
-          style={{
-            background: 'transparent', border: '1px solid var(--border)',
-            borderRadius: 10, padding: '6px 12px', fontSize: 12, fontWeight: 600,
-            color: 'var(--charcoal-mid)', cursor: 'pointer', flexShrink: 0,
-            marginLeft: 12,
-          }}
-        >
-          {editing ? 'fechar' : 'trocar'}
-        </button>
-      </div>
-
-      {editing && (
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
-        }}>
-          {profiles.map(p => {
-            const selected = state.profile === p.id
-            return (
-              <button
-                key={p.id}
-                onClick={() => pick(p.id)}
-                style={{
-                  background: selected ? 'var(--sage-pale)' : 'var(--white)',
-                  border: `1.5px solid ${selected ? 'var(--sage)' : 'var(--border)'}`,
-                  borderRadius: 12, padding: '12px 10px',
-                  textAlign: 'left', cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', gap: 4,
-                }}
-              >
-                <div style={{ fontSize: 22, lineHeight: 1 }}>{p.emoji}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>{p.label}</div>
-                <div style={{ fontSize: 10, color: 'var(--charcoal-mid)', lineHeight: 1.35 }}>
-                  {p.blurb}
-                </div>
-              </button>
-            )
-          })}
-          {state.profile && (
-            <button
-              onClick={() => pick(null)}
-              style={{
-                gridColumn: 'span 2',
-                background: 'transparent', border: '1px dashed var(--border)',
-                borderRadius: 10, padding: '8px', fontSize: 12,
-                color: 'var(--charcoal-light)', cursor: 'pointer',
-              }}
-            >
-              Limpar perfil (sem preferência)
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 
 // ── Share + Install (PWA distribution) ───────────────────
@@ -912,13 +816,9 @@ function ShareInstallSection() {
     typeof window !== 'undefined' && !!window.__aueDeferredInstallPrompt
   )
   const [feedback, setFeedback] = useState(null)
-  const [qrFullscreen, setQrFullscreen] = useState(false)
   const isStandalone = typeof window !== 'undefined' &&
     window.matchMedia &&
     window.matchMedia('(display-mode: standalone)').matches
-  const installUrl = typeof window !== 'undefined'
-    ? `${getPublicOrigin()}/install`
-    : `${NATIVE_PUBLIC_ORIGIN}/install`
 
   useEffect(() => {
     function onAvailable() { setCanInstall(true) }
@@ -1023,516 +923,7 @@ function ShareInstallSection() {
         </div>
       )}
 
-      {/* QR code — for in-person sharing. Tap to enlarge to fullscreen
-          so the other phone can scan it from across a café table. */}
-      <div style={{
-        marginTop: 14, paddingTop: 14,
-        borderTop: '1px dashed var(--border)',
-        display: 'flex', alignItems: 'center', gap: 14,
-      }}>
-        <button
-          onClick={() => setQrFullscreen(true)}
-          aria-label="Mostrar QR code em tela cheia"
-          style={{
-            background: 'var(--white)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: 6, cursor: 'pointer',
-            flexShrink: 0, display: 'flex',
-          }}
-        >
-          <QRCodeSVG value={installUrl} size={88} level="M" includeMargin={false} />
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 2 }}>
-            QR pra mostrar pessoalmente
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--charcoal-light)', lineHeight: 1.4 }}>
-            Tá com alguém aqui? Toque pra ver grande — e aponte a câmera dele pra esse QR.
-          </div>
-        </div>
-      </div>
-
-      {/* Fullscreen overlay — black-out backdrop with the QR scaled big.
-          Tap anywhere to dismiss. */}
-      <AnimatePresence>
-        {qrFullscreen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={() => setQrFullscreen(false)}
-            style={{
-              position: 'fixed', inset: 0,
-              background: 'rgba(20, 20, 20, 0.9)',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              zIndex: 500, cursor: 'pointer',
-              padding: 20,
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.85 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.85 }}
-              transition={{ type: 'spring', damping: 22, stiffness: 280 }}
-              style={{
-                background: 'var(--white)', padding: 24, borderRadius: 20,
-                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-              }}
-            >
-              <QRCodeSVG value={installUrl} size={260} level="M" includeMargin={false} />
-            </motion.div>
-            <div style={{
-              color: 'white', fontSize: 14, fontWeight: 600,
-              marginTop: 22, textAlign: 'center', maxWidth: 280,
-              lineHeight: 1.5, opacity: 0.9,
-            }}>
-              Aponte a câmera do outro celular.<br/>
-              <span style={{ fontSize: 12, opacity: 0.7 }}>Toque em qualquer lugar pra fechar.</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
-  )
-}
-
-
-// ── Conquistas (badges) ───────────────────────────────────
-// Renders the full badge catalog with earned ones in color and locked
-// ones grayed out. Tap a tile (earned or locked) to expand a panel with
-// the full description, tier ladder, and (for multi-instance) the list
-// of venues with their tiers. v3 added tier ladders (I/II/III/IV) so the
-// same template keeps giving progress beyond the first threshold.
-//
-// Tier visual: small "II" / "III" badge in the corner of the tile. Border
-// color escalates bronze → silver → gold → diamond. Tier 0 = locked.
-// Tier tones — metallic medal vibe (Bronze · Prata · Ouro · Platina).
-// Solid `color` for borders/pins where a flat tone reads cleaner; `gradient`
-// for fills where the metallic shimmer carries the achievement feel.
-const TIER_TONE = {
-  1: {
-    name: 'Bronze',
-    color: '#B87333',
-    gradient: 'linear-gradient(135deg, #DA9863 0%, #8B5A2B 100%)',
-  },
-  2: {
-    name: 'Prata',
-    color: '#8B8B8B',
-    gradient: 'linear-gradient(135deg, #E5E5E5 0%, #6F6F6F 100%)',
-  },
-  3: {
-    name: 'Ouro',
-    color: '#D4A017',
-    gradient: 'linear-gradient(135deg, #FFE680 0%, #B88500 100%)',
-  },
-  4: {
-    name: 'Platina',
-    color: '#7C8FA3',
-    gradient: 'linear-gradient(135deg, #C8D4DE 0%, #5A748A 100%)',
-  },
-}
-const TIER_NUMERAL = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V' }
-function tierOf(n) { return TIER_TONE[n] || TIER_TONE[1] }
-
-function BadgesSection({ googleId, initialOpenBadge = null }) {
-  const navigate = useNavigate()
-  const sectionRef = useRef(null)
-  const [catalog, setCatalog] = useState([])
-  const [earned, setEarned] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [expandedBadge, setExpandedBadge] = useState(null) // base_id of tapped tile
-
-  // Listen for new unlocks fired during this session — refresh in-place
-  // so the section reflects what the toast just announced.
-  useEffect(() => {
-    let canceled = false
-    async function load() {
-      const [cat, mine] = await Promise.all([
-        fetchBadgesCatalog(),
-        googleId ? fetchUserBadges(googleId) : Promise.resolve([]),
-      ])
-      if (canceled) return
-      setCatalog(cat)
-      setEarned(mine)
-      setLoading(false)
-    }
-    load()
-    function onUnlock() { if (googleId) fetchUserBadges(googleId).then(setEarned) }
-    window.addEventListener('badge-unlocked', onUnlock)
-    return () => {
-      canceled = true
-      window.removeEventListener('badge-unlocked', onUnlock)
-    }
-  }, [googleId])
-
-  // External request to open a specific badge modal — comes via the
-  // /profile location state when a user taps the badge-unlock toast.
-  // Wait until catalog is loaded before opening, then scroll the section
-  // into view + clear the location state so refresh/back doesn't re-fire.
-  useEffect(() => {
-    if (!initialOpenBadge || loading) return
-    setExpandedBadge(initialOpenBadge)
-    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    navigate('.', { replace: true, state: null })
-  }, [initialOpenBadge, loading, navigate])
-
-  if (loading || catalog.length === 0) return null
-
-  // Group earned by base_id so "local_da_casa:cafe_lucca" rolls up under
-  // the catalog tile for "local_da_casa". Track the highest tier reached
-  // so multi-instance badges show their best venue's tier on the tile.
-  const earnedByBase = {} // base_id -> array of earned rows
-  for (const b of earned) {
-    const base = b.base_id || b.id
-    if (!earnedByBase[base]) earnedByBase[base] = []
-    earnedByBase[base].push(b)
-  }
-
-  const earnedTemplateCount = Object.keys(earnedByBase).filter(b => catalog.find(c => c.id === b)).length
-
-  return (
-    <div ref={sectionRef} style={{ margin: '16px 16px 0' }} className="card">
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
-          🏆 Conquistas
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--charcoal-mid)', fontWeight: 600 }}>
-          {earnedTemplateCount} / {catalog.length}
-        </div>
-      </div>
-      {!googleId && (
-        <div style={{
-          fontSize: 11, color: 'var(--charcoal-light)', lineHeight: 1.5,
-          padding: '8px 0', textAlign: 'center',
-        }}>
-          Faça login pra desbloquear conquistas conforme você usa o auê.
-        </div>
-      )}
-      <div style={{
-        fontSize: 10, color: 'var(--charcoal-light)', marginBottom: 8, textAlign: 'center',
-        lineHeight: 1.45,
-      }}>
-        Toque pra ver detalhe e progresso até o próximo tier.<br/>
-        <span style={{ opacity: 0.8 }}>
-          As conquistas de participação <strong>atualizam após o evento rolar</strong> —
-          o "Primeiro auê" cai assim que você confirma.
-        </span>
-      </div>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,
-      }}>
-        {catalog.map(badge => {
-          const instances = earnedByBase[badge.id] || []
-          const isEarned = instances.length > 0
-          const maxTier = isEarned ? Math.max(...instances.map(i => i.tier || 1)) : 0
-          const hasLadder = (badge.max_tier || 1) > 1
-          const isExpanded = expandedBadge === badge.id
-          const tone = isEarned && hasLadder ? tierOf(maxTier) : null
-          return (
-            <button
-              key={badge.id}
-              onClick={() => setExpandedBadge(isExpanded ? null : badge.id)}
-              title={badge.desc}
-              style={{
-                position: 'relative',
-                display: 'flex', flexDirection: 'column', alignItems: 'center',
-                gap: 4, padding: '10px 6px', borderRadius: 12,
-                background: isExpanded
-                  ? 'var(--terra-pale)'
-                  : isEarned ? 'var(--cream)' : '#F7F5F0',
-                border: `${tone ? 2 : 1}px solid ${tone ? tone.color : (isEarned ? 'var(--terra-pale)' : 'var(--border)')}`,
-                opacity: isEarned ? 1 : 0.45,
-                cursor: 'pointer', transition: 'opacity 0.2s, background 0.2s, border-color 0.2s',
-                fontFamily: 'inherit',
-              }}
-            >
-              {/* Tier numeral pin — uses metallic gradient so the medal vibe
-                  reads at a glance even on a 28px tile */}
-              {tone && (
-                <div style={{
-                  position: 'absolute', top: 4, right: 4,
-                  fontSize: 9, fontWeight: 800, lineHeight: 1,
-                  color: 'white', background: tone.gradient,
-                  padding: '2px 6px', borderRadius: 4,
-                  letterSpacing: 0.5,
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.18)',
-                  textShadow: '0 1px 1px rgba(0,0,0,0.25)',
-                }}>{TIER_NUMERAL[maxTier] || maxTier}</div>
-              )}
-              <div style={{
-                fontSize: 26, lineHeight: 1,
-                filter: isEarned ? 'none' : 'grayscale(0.8)',
-              }}>{badge.emoji}</div>
-              <div style={{
-                fontSize: 10, fontWeight: 700, textAlign: 'center',
-                color: isEarned ? 'var(--charcoal)' : 'var(--charcoal-light)',
-                lineHeight: 1.2,
-              }}>{badge.label}</div>
-              {badge.multi_instance && isEarned && (
-                <div style={{
-                  fontSize: 9, fontWeight: 700, color: 'var(--terra)',
-                  marginTop: -2,
-                }}>×{instances.length}</div>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Detail modal — replaces the inline expansion. Modal feels more
-          like an "achievement reveal" than a spreadsheet row. */}
-      <BadgeDetailModal
-        badge={expandedBadge ? catalog.find(c => c.id === expandedBadge) : null}
-        instances={expandedBadge ? (earnedByBase[expandedBadge] || []) : []}
-        onClose={() => setExpandedBadge(null)}
-      />
-    </div>
-  )
-}
-
-
-// ── Badge detail modal ───────────────────────────────────
-// Celebratory popup for a tapped badge — big emoji, tier ladder,
-// instance list (for multi-instance), and a "locked" state for badges
-// the user hasn't earned yet (still tappable so they see what's possible).
-function BadgeDetailModal({ badge, instances = [], onClose }) {
-  // Close on Escape — desktop ergonomics for free.
-  useEffect(() => {
-    if (!badge) return
-    function onKey(e) { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [badge, onClose])
-
-  return (
-    <AnimatePresence>
-      {badge && (() => {
-        const isEarned = instances.length > 0
-        const hasLadder = (badge.max_tier || 1) > 1
-        const top = isEarned
-          ? instances.reduce((a, b) => (b.tier > a.tier ? b : a))
-          : null
-        const tone = top ? tierOf(top.tier) : null
-        return (
-          <motion.div
-            key="badge-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            onClick={onClose}
-            style={{
-              position: 'fixed', inset: 0,
-              background: 'rgba(28, 28, 28, 0.78)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 20, zIndex: 500,
-            }}
-          >
-            <motion.div
-              key="badge-card"
-              initial={{ scale: 0.85, opacity: 0, y: 16 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 8 }}
-              transition={{ type: 'spring', damping: 22, stiffness: 280 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                background: 'var(--cream)',
-                borderRadius: 22, padding: '28px 22px 22px',
-                width: '100%', maxWidth: 360,
-                border: `2px solid ${tone ? tone.color : 'var(--terra-pale)'}`,
-                boxShadow: tone
-                  ? `0 24px 60px rgba(0,0,0,0.4), 0 0 0 4px ${tone.color}22`
-                  : '0 24px 60px rgba(0,0,0,0.4)',
-                position: 'relative',
-              }}
-            >
-              {/* Close × in corner */}
-              <button
-                onClick={onClose}
-                aria-label="Fechar"
-                style={{
-                  position: 'absolute', top: 10, right: 10,
-                  width: 30, height: 30, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.06)', border: 'none',
-                  fontSize: 18, color: 'var(--charcoal-mid)',
-                  cursor: 'pointer', lineHeight: 1,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'inherit',
-                }}
-              >×</button>
-
-              {/* Big emoji + earned/locked status badge */}
-              <div style={{ textAlign: 'center', marginBottom: 14 }}>
-                <div style={{
-                  fontSize: 62, lineHeight: 1, marginBottom: 8,
-                  filter: isEarned ? 'none' : 'grayscale(0.85)',
-                  opacity: isEarned ? 1 : 0.55,
-                }}>{badge.emoji}</div>
-                <div style={{
-                  display: 'inline-block', fontSize: 9, fontWeight: 800,
-                  letterSpacing: 1.2, textTransform: 'uppercase',
-                  padding: '4px 12px', borderRadius: 999,
-                  background: tone ? tone.gradient : (isEarned ? 'var(--terra)' : 'var(--charcoal-light)'),
-                  color: 'white',
-                  textShadow: tone ? '0 1px 1px rgba(0,0,0,0.25)' : 'none',
-                  boxShadow: tone ? '0 2px 6px rgba(0,0,0,0.18)' : 'none',
-                }}>
-                  {isEarned
-                    ? (tone ? `${tone.name} · Conquista` : 'Conquista desbloqueada')
-                    : 'Por desbloquear'}
-                </div>
-              </div>
-
-              {/* Title */}
-              <div style={{
-                fontSize: 22, fontWeight: 800, color: 'var(--charcoal)',
-                textAlign: 'center', lineHeight: 1.2, marginBottom: 6,
-              }}>
-                {badge.label}
-                {hasLadder && top && (
-                  <span style={{
-                    marginLeft: 8, fontSize: 14, fontWeight: 800,
-                    background: tone.gradient, color: 'white',
-                    padding: '3px 10px', borderRadius: 6, verticalAlign: 'middle',
-                    letterSpacing: 0.5,
-                    textShadow: '0 1px 1px rgba(0,0,0,0.25)',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
-                  }}>{TIER_NUMERAL[top.tier] || top.tier}</span>
-                )}
-              </div>
-
-              {/* Description */}
-              <div style={{
-                fontSize: 13, color: 'var(--charcoal-mid)', textAlign: 'center',
-                lineHeight: 1.5, marginBottom: hasLadder || (isEarned && badge.multi_instance) ? 18 : 0,
-              }}>
-                {badge.desc}
-              </div>
-
-              {/* Tier ladder */}
-              {hasLadder && (
-                <div style={{
-                  background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
-                  marginBottom: instances.length > 0 && badge.multi_instance ? 14 : 0,
-                  border: '1px solid var(--border)',
-                }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, color: 'var(--charcoal-mid)',
-                    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8,
-                  }}>Escada de tiers</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {(badge.tiers || []).map((threshold, i) => {
-                      const tierNum = i + 1
-                      const reached = top && top.tier >= tierNum
-                      const tierTone = tierOf(tierNum)
-                      const unit = badge.tier_unit || ''
-                      return (
-                        <span key={tierNum} style={{
-                          fontSize: 11, fontWeight: 700,
-                          padding: '5px 10px', borderRadius: 8,
-                          background: reached ? tierTone.gradient : 'var(--cream)',
-                          color: reached ? 'white' : 'var(--charcoal-light)',
-                          border: `1px solid ${reached ? 'transparent' : 'var(--border)'}`,
-                          textShadow: reached ? '0 1px 1px rgba(0,0,0,0.2)' : 'none',
-                          boxShadow: reached ? '0 2px 4px rgba(0,0,0,0.12)' : 'none',
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                        }}>
-                          <span style={{ fontWeight: 800 }}>{tierTone.name}</span>
-                          <span style={{ opacity: 0.85 }}>· {threshold}{unit}</span>
-                        </span>
-                      )
-                    })}
-                  </div>
-                  {/* Next-tier hint: count-based for normal badges, alt copy
-                      for window-based ones (versatil) where math doesn't fit */}
-                  {top && top.next_threshold != null && !badge.tier_unit && (
-                    <div style={{
-                      fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 10,
-                      lineHeight: 1.4,
-                    }}>
-                      <strong style={{ color: 'var(--terra)' }}>
-                        Faltam {top.next_threshold - (top.context?.count ?? top.context?.events ?? top.context?.max_friends_at_event ?? 0)}
-                      </strong>{' '}pra subir de tier.
-                    </div>
-                  )}
-                  {top && top.next_threshold != null && badge.tier_unit === 'd' && (
-                    <div style={{
-                      fontSize: 12, color: 'var(--charcoal-mid)', marginTop: 10,
-                      lineHeight: 1.4,
-                    }}>
-                      Faça o conjunto de novo numa janela de{' '}
-                      <strong style={{ color: 'var(--terra)' }}>
-                        {top.next_threshold} dias
-                      </strong>{' '}pra subir.
-                    </div>
-                  )}
-                  {top && top.next_threshold == null && (
-                    <div style={{
-                      fontSize: 12, color: 'var(--terra)', marginTop: 10,
-                      fontWeight: 700, textAlign: 'center',
-                    }}>
-                      🌟 Tier máximo alcançado!
-                    </div>
-                  )}
-                  {!isEarned && (
-                    <div style={{
-                      fontSize: 11, color: 'var(--charcoal-light)', marginTop: 10, lineHeight: 1.4,
-                    }}>
-                      Comece confirmando eventos pra desbloquear o primeiro tier.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Multi-instance: list venues with tier chips */}
-              {instances.length > 0 && badge.multi_instance && (
-                <div style={{
-                  background: 'var(--white)', borderRadius: 14, padding: '12px 14px',
-                  border: '1px solid var(--border)',
-                }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, color: 'var(--charcoal-mid)',
-                    letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8,
-                  }}>{instances.length === 1 ? 'Onde você é' : `Onde você é (${instances.length})`}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {instances.map(inst => {
-                      const instTone = hasLadder && inst.tier > 0 ? tierOf(inst.tier) : null
-                      return (
-                        <span key={inst.id} style={{
-                          fontSize: 12, fontWeight: 600,
-                          background: 'var(--cream)', color: 'var(--charcoal)',
-                          padding: '5px 10px', borderRadius: 8,
-                          border: '1px solid var(--terra-pale)',
-                          display: 'inline-flex', alignItems: 'center', gap: 5,
-                        }}>
-                          {inst.instance || inst.context?.venue || '—'}
-                          {instTone && (
-                            <span style={{
-                              color: 'white',
-                              background: instTone.gradient,
-                              padding: '1px 7px', borderRadius: 4, fontSize: 9,
-                              fontWeight: 800, letterSpacing: 0.5,
-                              textShadow: '0 1px 1px rgba(0,0,0,0.2)',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                            }}>{TIER_NUMERAL[inst.tier] || inst.tier}</span>
-                          )}
-                          {inst.context?.count != null && (
-                            <span style={{ color: 'var(--charcoal-light)', fontSize: 10 }}>
-                              ×{inst.context.count}
-                            </span>
-                          )}
-                        </span>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )
-      })()}
-    </AnimatePresence>
   )
 }
 

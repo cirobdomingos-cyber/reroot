@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useApp, PROFILES } from '../context/AppContext'
+import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 import { mountGoogleButton, isGoogleConfigured, MOCK_GOOGLE_USER } from '../lib/google-auth'
 import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
@@ -52,11 +52,18 @@ const TEASER_EVENTS = [
 ]
 const TEASER_AVATAR_COLORS = ['#5B8DD9', '#7A9E7E', '#E8623F', '#E8A93F']
 
-// Onboarding (post-pivot) — two short steps:
-//   1. Welcome + sign-in (Google or visitor).
-//   2. Vibe picker — sets state.profile, which seeds the default mood and
-//      orders Home suggestions. Skippable.
-// Either step finishes by JOIN_COHORTing and navigating to /home.
+// Onboarding (post-pivot) — one short step, then the app:
+//   1. Welcome + sign-in (Google, Apple, or carry on as a visitor).
+//
+// A vibe picker used to sit between that and the app, setting
+// state.profile. Removed Sep 2026: the only thing that ever read that
+// field was the picker itself, so it asked for a preference nothing
+// used, standing between a new person and the catalog they came for.
+//
+// The push primer still runs when push is supported and hasn't been
+// seen. That step earns itself — 26 of 38 accounts have no push device.
+//
+// Finishes by JOIN_COHORTing and navigating to /events.
 
 function LangToggle({ language, dispatch }) {
   return (
@@ -95,7 +102,9 @@ export default function Onboarding() {
   // native iOS, or a web build that has the Service ID baked in. See
   // isAppleSignInAvailable() for why this gate exists.
   const appleAvailable = isAppleSignInAvailable()
-  // 'welcome' = step 1 (sign-in/visitor), 'vibe' = step 2 (profile picker)
+  // 'welcome' = sign-in or visitor, then straight in (or via the
+  // push primer). The vibe picker that used to sit between them is
+  // gone — see afterSignIn.
   const [step, setStep] = useState('welcome')
   const [signInError, setSignInError] = useState('')
 
@@ -107,7 +116,7 @@ export default function Onboarding() {
       dispatch({ type: 'SET_GOOGLE_USER', payload: googleUser })
       dispatch({ type: 'SET_NAME', payload: googleUser.givenName || googleUser.name?.split(' ')[0] || '' })
       trackEvent('onboarding_signed_in', { method: 'google' })
-      setStep('vibe')
+      afterSignIn()
     })
     return cleanup
   }, [dispatch, googleConfigured, step])
@@ -116,7 +125,7 @@ export default function Onboarding() {
     dispatch({ type: 'SET_GOOGLE_USER', payload: MOCK_GOOGLE_USER })
     dispatch({ type: 'SET_NAME', payload: MOCK_GOOGLE_USER.givenName })
     trackEvent('onboarding_signed_in', { method: 'mock' })
-    setStep('vibe')
+    afterSignIn()
   }
 
   // Apple Sign-In — same shape as Google: drop the resolved user into
@@ -135,7 +144,7 @@ export default function Onboarding() {
         dispatch({ type: 'SET_NAME', payload: user.givenName || user.name?.split(' ')[0] || '' })
       }
       trackEvent('onboarding_signed_in', { method: 'apple', is_new_user: !!user.isNewUser })
-      setStep('vibe')
+      afterSignIn()
     } catch (err) {
       if (err?.message && err.message !== 'Login cancelado.') {
         setSignInError('Não consegui entrar com a Apple agora. Tenta com o Google ou entra como visitante.')
@@ -145,21 +154,23 @@ export default function Onboarding() {
 
   function handleSkipSignin() {
     trackEvent('onboarding_signed_in', { method: 'skip' })
-    setStep('vibe')
+    afterSignIn()
   }
 
-  function finishVibePick(profileId) {
-    if (profileId) dispatch({ type: 'SET_PROFILE', payload: profileId })
-    // Insert a push-permission primer step BETWEEN vibe pick and home
-    // when push is supported and the user hasn't seen it yet. Skipping
-    // straight to home (no primer needed) when push is unsupported (e.g.
-    // desktop browser without service worker) or the user already saw
-    // the primer in a previous run.
+  // The vibe picker used to sit here, between signing in and the app.
+  // Removed Sep 2026: it asked for a preference nothing read — the only
+  // consumer of state.profile was the picker itself — and it stood
+  // between a new person and the catalog they came for.
+  //
+  // The push primer still runs when push is supported and hasn't been
+  // seen. That one earns its step: it lifts opt-in measurably, and 26
+  // of 38 accounts have no push device.
+  function afterSignIn() {
     if (isPushSupported() && !state.pushPrimerSeen) {
       setStep('push-primer')
       return
     }
-    completeOnboarding(profileId || state.profile)
+    completeOnboarding(state.profile)
   }
 
   function completeOnboarding(profileId) {
@@ -212,7 +223,6 @@ export default function Onboarding() {
           privacyText={t.onboarding_privacy}
         />
       )}
-      {step === 'vibe' && <VibeStep onPick={finishVibePick} />}
       {step === 'push-primer' && (
         <PushPrimerStep
           dispatch={dispatch}
@@ -547,71 +557,3 @@ function WelcomeStep({ googleConfigured, googleBtnRef, onMockGoogle, onApple, ap
   )
 }
 
-// ── Step 2: vibe picker ───────────────────────────────────
-function VibeStep({ onPick }) {
-  const profiles = Object.values(PROFILES)
-  return (
-    <>
-      <div style={{ flex: 1, padding: '32px 20px 0', color: 'white' }}>
-        <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.3, marginBottom: 8 }}>
-          Que vibe combina<br />com você hoje?
-        </div>
-        <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 24 }}>
-          Isso só ajuda a ordenar as sugestões na Home. Pode mudar depois.
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {profiles.map(p => (
-            <button
-              key={p.id}
-              onClick={() => onPick(p.id)}
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1.5px solid rgba(255,255,255,0.14)',
-                borderRadius: 18,
-                padding: '20px 14px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                color: 'white',
-                transition: 'all 0.15s',
-                minHeight: 140,
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(255, 43, 214, 0.18)'
-                e.currentTarget.style.borderColor = 'var(--sage)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'
-              }}
-            >
-              <div style={{ fontSize: 32, lineHeight: 1 }}>{p.emoji}</div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{p.label}</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
-                {p.blurb}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{
-        background: 'var(--cream)', borderRadius: '28px 28px 0 0',
-        padding: '20px 20px 32px', marginTop: 24,
-      }}>
-        <button
-          onClick={() => onPick(null)}
-          style={{
-            width: '100%', background: 'transparent',
-            border: '1px solid var(--border)', borderRadius: 12,
-            padding: '12px 16px', fontSize: 14, fontWeight: 600,
-            color: 'var(--charcoal-mid)', cursor: 'pointer',
-          }}
-        >
-          Pular →
-        </button>
-      </div>
-    </>
-  )
-}

@@ -12,7 +12,6 @@ import BottomNav from './components/BottomNav'
 // and burn API tokens. Re-enable by restoring the import + FAB + mount.
 // import CompanionChat from './components/CompanionChat'
 import SyncStatus from './components/SyncStatus'
-import BadgeUnlockToast from './components/BadgeUnlockToast'
 import Onboarding     from './screens/Onboarding'
 import AppStoreGate, { shouldSkipAppStoreGate } from './screens/AppStoreGate'
 import Novidades      from './screens/Novidades'
@@ -183,7 +182,9 @@ export default function App() {
           render normally; only the real-time chat is gated. */}
 
       <SyncStatus lang={state.language} />
-      <BadgeUnlockToast />
+      {/* Badge unlock toast removed Sep 2026 along with the
+          Conquistas section. The backend still awards and stores
+          them — this is a display decision, not a data one. */}
     </div>
   )
 }
