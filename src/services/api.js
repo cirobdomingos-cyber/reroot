@@ -1328,6 +1328,40 @@ export async function removeChannelCurator(channelId, requestingEmail, googleId)
   return (await res.json()).curators || []
 }
 
+// Events from the channels you follow, for the band above Eventos.
+// A separate call from the catalog on purpose: channel events have no
+// invitee list, so the main feed's visibility rule drops them all, and
+// keeping the band separate keeps the catalog below unchanged.
+export async function fetchChannelFeed(googleId) {
+  if (!googleId) return []
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/channels/feed?google_id=${encodeURIComponent(googleId)}`,
+    )
+    if (!res.ok) return []
+    return (await res.json()).events || []
+  } catch {
+    // Offline-first: no band is a valid render.
+    return []
+  }
+}
+
+export async function setChannelPrioritize(channelId, googleId, prioritize) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/channels/${encodeURIComponent(channelId)}/prioritize`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, prioritize }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Prioritize failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function setChannelNotify(channelId, googleId, notify) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/channels/${encodeURIComponent(channelId)}/notify`,

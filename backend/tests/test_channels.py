@@ -658,3 +658,96 @@ def test_the_roster_is_founder_only(api):
     _make_curator(client, cid, "u_ana")
     assert client.get(f"/channels/{cid}/curators?requesting_email={FOUNDER_EMAIL}").status_code == 200
     assert client.get(f"/channels/{cid}/curators?requesting_email=ana@example.com").status_code in (401, 403)
+
+
+# -- 13. the band above Eventos --------------------------------------
+#
+# The ask was for a followed channel's events to sort first. Mixing them
+# into the main list and floating them to the top does that and buries
+# the city for anyone following three channels — the first screenful
+# stops being Curitiba. A band gets the same prominence for a fixed
+# amount of room, and the catalog below stays what it was.
+#
+# It needs its own query: channel events have no invitee list, so the
+# main feed's creator-or-invitee rule drops every one of them.
+
+def test_the_band_carries_events_from_channels_you_follow(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Terno Rei")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    events = client.get("/channels/feed?google_id=u_ana").json()["events"]
+    assert [e["name"] for e in events] == ["Terno Rei"]
+
+
+def test_the_band_is_empty_for_channels_you_do_not_follow(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    assert client.get("/channels/feed?google_id=u_ana").json()["events"] == []
+
+
+def test_turning_a_channel_off_takes_it_out_of_the_band(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert len(client.get("/channels/feed?google_id=u_ana").json()["events"]) == 1
+
+    client.put(f"/channels/{cid}/prioritize", json={"google_id": "u_ana", "prioritize": False})
+    assert client.get("/channels/feed?google_id=u_ana").json()["events"] == []
+    # Still following — the switch is about where it shows, not whether
+    # you're in.
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["is_following"] is True
+
+
+def test_prioritize_defaults_on(api):
+    """Following a channel and then seeing nothing from it anywhere but
+    its own screen is a follow that did nothing, which is how people
+    conclude a feature is broken rather than off."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["prioritize"] is True
+
+
+def test_you_cannot_set_it_without_following(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    r = client.put(f"/channels/{cid}/prioritize",
+                   json={"google_id": "u_ana", "prioritize": False})
+    assert r.status_code == 409
+
+
+def test_past_channel_events_stay_out_of_the_band(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Já rolou", when="2020-01-01T20:00:00")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert client.get("/channels/feed?google_id=u_ana").json()["events"] == []
+
+
+def test_a_private_channels_events_never_reach_the_band(api):
+    """The band is for auê channels. A private one's events already
+    reach their members through the ordinary feed."""
+    _db, _main, client = api
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    client.post(f"/groups/{g['id']}/events", json={
+        "google_id": "u_ana", "name": "Cerveja", "date_start": "2099-01-01T20:00:00",
+    })
+    assert client.get("/channels/feed?google_id=u_ana").json()["events"] == []
+
+
+def test_the_feed_route_is_not_shadowed_by_the_id_route(api):
+    """FastAPI matches in declaration order, so /channels/{group_id}
+    declared first resolves this as a channel literally named "feed"
+    and 404s. It did, until the route moved."""
+    _db, _main, client = api
+    r = client.get("/channels/feed?google_id=u_ana")
+    assert r.status_code == 200
+    assert "events" in r.json()
+
+
+def test_a_signed_out_visitor_gets_no_band(api):
+    _db, _main, client = api
+    assert client.get("/channels/feed").json()["events"] == []

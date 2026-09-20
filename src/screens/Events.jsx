@@ -19,6 +19,7 @@ import AddToGroupSheet from '../components/AddToGroupSheet'
 import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
 import EditCatalogEventSheet from '../components/EditCatalogEventSheet'
+import ChannelBand from '../components/ChannelBand'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
@@ -1219,6 +1220,13 @@ export default function Events() {
           Moved into the Events header (lime 🎲 icon-pill next to
           Fontes/🔍) so it's always reachable from the chrome without
           stealing list real estate. */}
+
+      {/* A band, not a merge. Mixing followed channels into the list and
+          floating them to the top would bury the city for anyone
+          following three of them — the catalog below stays exactly what
+          it was, and the band takes a fixed amount of room above it.
+          Hides itself when there's nothing in it. */}
+      <ChannelBand />
 
       </>)}
 
