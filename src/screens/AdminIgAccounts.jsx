@@ -219,11 +219,53 @@ export default function AdminIgAccounts() {
     setBusy(false)
   }
 
+  async function syncSocial() {
+    if (!confirm(
+      'Puxar pessoas, amizades, canais e RSVPs da produção?\n\n' +
+      'Os dados vêm ANONIMIZADOS: nomes, e-mails e fotos reais são ' +
+      'trocados na produção, antes de sair. A tua conta vem intacta ' +
+      'pra você conseguir entrar.\n\n' +
+      'Isso APAGA todo o grafo social deste ambiente antes de escrever. ' +
+      'Push e tokens de aparelho nunca são copiados.'
+    )) return
+    setBusy(true)
+    setSyncing(true)
+    const timeout = new AbortController()
+    const timer = setTimeout(() => timeout.abort(), 120_000)
+    try {
+      const r = await fetch(
+        withEmail(`${API_BASE}/admin/sync-social`, email),
+        { method: 'POST', signal: timeout.signal },
+      )
+      const body = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
+      alert(
+        `Grafo sincronizado (anonimizado).
+
+` +
+        `${body.users} pessoas, ${body.friendships} amizades, ` +
+        `${body.groups} canais, ${body.group_members} participações, ` +
+        `${body.group_events} eventos privados, ${body.rsvps} RSVPs.`
+      )
+      await load()
+    } catch (e) {
+      const msg = e.name === 'AbortError'
+        ? 'A produção não respondeu em 120s — tenta de novo em instantes.'
+        : e.message
+      setError(`Falha ao sincronizar pessoas: ${msg}`)
+      alert(`Falha ao sincronizar pessoas: ${msg}`)
+    }
+    clearTimeout(timer)
+    setSyncing(false)
+    setBusy(false)
+  }
+
   async function syncCatalog() {
     if (!confirm(
       'Puxar o catálogo da produção pra este ambiente?\n\n' +
-      'Vem eventos, locais e @s. NÃO vem usuários, amizades, RSVPs ' +
-      'nem tokens de push.'
+      'Vem eventos, locais e @s.\n\n' +
+      'Pessoas, amizades e canais são o outro botão — este não mexe ' +
+      'neles.'
     )) return
     setBusy(true)
     setSyncing(true)
@@ -564,6 +606,20 @@ export default function AdminIgAccounts() {
               title="Só catálogo — usuários e push ficam na produção"
             >
               {syncing ? '⬇ Sincronizando…' : '⬇ Puxar catálogo da produção'}
+            </button>
+          )}
+          {/* People, separate from the catalog on purpose: this one
+              wipes the environment's whole social graph before writing,
+              and the catalog sync is additive. Same reason it's founder
+              -gated on the backend while the catalog one is not. */}
+          {envName && envName !== 'production' && (
+            <button
+              onClick={syncSocial}
+              disabled={busy}
+              style={ghostBtn('var(--cyan)')}
+              title="Anonimizado na produção antes de sair. Apaga o grafo deste ambiente."
+            >
+              {syncing ? '⬇ Sincronizando…' : '⬇ Puxar pessoas e canais'}
             </button>
           )}
         </div>
