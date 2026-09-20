@@ -410,8 +410,31 @@ _INSTALL_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#E8623F">
-<title>auê — Instalar</title>
+<meta name="theme-color" content="#0A0510">
+<title>auê — Curitiba que acontece</title>
+<!-- The card an unfurler builds when this link is pasted into WhatsApp.
+     Same tags as index.html and for the same reasons: absolute URLs
+     pinned to the canonical origin (unfurlers won't resolve a relative
+     og:image), the PNG rather than the SVG (they don't render SVG).
+     Without this block the card was a bare title over the domain, which
+     is what "não profissional" looked like. -->
+<meta name="description" content="Todos os eventos da cidade num lugar só. Instala e vê o que tá rolando hoje." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="auê" />
+<meta property="og:locale" content="pt_BR" />
+<meta property="og:title" content="auê — Curitiba que acontece" />
+<meta property="og:description" content="Todos os eventos da cidade num lugar só. Instala e vê o que tá rolando hoje." />
+<meta property="og:url" content="https://auecuritiba.com/install" />
+<meta property="og:image" content="https://auecuritiba.com/og-image.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="auê — Curitiba que acontece" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="auê — Curitiba que acontece" />
+<meta name="twitter:description" content="Todos os eventos da cidade num lugar só. Instala e vê o que tá rolando hoje." />
+<meta name="twitter:image" content="https://auecuritiba.com/og-image.png" />
+<link rel="canonical" href="https://auecuritiba.com/install" />
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
