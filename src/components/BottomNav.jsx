@@ -30,7 +30,10 @@ export default function BottomNav() {
     let cancelled = false
     fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => { if (!cancelled) setIsFounder(!!data?.is_founder) })
+      // Curators reach the admin shell too. It was founder-only, which
+      // left curators with backend rights to the approval queues and no
+      // way to get there; the screen keeps its founder-only rows.
+      .then(data => { if (!cancelled) setIsFounder(!!(data?.is_founder || data?.is_curator)) })
       .catch(() => { if (!cancelled) setIsFounder(false) })
     return () => { cancelled = true }
   }, [email])
@@ -147,10 +150,8 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    // Founder-only tab. Curators (non-founder) get a narrower 'add
-    // handle' affordance on the Sources page; this tab is the full admin
-    // shell. Rightmost slot when present (Profile lives behind the Home
-    // avatar tap, not in this nav).
+    // Admin tab for anyone who curates. Rightmost slot when present
+    // (Profile lives behind the Home avatar tap, not in this nav).
     isFounder && {
       path: '/admin/ig',
       label: 'Admin',
