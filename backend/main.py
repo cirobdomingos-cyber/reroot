@@ -1883,6 +1883,22 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         visible_group_name = group_name        # caller already resolved it
     else:
         visible_group_name = (db.get_group(visible_group_id) or {}).get("name") or ""
+    # Every channel of the viewer's this event sits in, named, with the
+    # visible one first. groupName names exactly one of them, which is
+    # right for a screen that is already inside a channel and wrong for
+    # a list: there the card has to say where the night came from, and
+    # an event in two channels was answering that question twice — once
+    # per row, because each channel's copy arrived by its own path.
+    visible_group_names: list[str] = []
+    if show_group:
+        ordered = [visible_group_id] + [
+            gid for gid in viewer_group_ids if gid != visible_group_id
+        ]
+        for gid in ordered:
+            nm = (visible_group_name if gid == visible_group_id
+                  else (db.get_group(gid) or {}).get("name") or "")
+            if nm and nm not in visible_group_names:
+                visible_group_names.append(nm)
     # Personal-event mode (frontend uses this to pick "Convite de Ciro"
     # over a group label, and to bypass group-membership UI affordances).
     # Now defined per-viewer: an outsider on a group-tagged event sees
@@ -1954,6 +1970,9 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # ship to everyone, which handed an outsider the ids of groups
         # the three lines above go out of their way to hide.
         "groupIds": viewer_group_ids,
+        # Names for those ids, visible one first. See above: a list row
+        # names all of them, a channel screen names the one you're on.
+        "groupNames": visible_group_names,
         # How many of the viewer's own groups this single event belongs
         # to. Lets the card say "Turma A +1" instead of implying the
         # event lives in one place.

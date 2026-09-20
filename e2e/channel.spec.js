@@ -340,13 +340,19 @@ const CATALOG = { events: [
     url: 'u', vibeSummary: '', pitch: '', attendeesConfirmed: 0, expectedSize: 'medium',
     hasFood: false, isLowPressure: false, kidsWelcome: false, bairro: 'Centro' } ] }
 
-async function openEvents(page, channelEvents) {
+async function openEvents(page, channelEvents, groupEvents = []) {
   await page.route('**/*', route => {
     const t = route.request().resourceType()
     return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
       ? route.continue() : route.abort()
   })
   await page.route('**/events?**', route => route.fulfill({ json: CATALOG }))
+  // AFTER the catalog route, not before: Playwright tries the
+  // last-registered match first, and '**/events?**' also matches
+  // /events/group?google_id=… — registering this first handed the
+  // group fetch the whole catalog.
+  await page.route('**/events/group**', route =>
+    route.fulfill({ json: { events: groupEvents } }))
   await page.route('**/channels/feed**', route =>
     route.fulfill({ json: { events: channelEvents } }))
   await page.addInitScript(() =>
@@ -402,4 +408,53 @@ test('nothing is marked or split when you follow no channel', async ({ page }) =
   await expect(page.getByText('Dos teus canais')).toHaveCount(0)
   await expect(page.getByText('Explorar')).toHaveCount(0)
   await expect(page.getByText(/auê Rockzera/i)).toHaveCount(0)
+})
+
+// The same post can sit in a private channel and a public one at once.
+// It then arrives twice — the private fork through /events/group, the
+// catalog original through /events — and used to render as two rows.
+
+const PRIVATE_FORK = [{
+  id: 'grp_priv_1', name: 'Terno Rei na Pedreira',
+  sourceEventId: 'instagram_ig_x_A',
+  isGroupEvent: true, groupId: 'g_turma', groupName: 'Turma A',
+  groupNames: ['Turma A'], groupIds: ['g_turma'], viewerGroupCount: 1,
+  dateStart: '2099-10-04T21:00:00', time: '21:00',
+  date: 'Sáb, 04 Out', venue: 'Pedreira · Abranches',
+}]
+
+test('an event in a private and a public channel is one row, not two', async ({ page }) => {
+  await openEvents(page, FROM_CHANNEL, PRIVATE_FORK)
+  await expect(page.getByText('Terno Rei na Pedreira')).toHaveCount(1)
+})
+
+test('...and that row names both channels', async ({ page }) => {
+  await openEvents(page, FROM_CHANNEL, PRIVATE_FORK)
+  // The private fork is the row that survives, so it has to carry the
+  // public channel's name too — attaching the name to the row that gets
+  // dropped is how one of the two silently disappears.
+  await expect(page.getByText('Turma A')).toHaveCount(1)
+  await expect(page.getByText('auê Rockzera')).toHaveCount(1)
+})
+
+test('an event in two private channels is one row naming both', async ({ page }) => {
+  await openEvents(page, [], [{
+    ...PRIVATE_FORK[0],
+    groupNames: ['Turma A', 'Rolê do Sábado'],
+    groupIds: ['g_turma', 'g_role'], viewerGroupCount: 2,
+  }])
+  await expect(page.getByText('Terno Rei na Pedreira')).toHaveCount(1)
+  await expect(page.getByText('Turma A')).toHaveCount(1)
+  await expect(page.getByText('Rolê do Sábado')).toHaveCount(1)
+})
+
+test('a private event with no catalog twin still shows', async ({ page }) => {
+  // Guards the dedupe from over-reaching: a channel event made from
+  // scratch has no sourceEventId and nothing to be deduped against.
+  await openEvents(page, [], [{
+    ...PRIVATE_FORK[0],
+    id: 'grp_priv_2', name: 'Churrasco do Zé', sourceEventId: '',
+  }])
+  await expect(page.getByText('Churrasco do Zé')).toHaveCount(1)
+  await expect(page.getByText('Turma A')).toHaveCount(1)
 })

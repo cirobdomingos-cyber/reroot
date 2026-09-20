@@ -290,12 +290,18 @@ export default function Events() {
     return () => { cancelled = true }
   }, [state.googleUser?.id])
 
-  // Which catalog event came from which channel you follow. Keyed by
-  // the catalog id the channel's copy points at.
-  const channelBySourceId = useMemo(() => {
+  // Which public channels of yours picked which catalog event, keyed by
+  // the catalog id their copy points at. A list per key, not one name:
+  // two channels can pick the same night, and keeping only the last one
+  // would quietly drop the other.
+  const publicChannelsBySourceId = useMemo(() => {
     const map = new Map()
     for (const ev of channelEvents) {
-      if (ev.sourceEventId) map.set(ev.sourceEventId, ev.groupName || 'um canal')
+      if (!ev.sourceEventId) continue
+      const list = map.get(ev.sourceEventId) || []
+      const name = ev.groupName || 'um canal'
+      if (!list.includes(name)) list.push(name)
+      map.set(ev.sourceEventId, list)
     }
     return map
   }, [channelEvents])
@@ -684,10 +690,33 @@ export default function Events() {
   const beforeFollowFilter = filteredEvents.length
   filteredEvents = filteredEvents.filter(ev => !hiddenByFollows(ev, hiddenSources))
   const hiddenByFollowCount = beforeFollowFilter - filteredEvents.length
+  // One night, one row.
+  //
+  // A private channel's event and the catalog event it was forked from
+  // are the same post arriving by two paths — /events/group for the
+  // fork, /events for the original — so an event in one private channel
+  // and one public channel showed up twice. The fork wins: it already
+  // merges the catalog's facts (name, time, cover — see
+  // _merge_source_event) and adds the private layer on top, so dropping
+  // the original loses nothing and dropping the fork would lose the
+  // invitees, the note and the co-hosts.
+  //
+  // Computed from the ALREADY-FILTERED list, not from groupEvents. A
+  // category filter drops private rows, and a set built upstream would
+  // still hold their source ids — taking the catalog original down with
+  // rows that are no longer there, and making the event vanish entirely.
+  const dropMirroredOriginals = (list) => {
+    const mirrored = new Set(
+      list.filter(e => e.isGroupEvent && e.sourceEventId).map(e => e.sourceEventId)
+    )
+    if (mirrored.size === 0) return list
+    return list.filter(ev => ev.isGroupEvent || !mirrored.has(ev.id))
+  }
+
   // Snapshot for the week strip's count badges — reflects every active
   // filter *except* the per-day pick, so picking a day doesn't zero out
   // the other days' counts.
-  const eventsForStrip = filteredEvents
+  const eventsForStrip = dropMirroredOriginals(filteredEvents)
   if (!isVenueMode && selectedDay) {
     // Range events ("terça a domingo", multi-day exhibitions) cover every
     // day between dateStart and dateEnd inclusive — they should show up
@@ -705,15 +734,30 @@ export default function Events() {
   // Both render identically. The difference between a channel run by
   // auê and one run by a friend is who may post in it, and that is not
   // something the reader of a list needs to be told twice.
-  const channelNameFor = (ev) => {
+  const channelNamesFor = (ev) => {
     // A personal plan carries isGroupEvent too (it reuses the private
     // styling) but belongs to no channel. It still isn't part of the
     // city catalog, so it stays in the first section rather than being
     // buried under Explorar — labelled for what it is.
-    if (ev.isPersonalPlan) return 'Plano'
-    if (ev.isGroupEvent) return ev.groupName || 'Canal'
-    return channelBySourceId.get(ev.id) || null
+    if (ev.isPersonalPlan) return ['Plano']
+    const names = []
+    const add = (n) => { if (n && !names.includes(n)) names.push(n) }
+    if (ev.isGroupEvent) {
+      const own = ev.groupNames?.length
+        ? ev.groupNames
+        : (ev.groupName ? [ev.groupName] : ['Canal'])
+      own.forEach(add)
+      // The same post can sit in a private channel AND a public one.
+      // The private row is the one that survives the dedupe below, so
+      // it has to carry the public channel's name too — otherwise the
+      // name disappears along with the row it was attached to.
+      ;(publicChannelsBySourceId.get(ev.sourceEventId) || []).forEach(add)
+    } else {
+      ;(publicChannelsBySourceId.get(ev.id) || []).forEach(add)
+    }
+    return names
   }
+
 
   // Two sections instead of a band. The band was horizontal so its
   // length cost no vertical space, but it also made a channel's event
@@ -721,8 +765,9 @@ export default function Events() {
   // below — two shapes, two colours, for one thing. Sections keep the
   // prominence and drop the second shape: the same row either way,
   // named on the right.
-  const myChannelEvents = filteredEvents.filter(ev => channelNameFor(ev))
-  const exploreEvents = filteredEvents.filter(ev => !channelNameFor(ev))
+  filteredEvents = dropMirroredOriginals(filteredEvents)
+  const myChannelEvents = filteredEvents.filter(ev => channelNamesFor(ev).length > 0)
+  const exploreEvents = filteredEvents.filter(ev => channelNamesFor(ev).length === 0)
 
   // Day-keyed sets for the strip's social signals. RSVP set comes from
   // local state.rsvps (which stores dateStart per RSVP). Friend set comes
@@ -845,10 +890,10 @@ export default function Events() {
                 >
                   <EventCard
                     ev={ev}
-                    // Which channel brought it — public or private,
+                    // Which channels brought it — public or private,
                     // same slot, same styling. The section above says
                     // these are yours; this says which of yours.
-                    fromChannel={channelNameFor(ev)}
+                    fromChannels={channelNamesFor(ev)}
                     rsvped={rsvped}
                     friendsGoing={friendsByEventId[ev.id] || []}
                     personalChip={getPersonalChip(ev, state.rsvps)}
@@ -1888,7 +1933,7 @@ function ListSectionHeading({ label, count, accent }) {
   )
 }
 
-function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, fromChannel = null, t }) {
+function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, fromChannels = [], t }) {
   // Flyer treatment — staging experiment, see lib/cardVariant.js.
   const cardVariant = eventCardVariant()
   const [imgBroken, setImgBroken] = useState(false)
@@ -1953,7 +1998,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         // The channel's own identity stays magenta (the badge, the
         // channel screen); lime is "this one is picked out for you",
         // which is what it already means on free/going/confirmados.
-        boxShadow: (isGroupEvent || fromChannel) ? 'inset 3px 0 0 var(--sage)'
+        boxShadow: (isGroupEvent || fromChannels.length > 0) ? 'inset 3px 0 0 var(--sage)'
                   : isOngoing ? 'none'
                   : 'inset 3px 0 0 #7E57C2',
         display: 'flex', alignItems: 'stretch', gap: 14,
@@ -2005,7 +2050,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             // Day color matches the stripe — sage for group, purple for
             // one-off (mirrors the "Só únicos" filter chip), terra-light
             // blue for ongoing.
-            color: (isGroupEvent || fromChannel) ? 'var(--sage)'
+            color: (isGroupEvent || fromChannels.length > 0) ? 'var(--sage)'
                  : isOngoing ? 'var(--terra-light)'
                  : '#7E57C2',
             letterSpacing: -0.5,
@@ -2112,19 +2157,37 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         alignItems: 'flex-end', justifyContent: 'flex-start',
         gap: 4, maxWidth: 96,
       }}>
-        {fromChannel && (
+        {fromChannels.length > 0 && (
+          // One line per channel rather than a joined string: two names
+          // run together read as one long name, and the ones that matter
+          // most are short enough that stacking costs nothing. Two shown,
+          // the rest counted — the full list is in the tooltip.
           <div
-            title={`Do canal ${fromChannel}`}
-            className="neon-mono"
+            title={`De ${fromChannels.join(' · ')}`}
             style={{
-              fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-              color: 'var(--sage)', textAlign: 'right', lineHeight: 1.3,
-              maxWidth: '100%',
-              display: '-webkit-box', WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'flex-end', gap: 1, maxWidth: '100%',
             }}
           >
-            {fromChannel}
+            {fromChannels.slice(0, 2).map(nm => (
+              <div key={nm} className="neon-mono" style={{
+                fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                color: 'var(--sage)', textAlign: 'right', lineHeight: 1.25,
+                maxWidth: '100%',
+                display: '-webkit-box', WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              }}>
+                {nm}
+              </div>
+            ))}
+            {fromChannels.length > 2 && (
+              <div className="neon-mono" style={{
+                fontSize: 9, letterSpacing: '0.1em',
+                color: 'var(--text3)', lineHeight: 1.25,
+              }}>
+                +{fromChannels.length - 2}
+              </div>
+            )}
           </div>
         )}
         {ev.featured && (
