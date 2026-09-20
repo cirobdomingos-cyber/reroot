@@ -1264,7 +1264,20 @@ export async function fetchChannel(channelId, googleId) {
       + `?google_id=${encodeURIComponent(googleId || '')}`,
     )
     if (!res.ok) return null
-    return await res.json()
+    const data = await res.json()
+    // Same rewrite the catalog and /groups/{id} get. The backend hands
+    // back `/event-images/...` relative to itself; on the web that is
+    // the same origin and works, but in the app (capacitor://localhost)
+    // and on the Vite dev server it resolves against the wrong origin,
+    // 404s, and the row's <img> hides itself on error — "dentro do canal
+    // não consigo ver várias thumbnails". 57 of 65 channel events in
+    // production carry a relative path; the 8 that showed were CDN URLs.
+    for (const key of ['events', 'past_events']) {
+      if (Array.isArray(data?.[key])) {
+        data[key] = data[key].map(e => ({ ...e, imageUrl: resolveImageUrl(e.imageUrl) }))
+      }
+    }
+    return data
   } catch {
     return null
   }
