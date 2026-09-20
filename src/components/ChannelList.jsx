@@ -236,8 +236,11 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
               auê
             </span>
           ) : (
+            // "seu" was wrong — you can be in a private channel you
+            // didn't create. The badge names what the channel IS, not
+            // whose it is, which is also all the reader needs from it.
             <span
-              title="Canal privado — só quem você convidar"
+              title="Canal privado — só quem for convidado"
               style={{
                 flexShrink: 0, fontSize: 10, fontWeight: 800,
                 padding: '2px 7px', borderRadius: 7,
@@ -245,7 +248,7 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
                 letterSpacing: '0.06em',
               }}
             >
-              🔒 seu
+              🔒 privado
             </span>
           )}
         </div>

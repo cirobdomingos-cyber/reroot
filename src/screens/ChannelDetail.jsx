@@ -3,10 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
+import { CalendarSheet, CatalogPickerSheet, GroupStatsPanel } from '../components/GroupSheets'
+import { appLink } from '../lib/share'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
+  createGroupEvent, fetchGroupStats, getGroupCalendarFeedUrl,
 } from '../services/api'
 
 // The channel screen.
@@ -34,6 +37,10 @@ export default function ChannelDetail() {
   const googleId = state.googleUser?.id
 
   const [data, setData] = useState(null)   // null = loading
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [showCatalog, setShowCatalog] = useState(false)
+  const [stats, setStats] = useState(null)
+  const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -44,6 +51,48 @@ export default function ChannelDetail() {
   }, [channelId, googleId])
 
   useEffect(() => { load() }, [load])
+
+  // Curator-only. A follower has no use for the activity panel, and the
+  // endpoint refuses them anyway — it's member-gated, and on a channel
+  // only the curation team holds a role.
+  useEffect(() => {
+    if (!googleId || !data?.channel?.can_curate) { setStats(null); return }
+    let cancelled = false
+    fetchGroupStats(channelId, googleId).then(s => { if (!cancelled) setStats(s) })
+    return () => { cancelled = true }
+  }, [channelId, googleId, data?.channel?.can_curate])
+
+  // Publishing into the channel from the catalog — this is how a
+  // channel gets filled, and it's the same sheet a private channel
+  // uses. The backend refuses anyone outside the curation team, so the
+  // button just stops teasing it.
+  // Anyone can pass a channel along — it's public, and whoever opens
+  // the link lands on it and decides whether to follow. That's the
+  // whole difference from a private channel, where the link IS the
+  // invitation and opening it puts you in.
+  async function share() {
+    const url = appLink(`/channels/${channelId}`)
+    const text = `Olha esse canal no auê: ${channel.name}`
+    trackEvent('channel_shared', { channel_id: channelId })
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: channel.name, text, url })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Cancelling the share sheet throws. Not an error.
+    }
+  }
+
+  async function addFromCatalog(eventData) {
+    const created = await createGroupEvent(channelId, googleId, eventData)
+    trackEvent('channel_event_added', { channel_id: channelId, via: 'catalog' })
+    load()
+    return created
+  }
 
   const channel = data?.channel
   const events = data?.events || []
@@ -232,6 +281,45 @@ export default function ChannelDetail() {
         </p>
       )}
 
+      {/* Action bar. The first version of this screen had none of it,
+          on the grounds that a calendar feed and a catalog picker were
+          "crew machinery". They aren't — nothing about them implies
+          other people in the room. Only the invite and the "convida a
+          galera" nudge do, and those two stay out.
+          
+          What changes here is who may use each one, not whether it
+          exists: the picker and the activity panel are curator-only,
+          the calendar is for anyone following. */}
+      {(channel.is_following || channel.can_curate) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          {channel.feed_token && (
+            <ChannelAction onClick={() => setShowCalendar(true)}>
+              📅 Assinar calendário
+            </ChannelAction>
+          )}
+          {channel.can_curate && (
+            <ChannelAction onClick={() => setShowCatalog(true)} accent>
+              🌍 Do catálogo
+            </ChannelAction>
+          )}
+        </div>
+      )}
+
+      {/* Sharing is for everyone, follower or not — a channel is public
+          and passing one along costs nothing. Sits outside the block
+          above precisely because it isn't gated on following. */}
+      <ChannelAction onClick={share} wide>
+        {copied ? '✓ Link copiado' : '🔗 Compartilhar canal'}
+      </ChannelAction>
+
+      {/* Activity, curator-only — it's the panel that says whether the
+          channel is alive, which is a question for whoever runs it. */}
+      {channel.can_curate && stats && stats.events_total > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <GroupStatsPanel stats={stats} />
+        </div>
+      )}
+
       {/* Who else is here. Shown to everyone, follower or not — it's
           social proof, and you should be able to see it before deciding
           whether to follow. What never ships on a curated channel is a
@@ -284,6 +372,19 @@ export default function ChannelDetail() {
           <ChannelRow key={ev.id} ev={ev} navigate={navigate} />
         ))}
       </div>
+
+      <CalendarSheet
+        open={showCalendar}
+        onClose={() => setShowCalendar(false)}
+        group={channel}
+        feedUrl={getGroupCalendarFeedUrl(channel.feed_token)}
+        t={{}}
+      />
+      <CatalogPickerSheet
+        open={showCatalog}
+        onClose={() => setShowCatalog(false)}
+        onPick={addFromCatalog}
+      />
 
       {/* Recent past, so a channel between shows still reads as alive
           rather than empty. Newest first: this is "what you missed",
@@ -555,4 +656,22 @@ const curationInput = {
   width: '100%', padding: '9px 11px', borderRadius: 10,
   border: '1px solid var(--line)', fontSize: 13, outline: 'none',
   boxSizing: 'border-box', background: 'var(--bg)', color: 'var(--text)',
+}
+
+function ChannelAction({ children, onClick, accent, wide }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: '1 1 auto', padding: '10px 12px', borderRadius: 12,
+        ...(wide ? { width: '100%', marginTop: 8 } : null),
+        fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+        border: accent ? 'none' : '1px solid var(--line)',
+        background: accent ? 'var(--magenta)' : 'var(--bg2)',
+        color: accent ? 'var(--bg)' : 'var(--text2)',
+      }}
+    >
+      {children}
+    </button>
+  )
 }

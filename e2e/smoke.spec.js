@@ -139,7 +139,9 @@ test('the Canais tab explains what a canal is to someone landing on it', async (
   // "Canais do auê" appears twice by design — once explaining the kind,
   // once as the section heading over the list itself.
   await expect(page.getByText('Canais do auê', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('Seus canais', { exact: true })).toBeVisible()
+  // "Seus canais" became "Canais privados": you can be in one you
+  // didn't create, so the label names what it is, not whose it is.
+  await expect(page.getByText('Canais privados', { exact: true })).toBeVisible()
 
   // The section used to render nothing at all when there were no
   // channels, which hid the concept from exactly the people meeting it

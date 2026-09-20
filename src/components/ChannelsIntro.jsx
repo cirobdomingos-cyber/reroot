@@ -54,10 +54,10 @@ export default function ChannelsIntro({ followedCount, loading }) {
         body="A gente separa por gênero e vibe — rock, samba, eletrônica. É só seguir, e dá pra parar quando quiser."
       />
       <Kind
-        badge="🔒 seu"
+        badge="🔒 privado"
         badgeBg="var(--cyan)"
-        title="Seus canais"
-        body="Privados, pra tua turma combinar o que fazer. Só entra quem você convida."
+        title="Canais privados"
+        body="Pra tua turma combinar o que fazer. Só entra quem for convidado."
       />
 
     </div>

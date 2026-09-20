@@ -15,7 +15,7 @@ const CHANNEL = {
     id: 'grp_rock', name: 'Rockzão', kind: 'channel',
     description: 'Tudo que tem guitarra em Curitiba, num lugar só.',
     follower_count: 128, is_following: true, notify: true,
-    upcoming_event_count: 2,
+    upcoming_event_count: 2, feed_token: 'tok_abc', can_curate: false,
   },
   events: [
     { id: 'e1', name: 'Terno Rei na Pedreira', dateStart: '2099-10-04T21:00:00',
@@ -213,4 +213,32 @@ test('the visibility option no longer promises discovery it cannot deliver', asy
   await expect(page.getByText(/Quem tiver o link consegue ver/)).toBeVisible()
   await expect(page.getByText(/não aparece na lista de canais do auê/)).toBeVisible()
   await expect(page.getByText(/pode encontrar/i)).toHaveCount(0)
+})
+
+test('anyone can pass a channel along, follower or not', async ({ page }) => {
+  // A channel is public and the link just opens it — that's the whole
+  // difference from a private one, where the link IS the invitation and
+  // opening it puts you in.
+  await openChannel(page, { is_following: false, can_curate: false })
+  await expect(page.getByRole('button', { name: /Compartilhar canal/ })).toBeVisible()
+})
+
+test('the curator-only actions stay curator-only', async ({ page }) => {
+  await openChannel(page, { is_following: true, can_curate: false })
+  await expect(page.getByRole('button', { name: /Do catálogo/ })).toHaveCount(0)
+  // But the calendar is for anyone following — a channel with a
+  // schedule is more useful in a calendar than a private one is.
+  await expect(page.getByRole('button', { name: /Assinar calendário/ })).toBeVisible()
+})
+
+test('a curator gets the catalog picker', async ({ page }) => {
+  await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByRole('button', { name: /Do catálogo/ })).toBeVisible()
+})
+
+test('a channel never offers to invite people into it', async ({ page }) => {
+  // The one thing that genuinely doesn't belong: you follow a channel,
+  // you are not invited to one.
+  await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByText(/convidar/i)).toHaveCount(0)
 })
