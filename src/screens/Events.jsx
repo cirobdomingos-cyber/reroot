@@ -19,7 +19,6 @@ import AddToGroupSheet from '../components/AddToGroupSheet'
 import InviteRequestsPanel from '../components/InviteRequestsPanel'
 import EditEventSheet from '../components/EditEventSheet'
 import EditCatalogEventSheet from '../components/EditCatalogEventSheet'
-import ChannelBand from '../components/ChannelBand'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import AttendeesRow from '../components/AttendeesRow'
 import EventDetail, { EventDetailDrawer } from '../components/EventDetail'
@@ -259,12 +258,12 @@ export default function Events() {
   // curators fix the shared catalog, creators edit their own fork.
   const [editCatalogEvent, setEditCatalogEvent] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
-  // The channel feed, fetched once and used twice: the band above the
-  // list, and a marker on the catalog rows that came from a channel you
-  // follow. A catalog event added to a channel is a separate row
-  // (a fork carrying source_event_id), so without the marker the same
-  // night appears in the band and again in the list with nothing
-  // connecting them.
+  // The channel feed. A catalog event added to a public channel is a
+  // separate row (a fork carrying source_event_id), so this is read as
+  // a lookup — which catalog id did one of my channels pick — rather
+  // than as a list to render. The catalog row stays the one that shows,
+  // carrying the channel's name; showing the fork as well is how the
+  // same night used to appear twice with nothing connecting them.
   const [channelEvents, setChannelEvents] = useState([])
 
   useEffect(() => {
@@ -697,6 +696,34 @@ export default function Events() {
     filteredEvents = filteredEvents.filter(ev => eventCoversDay(ev, selectedDay))
   }
 
+  // Which channel of yours an event came from — one answer for both
+  // kinds. A private channel's event IS the row (it arrives through
+  // /events/group carrying its channel's name). A public channel's is
+  // a fork of a catalog event, so the catalog row is the real one and
+  // channelBySourceId says which channel picked it.
+  //
+  // Both render identically. The difference between a channel run by
+  // auê and one run by a friend is who may post in it, and that is not
+  // something the reader of a list needs to be told twice.
+  const channelNameFor = (ev) => {
+    // A personal plan carries isGroupEvent too (it reuses the private
+    // styling) but belongs to no channel. It still isn't part of the
+    // city catalog, so it stays in the first section rather than being
+    // buried under Explorar — labelled for what it is.
+    if (ev.isPersonalPlan) return 'Plano'
+    if (ev.isGroupEvent) return ev.groupName || 'Canal'
+    return channelBySourceId.get(ev.id) || null
+  }
+
+  // Two sections instead of a band. The band was horizontal so its
+  // length cost no vertical space, but it also made a channel's event
+  // look like a different species from the same event in the list
+  // below — two shapes, two colours, for one thing. Sections keep the
+  // prominence and drop the second shape: the same row either way,
+  // named on the right.
+  const myChannelEvents = filteredEvents.filter(ev => channelNameFor(ev))
+  const exploreEvents = filteredEvents.filter(ev => !channelNameFor(ev))
+
   // Day-keyed sets for the strip's social signals. RSVP set comes from
   // local state.rsvps (which stores dateStart per RSVP). Friend set comes
   // from the live friends_feed (event_date is ISO).
@@ -760,6 +787,97 @@ export default function Events() {
     } else if (wasRsvped) {
       cancelEventReminder(ev.id)
     }
+  }
+
+  // One row renderer for both sections. The channel section and
+  // the catalog section render the SAME card — that is the point of
+  // splitting them by heading instead of by component.
+  const renderEventNode = (ev) => {
+              const rsvped = !!state.rsvps[ev.id]
+              const isVenue = VENUE_CATEGORIES.has(ev.category)
+
+              if (isVenue) {
+                return (
+                  <motion.div
+                    key={ev.id}
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <VenueRow
+                      ev={ev}
+                      favorited={!!state.favorites?.[ev.id]}
+                      onFavorite={() => dispatch({
+                        type: 'TOGGLE_FAVORITE',
+                        payload: {
+                          placeId: ev.id, name: ev.name, venue: ev.venue,
+                          icon: ev.icon, headerBg: ev.headerBg,
+                        },
+                      })}
+                      onOpen={() => {
+                        // Tracked-IG venues: open the source page (shows
+                        // recent events from this handle's posts). Falls
+                        // back to the generic detail panel if igHandle
+                        // isn't present (defensive — shouldn't happen
+                        // since /places now always returns IG-backed venues).
+                        if (ev.igHandle) {
+                          navigate(`/sources/${encodeURIComponent('ig:' + ev.igHandle)}`)
+                        } else {
+                          openDetail(ev.id)
+                        }
+                      }}
+                      t={t}
+                    />
+                  </motion.div>
+                )
+              }
+
+              return (
+                <motion.div
+                  key={ev.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <EventCard
+                    ev={ev}
+                    // Which channel brought it — public or private,
+                    // same slot, same styling. The section above says
+                    // these are yours; this says which of yours.
+                    fromChannel={channelNameFor(ev)}
+                    rsvped={rsvped}
+                    friendsGoing={friendsByEventId[ev.id] || []}
+                    personalChip={getPersonalChip(ev, state.rsvps)}
+                    onOpen={() => openDetail(ev.id)}
+                    onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
+                    onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
+                    onOpenGroup={(gid) => navigate(`/channels/${encodeURIComponent(gid)}`)}
+                    // Day shown on the card's date column:
+                    //   - When a specific strip day is picked: show that day.
+                    //   - Otherwise: for multi-day or recurring events that
+                    //     cover today, show TODAY (so a programação Maio
+                    //     2026 reads as "happening today" instead of "May 2,
+                    //     past"). One-off events fall through and keep their
+                    //     own dateStart.
+                    displayDate={(() => {
+                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
+                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
+                        return selectedDay
+                      }
+                      const todayIso = getAnchorTodayIso()
+                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
+                        return todayIso
+                      }
+                      return null
+                    })()}
+                    t={t}
+                  />
+                </motion.div>
+              )
   }
 
   return (
@@ -1248,17 +1366,6 @@ export default function Events() {
 
       </>)}
 
-      {/* A band, not a merge. Mixing followed channels into the list and
-          floating them to the top would bury the city for anyone
-          following three of them — the catalog below stays exactly what
-          it was, and the band takes a fixed amount of room above it.
-          Hides itself when there's nothing in it.
-
-          Mounted HERE, not inside the filters block above: it spent one
-          round living inside {filtersOpen && ...}, which meant it only
-          appeared while the filter panel was open. */}
-      {!loading && <ChannelBand events={channelEvents} />}
-
       {/* ── Loading skeletons ── */}
       {loading && (
         isVenueMode
@@ -1328,94 +1435,24 @@ export default function Events() {
               )}
             </motion.div>
           ) : (
-            filteredEvents.map(ev => {
-              const rsvped = !!state.rsvps[ev.id]
-              const isVenue = VENUE_CATEGORIES.has(ev.category)
-
-              if (isVenue) {
-                return (
-                  <motion.div
-                    key={ev.id}
-                    layout
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    <VenueRow
-                      ev={ev}
-                      favorited={!!state.favorites?.[ev.id]}
-                      onFavorite={() => dispatch({
-                        type: 'TOGGLE_FAVORITE',
-                        payload: {
-                          placeId: ev.id, name: ev.name, venue: ev.venue,
-                          icon: ev.icon, headerBg: ev.headerBg,
-                        },
-                      })}
-                      onOpen={() => {
-                        // Tracked-IG venues: open the source page (shows
-                        // recent events from this handle's posts). Falls
-                        // back to the generic detail panel if igHandle
-                        // isn't present (defensive — shouldn't happen
-                        // since /places now always returns IG-backed venues).
-                        if (ev.igHandle) {
-                          navigate(`/sources/${encodeURIComponent('ig:' + ev.igHandle)}`)
-                        } else {
-                          openDetail(ev.id)
-                        }
-                      }}
-                      t={t}
-                    />
-                  </motion.div>
-                )
-              }
-
-              return (
-                <motion.div
-                  key={ev.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <EventCard
-                    ev={ev}
-                    // Named when this catalog event also lives in a
-                    // channel the viewer follows. Without it the same
-                    // night shows in the band above and again down the
-                    // list with nothing saying they're the same thing.
-                    fromChannel={channelBySourceId.get(ev.id) || null}
-                    rsvped={rsvped}
-                    friendsGoing={friendsByEventId[ev.id] || []}
-                    personalChip={getPersonalChip(ev, state.rsvps)}
-                    onOpen={() => openDetail(ev.id)}
-                    onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
-                    onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
-                    onOpenGroup={(gid) => navigate(`/channels/${encodeURIComponent(gid)}`)}
-                    // Day shown on the card's date column:
-                    //   - When a specific strip day is picked: show that day.
-                    //   - Otherwise: for multi-day or recurring events that
-                    //     cover today, show TODAY (so a programação Maio
-                    //     2026 reads as "happening today" instead of "May 2,
-                    //     past"). One-off events fall through and keep their
-                    //     own dateStart.
-                    displayDate={(() => {
-                      const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
-                      if (selectedDay && (ev.isRecurring || isMultiDay)) {
-                        return selectedDay
-                      }
-                      const todayIso = getAnchorTodayIso()
-                      if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIso)) {
-                        return todayIso
-                      }
-                      return null
-                    })()}
-                    t={t}
+            <>
+              {myChannelEvents.length > 0 && (
+                <>
+                  <ListSectionHeading
+                    label="Dos teus canais"
+                    count={myChannelEvents.length}
+                    accent="var(--sage)"
                   />
-                </motion.div>
-              )
-            })
+                  {myChannelEvents.map(renderEventNode)}
+                  <ListSectionHeading
+                    label="Explorar"
+                    count={exploreEvents.length}
+                    accent="var(--charcoal-mid)"
+                  />
+                </>
+              )}
+              {exploreEvents.map(renderEventNode)}
+            </>
           )}
         </AnimatePresence>
       )}
@@ -1829,6 +1866,28 @@ function _parseDayLabels(iso) {
   }
 }
 
+// A heading inside the list, not a band above it.
+//
+// Not sticky: the screen already has a sticky header at top:0, and a
+// second sticky element would scroll up and park underneath it —
+// present in the DOM, invisible on screen.
+function ListSectionHeading({ label, count, accent }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 8,
+      padding: '14px 16px 8px',
+    }}>
+      <h2 className="neon-mono" style={{
+        fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+        color: accent, margin: 0,
+      }}>
+        {label}
+      </h2>
+      <span style={{ fontSize: 10, color: 'var(--text3)' }}>{count}</span>
+    </div>
+  )
+}
+
 function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen, onFriend, onSourceTap, onOpenGroup, displayDate = null, fromChannel = null, t }) {
   // Flyer treatment — staging experiment, see lib/cardVariant.js.
   const cardVariant = eventCardVariant()
@@ -1991,19 +2050,6 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
           {ev.name}
         </div>
 
-        {/* Which channel of yours this came from. Named rather than
-            badged generically: "Rockzão" tells you why it's here and
-            "de um canal" doesn't. */}
-        {fromChannel && (
-          <div className="neon-mono" style={{
-            fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
-            color: 'var(--sage)', marginBottom: 4,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {fromChannel}
-          </div>
-        )}
-
         {/* Single metadata row: time · 📍 venue · bairro. Truncates
             with ellipsis on narrow screens. Pin glyph on the venue half
             makes the location obvious at glance — without it the venue
@@ -2054,13 +2100,33 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         )}
       </div>
 
-      {/* RIGHT — Destaque badge / price / RSVP marker */}
+      {/* RIGHT — which channel this came from, then Destaque / RSVP.
+          The channel name sits here rather than under the title so the
+          left-to-right read stays "when · what · where", with "who
+          brought it to you" as the trailing answer. Capped so a long
+          channel name can't squeeze the title: it truncates, and the
+          section heading above already says these are yours. */}
       <div style={{
         flexShrink: 0,
         display: 'flex', flexDirection: 'column',
         alignItems: 'flex-end', justifyContent: 'flex-start',
-        gap: 4,
+        gap: 4, maxWidth: 96,
       }}>
+        {fromChannel && (
+          <div
+            title={`Do canal ${fromChannel}`}
+            className="neon-mono"
+            style={{
+              fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: 'var(--sage)', textAlign: 'right', lineHeight: 1.3,
+              maxWidth: '100%',
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+            }}
+          >
+            {fromChannel}
+          </div>
+        )}
         {ev.featured && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <div

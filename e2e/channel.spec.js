@@ -363,27 +363,43 @@ const FROM_CHANNEL = [{
   date: 'Sáb, 04 Out', venue: 'Pedreira · Abranches',
 }]
 
-test('the band sits above the catalog, not inside the filters panel', async ({ page }) => {
-  // It spent one round mounted inside {filtersOpen && ...}, which meant
-  // it only appeared while the filter panel was open — invisible in
-  // every normal visit.
+test('the list splits into your channels and the rest of the city', async ({ page }) => {
   await openEvents(page, FROM_CHANNEL)
   await expect(page.getByText('Dos teus canais')).toBeVisible()
+  await expect(page.getByText('Explorar')).toBeVisible()
 })
 
-test('a catalog row names the channel it came from', async ({ page }) => {
+test('a channel event appears once, named, not twice in two shapes', async ({ page }) => {
   await openEvents(page, FROM_CHANNEL)
-  // Named, not badged generically: "auê Rockzera" says why it's here,
-  // "de um canal" doesn't. The ▌ prefix is gone — the card carries a
-  // real lime stripe now, the same one a plan of your own gets.
-  await expect(page.getByText('auê Rockzera', { exact: false }).first()).toBeVisible()
-  // Once in the band, once on the catalog row it belongs to — and not
-  // on the other event.
-  expect(await page.getByText(/auê Rockzera/i).count()).toBe(2)
+  // This replaced a horizontal band. The band showed the channel's fork
+  // as a small card while the catalog showed the original as a row, so
+  // one night appeared twice in two different shapes and the marker on
+  // the row existed to connect them. Now it is one row, in the first
+  // section, named on the right — so exactly one mention of the channel
+  // and exactly one of the event.
+  await expect(page.getByText('auê Rockzera')).toHaveCount(1)
+  await expect(page.getByText('Terno Rei na Pedreira')).toHaveCount(1)
 })
 
-test('nothing is marked when you follow no channel', async ({ page }) => {
+test("the other event stays under Explorar and carries no channel name", async ({ page }) => {
+  await openEvents(page, FROM_CHANNEL)
+  // Guards the partition from the lazy version of itself: marking every
+  // row, or moving every row up, would pass the test above too.
+  const explorar = page.getByText('Explorar')
+  const feira = page.getByText('Feira do Passeio')
+  await expect(feira).toHaveCount(1)
+  const [hy, fy] = await Promise.all([
+    explorar.boundingBox().then(b => b.y),
+    feira.boundingBox().then(b => b.y),
+  ])
+  expect(fy).toBeGreaterThan(hy)
+})
+
+test('nothing is marked or split when you follow no channel', async ({ page }) => {
   await openEvents(page, [])
+  // No headings at all, rather than an "Explorar" heading over the whole
+  // catalog — a section label with nothing to contrast against is noise.
   await expect(page.getByText('Dos teus canais')).toHaveCount(0)
+  await expect(page.getByText('Explorar')).toHaveCount(0)
   await expect(page.getByText(/auê Rockzera/i)).toHaveCount(0)
 })
