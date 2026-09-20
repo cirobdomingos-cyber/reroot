@@ -436,10 +436,38 @@ def test_past_events_are_separated_newest_first(api):
     assert [e["name"] for e in body["past_events"]] == ["Recente", "Antigo"]
 
 
-def test_a_group_is_not_reachable_through_the_channel_endpoint(api):
+def test_a_private_channel_is_reachable_by_its_members_only(api):
+    """One screen serves both now, so this endpoint gates the way the
+    old group one did: a private channel is for the people in it, a
+    public one is open because looking before you follow is the model."""
     _db, _main, client = api
     g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
-    assert client.get(f"/channels/{g['id']}").status_code == 404
+    assert client.get(f"/channels/{g['id']}?google_id=u_ana").status_code == 200
+    assert client.get(f"/channels/{g['id']}?google_id=u_bia").status_code == 403
+    assert client.get(f"/channels/{g['id']}").status_code == 403
+
+
+def test_the_payload_says_which_shape_to_render(api):
+    _db, _main, client = api
+    pub = _channel(client)
+    priv = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    assert client.get(f"/channels/{pub}").json()["channel"]["is_public"] is True
+    assert client.get(
+        f"/channels/{priv}?google_id=u_ana").json()["channel"]["is_public"] is False
+
+
+def test_a_private_channels_events_keep_the_invitee_rule(api):
+    """An outsider invited to one specific night must not get the rest
+    of the channel with it."""
+    _db, _main, client = api
+    priv = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": priv["invite_code"]})
+    client.post(f"/groups/{priv['id']}/events", json={
+        "google_id": "u_ana", "name": "Só meu", "date_start": "2099-01-01T20:00:00",
+        "invitee_google_ids": [],
+    })
+    seen = client.get(f"/channels/{priv['id']}?google_id=u_bia").json()["events"]
+    assert seen == []
 
 
 # -- 10. per-follower notification preference ------------------------

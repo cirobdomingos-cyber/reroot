@@ -4408,12 +4408,24 @@ def get_channel(group_id: str, google_id: str = ""):
     Open to anyone, signed in or not: a channel that can't be looked at
     before following makes the follow a blind purchase."""
     channel = db.get_group(group_id)
-    if not channel or channel.get("kind") != "channel":
+    if not channel:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
 
-    # Published feed: everyone sees every event, follower or not. auê
-    # creates them with no invitees, so the crew visibility rule would
-    # return an empty list to the channel's own followers.
+    # One screen serves both kinds, so this endpoint has to gate the way
+    # the old group endpoint did: a private channel is for the people in
+    # it. A public one is open, because being able to look before you
+    # follow is the whole model.
+    public = channel.get("visibility") == "public"
+    role = db.get_group_member_role(group_id, google_id) if google_id else None
+    if not public and role is None:
+        raise HTTPException(status_code=403, detail="Esse canal é privado")
+
+    # A public channel is a published feed: everyone sees every event,
+    # follower or not, because auê creates them with no invitees and the
+    # crew visibility rule would hand its own followers an empty list.
+    #
+    # A private one keeps that rule — its events are the members', and
+    # an outsider invited to one specific night must not see the rest.
     events = [
         _group_event_to_frontend(
             e,
@@ -4421,7 +4433,8 @@ def get_channel(group_id: str, google_id: str = ""):
             viewer_google_id=google_id,
             prefer_group_id=group_id,
         )
-        for e in db.get_group_events(group_id, viewer_google_id=None)
+        for e in db.get_group_events(
+            group_id, viewer_google_id=None if public else google_id)
     ]
     today = datetime.now(timezone.utc).date().isoformat()
     upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
@@ -4432,7 +4445,11 @@ def get_channel(group_id: str, google_id: str = ""):
     # role='follower' — so auê saw "Seguindo" on one screen and "Seguir"
     # on the other, for the same channel.
     members = db.get_group_members(group_id)
-    followers = [m for m in members if m.get("following")]
+    # "Followers" on a public channel, "members" on a private one — same
+    # rows, and the screen picks the word. On a private channel everyone
+    # in it counts, because being a member IS being in it; following is
+    # only about whether it also shows up in your lists.
+    followers = [m for m in members if (m.get("following") or not public)]
     is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
 
     return {
@@ -4445,6 +4462,11 @@ def get_channel(group_id: str, google_id: str = ""):
             "notify": db.get_channel_notify(group_id, google_id),
             "prioritize": db.get_channel_prioritize(group_id, google_id),
             "upcoming_event_count": len(upcoming),
+            # The screen needs to know which shape to render: a public
+            # channel has followers and no invite, a private one has
+            # members and an invite code.
+            "is_public": public,
+            "viewer_role": role,
             # Whether this viewer may edit the channel and publish into
             # it: the founder, or a curator OF THIS CHANNEL.
             "can_curate": bool(google_id) and (
@@ -5195,7 +5217,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
                             try:
                                 _send_push_to_user(
                                     invitee_id, title=title, body=body,
-                                    url=f"/#/groups/{group_id}", tag=tag,
+                                    url=f"/#/channels/{group_id}", tag=tag,
                                 )
                             except Exception as exc:
                                 log.warning(
@@ -5310,7 +5332,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # already gates groupId/groupName on membership, and GET /groups/{id}
     # 403s non-members — but the push bypassed both: it put the private
     # group's NAME in the title and deep-linked every recipient to
-    # /#/groups/{id}, a page outsiders are then refused. So the one
+    # /#/channels/{id}, a page outsiders are then refused. So the one
     # channel that reaches you before you open the app was the one
     # leaking. Members get the group framing; outsiders get the creator's
     # name and a link to the event itself.
@@ -5327,7 +5349,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
                     invitee_id,
                     title=f"🎲 {group_name}" if is_member else "🎲 Convite",
                     body=body if is_member else outsider_body,
-                    url=f"/#/groups/{group_id}" if is_member else _event_deep_link(event["id"]),
+                    url=f"/#/channels/{group_id}" if is_member else _event_deep_link(event["id"]),
                     tag=tag,
                 )
             except Exception as exc:

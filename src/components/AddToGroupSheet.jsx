@@ -10,7 +10,7 @@ import { fetchGroups, fetchChannels, createGroupEvent, fetchGroupsWithSource, un
 // signed in (groups need a google_id).
 //
 // The catalog event is mirrored into the group's events table — same
-// flow as the GroupDetail "Do catálogo" button.
+// flow as the channel screen's "Do catálogo" button.
 export default function AddToGroupSheet({ open, onClose, event }) {
   const { state } = useApp()
   const navigate = useNavigate()

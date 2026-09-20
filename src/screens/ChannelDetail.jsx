@@ -3,7 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
-import { CalendarSheet, CatalogPickerSheet } from '../components/GroupSheets'
+import {
+  CalendarSheet, CatalogPickerSheet, InviteSheet, MembersSheet,
+} from '../components/GroupSheets'
+import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
@@ -12,17 +15,23 @@ import {
   createGroupEvent, getGroupCalendarFeedUrl,
 } from '../services/api'
 
-// The channel screen.
+// The channel screen — the only one, for both kinds.
 //
-// Deliberately NOT GroupDetail with things hidden. That screen answers
-// "what is this crew" — members, roles, invite code, mural, primeiros
-// passos — and a channel needs almost none of it. Rendering it and
-// switching pieces off is how an "...unless it's a channel" branch
-// spreads through a file, which is the failure docs/NEXT.md warned
-// about before any of this was built.
+// A public channel is run by auê, a private one by whoever made it.
+// That is a difference in who may do what, not in what a channel *is*,
+// so there is one screen and permissions decide what it offers. The
+// alternative — a screen per kind — is how the same feed, the same
+// follow button and the same calendar end up implemented twice and
+// drifting apart, which is what the old GroupDetail had already become.
 //
-// A channel answers one question instead: is this worth following?
-// So the screen is what it publishes, with one action attached.
+// Every affordance below is gated on one of three facts and nothing
+// else: isPrivate (invite, add event, member list), can_curate (the
+// catalog picker, the curation panel), is_following (notify, priority).
+// Read them as the permission table; there is no "...unless it's a
+// channel" branch anywhere, and adding one should feel wrong.
+//
+// A channel still answers one question first: is this worth following?
+// So the screen leads with what it publishes, action attached.
 //
 //   hero      -> what it is, and proof it's alive
 //   ação      -> Seguir, and once following, whether to be told
@@ -39,6 +48,12 @@ export default function ChannelDetail() {
   const [data, setData] = useState(null)   // null = loading
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
+  // Private-channel affordances. They live on the same screen as the
+  // public ones and differ by permission, not by existing somewhere
+  // else — which is what let GroupDetail go away.
+  const [showInvite, setShowInvite] = useState(false)
+  const [showMembers, setShowMembers] = useState(false)
+  const [showNewEvent, setShowNewEvent] = useState(false)
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -156,6 +171,12 @@ export default function ChannelDetail() {
   }
 
   const count = channel.upcoming_event_count ?? events.length
+  // The single thing that differs between the two kinds. Everything
+  // below reads from it instead of from a second screen existing.
+  const isPrivate = channel.is_public === false
+  const peopleWord = isPrivate
+    ? (channel.follower_count === 1 ? 'membro' : 'membros')
+    : 'seguindo'
 
   return (
     <Shell onBack={() => navigate('/community')}>
@@ -169,9 +190,10 @@ export default function ChannelDetail() {
         </h1>
         <span style={{
           fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 8,
-          background: 'var(--magenta)', color: 'var(--bg)', letterSpacing: '0.06em',
+          background: isPrivate ? 'var(--cyan)' : 'var(--magenta)',
+          color: 'var(--bg)', letterSpacing: '0.06em',
         }}>
-          auê
+          {isPrivate ? '🔒 privado' : 'auê'}
         </span>
       </div>
 
@@ -189,7 +211,13 @@ export default function ChannelDetail() {
           fits in four words here. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
         {(data.followers || []).length > 0 && (
-          <div style={{ display: 'flex', flexShrink: 0 }}>
+          <div
+            onClick={isPrivate ? () => setShowMembers(true) : undefined}
+            style={{
+              display: 'flex', flexShrink: 0,
+              cursor: isPrivate ? 'pointer' : 'default',
+            }}
+          >
             {(data.followers || []).slice(0, 3).map((f, i) => (
               <span key={f.google_id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
                 <Avatar name={f.name} src={f.picture} size={22} />
@@ -202,7 +230,7 @@ export default function ChannelDetail() {
           color: 'var(--text2)',
         }}>
           {count > 0 ? `${count} ${count === 1 ? 'rolê' : 'rolês'}` : 'sem rolê marcado'}
-          {' · '}{channel.follower_count} seguindo
+          {' · '}{channel.follower_count} {peopleWord}
         </span>
       </div>
 
@@ -261,14 +289,31 @@ export default function ChannelDetail() {
                 {channel.prioritize ? '⭐' : '☆'}
               </IconAction>
             )}
-            {channel.feed_token && (channel.is_following || channel.can_curate) && (
+            {channel.feed_token
+              && (channel.is_following || channel.can_curate || isPrivate) && (
               <IconAction onClick={() => setShowCalendar(true)} title="Assinar calendário">
                 📅
+              </IconAction>
+            )}
+            {/* Invite belongs to a private channel only: you follow a
+                public one from an open list, and there is nobody to
+                invite into something anyone can already find. */}
+            {isPrivate && (
+              <IconAction onClick={() => setShowInvite(true)} title="Convidar pro canal">
+                ➕
               </IconAction>
             )}
             <IconAction onClick={share} title="Compartilhar canal">
               {copied ? '✓' : '🔗'}
             </IconAction>
+            {/* Anyone in a private channel can add an event — control
+                means administration, not publishing. In a public one
+                that's the curation team, and the catalog picker is how. */}
+            {isPrivate && (
+              <IconAction onClick={() => setShowNewEvent(true)} accent title="Novo evento">
+                ＋
+              </IconAction>
+            )}
             {channel.can_curate && (
               <IconAction onClick={() => setShowCatalog(true)} accent title="Adicionar do catálogo">
                 🌍
@@ -322,6 +367,29 @@ export default function ChannelDetail() {
           <ChannelRow key={ev.id} ev={ev} navigate={navigate} />
         ))}
       </div>
+
+      <InviteSheet
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        group={channel}
+        t={{}}
+      />
+      <MembersSheet
+        open={showMembers}
+        onClose={() => setShowMembers(false)}
+        group={{ ...channel, members: data.followers || [] }}
+        t={{}}
+        viewerIsAdmin={channel.viewer_role === 'admin'}
+        viewerGoogleId={googleId}
+        onRoleChanged={load}
+      />
+      <PersonalPlanSheet
+        open={showNewEvent}
+        onClose={() => setShowNewEvent(false)}
+        googleId={googleId}
+        initialGroupId={channelId}
+        onCreated={() => { setShowNewEvent(false); load() }}
+      />
 
       <CalendarSheet
         open={showCalendar}

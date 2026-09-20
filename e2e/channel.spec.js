@@ -1,14 +1,18 @@
 import { test, expect } from '@playwright/test'
 
-// The channel screen is deliberately NOT GroupDetail with the crew
-// parts switched off. GroupDetail answers "what is this crew" — members,
-// roles, invite code, mural, primeiros passos — and a channel needs
-// almost none of it. Rendering it and hiding pieces is how an
-// "...unless it's a channel" branch spreads through a file, which is
-// the failure docs/NEXT.md warned about before any of this was built.
+// One screen, two kinds of channel. A public one is run by auê, a
+// private one by whoever made it — and the difference is who is allowed
+// to do what, not which affordances exist. So the guard these tests
+// carry is per-permission: each one says which kind it opened, and what
+// that kind should and should not offer.
 //
-// These tests are the guard. The backend stub keeps them honest about
-// the shape without needing a live channel.
+// is_public is set explicitly in every fixture. It used to be absent,
+// which made the public-only assertions below pass for the reason a
+// missing field is falsy rather than because the screen decided
+// anything — a test that certifies the bug as absent.
+//
+// The backend stub keeps them honest about the shape without needing a
+// live channel.
 
 const CHANNEL = {
   channel: {
@@ -16,6 +20,7 @@ const CHANNEL = {
     description: 'Tudo que tem guitarra em Curitiba, num lugar só.',
     follower_count: 128, is_following: true, notify: true,
     upcoming_event_count: 2, feed_token: 'tok_abc', can_curate: false,
+    is_public: true, viewer_role: null,
   },
   events: [
     { id: 'e1', name: 'Terno Rei na Pedreira', dateStart: '2099-10-04T21:00:00',
@@ -248,19 +253,72 @@ test('a curator gets the catalog picker', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toBeVisible()
 })
 
-test('a channel carries no stats panel', async ({ page }) => {
+test('no channel carries a stats panel, public or private', async ({ page }) => {
   // Removed Sep 2026: counters are for whoever runs a crew, and on a
   // channel they sat between the thing you came for — what's on — and
-  // the list of it.
+  // the list of it. Merging the crew screen in did not bring them back.
   await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByText('Mural do canal')).toHaveCount(0)
+  await openChannel(page, { is_public: false, viewer_role: 'admin' })
   await expect(page.getByText('Mural do canal')).toHaveCount(0)
 })
 
-test('a channel never offers to invite people into it', async ({ page }) => {
-  // The one thing that genuinely doesn't belong: you follow a channel,
-  // you are not invited to one.
+test('a public channel never offers to invite people into it', async ({ page }) => {
+  // You follow a public channel from an open list. There is nobody to
+  // invite into something anyone can already find — so this stays gone
+  // even now that the same screen serves private channels, where it is
+  // exactly the right button.
   await openChannel(page, { is_following: true, can_curate: true })
-  await expect(page.getByText(/convidar/i)).toHaveCount(0)
+  await expect(page.getByTitle(/Convidar pro canal/i)).toHaveCount(0)
+})
+
+// ── The private half of the same screen ──
+//
+// A private channel is the old crew. It is not public, so it is not
+// discovered — you are let in. That changes three things and nothing
+// else: it says it is private, it can be invited into, and anyone
+// inside can add an event (control is administration, not publishing).
+
+test('a private channel says so instead of wearing the auê badge', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await expect(page.getByText('🔒 privado')).toBeVisible()
+  // Scoped to the title row: the app shell carries its own auê
+  // wordmark, so an unscoped count matches the brand, not the badge.
+  const titleRow = page.locator('h1', { hasText: 'Rockzão' }).locator('..')
+  await expect(titleRow.getByText('auê', { exact: true })).toHaveCount(0)
+})
+
+test('a private channel can be invited into', async ({ page }) => {
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await expect(page.getByTitle(/Convidar pro canal/i)).toBeVisible()
+})
+
+test('anyone inside a private channel can add an event', async ({ page }) => {
+  // Not can_curate — that is the public-channel curation team. Here the
+  // plain member gets it, which is the whole point of option A.
+  await openChannel(page, {
+    is_public: false, viewer_role: 'member', can_curate: false,
+  })
+  await expect(page.getByTitle(/Novo evento/i)).toBeVisible()
+})
+
+test('a public channel gives no one the add-event button', async ({ page }) => {
+  // Publishing into a public channel goes through the catalog picker,
+  // and only for a curator. Nobody gets to post a free-form event.
+  await openChannel(page, { is_following: true, can_curate: true })
+  await expect(page.getByTitle(/Novo evento/i)).toHaveCount(0)
+})
+
+test('the old crew URL still opens the channel', async ({ page }) => {
+  // Crews became channels, but their ids did not change and their links
+  // are already out there — in invites, in pushes, in pasted messages.
+  // /#/groups/:id is a rename of the path, so it must land on the same
+  // screen rather than on a blank route.
+  await openChannel(page, { is_public: false, viewer_role: 'member' })
+  await page.goto('/#/groups/grp_rock')
+  await page.waitForTimeout(1200)
+  await expect(page).toHaveURL(/#\/channels\/grp_rock/)
+  await expect(page.getByText('Rockzão')).toBeVisible()
 })
 
 // A catalog event added to a channel becomes a separate row — a fork

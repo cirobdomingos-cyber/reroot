@@ -505,7 +505,7 @@ export default function Events() {
     setDetailEvent(null)
   }
 
-  // Esc-to-close lives in EventDetailDrawer now — shared with GroupDetail.
+  // Esc-to-close lives in EventDetailDrawer now — shared with ChannelDetail.
 
   function handleCategoryChange(id) {
     setActiveFilter(id)
@@ -1392,7 +1392,7 @@ export default function Events() {
                     onOpen={() => openDetail(ev.id)}
                     onFriend={(gid) => navigate(`/friends/${encodeURIComponent(gid)}`)}
                     onSourceTap={(sid) => navigate(`/sources/${encodeURIComponent(sid)}`)}
-                    onOpenGroup={(gid) => navigate(`/groups/${encodeURIComponent(gid)}`)}
+                    onOpenGroup={(gid) => navigate(`/channels/${encodeURIComponent(gid)}`)}
                     // Day shown on the card's date column:
                     //   - When a specific strip day is picked: show that day.
                     //   - Otherwise: for multi-day or recurring events that
@@ -1445,7 +1445,7 @@ export default function Events() {
       </AnimatePresence>
 
       {/* Shared drawer shell — portal, overlay and the sticky nav strip
-          all live in components/EventDetail.jsx so GroupDetail renders
+          all live in components/EventDetail.jsx so ChannelDetail renders
           the identical chrome instead of a second copy. */}
       <EventDetailDrawer
         open={!!selectedEventId}
@@ -1592,7 +1592,7 @@ export default function Events() {
                   // plans AND group events. Routes to the right backend
                   // endpoint based on whether the event is tagged to a
                   // group. Group admins still have the full Excluir flow
-                  // inside GroupDetail; this button is the catalog-side
+                  // inside a channel; this button is the catalog-side
                   // shortcut for the same action.
                   state.googleUser?.id &&
                   detailEvent.isGroupEvent && (

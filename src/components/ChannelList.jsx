@@ -107,9 +107,7 @@ export default function ChannelList() {
         aue={item._aue !== false}
         canFollow={!!googleId}
         busy={pending === item.id}
-        onOpen={() => navigate(
-          item._aue === false ? `/groups/${item.id}` : `/channels/${item.id}`,
-        )}
+        onOpen={() => navigate(`/channels/${item.id}`)}
         onToggle={() => toggle(item)}
       />
     )

@@ -80,7 +80,7 @@ export default function JoinGroup() {
           <Success
             group={group}
             already={status === 'already'}
-            onOpen={() => navigate(`/groups/${group.id}`)}
+            onOpen={() => navigate(`/channels/${group.id}`)}
           />
         )}
         {status === 'error' && (

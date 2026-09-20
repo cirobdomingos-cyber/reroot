@@ -1,7 +1,7 @@
 /**
  * The event detail view — one implementation, both entry points.
  *
- * Lived inside Events.jsx as DetailPanel while GroupDetail.jsx carried a
+ * Lived inside Events.jsx as DetailPanel while the crew screen carried a
  * 421-line near-copy called GroupEventHero. Same event, two renderings:
  * the group one used a 180px hero against the feed's 240px, and its
  * no-image fallback was still `linear-gradient(135deg, var(--sage),
@@ -10,10 +10,10 @@
  *
  * The copy was never necessary: this component has always handled group
  * events (the feed lists them and opens them here) and already takes
- * canInvite / canEdit / onCoHostsChanged / onDelete. GroupDetail just
+ * canInvite / canEdit / onCoHostsChanged / onDelete. The channel screen just
  * grew its own before that was true.
  *
- * Callers pass the frontend-normalized camelCase event shape. GroupDetail
+ * Callers pass the frontend-normalized camelCase event shape. ChannelDetail
  * holds raw snake_case DB rows from /groups/{id}, so it normalizes at the
  * call site — see toDetailShape there.
  */

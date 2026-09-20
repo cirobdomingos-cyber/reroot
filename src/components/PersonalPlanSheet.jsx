@@ -8,7 +8,7 @@ import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGro
 // The single event-creation sheet. Both entry points use it — the Home
 // "criar evento com amigos" CTA and "+ Novo Evento" inside a group, the
 // latter passing initialGroupId so the group arrives pre-connected.
-// GroupDetail used to carry its own AddEventSheet — a near-duplicate that
+// The crew screen used to carry its own AddEventSheet — a near-duplicate that
 // drifted: it had no "recado" field and, though it could invite outsiders,
 // never warned that those people can't see the group. Same action, two
 // behaviors depending on which button you pressed.
