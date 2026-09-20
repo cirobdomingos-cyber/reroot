@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
-import { CalendarSheet, CatalogPickerSheet, GroupStatsPanel } from '../components/GroupSheets'
+import { CalendarSheet, CatalogPickerSheet } from '../components/GroupSheets'
 import { appLink } from '../lib/share'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
-  createGroupEvent, fetchGroupStats, getGroupCalendarFeedUrl,
+  createGroupEvent, getGroupCalendarFeedUrl,
 } from '../services/api'
 
 // The channel screen.
@@ -39,7 +39,6 @@ export default function ChannelDetail() {
   const [data, setData] = useState(null)   // null = loading
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
-  const [stats, setStats] = useState(null)
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -51,16 +50,6 @@ export default function ChannelDetail() {
   }, [channelId, googleId])
 
   useEffect(() => { load() }, [load])
-
-  // Curator-only. A follower has no use for the activity panel, and the
-  // endpoint refuses them anyway — it's member-gated, and on a channel
-  // only the curation team holds a role.
-  useEffect(() => {
-    if (!googleId || !data?.channel?.can_curate) { setStats(null); return }
-    let cancelled = false
-    fetchGroupStats(channelId, googleId).then(s => { if (!cancelled) setStats(s) })
-    return () => { cancelled = true }
-  }, [channelId, googleId, data?.channel?.can_curate])
 
   // Publishing into the channel from the catalog — this is how a
   // channel gets filled, and it's the same sheet a private channel
@@ -194,24 +183,44 @@ export default function ChannelDetail() {
         </p>
       )}
 
-      {/* What's in it leads. A channel that only reports followers is
-          asking for a follow without saying what for. */}
-      <div className="neon-mono" style={{
-        fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
-        color: 'var(--text2)', marginTop: 10,
-      }}>
-        {count > 0 ? `${count} ${count === 1 ? 'rolê marcado' : 'rolês marcados'}` : 'sem rolê marcado'}
-        {' · '}{channel.follower_count} seguindo
+      {/* Everything about the channel in one line: what's on, who
+          else is here, and a couple of faces. The follower strip used
+          to be its own row lower down, which cost 40px to say what
+          fits in four words here. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+        {(data.followers || []).length > 0 && (
+          <div style={{ display: 'flex', flexShrink: 0 }}>
+            {(data.followers || []).slice(0, 3).map((f, i) => (
+              <span key={f.google_id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
+                <Avatar name={f.name} src={f.picture} size={22} />
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="neon-mono" style={{
+          fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+          color: 'var(--text2)',
+        }}>
+          {count > 0 ? `${count} ${count === 1 ? 'rolê' : 'rolês'}` : 'sem rolê marcado'}
+          {' · '}{channel.follower_count} seguindo
+        </span>
       </div>
 
-      {/* ── Action ── */}
+      {/* One decision at full width — the only one most people make
+          here. Everything else became an icon.
+          
+          The screen used to lead with six stacked rows, which pushed
+          the first event to 478px of an 844px viewport: more than half
+          the screen was settings, above the list that is the entire
+          reason to open a channel. Configuration is set once; the list
+          is read every week, and the layout should say so. */}
       {googleId ? (
         <>
           <button
             onClick={toggleFollow}
             disabled={busy}
             style={{
-              width: '100%', marginTop: 16, padding: '13px', borderRadius: 12,
+              width: '100%', marginTop: 14, padding: '13px', borderRadius: 12,
               fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
               border: channel.is_following ? '1.5px solid var(--line)' : 'none',
               background: channel.is_following ? 'transparent' : 'var(--magenta)',
@@ -223,121 +232,62 @@ export default function ChannelDetail() {
             {channel.is_following ? '✓ Seguindo' : 'Seguir'}
           </button>
 
-          {/* Only once following — a switch for something you don't get
-              is a setting with no subject. */}
-          {channel.is_following && (
-            <button
-              onClick={toggleNotify}
-              disabled={busy}
-              style={{
-                width: '100%', marginTop: 8, padding: '11px 13px', borderRadius: 12,
-                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
-                border: '1px solid var(--line)', background: 'var(--bg2)',
-                cursor: busy ? 'wait' : 'pointer',
-              }}
-            >
-              <span style={{ fontSize: 15 }}>{channel.notify ? '🔔' : '🔕'}</span>
-              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.4 }}>
-                {channel.notify
-                  ? 'Te avisamos quando entrar rolê novo'
+          {/* Icon row. State is the colour, and every one carries a
+              title so the meaning is reachable without a label — the
+              two toggles used to be full-width rows explaining
+              themselves in a sentence each. */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            {channel.is_following && (
+              <IconAction
+                on={channel.notify}
+                onClick={toggleNotify}
+                disabled={busy}
+                title={channel.notify
+                  ? 'Avisamos quando entrar rolê novo'
                   : 'Sem aviso — você vê quando abrir o app'}
-              </span>
-              <Switch on={channel.notify} />
-            </button>
-          )}
-
-          {/* Defaults on. Following a channel and then seeing nothing
-              from it anywhere but its own screen is a follow that did
-              nothing, which is how people conclude a feature is broken
-              rather than off. */}
-          {channel.is_following && (
-            <button
-              onClick={togglePrioritize}
-              disabled={busy}
-              style={{
-                width: '100%', marginTop: 8, padding: '11px 13px', borderRadius: 12,
-                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
-                border: '1px solid var(--line)', background: 'var(--bg2)',
-                cursor: busy ? 'wait' : 'pointer',
-              }}
-            >
-              <span style={{ fontSize: 15 }}>{channel.prioritize ? '⭐' : '☆'}</span>
-              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.4 }}>
-                {channel.prioritize
+              >
+                {channel.notify ? '🔔' : '🔕'}
+              </IconAction>
+            )}
+            {channel.is_following && (
+              <IconAction
+                on={channel.prioritize}
+                onClick={togglePrioritize}
+                disabled={busy}
+                title={channel.prioritize
                   ? 'Aparece no topo dos Eventos'
                   : 'Só aqui dentro — fora dos Eventos'}
-              </span>
-              <Switch on={channel.prioritize} />
-            </button>
-          )}
+              >
+                {channel.prioritize ? '⭐' : '☆'}
+              </IconAction>
+            )}
+            {channel.feed_token && (channel.is_following || channel.can_curate) && (
+              <IconAction onClick={() => setShowCalendar(true)} title="Assinar calendário">
+                📅
+              </IconAction>
+            )}
+            <IconAction onClick={share} title="Compartilhar canal">
+              {copied ? '✓' : '🔗'}
+            </IconAction>
+            {channel.can_curate && (
+              <IconAction onClick={() => setShowCatalog(true)} accent title="Adicionar do catálogo">
+                🌍
+              </IconAction>
+            )}
+          </div>
         </>
       ) : (
-        <p style={{
-          fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5,
-          margin: '16px 0 0', padding: '11px 13px',
-          border: '1px dashed var(--line)', borderRadius: 12,
-        }}>
-          Entra com o Google pra seguir e ser avisado quando entrar rolê novo.
-        </p>
-      )}
-
-      {/* Action bar. The first version of this screen had none of it,
-          on the grounds that a calendar feed and a catalog picker were
-          "crew machinery". They aren't — nothing about them implies
-          other people in the room. Only the invite and the "convida a
-          galera" nudge do, and those two stay out.
-          
-          What changes here is who may use each one, not whether it
-          exists: the picker and the activity panel are curator-only,
-          the calendar is for anyone following. */}
-      {(channel.is_following || channel.can_curate) && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
-          {channel.feed_token && (
-            <ChannelAction onClick={() => setShowCalendar(true)}>
-              📅 Assinar calendário
-            </ChannelAction>
-          )}
-          {channel.can_curate && (
-            <ChannelAction onClick={() => setShowCatalog(true)} accent>
-              🌍 Do catálogo
-            </ChannelAction>
-          )}
-        </div>
-      )}
-
-      {/* Sharing is for everyone, follower or not — a channel is public
-          and passing one along costs nothing. Sits outside the block
-          above precisely because it isn't gated on following. */}
-      <ChannelAction onClick={share} wide>
-        {copied ? '✓ Link copiado' : '🔗 Compartilhar canal'}
-      </ChannelAction>
-
-      {/* Activity, curator-only — it's the panel that says whether the
-          channel is alive, which is a question for whoever runs it. */}
-      {channel.can_curate && stats && stats.events_total > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <GroupStatsPanel stats={stats} />
-        </div>
-      )}
-
-      {/* Who else is here. Shown to everyone, follower or not — it's
-          social proof, and you should be able to see it before deciding
-          whether to follow. What never ships on a curated channel is a
-          prompt asking you to bring friends into it. */}
-      {(data.followers || []).length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
-          <div style={{ display: 'flex' }}>
-            {(data.followers || []).slice(0, 6).map((f, i) => (
-              <span key={f.google_id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
-                <Avatar name={f.name} src={f.picture} size={26} />
-              </span>
-            ))}
-          </div>
-          <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-            {channel.follower_count === 1
-              ? `${(data.followers[0] || {}).name || 'Alguém'} segue`
-              : `${channel.follower_count} seguindo`}
-          </span>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
+          <p style={{
+            flex: 1, fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5,
+            margin: 0, padding: '11px 13px',
+            border: '1px dashed var(--line)', borderRadius: 12,
+          }}>
+            Entra com o Google pra seguir esse canal.
+          </p>
+          <IconAction onClick={share} title="Compartilhar canal">
+            {copied ? '✓' : '🔗'}
+          </IconAction>
         </div>
       )}
 
@@ -658,17 +608,27 @@ const curationInput = {
   boxSizing: 'border-box', background: 'var(--bg)', color: 'var(--text)',
 }
 
-function ChannelAction({ children, onClick, accent, wide }) {
+// One icon, one job, state in the colour. These were full-width rows
+// with a sentence each — six of them stacked pushed the first event
+// below the fold on an 844px screen.
+//
+// Every one carries a title, so the meaning is a long-press away
+// instead of permanently occupying a line. That's the trade: the
+// labels were doing real work for a first-time reader, and the cost
+// was burying the thing they came for on every subsequent visit.
+function IconAction({ children, onClick, disabled, on, accent, title }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
       style={{
-        flex: '1 1 auto', padding: '10px 12px', borderRadius: 12,
-        ...(wide ? { width: '100%', marginTop: 8 } : null),
-        fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-        border: accent ? 'none' : '1px solid var(--line)',
-        background: accent ? 'var(--magenta)' : 'var(--bg2)',
-        color: accent ? 'var(--bg)' : 'var(--text2)',
+        flex: '1 1 0', minWidth: 0, padding: '10px 0', borderRadius: 12,
+        fontSize: 17, lineHeight: 1, cursor: disabled ? 'wait' : 'pointer',
+        border: accent ? 'none' : `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}`,
+        background: accent ? 'var(--magenta)' : (on ? 'rgba(255, 43, 214, 0.10)' : 'var(--bg2)'),
+        opacity: disabled ? 0.6 : (on === false ? 0.55 : 1),
       }}
     >
       {children}
