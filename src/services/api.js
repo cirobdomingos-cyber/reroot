@@ -185,7 +185,11 @@ function normalizeBackendEvent(ev) {
     isGroupEvent: ev.isGroupEvent ?? false,
     isPersonalPlan: ev.isPersonalPlan ?? false,
     groupId: ev.groupId ?? null,
+    // Only the groups the VIEWER belongs to — the backend filters it,
+    // so length is a count of "my groups this event is in", not of the
+    // event's total reach.
     groupIds: ev.groupIds ?? (ev.groupId ? [ev.groupId] : []),
+    viewerGroupCount: ev.viewerGroupCount ?? (ev.groupId ? 1 : 0),
     groupName: ev.groupName ?? '',
     createdBy: ev.createdBy ?? null,
     inviteeCount: ev.inviteeCount ?? 0,

@@ -4673,9 +4673,15 @@ def get_event_declined(event_id: str, requesting_google_id: str) -> list[dict]:
 
 
 def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:
-    """Add a group to an event's group_ids list, expanding invitees with
-    the group's members. Used by "Adicionar a um grupo" on user-owned
-    events to broaden visibility instead of creating a duplicate fork.
+    """Add a group to an event's group_ids list. Used by "Adicionar a um
+    grupo" on user-owned events to broaden visibility instead of
+    creating a duplicate fork.
+
+    `extra_invitees` REPLACES the invitee list — it does not merge into
+    it. The caller is responsible for passing the union (existing
+    invitees | the new group's members); main.py does exactly that.
+    Passing a short list here silently un-invites everyone who was
+    already on it, and nothing downstream will flag it.
 
     Multi-group: an event can be linked to many groups simultaneously.
     group_ids is the authoritative list; group_id (singular) is kept as
