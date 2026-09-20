@@ -92,3 +92,55 @@ test('an empty channel says what following would get you', async ({ page }) => {
   await page.waitForTimeout(1200)
   await expect(page.getByText(/Nada marcado agora/)).toBeVisible()
 })
+
+// The channels tab has to answer two questions at a glance: what do I
+// follow, and what else is there. One flat list with a button on every
+// row makes them the same pile — you have to read every button to
+// answer either one.
+
+const LIST = [
+  { id: 'c1', name: 'De Graça', description: 'Tudo que não custa nada.',
+    follower_count: 30, is_following: true, notify: true, upcoming_event_count: 42 },
+  { id: 'c2', name: 'Vai Ter Festa', description: 'Sexta e sábado até tarde.',
+    follower_count: 8, is_following: false, notify: true, upcoming_event_count: 28 },
+]
+
+async function openTab(page, channels) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType()
+    return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
+      ? route.continue() : route.abort()
+  })
+  await page.route('**/channels?**', route => route.fulfill({ json: { channels } }))
+  await page.addInitScript(() =>
+    localStorage.setItem('aue_state', JSON.stringify({
+      hasJoined: true, googleUser: { id: 'u1', email: 'a@b.com', name: 'Ana' },
+    })))
+  await page.goto('/#/community')
+  await page.waitForTimeout(1200)
+}
+
+test('followed and available channels are separate piles', async ({ page }) => {
+  await openTab(page, LIST)
+  await expect(page.getByText(/^Seguindo/).first()).toBeVisible()
+  await expect(page.getByText('Descobrir')).toBeVisible()
+  // And the private ones are labelled too — that section had no heading
+  // at all, so the reader fell out of "Descobrir" into a create button
+  // with nothing saying what it belonged to.
+  await expect(page.getByText('Meus canais')).toBeVisible()
+})
+
+test('the split does not appear before the first follow', async ({ page }) => {
+  // Everything IS discovery then, and a "Seguindo (0)" heading over
+  // nothing is noise.
+  await openTab(page, LIST.map(c => ({ ...c, is_following: false })))
+  await expect(page.getByText('Descobrir')).toHaveCount(0)
+  await expect(page.getByText(/^Seguindo/)).toHaveCount(0)
+  await expect(page.getByText('Canais do auê', { exact: true }).first()).toBeVisible()
+})
+
+test('Descobrir goes away once everything is followed', async ({ page }) => {
+  await openTab(page, LIST.map(c => ({ ...c, is_following: true })))
+  await expect(page.getByText(/^Seguindo/).first()).toBeVisible()
+  await expect(page.getByText('Descobrir')).toHaveCount(0)
+})

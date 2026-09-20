@@ -87,6 +87,18 @@ export default function Community() {
                 channel, you don't join it — and the list hides itself
                 when empty. */}
             <ChannelList />
+            {/* This section had no heading at all. With only one list in
+                the tab that was fine; with auê's channels above it, the
+                reader fell out of "Descobrir" straight into a create
+                button and an empty state about something else. The
+                heading is what says these are yours. */}
+            <h2 style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+              color: 'var(--text2)', margin: '20px 16px 10px',
+            }}>
+              Meus canais
+            </h2>
             <GroupsInline />
           </>
         )}

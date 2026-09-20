@@ -57,51 +57,89 @@ export default function ChannelList() {
     setPending(null)
   }
 
-  const followedCount = channels.filter(c => c.is_following).length
+  // Split by follow state. One flat list with a button on each row
+  // makes "what I follow" and "what exists" the same pile — you have to
+  // read every button to answer either question.
+  //
+  // The split only appears once it's needed: before the first follow
+  // everything IS discovery, and a "Seguindo (0)" heading over nothing
+  // is noise. Same reasoning the other way — once you follow all of
+  // them, "Descobrir" has nothing to show and goes away.
+  const following = channels.filter(c => c.is_following)
+  const discover = channels.filter(c => !c.is_following)
+
+  function row(channel) {
+    return (
+      <ChannelRow
+        key={channel.id}
+        channel={channel}
+        canFollow={!!googleId}
+        busy={pending === channel.id}
+        onOpen={() => navigate(`/channels/${channel.id}`)}
+        onToggle={() => toggle(channel)}
+      />
+    )
+  }
 
   return (
     <>
       {/* Explains the word before the list uses it. Disappears once the
           person follows something — see ChannelsIntro. */}
-      <ChannelsIntro followedCount={followedCount} loading={loading} />
+      <ChannelsIntro followedCount={following.length} loading={loading} />
 
       <div style={{ padding: '0 16px 4px' }}>
-        <h2 style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
-          color: 'var(--text2)', margin: '0 0 10px',
-        }}>
-          Canais do auê
-        </h2>
-
         {/* Used to return null with nothing to show. That hid the
             concept from exactly the people who'd never met it — the
-            heading above is the only place the word gets introduced,
-            and a tab that renders nothing teaches nothing. */}
+            heading is the only place the word gets introduced, and a
+            tab that renders nothing teaches nothing. */}
         {!loading && channels.length === 0 && (
-          <div style={{
-            padding: '14px 14px', borderRadius: 14,
-            border: '1px dashed var(--line)',
-            fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5,
-          }}>
-            Ainda não tem canal nosso no ar. Tamo montando os primeiros —
-            rock, samba, eletrônica — pra você seguir o que gosta e parar
-            de caçar no meio de tudo.
-          </div>
+          <>
+            <SectionHeading>Canais do auê</SectionHeading>
+            <div style={{
+              padding: '14px 14px', borderRadius: 14,
+              border: '1px dashed var(--line)',
+              fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.5,
+            }}>
+              Ainda não tem canal nosso no ar. Tamo montando os primeiros —
+              rock, samba, eletrônica — pra você seguir o que gosta e parar
+              de caçar no meio de tudo.
+            </div>
+          </>
         )}
 
-        {channels.map(channel => (
-          <ChannelRow
-            key={channel.id}
-            channel={channel}
-            canFollow={!!googleId}
-            busy={pending === channel.id}
-            onOpen={() => navigate(`/channels/${channel.id}`)}
-            onToggle={() => toggle(channel)}
-          />
-        ))}
+        {following.length > 0 && (
+          <>
+            <SectionHeading count={following.length}>Seguindo</SectionHeading>
+            {following.map(row)}
+          </>
+        )}
+
+        {discover.length > 0 && (
+          <>
+            {/* Named for what you do here, not for who made them. Before
+                the first follow there's nothing to contrast with, so it
+                keeps the plain name. */}
+            <SectionHeading spaced={following.length > 0}>
+              {following.length > 0 ? 'Descobrir' : 'Canais do auê'}
+            </SectionHeading>
+            {discover.map(row)}
+          </>
+        )}
       </div>
     </>
+  )
+}
+
+function SectionHeading({ children, count, spaced }) {
+  return (
+    <h2 style={{
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
+      color: 'var(--text2)', margin: spaced ? '20px 0 10px' : '10px 0 10px',
+    }}>
+      {children}
+      {count != null && <span style={{ color: 'var(--text3)' }}> · {count}</span>}
+    </h2>
   )
 }
 
@@ -112,6 +150,10 @@ function ChannelRow({ channel, canFollow, busy, onOpen, onToggle }) {
       display: 'flex', alignItems: 'center', gap: 12,
       background: 'var(--bg2)', border: '1px solid var(--line)',
       borderRadius: 14, padding: '12px 14px', marginBottom: 8,
+      // A followed channel is marked on the row itself, not only by the
+      // button's wording — the state should survive a glance that never
+      // reaches the right-hand edge.
+      boxShadow: channel.is_following ? 'inset 3px 0 0 var(--magenta)' : 'none',
     }}>
       <div onClick={onOpen} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
         <div style={{
