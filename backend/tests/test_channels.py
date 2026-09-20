@@ -1613,3 +1613,35 @@ def test_the_admin_endpoint_is_founder_only_and_public_only(api):
     assert r.status_code == 200 and r.json()["ok"] is True
     assert client.get("/channels").json()["channels"] == []
     assert _db.get_group(gid) is not None
+
+
+# -- 20. a fork of a public channel is a public event -----------------
+#
+# The creator-or-invitee rule on GET /events/{id} is for private plans.
+# It admitted followers by accident while publishing wrote every follower
+# onto the invitee list; once that stopped, every public-channel fork
+# 403'd for everyone but its curator.
+
+def test_a_follower_can_open_a_public_channels_event(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    ev = _add_to(client, cid, "u_founder")
+    assert client.get(f"/events/{ev['id']}?google_id=u_ana").status_code == 200
+
+
+def test_so_can_someone_who_follows_nothing(api):
+    """Public means public. The channel is listed to everyone and its
+    events are catalog events; the fork inherits that."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _add_to(client, cid, "u_founder")
+    assert client.get(f"/events/{ev['id']}?google_id=u_bia").status_code == 200
+    assert client.get(f"/events/{ev['id']}").status_code == 200
+
+
+def test_a_private_channels_event_is_still_private(api):
+    _db, _main, client = api
+    gid = _crew(client, "u_ana")
+    ev = _crew_event(client, gid)
+    assert client.get(f"/events/{ev['id']}?google_id=u_bia").status_code == 403
