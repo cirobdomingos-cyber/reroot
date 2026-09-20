@@ -97,3 +97,33 @@ test('the tab bar carries exactly the four screens it should', async ({ page }) 
   // Admin only renders for a signed-in founder; these tests are signed out.
   expect(labels).toEqual(['Eventos', 'Avisos', 'Comunidade', 'Perfil'])
 })
+
+// The Canais tab has to explain the word before the list uses it. The
+// same noun covers an auê-curated feed and a private crew since the
+// Sep 2026 rename, and someone landing cold can't tell them apart from
+// the rows alone — they look similar by design.
+test('the Canais tab explains what a canal is to someone landing on it', async ({ page }) => {
+  await page.goto('/#/community')
+  await page.waitForTimeout(1200)
+
+  await expect(page.getByText('O que é um canal')).toBeVisible()
+  // Both kinds named, because the difference is the whole confusion.
+  // "Canais do auê" appears twice by design — once explaining the kind,
+  // once as the section heading over the list itself.
+  await expect(page.getByText('Canais do auê', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Seus canais', { exact: true })).toBeVisible()
+
+  // The section used to render nothing at all when there were no
+  // channels, which hid the concept from exactly the people meeting it
+  // for the first time.
+  await expect(page.getByText(/Ainda não tem canal nosso no ar/)).toBeVisible()
+})
+
+test('the landing copy does not stack sign-in prompts', async ({ page }) => {
+  // Three asks down one screen reads as a paywall. The explainer
+  // deliberately carries none — the lists below already do.
+  await page.goto('/#/community')
+  await page.waitForTimeout(1200)
+  const prompts = await page.getByText(/Entr[ae] com/i).count()
+  expect(prompts).toBeLessThanOrEqual(1)
+})

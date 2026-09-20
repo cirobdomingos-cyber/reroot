@@ -277,3 +277,84 @@ def test_a_private_group_still_refuses_a_non_member(api):
     g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
     r = client.get(f"/groups/{g['id']}?google_id=u_bia")
     assert r.status_code in (403, 404)
+
+
+# -- 8. a channel is a published feed, not a private crew ------------
+#
+# Shipped broken in the first channels PR and caught while building the
+# landing copy for the tab. get_group_events filters to creator-or-
+# invitee, and auê creates channel events with NO invitees — so the
+# crew gate showed an empty channel to its own followers. "Seguir"
+# looked like it did nothing.
+
+def _publish(client, cid, name="Terno Rei na Pedreira", when="2099-01-01T20:00:00"):
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_founder", "name": name, "date_start": when,
+    })
+    assert r.status_code == 200, r.text
+    return r
+
+
+def test_a_follower_sees_the_channels_events(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    body = client.get(f"/groups/{cid}?google_id=u_ana").json()
+    assert [e["name"] for e in body["events"]] == ["Terno Rei na Pedreira"]
+
+
+def test_someone_who_does_not_follow_yet_still_sees_them(api):
+    """You have to be able to look before you follow, or the follow is a
+    blind purchase."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    body = client.get(f"/groups/{cid}?google_id=u_bia").json()
+    assert len(body["events"]) == 1
+
+
+def test_a_signed_out_visitor_sees_them_too(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    assert len(client.get(f"/groups/{cid}?google_id=").json()["events"]) == 1
+
+
+def test_a_private_group_still_hides_events_from_outsiders(api):
+    """The channel exception must not have opened up ordinary groups."""
+    _db, _main, client = api
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    client.post(f"/groups/{g['id']}/events", json={
+        "google_id": "u_ana", "name": "Segredo", "date_start": "2099-01-01T20:00:00",
+    })
+    r = client.get(f"/groups/{g['id']}?google_id=u_bia")
+    assert r.status_code in (403, 404) or r.json()["events"] == []
+
+
+def test_channel_followers_are_public(api):
+    """The count is social proof; you should see it before deciding."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    body = client.get(f"/groups/{cid}?google_id=u_bia").json()
+    assert len(body["members"]) == 2   # auê + ana
+
+
+def test_the_channel_list_reports_what_is_actually_in_it(api):
+    """A channel advertised as "12 seguindo" with nothing scheduled is
+    worse than one that admits it's empty — the tab's empty state
+    depends on this number."""
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get("/channels").json()["channels"][0]["upcoming_event_count"] == 0
+    _publish(client, cid)
+    _publish(client, cid, name="Outro show")
+    assert client.get("/channels").json()["channels"][0]["upcoming_event_count"] == 2
+
+
+def test_a_past_event_does_not_pad_the_count(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Já rolou", when="2020-01-01T20:00:00")
+    assert client.get("/channels").json()["channels"][0]["upcoming_event_count"] == 0
