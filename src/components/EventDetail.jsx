@@ -1015,15 +1015,35 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
           />
         )}
 
-        {canDecline ? (
-          // The two answers, always both, with the current one marked.
-          // A toggle rather than a branch: whatever you picked, the other
-          // option is right there, so changing your mind never means
-          // hunting for a different control somewhere else.
+        {isVenue ? (
+          // A place, not a night — you save it, you don't attend it.
+          <button className="btn btn--primary" onClick={onRsvp}>
+            {rsvped ? t.events_venue_remove : t.events_venue_save}
+          </button>
+        ) : (
+          // One control for every event.
+          //
+          // A catalog event used to get a lone button reading "Confirmar
+          // presença", flipping to "Cancelar confirmação" — the same act
+          // as "Vou" in a different vocabulary, and the exact shape the
+          // pair below exists to avoid: the way out is a button whose
+          // label changed, not an option sitting there in the open.
+          //
+          // Now both start as "Vou" and mark themselves "✓ Vou". The
+          // difference left is the second button, and that one is real:
+          // "Não vou" answers an invitation. It takes you off an invitee
+          // list and tells the host. A catalog event has neither — the
+          // city posted a show, nobody asked you — so there is nothing
+          // there to answer, and POST /events/{id}/decline 404s on it.
           <>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
-                onClick={rsvped ? undefined : onRsvp}
+                // With no "Não vou" beside it this is the only way back
+                // out, so it toggles. With one, it doesn't: the pair is
+                // the toggle, and letting this un-RSVP too would add a
+                // third state ("no answer") reachable by a button that
+                // looks like it just undoes the other one.
+                onClick={rsvped && canDecline ? undefined : onRsvp}
                 aria-pressed={rsvped}
                 style={{
                   flex: 1, padding: '12px', borderRadius: 12,
@@ -1031,11 +1051,12 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
                   background: rsvped ? 'var(--sage)' : 'transparent',
                   color: rsvped ? 'var(--on-lime)' : 'var(--charcoal)',
                   fontSize: 14, fontWeight: 700,
-                  cursor: rsvped ? 'default' : 'pointer',
+                  cursor: rsvped && canDecline ? 'default' : 'pointer',
                 }}
               >
                 {rsvped ? '✓ Vou' : 'Vou'}
               </button>
+              {canDecline && (
               <button
                 onClick={youDeclined ? undefined : handleDecline}
                 aria-pressed={youDeclined}
@@ -1051,6 +1072,7 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
               >
                 {declining ? '…' : youDeclined ? '✓ Não vou' : 'Não vou'}
               </button>
+              )}
             </div>
             {youDeclined && ev.groupId && (
               <div style={{
@@ -1061,13 +1083,6 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
               </div>
             )}
           </>
-        ) : (
-          <button className="btn btn--primary" onClick={onRsvp}>
-            {rsvped
-              ? (isVenue ? t.events_venue_remove : t.events_cancel_rsvp)
-              : (isVenue ? t.events_venue_save : t.events_rsvp_btn)
-            }
-          </button>
         )}
 
         {/* Compartilhar stays in the open — getting other people to an

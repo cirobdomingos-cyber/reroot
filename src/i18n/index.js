@@ -87,8 +87,6 @@ export const T = {
     events_why_good:        'Bora?',
     events_first_cohort:    'Seja o primeiro do seu cohort',
     events_no_members:      'Nenhum membro do cohort ainda. Seja o primeiro a confirmar.',
-    events_cancel_rsvp:     'Cancelar confirmação',
-    events_rsvp_btn:        'Confirmar presença',
     events_attended_btn:    'Marcar como comparecido ✓',
     events_view_original:   'Ver evento original →',
     events_has_food:        'tem comida',
