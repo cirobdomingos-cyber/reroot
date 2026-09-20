@@ -1801,7 +1801,8 @@ def _source_url_of(ge: dict) -> str:
     return m.group(1).rstrip(".,;") if m else ""
 
 
-def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "") -> dict:
+def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "",
+                             prefer_group_id: Optional[str] = None) -> dict:
     """Shape a `group_events` row into the EnrichedEvent dict the frontend
     consumes. Used by GET /events/{id} and GET /events/group so both paths
     return identical shapes.
@@ -1813,7 +1814,17 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     honor "invite an outsider to a group event without revealing the
     group" without diverging the event into two rows. When viewer is
     unknown (empty string), we default to hiding the group context — a
-    safe-by-default for any unauthenticated read paths."""
+    safe-by-default for any unauthenticated read paths.
+
+    Multi-group: an event can belong to several groups at once, and the
+    label names one the VIEWER is in rather than the primary. Checking
+    only `group_id` meant a member of a SECOND group saw the event as a
+    personal invite — no group named, not even inside that group's own
+    screen, which is where they were looking at it from.
+
+    `prefer_group_id` is the group whose screen we're rendering. Someone
+    in both groups opening Turma B should read "Turma B", not whichever
+    group happened to be tagged first."""
     from datetime import datetime as _dt
     # One post, one set of facts — see _merge_source_event. Guarded: the
     # merge reads a second row's shape, and getting that wrong turned
@@ -1842,16 +1853,36 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
     event_url = url_match.group(1).rstrip(".,;") if url_match else ""
     cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
-    # Group tag is exposed to the viewer only if they're a member of the
-    # tagged group. Non-members on the invitee list (outsiders) see the
+    # Group tag is exposed to the viewer only for groups they're a
+    # member of. Non-members on the invitee list (outsiders) see the
     # event as if it were ungrouped — drives "invite outsider without
     # leaking the group" semantics.
-    tagged_group_id = ge.get("group_id")
-    show_group = False
-    if tagged_group_id and viewer_google_id:
-        show_group = bool(db.get_group_member_role(tagged_group_id, viewer_google_id))
-    visible_group_id = tagged_group_id if show_group else None
-    visible_group_name = group_name if show_group else ""
+    #
+    # Every group this event belongs to, primary first, deduped.
+    # group_ids is authoritative; group_id is the primary kept for
+    # callers that predate multi-group.
+    linked_ids: list[str] = []
+    for gid in [ge.get("group_id"), *(ge.get("group_ids") or [])]:
+        if gid and gid not in linked_ids:
+            linked_ids.append(gid)
+    viewer_group_ids = [
+        gid for gid in linked_ids
+        if viewer_google_id and db.get_group_member_role(gid, viewer_google_id)
+    ]
+    # Prefer the group whose screen this is, then whichever the viewer
+    # is in. Falling back to the primary regardless is what showed a
+    # secondary group's members a "personal invite".
+    if prefer_group_id and prefer_group_id in viewer_group_ids:
+        visible_group_id = prefer_group_id
+    else:
+        visible_group_id = viewer_group_ids[0] if viewer_group_ids else None
+    show_group = visible_group_id is not None
+    if not show_group:
+        visible_group_name = ""
+    elif visible_group_id == ge.get("group_id") and group_name:
+        visible_group_name = group_name        # caller already resolved it
+    else:
+        visible_group_name = (db.get_group(visible_group_id) or {}).get("name") or ""
     # Personal-event mode (frontend uses this to pick "Convite de Ciro"
     # over a group label, and to bypass group-membership UI affordances).
     # Now defined per-viewer: an outsider on a group-tagged event sees
@@ -1919,7 +1950,14 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # Multi-group: full list of groups this event is linked to.
         # Frontend uses this for the AddToGroupSheet "Já adicionado"
         # check and to show all groups the event belongs to.
-        "groupIds": list(ge.get("group_ids") or []),
+        # Only the ones the viewer is actually in. The full list used to
+        # ship to everyone, which handed an outsider the ids of groups
+        # the three lines above go out of their way to hide.
+        "groupIds": viewer_group_ids,
+        # How many of the viewer's own groups this single event belongs
+        # to. Lets the card say "Turma A +1" instead of implying the
+        # event lives in one place.
+        "viewerGroupCount": len(viewer_group_ids),
         "createdBy": ge.get("created_by"),
         "createdByName": creator_name,
         "createdByPicture": creator_picture,
@@ -4401,6 +4439,9 @@ def get_group(group_id: str, google_id: str):
             e,
             group_name=group.get("name") or "",
             viewer_google_id=google_id,
+            # This screen IS a group, so its own name wins over whichever
+            # linked group happens to come first.
+            prefer_group_id=group_id,
         )
         for e in raw_events
     ]

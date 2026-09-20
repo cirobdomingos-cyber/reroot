@@ -855,6 +855,21 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
                 {coHostCount > 0 && (
                   <span> · {coHostCount} co-organizador{coHostCount === 1 ? '' : 'es'}</span>
                 )}
+                {/* Which of YOUR channels this is in. The payload names
+                    one you're actually in, so a second channel's member
+                    no longer reads this as a personal invite. The "+N"
+                    is there because the same event can sit in several
+                    of your channels at once, and naming only one
+                    implies it lives in one place. */}
+                {ev.groupName && (
+                  <span> · {ev.groupName}
+                    {ev.viewerGroupCount > 1 && (
+                      <span style={{ color: 'var(--charcoal-light)' }}>
+                        {' '}+{ev.viewerGroupCount - 1}
+                      </span>
+                    )}
+                  </span>
+                )}
               </span>
               {isPrivate && (
                 <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>›</span>
