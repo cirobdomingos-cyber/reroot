@@ -57,6 +57,16 @@ async function openChannel(page, overrides = {}) {
   await page.route('**/channels/**', route => route.fulfill({
     json: { ...CHANNEL, channel: { ...CHANNEL.channel, ...overrides } },
   }))
+  // The catch-all lets `image` requests through to the preview server,
+  // which has no /event-images/ and 404s — and HomeEventRow removes its
+  // <img> on error, so a flyer test would count 0 for the wrong reason.
+  await page.route('**/event-images/**', route => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  }))
   await page.addInitScript(() =>
     localStorage.setItem('aue_state', JSON.stringify({
       hasJoined: true, googleUser: { id: 'u1', email: 'a@b.com', name: 'Ana' },
