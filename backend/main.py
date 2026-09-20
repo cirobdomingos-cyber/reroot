@@ -4347,6 +4347,36 @@ class ChannelNotify(BaseModel):
     notify: bool
 
 
+@app.get("/channels/feed")
+def channel_feed(google_id: str = "", limit: int = 40):
+    """Upcoming events from the channels this person follows, for the
+    band above Eventos.
+
+    Declared BEFORE /channels/{group_id} on purpose: FastAPI matches
+    in declaration order, so the other way round this resolves as a
+    channel whose id is literally "feed" and 404s. Same trap the
+    /digests/latest route already carries a note about.
+
+    A separate call from the catalog on purpose. Channel events have no
+    invitee list, so the main feed's creator-or-invitee rule drops every
+    one of them — and keeping the band separate keeps the catalog below
+    exactly what it was. Following three channels shouldn't bury the
+    city under them.
+    """
+    if not google_id:
+        return {"events": []}
+    rows = db.get_followed_channel_events(google_id, limit=min(limit, 100))
+    return {"events": [
+        _group_event_to_frontend(
+            e,
+            group_name=e.get("channel_name") or "",
+            viewer_google_id=google_id,
+            prefer_group_id=e.get("channel_id"),
+        )
+        for e in rows
+    ]}
+
+
 @app.get("/channels/{group_id}")
 def get_channel(group_id: str, google_id: str = ""):
     """Everything the channel screen needs, in one call.
@@ -4395,6 +4425,7 @@ def get_channel(group_id: str, google_id: str = ""):
             # Pre-armed for someone who hasn't followed yet, so tapping
             # "seguir" doesn't drop them into a state they didn't pick.
             "notify": db.get_channel_notify(group_id, google_id),
+            "prioritize": db.get_channel_prioritize(group_id, google_id),
             "upcoming_event_count": len(upcoming),
             # Whether this viewer may edit the channel and publish into
             # it: the founder, or a curator OF THIS CHANNEL.
@@ -4490,6 +4521,23 @@ def remove_channel_curator(group_id: str, google_id: str, requesting_email: str 
     _require_founder(requesting_email)
     db.remove_channel_curator(group_id, google_id)
     return {"ok": True, "curators": db.list_channel_curators(group_id)}
+
+
+class ChannelPrioritize(BaseModel):
+    google_id: str
+    prioritize: bool
+
+
+@app.put("/channels/{group_id}/prioritize")
+def set_channel_prioritize(group_id: str, req: ChannelPrioritize):
+    """Whether this channel's events surface in the band above Eventos."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta")
+    if not db.set_channel_prioritize(group_id, req.google_id, req.prioritize):
+        raise HTTPException(status_code=409, detail="Segue o canal primeiro")
+    return {"ok": True, "prioritize": req.prioritize}
 
 
 @app.put("/channels/{group_id}/notify")

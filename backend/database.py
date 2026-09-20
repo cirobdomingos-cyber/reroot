@@ -432,6 +432,17 @@ def init_db():
             conn.execute("UPDATE group_members SET following = 1 WHERE role = 'follower'")
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: whether this channel's events surface in the band
+        # above Eventos. Defaults to 1 — following a channel and then
+        # seeing nothing from it anywhere but its own screen is a follow
+        # that did nothing, which is how people conclude the feature is
+        # broken rather than off.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN prioritize INTEGER NOT NULL DEFAULT 1"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
                 handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'
@@ -4358,6 +4369,64 @@ def is_channel_curator(group_id: str, google_id: str) -> bool:
     if not google_id:
         return False
     return get_group_member_role(group_id, google_id) in ("curator", "admin")
+
+
+def set_channel_prioritize(group_id: str, google_id: str, prioritize: bool) -> bool:
+    """Whether this channel's events show in the band above Eventos."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE group_members SET prioritize = ?
+               WHERE group_id = ? AND google_id = ? AND following = 1""",
+            (1 if prioritize else 0, group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def get_channel_prioritize(group_id: str, google_id: str) -> bool:
+    """Defaults to True for someone who isn't following yet, so the
+    switch renders pre-armed and "seguir" doesn't drop them into a state
+    they never picked."""
+    if not google_id:
+        return True
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT prioritize FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+    return bool(row["prioritize"]) if row else True
+
+
+def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
+    """Upcoming events from the channels this person follows and hasn't
+    turned off.
+
+    Its own query rather than a join into the main feed: channel events
+    have no invitee list, so the feed's creator-or-invitee rule would
+    drop every one of them. Keeping it separate also keeps the band
+    separate — the catalog below stays exactly what it was.
+    """
+    if not google_id:
+        return []
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ge.*, g.name AS channel_name, g.id AS channel_id
+                 FROM group_events ge
+                 JOIN groups g
+                   ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                 JOIN group_members gm
+                   ON gm.group_id = g.id AND gm.google_id = ?
+                WHERE g.kind = 'channel'
+                  AND gm.following = 1
+                  AND gm.prioritize = 1
+                  AND substr(ge.date_start, 1, 10) >= ?
+             ORDER BY ge.date_start ASC
+                LIMIT ?""",
+            (google_id, today, limit),
+        ).fetchall()
+    # Same row shaping the rest of the group_events readers get.
+    return [_hydrate_invitees(dict(r)) for r in rows]
 
 
 def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:

@@ -5,8 +5,8 @@ import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
-  removeChannelCurator, setChannelFollow, setChannelNotify, trackEvent,
-  updateChannel,
+  removeChannelCurator, setChannelFollow, setChannelNotify,
+  setChannelPrioritize, trackEvent, updateChannel,
 } from '../services/api'
 
 // The channel screen.
@@ -68,6 +68,20 @@ export default function ChannelDetail() {
         is_following: !next,
         follower_count: d.channel.follower_count + (next ? -1 : 1),
       } }))
+    }
+    setBusy(false)
+  }
+
+  async function togglePrioritize() {
+    if (!googleId || busy || !channel?.is_following) return
+    const next = !channel.prioritize
+    setBusy(true)
+    setData(d => ({ ...d, channel: { ...d.channel, prioritize: next } }))
+    try {
+      await setChannelPrioritize(channelId, googleId, next)
+      trackEvent('channel_prioritize_set', { channel_id: channelId, on: next })
+    } catch {
+      setData(d => ({ ...d, channel: { ...d.channel, prioritize: !next } }))
     }
     setBusy(false)
   }
@@ -180,6 +194,31 @@ export default function ChannelDetail() {
                   : 'Sem aviso — você vê quando abrir o app'}
               </span>
               <Switch on={channel.notify} />
+            </button>
+          )}
+
+          {/* Defaults on. Following a channel and then seeing nothing
+              from it anywhere but its own screen is a follow that did
+              nothing, which is how people conclude a feature is broken
+              rather than off. */}
+          {channel.is_following && (
+            <button
+              onClick={togglePrioritize}
+              disabled={busy}
+              style={{
+                width: '100%', marginTop: 8, padding: '11px 13px', borderRadius: 12,
+                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                border: '1px solid var(--line)', background: 'var(--bg2)',
+                cursor: busy ? 'wait' : 'pointer',
+              }}
+            >
+              <span style={{ fontSize: 15 }}>{channel.prioritize ? '⭐' : '☆'}</span>
+              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.4 }}>
+                {channel.prioritize
+                  ? 'Aparece no topo dos Eventos'
+                  : 'Só aqui dentro — fora dos Eventos'}
+              </span>
+              <Switch on={channel.prioritize} />
             </button>
           )}
         </>
