@@ -200,17 +200,6 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                     {note.length} / 280
                   </div>
                 )}
-                {/* Said up front, not asked. Adding an event already
-                    pushes to every member — people just had no way to
-                    know that, which is half of why the group sits
-                    unused. A confirm dialog here would put a brake on
-                    the exact thing worth encouraging. */}
-                <div style={{
-                  fontSize: 11, color: 'var(--charcoal-mid)',
-                  marginTop: 8, lineHeight: 1.4,
-                }}>
-                  🔔 Todo mundo do canal é avisado na hora.
-                </div>
               </div>
             )}
 

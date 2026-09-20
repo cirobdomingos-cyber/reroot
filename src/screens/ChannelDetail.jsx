@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
 import { CalendarSheet, CatalogPickerSheet, GroupStatsPanel } from '../components/GroupSheets'
+import { appLink } from '../lib/share'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
@@ -39,6 +40,7 @@ export default function ChannelDetail() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
   const [stats, setStats] = useState(null)
+  const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -64,6 +66,27 @@ export default function ChannelDetail() {
   // channel gets filled, and it's the same sheet a private channel
   // uses. The backend refuses anyone outside the curation team, so the
   // button just stops teasing it.
+  // Anyone can pass a channel along — it's public, and whoever opens
+  // the link lands on it and decides whether to follow. That's the
+  // whole difference from a private channel, where the link IS the
+  // invitation and opening it puts you in.
+  async function share() {
+    const url = appLink(`/channels/${channelId}`)
+    const text = `Olha esse canal no auê: ${channel.name}`
+    trackEvent('channel_shared', { channel_id: channelId })
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: channel.name, text, url })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Cancelling the share sheet throws. Not an error.
+    }
+  }
+
   async function addFromCatalog(eventData) {
     const created = await createGroupEvent(channelId, googleId, eventData)
     trackEvent('channel_event_added', { channel_id: channelId, via: 'catalog' })
@@ -281,6 +304,13 @@ export default function ChannelDetail() {
           )}
         </div>
       )}
+
+      {/* Sharing is for everyone, follower or not — a channel is public
+          and passing one along costs nothing. Sits outside the block
+          above precisely because it isn't gated on following. */}
+      <ChannelAction onClick={share} wide>
+        {copied ? '✓ Link copiado' : '🔗 Compartilhar canal'}
+      </ChannelAction>
 
       {/* Activity, curator-only — it's the panel that says whether the
           channel is alive, which is a question for whoever runs it. */}
@@ -628,12 +658,13 @@ const curationInput = {
   boxSizing: 'border-box', background: 'var(--bg)', color: 'var(--text)',
 }
 
-function ChannelAction({ children, onClick, accent }) {
+function ChannelAction({ children, onClick, accent, wide }) {
   return (
     <button
       onClick={onClick}
       style={{
         flex: '1 1 auto', padding: '10px 12px', borderRadius: 12,
+        ...(wide ? { width: '100%', marginTop: 8 } : null),
         fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
         border: accent ? 'none' : '1px solid var(--line)',
         background: accent ? 'var(--magenta)' : 'var(--bg2)',
