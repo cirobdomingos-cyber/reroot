@@ -377,6 +377,18 @@ def init_db():
                 created_at   TEXT NOT NULL
             )
         """)
+        # Migration: `kind` separates a private crew from an auê-curated
+        # channel. One table on purpose — a channel is structurally the
+        # same thing (a container of events with people attached), and
+        # forking the schema would mean forking every event-attach and
+        # notify path that already works. What differs is affordances,
+        # not storage: see the guards in main.py.
+        try:
+            conn.execute(
+                "ALTER TABLE groups ADD COLUMN kind TEXT NOT NULL DEFAULT 'group'"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -386,6 +398,22 @@ def init_db():
                 PRIMARY KEY (group_id, google_id)
             )
         """)
+        # Migration: per-follower push preference for channels. Defaults
+        # to 1 because following IS the opt-in — someone who just tapped
+        # "seguir" and then gets nothing has no idea the switch exists.
+        # Recorded from the first follow so the pilot push targets real
+        # choices instead of assuming consent at send time.
+        #
+        # Must sit AFTER the CREATE above: an ALTER on a table that
+        # doesn't exist yet raises OperationalError, which the except
+        # below swallows as "already present" — so on a fresh database
+        # the column silently never appeared.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN notify INTEGER NOT NULL DEFAULT 1"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
                 handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'
@@ -2648,12 +2676,19 @@ def _replay_edited_fields(ev: EnrichedEvent, stored_payload: str,
         return ev
 
 
-def update_catalog_event(event_id: str, fields: dict) -> Optional[EnrichedEvent]:
-    """Apply a curator's corrections to a catalog event and pin them.
+def update_catalog_event(event_id: str, fields: dict,
+                         pin: bool = True) -> Optional[EnrichedEvent]:
+    """Apply changes to a catalog event's payload.
 
     `fields` is already validated and derived by the caller (price tier
     and the category label/emoji/gradient follow from price and kind).
-    Returns the updated event, or None when the id doesn't exist."""
+    Returns the updated event, or None when the id doesn't exist.
+
+    `pin` records the fields in edited_fields so a re-scrape can't undo
+    them. That's right for a curator's correction and wrong for a
+    machine fill: edited_fields means "a human decided this", and
+    pinning a backfilled value would freeze a guess the next enrichment
+    pass might well improve on."""
     if not fields:
         return get_event_by_id(event_id)
     with get_conn() as conn:
@@ -2667,17 +2702,59 @@ def update_catalog_event(event_id: str, fields: dict) -> Optional[EnrichedEvent]
         # Validate before writing — a bad date string should 500 here
         # rather than poison every later read of this row.
         event = EnrichedEvent(**payload)
-        try:
-            already = json.loads(row["edited_fields"] or "[]")
-        except (ValueError, TypeError):
-            already = []
-        pinned = sorted({*already, *fields.keys()})
-        conn.execute(
-            "UPDATE events SET payload = ?, edited_fields = ? WHERE id = ?",
-            (event.model_dump_json(), json.dumps(pinned), event_id),
-        )
+        if pin:
+            try:
+                already = json.loads(row["edited_fields"] or "[]")
+            except (ValueError, TypeError):
+                already = []
+            pinned = sorted({*already, *fields.keys()})
+            conn.execute(
+                "UPDATE events SET payload = ?, edited_fields = ? WHERE id = ?",
+                (event.model_dump_json(), json.dumps(pinned), event_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE events SET payload = ? WHERE id = ?",
+                (event.model_dump_json(), event_id),
+            )
         conn.commit()
     return event
+
+
+def list_events_needing_genre(limit: int = 200) -> list[dict]:
+    """Upcoming events with no genre tag yet.
+
+    Scoped to upcoming on purpose: events are perishable, and the whole
+    point of paying for this pass is that a channel assembled from tags
+    has enough in it *this week*. Reprocessing history would cost the
+    same and show nobody anything.
+
+    Skips events whose genre a curator already set — edited_fields is
+    the record of a human decision, and a batch classifier shouldn't
+    overrule one.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id,
+                      json_extract(payload, '$.name')        AS name,
+                      json_extract(payload, '$.description') AS description,
+                      json_extract(payload, '$.venue_name')  AS venue_name
+               FROM events
+               WHERE COALESCE(json_extract(payload, '$.genre'), '') = ''
+                 AND edited_fields NOT LIKE '%"genre"%'
+                 AND (
+                   (json_extract(payload, '$.date_end') IS NULL
+                    AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+                   OR (json_extract(payload, '$.date_end') IS NOT NULL
+                       AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+                   OR json_extract(payload, '$.is_recurring') = 1
+                 )
+               ORDER BY json_extract(payload, '$.date_start') ASC
+               LIMIT ?""",
+            (today, today, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_catalog_edited_fields(event_id: str) -> list[str]:
@@ -3258,6 +3335,54 @@ def delete_rsvp(google_id: str, event_id: str) -> None:
         conn.commit()
 
 
+def get_unanswered_invites(google_id: str) -> list[dict]:
+    """Upcoming events this user was invited to and hasn't answered.
+
+    "Answered" is either an RSVP (going) or a decline. Neither is a
+    pending item any more, which is what makes this countable: the
+    number goes down because the person acted, not because they looked
+    at it.
+
+    Scoped to upcoming — an invite to something that already happened
+    isn't waiting on anyone."""
+    if not google_id:
+        return []
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ge.id, ge.name, ge.venue, ge.date_start, ge.group_id,
+                      ge.created_by, ge.extra_invitee_ids, ge.declined_ids
+               FROM group_events ge
+               WHERE substr(ge.date_start, 1, 10) >= ?
+                 AND ge.created_by != ?
+                 AND ge.extra_invitee_ids LIKE ?
+                 AND NOT EXISTS (
+                       SELECT 1 FROM rsvps r
+                       WHERE r.google_id = ? AND r.event_id = ge.id)
+               ORDER BY ge.date_start ASC""",
+            (today, google_id, f'%"{google_id}"%', google_id),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        # The LIKE above is a cheap prefilter on a JSON column; confirm
+        # membership properly so a google_id that merely appears as a
+        # substring of another can't sneak in.
+        try:
+            invitees = json.loads(d.get("extra_invitee_ids") or "[]")
+            declined = json.loads(d.get("declined_ids") or "[]")
+        except (ValueError, TypeError):
+            continue
+        if google_id not in invitees or google_id in declined:
+            continue
+        out.append({
+            "id": d["id"], "name": d["name"], "venue": d.get("venue") or "",
+            "date_start": d["date_start"], "group_id": d.get("group_id"),
+            "created_by": d["created_by"],
+        })
+    return out
+
+
 def get_rsvps_for_user(google_id: str) -> list[dict]:
     """Return all RSVPs for a single user."""
     with get_conn() as conn:
@@ -3715,8 +3840,10 @@ def get_friends(google_id: str) -> list[dict]:
 
 # ── Groups ────────────────────────────────────────────────
 
-def create_group(google_id: str, name: str, description: str = "", visibility: str = "private") -> dict:
-    """Create a group and add the creator as admin. Returns the new group dict."""
+def create_group(google_id: str, name: str, description: str = "",
+                 visibility: str = "private", kind: str = "group") -> dict:
+    """Create a group (or an auê channel) and add the creator as admin.
+    Returns the new row."""
     now = datetime.now(timezone.utc).isoformat()
     group_id = f"grp_{secrets.token_hex(8)}"
     invite_code = secrets.token_hex(4).upper()  # 8 chars, WhatsApp-friendly
@@ -3724,9 +3851,11 @@ def create_group(google_id: str, name: str, description: str = "", visibility: s
 
     with get_conn() as conn:
         conn.execute(
-            """INSERT INTO groups (id, name, description, visibility, invite_code, feed_token, created_by, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (group_id, name, description, visibility, invite_code, feed_token, google_id, now),
+            """INSERT INTO groups (id, name, description, visibility, invite_code,
+                                   feed_token, created_by, created_at, kind)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (group_id, name, description, visibility, invite_code, feed_token,
+             google_id, now, kind),
         )
         conn.execute(
             "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'admin', ?)",
@@ -3748,7 +3877,13 @@ def get_groups_for_user(google_id: str) -> list[dict]:
     Sort: most-recent activity first, where "activity" = MAX of the
     group's most-recent event creation and the group's created_at. This
     keeps active crews at the top, while a brand-new empty group still
-    surfaces (its created_at acts as the floor)."""
+    surfaces (its created_at acts as the floor).
+
+    Channels are excluded. Following one puts a row in group_members
+    exactly like joining a crew does, so without this filter every
+    channel you follow would show up under "meus grupos" with a member
+    count — which is precisely the confusion the two-shapes-one-word
+    design exists to prevent. Channels come from list_channels."""
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT g.*, gm.role,
@@ -3767,6 +3902,7 @@ def get_groups_for_user(google_id: str) -> list[dict]:
                FROM groups g
                JOIN group_members gm ON g.id = gm.group_id
                WHERE gm.google_id = ?
+                 AND g.kind = 'group'
                ORDER BY last_activity_at DESC""",
             (google_id,),
         ).fetchall()
@@ -4022,6 +4158,152 @@ def get_group_members(group_id: str) -> list[dict]:
 
 
 # ── Group Events ──────────────────────────────────────────
+
+# ── Channels ──────────────────────────────────────────────────────
+# A channel is a row in `groups` with kind='channel'. Same table, same
+# event-attach and notify plumbing; what changes is who can join, how,
+# and which affordances render. Deliberately not a second table — every
+# group feature would otherwise need an "...unless it's a channel"
+# branch, which is the failure mode this design was chosen to avoid.
+#
+# Members of a channel are followers. They sit in group_members with
+# role='follower', which keeps the existing member queries working
+# (count, "am I in this") without teaching them a new concept.
+
+def get_user_id_by_email(email: str) -> Optional[str]:
+    """The internal user id for a signed-in email, or None.
+
+    Channels are owned by the founder's own account rather than a
+    synthetic "auê" user, so that every existing group query — admin
+    checks, member counts, event authorship — keeps working unchanged
+    against a real row."""
+    cleaned = (email or "").strip().lower()
+    if not cleaned:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE LOWER(email) = ? ORDER BY created_at ASC LIMIT 1",
+            (cleaned,),
+        ).fetchone()
+    return row["id"] if row else None
+
+
+def list_channels(google_id: str = "") -> list[dict]:
+    """Every channel, with follower count and whether the caller follows.
+
+    Unlike groups, channels are listed to everyone — discovery is the
+    whole point. A group is invisible without an invite code; a channel
+    has to be findable or nobody can opt in."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT g.*,
+                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id)
+                        AS follower_count,
+                      EXISTS(SELECT 1 FROM group_members
+                             WHERE group_id = g.id AND google_id = ?)
+                        AS is_following,
+                      COALESCE((SELECT notify FROM group_members
+                                WHERE group_id = g.id AND google_id = ?), 1)
+                        AS notify,
+                      -- What's actually in it. A channel advertised as
+                      -- "12 seguindo" with nothing scheduled is worse
+                      -- than one that says so, and the empty state on
+                      -- the tab depends on knowing this.
+                      (SELECT COUNT(*) FROM group_events ge
+                        WHERE (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                          AND substr(ge.date_start, 1, 10) >= ?)
+                        AS upcoming_event_count
+               FROM groups g
+               WHERE g.kind = 'channel'
+               ORDER BY follower_count DESC, g.name ASC""",
+            (google_id or "", google_id or "",
+             datetime.now(timezone.utc).date().isoformat()),
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_following"] = bool(d["is_following"])
+        d["notify"] = bool(d["notify"])
+        out.append(d)
+    return out
+
+
+def follow_channel(group_id: str, google_id: str) -> bool:
+    """Add a follower. Idempotent — following twice is a no-op, not an
+    error, because the button can be double-tapped."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO group_members (group_id, google_id, role, joined_at)
+               VALUES (?, ?, 'follower', ?)""",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def unfollow_channel(group_id: str, google_id: str) -> bool:
+    """Remove a follower. Never removes the channel itself, and never
+    touches an 'admin' row — auê's own membership isn't a follow."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """DELETE FROM group_members
+               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+            (group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
+    """Turn a channel's pushes on or off for one follower.
+
+    Only touches a 'follower' row: auê's own admin membership on its
+    channel isn't a subscription and has no preference to set."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE group_members SET notify = ?
+               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+            (1 if notify else 0, group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def get_channel_notify(group_id: str, google_id: str) -> bool:
+    """Whether this follower wants pushes. True when they aren't
+    following — the toggle renders pre-armed, so tapping "seguir"
+    doesn't silently land you in a state you didn't pick."""
+    if not google_id:
+        return True
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT notify FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+    return bool(row["notify"]) if row else True
+
+
+def get_channel_followers_to_notify(group_id: str) -> list[str]:
+    """google_ids to push for this channel. Followers only, and only
+    those who left the switch on — auê's own admin row is never a
+    recipient of its own channel."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT google_id FROM group_members
+               WHERE group_id = ? AND role = 'follower' AND notify = 1""",
+            (group_id,),
+        ).fetchall()
+    return [r["google_id"] for r in rows]
+
+
+def is_channel(group_id: str) -> bool:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT kind FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+    return bool(row) and row["kind"] == "channel"
+
 
 def create_group_event(
     group_id: Optional[str], google_id: str, name: str, description: str = "",
@@ -4454,9 +4736,15 @@ def get_event_declined(event_id: str, requesting_google_id: str) -> list[dict]:
 
 
 def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str]) -> Optional[dict]:
-    """Add a group to an event's group_ids list, expanding invitees with
-    the group's members. Used by "Adicionar a um grupo" on user-owned
-    events to broaden visibility instead of creating a duplicate fork.
+    """Add a group to an event's group_ids list. Used by "Adicionar a um
+    grupo" on user-owned events to broaden visibility instead of
+    creating a duplicate fork.
+
+    `extra_invitees` REPLACES the invitee list — it does not merge into
+    it. The caller is responsible for passing the union (existing
+    invitees | the new group's members); main.py does exactly that.
+    Passing a short list here silently un-invites everyone who was
+    already on it, and nothing downstream will flag it.
 
     Multi-group: an event can be linked to many groups simultaneously.
     group_ids is the authoritative list; group_id (singular) is kept as
@@ -4971,14 +5259,14 @@ def list_venues(status: str = "all") -> list[dict]:
         where = "WHERE v.geocode_status != 'ok'"
     elif status == "ok":
         where = "WHERE v.geocode_status = 'ok'"
+    # `bairro` is what the catalog actually renders next to the venue
+    # name, so a curator fixing a pin has to be able to see it — dropping
+    # a correct pin that reverse-geocodes to no bairro still leaves the
+    # event showing the enrichment guess.
     sql = f"""
         SELECT v.name_normalized, v.name_original, v.address,
-               v.lat, v.lng, v.geocode_status, v.geocode_source,
-               v.attempt_count, v.last_attempt_at,
-               (SELECT COUNT(*) FROM events e
-                WHERE LOWER(json_extract(e.payload, '$.venue_name')) IS NOT NULL
-                  AND json_extract(e.payload, '$.venue_name') != ''
-               ) AS _total_events_unused
+               v.lat, v.lng, v.bairro, v.geocode_status, v.geocode_source,
+               v.attempt_count, v.last_attempt_at
         FROM venues v
         {where}
         ORDER BY v.attempt_count ASC, v.name_original ASC
@@ -4991,7 +5279,7 @@ def list_venues(status: str = "all") -> list[dict]:
     counts = _venue_event_counts()
     for r in rows:
         d = dict(r)
-        d.pop("_total_events_unused", None)
+        d["bairro"] = d.get("bairro") or ""
         d["event_count"] = counts.get(d["name_normalized"], 0)
         out.append(d)
     # Sort: high-event-count first within the result so the curator's

@@ -1801,7 +1801,8 @@ def _source_url_of(ge: dict) -> str:
     return m.group(1).rstrip(".,;") if m else ""
 
 
-def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "") -> dict:
+def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: str = "",
+                             prefer_group_id: Optional[str] = None) -> dict:
     """Shape a `group_events` row into the EnrichedEvent dict the frontend
     consumes. Used by GET /events/{id} and GET /events/group so both paths
     return identical shapes.
@@ -1813,7 +1814,17 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     honor "invite an outsider to a group event without revealing the
     group" without diverging the event into two rows. When viewer is
     unknown (empty string), we default to hiding the group context — a
-    safe-by-default for any unauthenticated read paths."""
+    safe-by-default for any unauthenticated read paths.
+
+    Multi-group: an event can belong to several groups at once, and the
+    label names one the VIEWER is in rather than the primary. Checking
+    only `group_id` meant a member of a SECOND group saw the event as a
+    personal invite — no group named, not even inside that group's own
+    screen, which is where they were looking at it from.
+
+    `prefer_group_id` is the group whose screen we're rendering. Someone
+    in both groups opening Turma B should read "Turma B", not whichever
+    group happened to be tagged first."""
     from datetime import datetime as _dt
     # One post, one set of facts — see _merge_source_event. Guarded: the
     # merge reads a second row's shape, and getting that wrong turned
@@ -1842,16 +1853,36 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
     url_match = re.search(r"Ver original:\s*(\S+)", raw_desc)
     event_url = url_match.group(1).rstrip(".,;") if url_match else ""
     cleaned_desc = re.sub(r"\n*Ver original:.*$", "", raw_desc).strip()
-    # Group tag is exposed to the viewer only if they're a member of the
-    # tagged group. Non-members on the invitee list (outsiders) see the
+    # Group tag is exposed to the viewer only for groups they're a
+    # member of. Non-members on the invitee list (outsiders) see the
     # event as if it were ungrouped — drives "invite outsider without
     # leaking the group" semantics.
-    tagged_group_id = ge.get("group_id")
-    show_group = False
-    if tagged_group_id and viewer_google_id:
-        show_group = bool(db.get_group_member_role(tagged_group_id, viewer_google_id))
-    visible_group_id = tagged_group_id if show_group else None
-    visible_group_name = group_name if show_group else ""
+    #
+    # Every group this event belongs to, primary first, deduped.
+    # group_ids is authoritative; group_id is the primary kept for
+    # callers that predate multi-group.
+    linked_ids: list[str] = []
+    for gid in [ge.get("group_id"), *(ge.get("group_ids") or [])]:
+        if gid and gid not in linked_ids:
+            linked_ids.append(gid)
+    viewer_group_ids = [
+        gid for gid in linked_ids
+        if viewer_google_id and db.get_group_member_role(gid, viewer_google_id)
+    ]
+    # Prefer the group whose screen this is, then whichever the viewer
+    # is in. Falling back to the primary regardless is what showed a
+    # secondary group's members a "personal invite".
+    if prefer_group_id and prefer_group_id in viewer_group_ids:
+        visible_group_id = prefer_group_id
+    else:
+        visible_group_id = viewer_group_ids[0] if viewer_group_ids else None
+    show_group = visible_group_id is not None
+    if not show_group:
+        visible_group_name = ""
+    elif visible_group_id == ge.get("group_id") and group_name:
+        visible_group_name = group_name        # caller already resolved it
+    else:
+        visible_group_name = (db.get_group(visible_group_id) or {}).get("name") or ""
     # Personal-event mode (frontend uses this to pick "Convite de Ciro"
     # over a group label, and to bypass group-membership UI affordances).
     # Now defined per-viewer: an outsider on a group-tagged event sees
@@ -1919,7 +1950,14 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
         # Multi-group: full list of groups this event is linked to.
         # Frontend uses this for the AddToGroupSheet "Já adicionado"
         # check and to show all groups the event belongs to.
-        "groupIds": list(ge.get("group_ids") or []),
+        # Only the ones the viewer is actually in. The full list used to
+        # ship to everyone, which handed an outsider the ids of groups
+        # the three lines above go out of their way to hide.
+        "groupIds": viewer_group_ids,
+        # How many of the viewer's own groups this single event belongs
+        # to. Lets the card say "Turma A +1" instead of implying the
+        # event lives in one place.
+        "viewerGroupCount": len(viewer_group_ids),
         "createdBy": ge.get("created_by"),
         "createdByName": creator_name,
         "createdByPicture": creator_picture,
@@ -3239,6 +3277,107 @@ def friends_request_accept(from_google_id: str, req: FriendRequestAction):
             "new_badges": _on_friendship_accepted(req.google_id, from_google_id)}
 
 
+# ── Notifications ─────────────────────────────────────────────────
+# The inbox behind the Notificações tab, and the number on its badge.
+#
+# Everything countable here is DERIVED from existing state rather than
+# stored as a row when something happens. That's the whole design:
+#
+#   - It can't drift. There's no producer to forget to call, no backfill
+#     for anything that happened before this shipped, and no way for the
+#     badge to disagree with the screen it opens.
+#   - It clears for the right reason. A derived count goes down when the
+#     person ACTS — answers the invite, accepts the friend — not when
+#     they glance at the tab. A badge you can clear by looking teaches
+#     people that looking is enough, and then it stops being read at all.
+#
+# So the rule the badge follows is: count only what needs YOU. An event
+# invite with no answer needs you. A new venue being tracked does not.
+# "There is new stuff" never reaches zero, and a badge that never
+# reaches zero is one people stop seeing within a week.
+#
+# Informational items still appear in the list — they're worth a look,
+# just not a number. They carry actionable=false and are excluded from
+# the count.
+
+@app.get("/notifications")
+def list_notifications(google_id: str = "", email: str = ""):
+    """The notification inbox: what's waiting on you, plus what's new.
+
+    One call for the whole screen AND the badge, so the two can never
+    show different numbers.
+
+    Curation items are included only for curators, and a non-curator
+    gets silence rather than a 403 — same reasoning as /me/pending:
+    "nothing pending" and "not yours to see" should look identical."""
+    items: list[dict] = []
+
+    if google_id:
+        for ev in db.get_unanswered_invites(google_id):
+            items.append({
+                "kind": "event_invite",
+                "actionable": True,
+                "id": f"invite:{ev['id']}",
+                "ref_id": ev["id"],
+                "title": ev["name"],
+                "body": ev.get("venue") or "",
+                "at": ev["date_start"],
+            })
+        for req in db.get_incoming_friend_requests(google_id):
+            items.append({
+                "kind": "friend_request",
+                "actionable": True,
+                "id": f"friend:{req.get('google_id')}",
+                "ref_id": req.get("google_id"),
+                # get_incoming_friend_requests returns `name`, not `display_name`.
+                "title": req.get("name") or "Alguém",
+                "body": "quer ser teu amigo no auê",
+                "at": req.get("created_at") or "",
+            })
+
+    if email and db.is_curator(email):
+        pending_events = len(db.list_catalog_requests("review"))
+        pending_accounts = len(db.list_account_requests("review"))
+        if pending_events:
+            items.append({
+                "kind": "curation_events", "actionable": True,
+                "id": "curation:events", "ref_id": "",
+                "title": f"{pending_events} evento(s) pra revisar",
+                "body": "Sugestões da comunidade esperando curadoria",
+                "at": "",
+            })
+        if pending_accounts:
+            items.append({
+                "kind": "curation_accounts", "actionable": True,
+                "id": "curation:accounts", "ref_id": "",
+                "title": f"{pending_accounts} conta(s) sugerida(s)",
+                "body": "Perfis do Instagram esperando aprovação",
+                "at": "",
+            })
+
+    # Informational: worth a look, never a number on the badge.
+    latest = db.get_latest_daily_digest()
+    if latest and latest.get("event_ids"):
+        count = len(latest["event_ids"])
+        items.append({
+            "kind": "digest",
+            "actionable": False,
+            "id": f"digest:{latest['id']}",
+            "ref_id": latest["id"],
+            "title": f"{count} novidade(s) no catálogo",
+            "body": "O que entrou desde ontem",
+            "at": latest.get("created_at") or "",
+        })
+
+    # Actionable first, then most recent. An item with no date sorts
+    # last within its group rather than jumping to the top on "".
+    items.sort(key=lambda i: (not i["actionable"], i["at"] == "", i["at"]), reverse=False)
+    return {
+        "items": items,
+        "unread_count": sum(1 for i in items if i["actionable"]),
+    }
+
+
 @app.get("/me/pending")
 def me_pending(google_id: str = "", email: str = ""):
     """Everything waiting on this user — powers the Pendências block on Home.
@@ -4118,6 +4257,186 @@ class PersonalPlanCreateRequest(BaseModel):
     post: Optional[dict] = None
 
 
+# ── Channels ──────────────────────────────────────────────────────
+# Curated collections people follow. Same `groups` table as a private
+# crew (kind='channel'), because a channel is structurally the same
+# thing and forking the schema would fork every event-attach and notify
+# path that already works.
+#
+# The caution recorded in docs/NEXT.md was that a curated channel must
+# not read as a crew — people arriving at what looks like a group and
+# finding a bot feed. Since both are now called "canal", that gets
+# solved by shape rather than vocabulary:
+#
+#   canal privado  -> membros, convite, nudge pra convidar
+#   canal do auê   -> seguidores, descoberta aberta, nunca um nudge
+#
+# The guards below are what make that real rather than a UI convention.
+
+def _is_curator_google_id(google_id: str) -> bool:
+    """Curator check by user id rather than email — the group endpoints
+    identify callers by google_id, while the curators table is keyed by
+    email."""
+    if not google_id:
+        return False
+    user = db.get_user_profile(google_id) or {}
+    return db.is_curator(user.get("email") or "")
+
+
+def _founder_google_id() -> str:
+    """The founder's user id, used as the owner of every auê channel.
+
+    Returns "" when the founder has never signed into the app, which is
+    a real state on a fresh environment — the curators table is seeded
+    from settings at boot, but `users` only gets a row on first login.
+    The caller turns that into a 409 with an instruction rather than a
+    500."""
+    return db.get_user_id_by_email(settings.founder_email) or ""
+
+
+class ChannelCreate(BaseModel):
+    requesting_email: str
+    name: str
+    description: str = ""
+
+
+class ChannelFollow(BaseModel):
+    google_id: str
+
+
+@app.get("/channels")
+def list_channels(google_id: str = ""):
+    """Every channel, with follower count and whether the caller follows.
+
+    Open to anyone, signed in or not. A group is invisible without an
+    invite code; a channel that isn't findable can't be opted into, and
+    opt-in is the entire model — nobody is ever enrolled automatically."""
+    return {"channels": db.list_channels(google_id)}
+
+
+@app.post("/admin/channels")
+def create_channel(req: ChannelCreate):
+    """Create an auê channel. Founder-only.
+
+    User-created channels are deferred on purpose (docs/NEXT.md): a
+    user's channel would be private, which is what a group already is,
+    and an empty channel with an audience is the same stall that groups
+    already measure. Curated first, prove it retains, then open it up."""
+    _require_founder(req.requesting_email)
+    name = req.name.strip()[:80]
+    if not name:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    founder_id = _founder_google_id()
+    if not founder_id:
+        raise HTTPException(
+            status_code=409,
+            detail="A conta do auê ainda não entrou no app — entra uma vez e tenta de novo.",
+        )
+    channel = db.create_group(
+        google_id=founder_id,
+        name=name,
+        description=req.description.strip()[:500],
+        visibility="public",   # discovery is the point
+        kind="channel",
+    )
+    return {"channel": channel}
+
+
+class ChannelNotify(BaseModel):
+    google_id: str
+    notify: bool
+
+
+@app.get("/channels/{group_id}")
+def get_channel(group_id: str, google_id: str = ""):
+    """Everything the channel screen needs, in one call.
+
+    Separate from GET /groups/{id} on purpose. That endpoint answers
+    "what is this crew" — members, roles, invite code, stats — and a
+    channel needs almost none of it. Reusing it meant the screen either
+    rendered crew chrome it had to hide, or ignored most of the payload;
+    both are how an "...unless it's a channel" branch spreads.
+
+    Open to anyone, signed in or not: a channel that can't be looked at
+    before following makes the follow a blind purchase."""
+    channel = db.get_group(group_id)
+    if not channel or channel.get("kind") != "channel":
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    # Published feed: everyone sees every event, follower or not. auê
+    # creates them with no invitees, so the crew visibility rule would
+    # return an empty list to the channel's own followers.
+    events = [
+        _group_event_to_frontend(
+            e,
+            group_name=channel.get("name") or "",
+            viewer_google_id=google_id,
+            prefer_group_id=group_id,
+        )
+        for e in db.get_group_events(group_id, viewer_google_id=None)
+    ]
+    today = datetime.now(timezone.utc).date().isoformat()
+    upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
+    past = [e for e in events if (e.get("dateStart") or "")[:10] < today]
+
+    followers = [m for m in db.get_group_members(group_id) if m.get("role") == "follower"]
+    is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
+
+    return {
+        "channel": {
+            **channel,
+            "follower_count": len(followers),
+            "is_following": is_following,
+            # Pre-armed for someone who hasn't followed yet, so tapping
+            # "seguir" doesn't drop them into a state they didn't pick.
+            "notify": db.get_channel_notify(group_id, google_id),
+            "upcoming_event_count": len(upcoming),
+        },
+        "events": upcoming,
+        # Recent past, so a channel between shows still looks alive
+        # rather than empty. Newest first — "what you missed", not a
+        # schedule.
+        "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
+        "followers": followers[:12],
+    }
+
+
+@app.put("/channels/{group_id}/notify")
+def set_channel_notify(group_id: str, req: ChannelNotify):
+    """Turn a channel's pushes on or off, for one follower.
+
+    Only a follower has a preference to set — auê's own admin row on its
+    channel is ownership, not a subscription."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta")
+    if not db.set_channel_notify(group_id, req.google_id, req.notify):
+        raise HTTPException(status_code=409, detail="Segue o canal primeiro")
+    return {"ok": True, "notify": req.notify}
+
+
+@app.post("/channels/{group_id}/follow")
+def follow_channel(group_id: str, req: ChannelFollow):
+    """Follow a channel. Idempotent: the button can be double-tapped."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta pra seguir")
+    db.follow_channel(group_id, req.google_id)
+    return {"ok": True, "following": True}
+
+
+@app.delete("/channels/{group_id}/follow")
+def unfollow_channel(group_id: str, google_id: str = ""):
+    """Stop following. Only removes a 'follower' row, so auê's own admin
+    membership on its channel can't be deleted by an unfollow."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    db.unfollow_channel(group_id, google_id)
+    return {"ok": True, "following": False}
+
+
 @app.post("/groups")
 def create_group(req: GroupCreateRequest):
     """Create a new group. Creator becomes admin automatically."""
@@ -4162,12 +4481,26 @@ def get_group(group_id: str, google_id: str):
     if group["visibility"] == "private" and not is_member:
         raise HTTPException(status_code=403, detail="This is a private group")
 
-    members = db.get_group_members(group_id) if is_member else []
-    # Events tagged to this group AND the viewer is invited. Members who
-    # weren't on a specific event's invite list (e.g. excluded for a
-    # subset event before the create flow auto-disconnects the group)
-    # won't see it here. Non-members see no events.
-    raw_events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
+    # A channel is a published feed, not a private crew. Its events are
+    # visible to everyone — follower or not, invited or not — because
+    # nobody is ever on their invite list: auê creates them with no
+    # invitees. Running them through the crew gate showed an empty
+    # channel to its own followers, which is the opposite of the point
+    # and made "seguir" look broken.
+    #
+    # Its followers are public for the same reason: the count is social
+    # proof, and you should be able to see it before deciding to follow.
+    channel = group.get("kind") == "channel"
+    if channel:
+        members = db.get_group_members(group_id)
+        raw_events = db.get_group_events(group_id, viewer_google_id=None)
+    else:
+        members = db.get_group_members(group_id) if is_member else []
+        # Events tagged to this group AND the viewer is invited. Members
+        # who weren't on a specific event's invite list (e.g. excluded
+        # for a subset event before the create flow auto-disconnects the
+        # group) won't see it here. Non-members see no events.
+        raw_events = db.get_group_events(group_id, viewer_google_id=google_id) if is_member else []
     # Shaped exactly like /events/group and the catalog, rather than
     # handed over as raw DB rows. The frontend renders group events with
     # the same component as everything else, and it should not need a
@@ -4180,6 +4513,9 @@ def get_group(group_id: str, google_id: str):
             e,
             group_name=group.get("name") or "",
             viewer_google_id=google_id,
+            # This screen IS a group, so its own name wins over whichever
+            # linked group happens to come first.
+            prefer_group_id=group_id,
         )
         for e in raw_events
     ]
@@ -4240,9 +4576,16 @@ def get_group_by_invite(invite_code: str):
 
 @app.post("/groups/join")
 def join_group(req: GroupJoinRequest):
-    """Join a group via invite code."""
+    """Join a group via invite code.
+
+    Channels are excluded even though they carry an invite_code column
+    (every row does). You follow a channel from the open list; there is
+    no code to pass around, and honouring one here would create a second
+    way in that no UI offers and no guard covers."""
     group = db.get_group_by_invite_code(req.invite_code)
     if not group:
+        return {"status": "not_found"}
+    if group.get("kind") == "channel":
         return {"status": "not_found"}
     already = not db.join_group(group["id"], req.google_id)
     if already:
@@ -4574,6 +4917,14 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
 
     Pushes go to everyone in the resolved invitee list — outsiders
     included — so an invite always surfaces as a notification."""
+    # A channel is curated: following it must not grant the right to
+    # publish into it. Without this, "seguir" would be an open write to
+    # a feed every other follower sees.
+    if db.is_channel(group_id) and not _is_curator_google_id(req.google_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Só a curadoria do auê publica num canal do auê",
+        )
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Must be a group member to create events")
@@ -5573,6 +5924,65 @@ def admin_reject_account_request(request_id: int, req: AccountRequestDecision):
     return {"ok": True, "status": "rejected"}
 
 
+@app.post("/admin/events/backfill-genre")
+def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
+                         dry_run: bool = False):
+    """Tag upcoming events that have no genre yet.
+
+    Genre ships per event from the enrichment pass, but events scraped
+    before the field existed have nothing, and the catalog only re-tags
+    as it turns over. Measured 19 Sep: 32 of 128 upcoming events carried
+    a tag, so a channel assembled from tags alone would have opened with
+    six events.
+
+    That's why this reverses the earlier "no genre backfill" call. The
+    reasoning then was that events are perishable and the catalog
+    refreshes itself — true, and still true for history, which this
+    leaves alone. What changed is that channels depend on tag density
+    now, and "it'll be fine in a month" isn't density.
+
+    Founder-only because it spends money, bounded by `limit` because it
+    spends it per event. `dry_run` reports what would be tagged without
+    calling Claude at all.
+
+    Writes without pinning: edited_fields means a human decided, and a
+    machine fill shouldn't be frozen against a future enrichment pass
+    that might do better. A genre a curator set by hand is skipped
+    entirely — see list_events_needing_genre."""
+    _require_founder(requesting_email)
+    pending = db.list_events_needing_genre(limit=limit)
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_tag": len(pending),
+            "sample": [p["name"] for p in pending[:10]],
+        }
+    if not pending:
+        return {"considered": 0, "tagged": 0, "by_genre": {}}
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY não configurada")
+
+    from enrichment import EnrichmentPipeline
+    pipeline = EnrichmentPipeline(settings.anthropic_api_key)
+    assigned = pipeline.classify_genres(pending)
+
+    by_genre: dict[str, int] = {}
+    tagged = 0
+    for event_id, genre in assigned.items():
+        if db.update_catalog_event(event_id, {"genre": genre}, pin=False):
+            tagged += 1
+            by_genre[genre] = by_genre.get(genre, 0) + 1
+    log.info(f"Genre backfill by {requesting_email}: {tagged}/{len(pending)} tagged")
+    return {
+        "considered": len(pending),
+        "tagged": tagged,
+        # The gap between the two is events the model answered "nenhum"
+        # for — not a failure. Most of the catalog isn't a music night.
+        "left_untagged": len(pending) - tagged,
+        "by_genre": dict(sorted(by_genre.items(), key=lambda kv: -kv[1])),
+    }
+
+
 @app.delete("/admin/events/{event_id}")
 def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
     """Hard-delete a catalog event by id. Used to fix LLM mis-extractions
@@ -6250,11 +6660,66 @@ def admin_list_venues(requesting_email: str = "", status: str = "all"):
     return {"venues": db.list_venues(status=status)}
 
 
+# Coordinate formats a curator can paste. The workflow this exists for:
+# find the place in Google Maps, right-click, "copiar coordenadas" — or
+# just copy the URL out of the address bar. Asking someone to pull two
+# floats out of a URL by hand is how a pin ends up with the longitude in
+# the latitude field.
+#
+# Parsed on the backend rather than in the sheet because this is all
+# edge cases, and the repo's tests are pytest — there is no JS unit
+# runner (only eslint + Playwright), so a frontend parser would ship
+# untested.
+#
+# Deliberately NOT supported: Brazilian decimal commas ("-25,42, -49,27").
+# The comma is also the pair separator, so "-25,42,-49,27" is genuinely
+# ambiguous and guessing wrong puts the pin in another state.
+_COORD_PAIR = r"(-?\d{1,3}\.\d+)"
+_COORD_PATTERNS = (
+    # Place pin in a Maps URL (.../data=...!3d-25.42!4d-49.27). This is
+    # the place itself, so it beats the viewport center below.
+    re.compile(rf"!3d{_COORD_PAIR}!4d{_COORD_PAIR}"),
+    # Explicit query: ?q=lat,lng / ?query=lat,lng / ?ll=lat,lng
+    re.compile(rf"[?&](?:q|query|ll)={_COORD_PAIR}%2C\s*{_COORD_PAIR}", re.IGNORECASE),
+    re.compile(rf"[?&](?:q|query|ll)={_COORD_PAIR},\s*{_COORD_PAIR}", re.IGNORECASE),
+    # Viewport center (.../@-25.42,-49.27,17z) — the map's center, which
+    # is close enough when there's no place pin in the URL.
+    re.compile(rf"@{_COORD_PAIR},{_COORD_PAIR}"),
+    # Bare "lat, lng", which is what "copiar coordenadas" puts on the
+    # clipboard. Anchored so a longer string doesn't match by accident.
+    re.compile(rf"^\s*{_COORD_PAIR}\s*,\s*{_COORD_PAIR}\s*$"),
+)
+
+
+def _parse_coords_text(text: str) -> Optional[tuple[float, float]]:
+    """Pull (lat, lng) out of pasted text — a Google Maps URL or a bare
+    "lat, lng" pair. None when nothing parses.
+
+    Range-checks only what's universally true (lat +-90, lng +-180); the
+    caller applies the Curitiba bounds, so the error a curator sees for a
+    pin in the wrong city says that, not "invalid format"."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    for pattern in _COORD_PATTERNS:
+        m = pattern.search(raw)
+        if not m:
+            continue
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+    return None
+
+
 class VenueUpdateRequest(BaseModel):
     requesting_email: str
     lat: Optional[float] = None
     lng: Optional[float] = None
     address: Optional[str] = None  # when set, persisted for future Nominatim retries
+    # A pasted Google Maps URL or "lat, lng" pair, parsed server-side.
+    # Takes precedence over lat/lng when both arrive — a curator who
+    # pasted something meant that, not whatever was in the fields.
+    coords_text: Optional[str] = None
 
 
 @app.put("/admin/venues/{name_normalized}")
@@ -6270,20 +6735,30 @@ def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
     the next geocode retry has cleaner input); when omitted the existing
     address is left untouched."""
     _require_curator(req.requesting_email)
-    if (req.lat is None) != (req.lng is None):
+    lat, lng = req.lat, req.lng
+    # A pasted URL/pair wins over the numeric fields — see coords_text.
+    if (req.coords_text or "").strip():
+        parsed = _parse_coords_text(req.coords_text)
+        if not parsed:
+            raise HTTPException(
+                status_code=400,
+                detail="Não consegui ler as coordenadas. Cole o link do Google Maps ou \"-25.42, -49.27\".",
+            )
+        lat, lng = parsed
+    if (lat is None) != (lng is None):
         raise HTTPException(status_code=400, detail="lat and lng must both be provided or both omitted")
-    if req.lat is not None:
+    if lat is not None:
         # Sanity check — Curitiba lives roughly between (-25.7, -49.5)
         # and (-25.2, -49.0). Accepting anything in Brazil's lat range
         # would drop pins on the wrong continent if a typo creeps in.
-        if not (-26.5 <= req.lat <= -24.5 and -50.5 <= req.lng <= -48.0):
+        if not (-26.5 <= lat <= -24.5 and -50.5 <= lng <= -48.0):
             raise HTTPException(
                 status_code=400,
                 detail="Coordenadas fora da região de Curitiba — verifica antes de salvar",
             )
     ok = db.update_venue_manual(
         name_normalized=name_normalized,
-        lat=req.lat, lng=req.lng,
+        lat=lat, lng=lng,
         address=req.address,
     )
     if not ok:

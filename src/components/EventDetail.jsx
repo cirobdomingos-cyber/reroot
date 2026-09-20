@@ -295,7 +295,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
     // exactly the case where the event survives the decline. Outsiders
     // on a personal invite still lose it, and the copy says so.
     const msg = ev.groupId
-      ? `Não vai em "${ev.name}"? Quem organizou fica sabendo. O evento continua no grupo, caso você mude de ideia.`
+      ? `Não vai em "${ev.name}"? Quem organizou fica sabendo. O evento continua no canal, caso você mude de ideia.`
       : `Não vai em "${ev.name}"? O evento sai da sua lista e quem organizou fica sabendo.`
     if (!confirm(msg)) return
     setDeclining(true)
@@ -441,7 +441,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
             hero one scrolled out of reach anyway. */}
         {/* Category emoji removed — collided with the back/upload buttons
             on short heroes and the surrounding chips already convey
-            "type of event" (Grupo / Plano / Música / etc.) without it. */}
+            "type of event" (Canal / Plano / Música / etc.) without it. */}
         {/* Top-right slot: editor controls (canEdit) win priority over
             the zoom hint. For non-editors viewing an image we keep the
             zoom hint so they know it expands. Stop propagation on
@@ -614,7 +614,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
       )}
 
       {/* Content — bottom padding clears iOS home bar so "Adicionar a um
-          grupo" / "Editar evento" / "Excluir" don't sit under the
+          canal" / "Editar evento" / "Excluir" don't sit under the
           gesture zone when you scroll to the end. */}
       <div style={{
         padding: '14px 20px calc(env(safe-area-inset-bottom, 0px) + 32px)',
@@ -855,6 +855,21 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
                 {coHostCount > 0 && (
                   <span> · {coHostCount} co-organizador{coHostCount === 1 ? '' : 'es'}</span>
                 )}
+                {/* Which of YOUR channels this is in. The payload names
+                    one you're actually in, so a second channel's member
+                    no longer reads this as a personal invite. The "+N"
+                    is there because the same event can sit in several
+                    of your channels at once, and naming only one
+                    implies it lives in one place. */}
+                {ev.groupName && (
+                  <span> · {ev.groupName}
+                    {ev.viewerGroupCount > 1 && (
+                      <span style={{ color: 'var(--charcoal-light)' }}>
+                        {' '}+{ev.viewerGroupCount - 1}
+                      </span>
+                    )}
+                  </span>
+                )}
               </span>
               {isPrivate && (
                 <span style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>›</span>
@@ -1005,7 +1020,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
                 marginTop: 8, fontSize: 12, lineHeight: 1.5,
                 color: 'var(--charcoal-mid)',
               }}>
-                Continua aqui porque é um evento do grupo. Mudou de ideia? É só tocar em "Vou".
+                Continua aqui porque é um evento do canal. Mudou de ideia? É só tocar em "Vou".
               </div>
             )}
           </>
@@ -1058,7 +1073,7 @@ export default function EventDetail({ event: ev, googleId, viewerName, viewerPic
               cursor: 'pointer',
             }}
           >
-            👥 Adicionar a um grupo
+            👥 Adicionar a um canal
           </button>
         )}
 

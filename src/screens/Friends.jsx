@@ -7,7 +7,7 @@
  *   3. Friend list — people you're connected to.
  *
  * The "where friends are going" feed lives at the top of Community
- * (components/FriendsFeed.jsx), above the Grupos/Amigos switch.
+ * (components/FriendsFeed.jsx), above the Canais/Amigos switch.
  *
  * All sections degrade gracefully when the backend is unavailable
  * (each API helper in services/api.js returns null/[] on failure).

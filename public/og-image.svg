@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  auê — link preview card (1200×630).
+
+  What a shared auê link renders as in WhatsApp, iMessage, Slack and
+  every other unfurler. Before this existed, index.html carried only a
+  <meta name="description">, so a shared link came out as a bare URL —
+  which is why sharing the App Store link seemed like the better option,
+  and that one is worse: Apple forces the slug "au%C3%AA" into the URL
+  and the preview shows that unreadable string.
+
+  1200×630 is the size every unfurler crops to (1.91:1). Anything
+  important has to survive a centre crop on the short edge, so the mark
+  and the tagline both sit well inside the middle band.
+
+  The mark is the app icon's geometry reused verbatim — same <text>,
+  same circumflex path, same lime spark, just translated and scaled.
+  Copying the shapes rather than re-drawing them means the card can
+  never drift from the icon.
+
+  Rendered to PNG by scripts/render-icons.js (unfurlers do not render
+  SVG — most reject it outright, so the PNG is what ships in og:image).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Same violet-black as the icon and the app's theme-color. -->
+  <rect x="0" y="0" width="1200" height="630" fill="#14081E"/>
+
+  <!--
+    The icon's mark, scaled to 0.46 and centred horizontally. The inner
+    coordinates are the icon's own 1024 space: the wordmark is anchored
+    at x=512, so translating by (600 - 512×0.46) puts its centre on the
+    card's centre line.
+  -->
+  <g transform="translate(364.48, 18) scale(0.46)">
+    <text
+      x="512" y="640"
+      font-family="'Space Grotesk', Manrope, Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+      font-weight="700"
+      font-size="440"
+      fill="#FF2BD6"
+      text-anchor="middle"
+      letter-spacing="-22">aue</text>
+
+    <path
+      d="M 700 290 L 790 200 L 880 290"
+      fill="none"
+      stroke="#FF2BD6"
+      stroke-width="64"
+      stroke-linecap="round"
+      stroke-linejoin="round"/>
+  </g>
+
+  <!-- The icon's lime spark, moved out of the mark and onto the card's
+       own corner. Inside a square icon it reads as a corner accent;
+       dropped into a 1200-wide canvas at the same relative spot it just
+       floats next to the wordmark like a stray dot. -->
+  <circle cx="74" cy="74" r="17" fill="#C6FF00"/>
+
+  <!-- Tagline. The brand line, not a description — a preview card gets
+       read in half a second. -->
+  <text
+    x="600" y="452"
+    font-family="'Space Grotesk', Manrope, Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-weight="700"
+    font-size="62"
+    fill="#FFFFFF"
+    text-anchor="middle">Curitiba que acontece</text>
+
+  <!-- Supporting line, dimmer so it reads as secondary at thumbnail size. -->
+  <text
+    x="600" y="522"
+    font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-weight="400"
+    font-size="34"
+    fill="#B9A3C9"
+    text-anchor="middle">Todos os eventos da cidade num lugar só</text>
+
+  <!-- Lime underline echoing the spark in the mark — gives the card a
+       horizon so it doesn't read as floating text on black. -->
+  <rect x="540" y="562" width="120" height="6" rx="3" fill="#C6FF00"/>
+</svg>

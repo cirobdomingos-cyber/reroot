@@ -384,6 +384,22 @@ export default function AdminIgAccounts() {
         </button>
       )}
 
+      {/* Venue pins. The bairro rendered next to a venue comes from the
+          geocoded row, so an unresolved venue shows the extraction's
+          guess instead — this is where that gets fixed. */}
+      {isCurator && (
+        <button
+          onClick={() => navigate('/admin/venues')}
+          style={{
+            display: 'block', width: '100%', marginBottom: 14, padding: '12px 14px',
+            borderRadius: 12, border: '1px solid var(--line)', background: 'var(--bg2)',
+            color: 'var(--text)', fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
+          }}
+        >
+          📍 Locais e pins →
+        </button>
+      )}
+
       {isCurator && <PostDebugSection email={email} />}
       {!isCurator && !loading && (
         <NotACuratorMessage email={email} />
@@ -801,7 +817,7 @@ function UsageSection({ usage, users, usersError, onRetryUsers, clientErrors }) 
         <Metric label="Novos hoje" value={usage.new_today} small />
         <Metric label="RSVPs" value={usage.counts.rsvps} small />
         <Metric label="Amizades" value={usage.counts.friendships} small />
-        <Metric label="Grupos" value={usage.counts.groups} small />
+        <Metric label="Canais" value={usage.counts.groups} small />
         <Metric label="Feedback" value={usage.counts.feedback} small />
         {usage.retention && (
           <Metric
@@ -921,7 +937,7 @@ function UsersTable({ data, error, onRetry }) {
     { key: 'days_active', label: 'Dias', num: true },
     { key: 'rsvps', label: 'RSVPs', num: true },
     { key: 'friends', label: 'Amigos', num: true },
-    { key: 'groups', label: 'Grupos', num: true },
+    { key: 'groups', label: 'Canais', num: true },
     { key: 'events_created', label: 'Criou', num: true },
   ]
   const q = query.trim().toLowerCase()

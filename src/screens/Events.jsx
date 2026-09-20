@@ -892,7 +892,7 @@ export default function Events() {
             (catalog + custom + group), independent of the active
             filter, so 'Tudo · N' doesn't shrink the moment the user
             picks a category and stops showing custom/group events.
-            'Grupo' is a synthetic bucket for private/group/personal
+            'Canal' is a synthetic bucket for private/group/personal
             plans; the IG-handle categories drop those automatically. */}
         {(() => {
           const eventCounts = {}
@@ -915,7 +915,7 @@ export default function Events() {
           })
           const chips = [
             { id: 'all', emoji: '🌍', label: 'Tudo', count: allDisplayEvents.length },
-            ...(groupCount > 0 ? [{ id: 'group', emoji: '🎲', label: 'Grupo', count: groupCount }] : []),
+            ...(groupCount > 0 ? [{ id: 'group', emoji: '🎲', label: 'Canal', count: groupCount }] : []),
             ...orderedCats.map(c => ({
               id: c,
               emoji: CATEGORY_META[c]?.emoji || '🔗',

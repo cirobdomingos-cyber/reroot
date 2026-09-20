@@ -168,7 +168,7 @@ export default function Onboarding() {
       step_name: 'onboarding',
       profile: profileId || 'none',
     })
-    navigate('/home')
+    navigate('/events')
   }
 
   return (

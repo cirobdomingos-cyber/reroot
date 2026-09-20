@@ -28,6 +28,12 @@ export default function GroupDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showInvite, setShowInvite] = useState(false)
+  // An auê channel renders here too — same row, same table. What it
+  // must NOT render is the crew machinery: no invite, no "convida a
+  // galera" nudge, and followers rather than members. That caution was
+  // recorded before channels were built, and since both are now called
+  // "canal" this is where it gets honoured.
+  const isChannel = group?.kind === 'channel'
   // Edit-event sheet target. null = sheet closed.
   const [editingEvent, setEditingEvent] = useState(null)
   const [showCalendar, setShowCalendar] = useState(false)
@@ -52,7 +58,17 @@ export default function GroupDetail() {
   useEffect(() => {
     if (!googleId || !groupId) return
     fetchGroupDetail(groupId, googleId)
-      .then(data => { setGroup(data); setLoading(false) })
+      .then(data => {
+        // Channels have their own screen. This route stays reachable
+        // because links to it exist — shared before the split, and in
+        // whatever bundle a phone hasn't updated past — so it forwards
+        // instead of rendering crew chrome around a feed.
+        if (data?.kind === 'channel') {
+          navigate(`/channels/${data.id}`, { replace: true })
+          return
+        }
+        setGroup(data); setLoading(false)
+      })
       .catch(() => { setError('Failed to load group'); setLoading(false) })
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
     fetchFriendsFeed(googleId).then(events => {
@@ -110,7 +126,7 @@ export default function GroupDetail() {
       setGroup(prev => ({ ...prev, name: trimmed }))
       setNameEdit(null)
     } catch {
-      alert('Falha ao renomear o grupo. Tenta de novo.')
+      alert('Falha ao renomear o canal. Tenta de novo.')
     }
     setRenaming(false)
   }
@@ -128,10 +144,10 @@ export default function GroupDetail() {
     const eventCount = group?.events?.length ?? 0
     const warning =
       `⚠️ CUIDADO\n\n` +
-      `Você está prestes a apagar o grupo "${group?.name}" PARA TODO MUNDO.\n\n` +
+      `Você está prestes a apagar o canal "${group?.name}" PARA TODO MUNDO.\n\n` +
       `Vão sumir:\n` +
       `• ${memberCount} membro${memberCount === 1 ? '' : 's'}\n` +
-      `• ${eventCount} evento${eventCount === 1 ? '' : 's'} de grupo\n` +
+      `• ${eventCount} evento${eventCount === 1 ? '' : 's'} de canal\n` +
       `• O feed de calendário e o link de convite\n\n` +
       `Essa ação não pode ser desfeita.\n\n` +
       `Quer mesmo apagar?`
@@ -139,7 +155,7 @@ export default function GroupDetail() {
     // Second step — typed confirm for groups with any content. Empty
     // throwaway groups skip this so testers don't get stuck.
     if (memberCount > 1 || eventCount > 0) {
-      const typed = window.prompt(`Pra confirmar, digite o nome do grupo:\n\n"${group?.name}"`)
+      const typed = window.prompt(`Pra confirmar, digite o nome do canal:\n\n"${group?.name}"`)
       if ((typed || '').trim() !== (group?.name || '').trim()) {
         alert('Nome não bateu — ação cancelada.')
         return
@@ -245,7 +261,7 @@ export default function GroupDetail() {
               {isAdmin && (
                 <button
                   onClick={() => setNameEdit(group.name)}
-                  title="Renomear grupo"
+                  title="Renomear canal"
                   style={{
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: 12, color: 'var(--charcoal-light)', padding: 2,
@@ -257,10 +273,10 @@ export default function GroupDetail() {
               {group.visibility === 'private' && <span>🔒</span>}
               {/* Lifetime event count pill — feeds into the crew_quente
                   badge ladder. Lives on the header so the metric is
-                  always in sight, not buried inside Mural do grupo. */}
+                  always in sight, not buried inside Mural do canal. */}
               {stats && stats.events_total > 0 && (
                 <span
-                  title={`${stats.events_total} eventos no histórico do grupo`}
+                  title={`${stats.events_total} eventos no histórico do canal`}
                   style={{
                     fontSize: 11, fontWeight: 700, color: 'var(--terra)',
                     background: 'var(--terra-pale)',
@@ -309,7 +325,7 @@ export default function GroupDetail() {
           textDecoration: 'underline', textDecorationColor: 'var(--border)',
           textUnderlineOffset: 3,
         }}>
-          {group.members?.length} {t.groups_members}
+          {group.members?.length} {isChannel ? 'seguindo' : t.groups_members}
         </span>
       </button>
 
@@ -317,7 +333,7 @@ export default function GroupDetail() {
           guest list (promote/demote happens in MembersSheet). Members
           can still see who's in via the members header tap. */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-        {isAdmin && (
+        {isAdmin && !isChannel && (
           <ActionBtn label={`💬 ${t.groups_invite}`} onClick={() => setShowInvite(true)} />
         )}
         <ActionBtn label={`📅 ${t.groups_calendar}`} onClick={() => setShowCalendar(true)} />
@@ -339,7 +355,7 @@ export default function GroupDetail() {
           same way (stats loaded, events_total === 0) so a fresh group
           never sits there silently — it either has a wall of zeros
           replaced by this, or real stats once someone acts on it. */}
-      {stats && stats.events_total === 0 && (
+      {stats && stats.events_total === 0 && !isChannel && (
         <FirstEventNudge
           groupId={groupId}
           soloAndEmpty={(group.members?.length || 1) === 1}
@@ -702,12 +718,12 @@ function FirstEventNudge({ groupId, soloAndEmpty, isAdmin, onInvite, onAddEvent 
   const primary = (soloAndEmpty && isAdmin)
     ? {
         icon: '💬', label: 'Convide a galera',
-        desc: 'Um grupo sozinho não rola. Chama quem você quer levar junto.',
+        desc: 'Um canal sozinho não rola. Chama quem você quer levar junto.',
         cta: 'Convidar', onClick: onInvite,
       }
     : {
         icon: '📅', label: 'Marquem o primeiro rolê',
-        desc: 'Todo grupo começa com um evento — do catálogo ou um plano seu.',
+        desc: 'Todo canal começa com um evento — do catálogo ou um plano seu.',
         cta: '+ Adicionar evento', onClick: onAddEvent,
       }
 
@@ -758,7 +774,7 @@ function FirstEventNudge({ groupId, soloAndEmpty, isAdmin, onInvite, onAddEvent 
   )
 }
 
-// "Mural do grupo" — at-a-glance counters + the most active organizer.
+// "Mural do canal" — at-a-glance counters + the most active organizer.
 // Lightweight panel, four cards for the headline numbers and one row for
 // the top organizer when there is one. Hidden by the parent for empty
 // groups so the very first event still feels like an arrival, not a
@@ -771,7 +787,7 @@ function GroupStatsPanel({ stats }) {
         textTransform: 'uppercase', letterSpacing: 0.6,
         margin: '0 0 8px',
       }}>
-        Mural do grupo
+        Mural do canal
       </h2>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8,
@@ -849,7 +865,7 @@ function InviteSheet({ open, onClose, group, t }) {
     const result = await shareLink({
       url: inviteUrl,
       title: 'auê',
-      text: `Bora entrar no grupo "${group.name}" no auê?`,
+      text: `Bora entrar no canal "${group.name}" no auê?`,
     })
     trackEvent('group_invite_shared', { method: result === 'shared' ? 'share' : 'link' })
     setShareStatus(result)
@@ -864,7 +880,7 @@ function InviteSheet({ open, onClose, group, t }) {
   }
 
   function handleWhatsApp() {
-    const msg = `Bora pro grupo "${group.name}" no auê! 🎉 ${inviteUrl}`
+    const msg = `Bora pro canal "${group.name}" no auê! 🎉 ${inviteUrl}`
     trackEvent('group_invite_shared', { method: 'whatsapp' })
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener')
     onClose()
@@ -1155,7 +1171,7 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
   }
 
   async function handleRemove(member) {
-    if (!confirm(`Remover ${member.name || member.google_id} do grupo?`)) return
+    if (!confirm(`Remover ${member.name || member.google_id} do canal?`)) return
     setError(null)
     setBusyId(member.google_id)
     try {
@@ -1285,7 +1301,7 @@ function MembersSheet({ open, onClose, group, t, viewerIsAdmin, viewerGoogleId, 
                       fontSize: 11, fontWeight: 600, color: '#C62828',
                       cursor: busyId === m.google_id ? 'wait' : 'pointer',
                     }}
-                    title="Remover do grupo"
+                    title="Remover do canal"
                   >
                     Remover
                   </button>

@@ -19,7 +19,6 @@ import Novidades      from './screens/Novidades'
 import IdentityMirror from './screens/IdentityMirror'
 import PartnerIntro   from './screens/PartnerIntro'
 import Diagnostic     from './screens/Diagnostic'
-import Home           from './screens/Home'
 import Events         from './screens/Events'
 import Community      from './screens/Community'
 import Groups         from './screens/Groups'
@@ -28,6 +27,9 @@ import JoinGroup      from './screens/JoinGroup'
 import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
 import AdminIgAccounts from './screens/AdminIgAccounts'
+import AdminVenues from './screens/AdminVenues'
+import Notifications from './screens/Notifications'
+import ChannelDetail from './screens/ChannelDetail'
 import AddFriend       from './screens/AddFriend'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
@@ -124,23 +126,32 @@ export default function App() {
                   ? (offerAppStore
                       ? <AnimatedPage><AppStoreGate onContinueInBrowser={() => setWebPreferred(true)} /></AnimatedPage>
                       : <AnimatedPage><Onboarding /></AnimatedPage>)
-                  : <Navigate to="/home" replace />
+                  : <Navigate to="/events" replace />
               }
             />
             {/* Question screens are kept but bypassed — restore the routes
                 here when we re-introduce a (shorter) profile/mood picker.
                 /journey (the 12-week framework) is also vestigial from the
                 Reroot brand and not reachable from any current UI. */}
-            <Route path="/identity-mirror" element={<Navigate to="/home" replace />} />
-            <Route path="/partner-intro"   element={<Navigate to="/home" replace />} />
-            <Route path="/diagnostic"      element={<Navigate to="/home" replace />} />
-            <Route path="/journey"         element={<Navigate to="/home" replace />} />
-            <Route path="/home"    element={<AnimatedPage wide><Home /></AnimatedPage>} />
+            <Route path="/identity-mirror" element={<Navigate to="/events" replace />} />
+            <Route path="/partner-intro"   element={<Navigate to="/events" replace />} />
+            <Route path="/diagnostic"      element={<Navigate to="/events" replace />} />
+            <Route path="/journey"         element={<Navigate to="/events" replace />} />
+            {/* Home dissolved in Sep 2026 — its pieces moved to
+                Notificações, Comunidade and the Eventos header. The
+                route stays as a redirect: it's the old start screen, so
+                it's in bookmarks, in push deep links sent before the
+                change, and in any bundle a phone hasn't updated past. */}
+            <Route path="/home"    element={<Navigate to="/events" replace />} />
             <Route path="/events"  element={<AnimatedPage><Events /></AnimatedPage>} />
             {/* Daily-digest push deep link — its own curated screen, not
                 Eventos wearing a filter. Events.jsx keeps the legacy
                 ?digest= handling for pushes already out in the wild. */}
             <Route path="/novidades/:digestId" element={<AnimatedPage><Novidades /></AnimatedPage>} />
+            <Route path="/notifications" element={<AnimatedPage><Notifications /></AnimatedPage>} />
+            {/* Channels get their own screen rather than GroupDetail
+                with the crew parts switched off — see ChannelDetail. */}
+            <Route path="/channels/:channelId" element={<AnimatedPage><ChannelDetail /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />
@@ -148,12 +159,15 @@ export default function App() {
             <Route path="/join/:inviteCode" element={<AnimatedPage><JoinGroup /></AnimatedPage>} />
             <Route path="/friend/:code" element={<AnimatedPage><AddFriend /></AnimatedPage>} />
             <Route path="/friends/:googleId" element={<AnimatedPage><FriendDetail /></AnimatedPage>} />
+            {/* RSVPs lost its tab but keeps its route — Comunidade
+                deep-links into it, and it was a shareable URL. */}
             <Route path="/my-rsvps" element={<AnimatedPage><MyRsvps /></AnimatedPage>} />
             <Route path="/sources" element={<AnimatedPage><Sources /></AnimatedPage>} />
             <Route path="/sources/:sourceId" element={<AnimatedPage><SourceDetail /></AnimatedPage>} />
             <Route path="/venue/:handle" element={<AnimatedPage><VenueDashboard /></AnimatedPage>} />
             <Route path="/profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
             <Route path="/admin/ig" element={<AnimatedPage><AdminIgAccounts /></AnimatedPage>} />
+            <Route path="/admin/venues" element={<AnimatedPage><AdminVenues /></AnimatedPage>} />
             <Route path="/curadoria" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="/curadoria/:requestId" element={<AnimatedPage><CatalogReview /></AnimatedPage>} />
             <Route path="*" element={<Navigate to="/" replace />} />

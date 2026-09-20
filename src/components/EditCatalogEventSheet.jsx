@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { updateCatalogEvent } from '../services/api'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
+import { GENRE_META, GENRE_ORDER } from '../data/genres'
 
 // Curator sheet for correcting a CATALOG event — the ones scraped from
 // Instagram and enriched by Claude. Distinct from EditEventSheet, which
@@ -27,23 +28,6 @@ import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 // PUT /admin/venues/{name_normalized}.
 
 const FIELD_LIMITS = { name: 200, venue: 200, neighborhood: 100, description: 1000 }
-
-// Same closed vocabulary as GENRES in backend/enrichment.py. Kept in
-// sync by hand — the backend rejects anything outside it, so a drift
-// here surfaces as a 400 with the valid list rather than bad data.
-const GENRES = [
-  ['', '— sem gênero —'],
-  ['rock', 'Rock'],
-  ['samba_pagode', 'Samba / Pagode'],
-  ['sertanejo', 'Sertanejo'],
-  ['eletronica', 'Eletrônica'],
-  ['mpb', 'MPB'],
-  ['rap_trap', 'Rap / Trap'],
-  ['forro', 'Forró'],
-  ['jazz_blues', 'Jazz / Blues'],
-  ['classica', 'Clássica'],
-  ['pop', 'Pop'],
-]
 
 // "Bar Folia · Água Verde" → ['Bar Folia', 'Água Verde']. The bairro is
 // part of the rendered string rather than its own field on the event
@@ -247,8 +231,11 @@ export default function EditCatalogEventSheet({ open, onClose, event, requesting
 
               <Field label="Gênero musical">
                 <select value={genre} onChange={(e) => setGenre(e.target.value)} style={inputStyle}>
-                  {GENRES.map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
+                  <option value="">— sem gênero —</option>
+                  {GENRE_ORDER.map(g => (
+                    <option key={g} value={g}>
+                      {GENRE_META[g].emoji} {GENRE_META[g].label}
+                    </option>
                   ))}
                 </select>
               </Field>

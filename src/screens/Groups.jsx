@@ -60,7 +60,7 @@ export default function Groups({ embedded = false }) {
       navigate(`/groups/${group.id}`)
     } catch (err) {
       console.error('[Groups] create failed', err)
-      alert(t.groups_create_error ?? 'Erro ao criar grupo. Verifique sua conexão.')
+      alert(t.groups_create_error ?? 'Erro ao criar canal. Verifique sua conexão.')
     }
   }
 
@@ -90,7 +90,7 @@ export default function Groups({ embedded = false }) {
           border: '1px solid var(--border)', textAlign: 'center',
           color: 'var(--charcoal-mid)', fontSize: 13, lineHeight: 1.5,
         }}>
-          {t.groups_login_required ?? 'Entre com Google para criar e participar de grupos.'}
+          {t.groups_login_required ?? 'Entre com Google para criar e participar de canais.'}
         </div>
       </div>
     )
@@ -230,9 +230,25 @@ function CreateGroupSheet({ open, onClose, onCreate, t }) {
                         color: visibility === v ? 'var(--on-lime)' : 'var(--charcoal)',
                         fontWeight: 600, fontSize: 13,
                       }}>
-                      {v === 'private' ? `🔒 ${t.groups_private}` : `🌍 ${t.groups_public}`}
+                      {v === 'private' ? `🔒 ${t.groups_private}` : `🔗 ${t.groups_public}`}
                     </button>
                   ))}
+                </div>
+                {/* The _desc strings existed in i18n and were never
+                    rendered, so the toggle was two words with no
+                    explanation — and "🌍 Público" reads as "people will
+                    find this", which nothing in the app makes true.
+                    `visibility` is read in exactly one place: the check
+                    that stops a non-member opening a PRIVATE channel.
+                    Saying what it actually does is the whole fix. */}
+                <div style={{
+                  fontSize: 11, color: 'var(--charcoal-light)',
+                  lineHeight: 1.45, marginTop: -2,
+                }}>
+                  {visibility === 'private' ? t.groups_private_desc : t.groups_public_desc}
+                  {visibility === 'public' && (
+                    <> — ele não aparece na lista de canais do auê.</>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>

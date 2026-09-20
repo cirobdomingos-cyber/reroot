@@ -3,6 +3,20 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // Unit tests for pure frontend logic. Added Sep 2026 because there
+  // wasn't one: the repo tested Python with pytest and the browser with
+  // Playwright, and anything in between — a parser, a grouping rule —
+  // had nowhere to live. The coordinate parser for venue pins was put
+  // on the backend purely so it could be tested, which is the wrong
+  // reason to choose where code goes.
+  //
+  // Scope is deliberately narrow: `src/**/*.test.js`, no jsdom, no
+  // component rendering. Playwright already covers what a screen does;
+  // this covers the functions a screen calls.
+  test: {
+    include: ['src/**/*.test.js'],
+    environment: 'node',
+  },
   server: {
     watch: {
       ignored: ['**/.venv/**', '**/backend/**', '**/synthetic_data/**', '**/node_modules/**'],
@@ -67,6 +81,10 @@ export default defineConfig({
       filename: 'sw.js',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The link-preview card is fetched by unfurlers, never by the
+        // app — precaching it costs every install ~45KB for a file no
+        // user ever loads.
+        globIgnores: ['**/og-image.*'],
       },
       // Register the SW in dev too — without this, navigator.serviceWorker.ready
       // never resolves (no SW is ever installed), and the push subscribe

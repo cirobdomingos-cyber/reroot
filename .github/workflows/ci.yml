@@ -49,6 +49,10 @@ jobs:
       # warnings until eslint-plugin-react is added).
       - name: Lint
         run: npm run lint
+      # Pure-logic unit tests (vitest). Playwright covers what a screen
+      # does; these cover the functions a screen calls.
+      - name: Unit tests
+        run: npm run test:unit
       - name: Build
         run: npm run build
 

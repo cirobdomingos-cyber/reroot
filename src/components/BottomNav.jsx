@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { useT } from '../i18n'
 
 import { API_BASE } from '../lib/apiBase'
+import { fetchNotifications } from '../services/api'
 import { useIsDesktop } from '../lib/useIsDesktop'
 
 // Bottom tab bar on phones; on a PC the same component renders as the left
@@ -38,25 +39,47 @@ export default function BottomNav() {
   // shadow glow filter; inactive strokes text3. Stroke is set via CSS var
   // resolution so we get the live theme color without re-reading the
   // value here.
+  // Unread count for the Notificações badge. Derived server-side from
+  // the same query the inbox renders, so the number on the tab and the
+  // list behind it can't disagree.
+  //
+  // Refetched when the tab regains focus rather than polled: acting on
+  // an item happens on another screen, and a badge still showing what
+  // you just answered is how people learn to ignore it.
+  const [unread, setUnread] = useState(0)
+  const googleId = state.googleUser?.id
+
+  useEffect(() => {
+    if (!googleId) { setUnread(0); return }
+    let cancelled = false
+    const load = () => fetchNotifications(googleId, email)
+      .then(d => { if (!cancelled) setUnread(d.unread_count || 0) })
+    load()
+    window.addEventListener('focus', load)
+    document.addEventListener('visibilitychange', load)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', load)
+      document.removeEventListener('visibilitychange', load)
+    }
+  }, [googleId, email, pathname])
+
   const stroke = (active) => active ? 'var(--magenta)' : 'var(--text3)'
   const glowStyle = (active) => active
     ? { filter: 'drop-shadow(0 0 6px rgba(255, 43, 214, 0.7))' }
     : undefined
 
+  // Home dissolved in Sep 2026. People opened the app wanting the
+  // catalog and went to community second, so Eventos is the landing
+  // screen and the tab bar is what's left once Home's pieces found
+  // real homes: pendências and the digest card went to Notificações,
+  // the friends feed to Comunidade, the week strip was already
+  // duplicated inside Eventos, and the create-plan CTA already lived
+  // in the Eventos header.
+  //
+  // RSVPs lost its slot too — it was a tab nobody used, and it belongs
+  // next to friends and channels rather than beside the catalog.
   const NAV_ITEMS = [
-    {
-      path: '/home',
-      label: t.nav_home,
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          style={glowStyle(active)}
-          stroke={stroke(active)}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
-          <path d="M9 21V12h6v9"/>
-        </svg>
-      ),
-    },
     {
       path: '/events',
       label: t.nav_events,
@@ -69,19 +92,6 @@ export default function BottomNav() {
           <line x1="16" y1="2" x2="16" y2="6"/>
           <line x1="8"  y1="2" x2="8"  y2="6"/>
           <line x1="3"  y1="10" x2="21" y2="10"/>
-        </svg>
-      ),
-    },
-    {
-      path: '/my-rsvps',
-      label: 'RSVPs',
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          style={glowStyle(active)}
-          stroke={stroke(active)}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 11l3 3L22 4"/>
-          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
         </svg>
       ),
     },
@@ -100,7 +110,31 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    isDesktop && {
+    // Notificações sits near the end rather than beside Eventos: it's
+    // where you go when the badge says to, not somewhere you browse,
+    // and a count pulsing next to the catalog competes with the thing
+    // people actually opened the app for. Perfil keeps the last slot,
+    // which is where every other app puts it.
+    //
+    // Labelled "Notificações", not "Avisos": "aviso" in pt-BR reads as
+    // a warning, which is the wrong register for a friend invite.
+    {
+      path: '/notifications',
+      label: 'Notificações',
+      badge: unread,
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          style={glowStyle(active)}
+          stroke={stroke(active)}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+      ),
+    },
+    // On phones Perfil used to live behind the Home avatar. Home is
+    // gone, so it needs a slot of its own everywhere.
+    {
       path: '/profile',
       label: t.nav_profile ?? 'Perfil',
       icon: (active) => (
@@ -134,11 +168,11 @@ export default function BottomNav() {
   return (
     <nav className="bottom-nav">
       {isDesktop && (
-        <div className="nav-brand neon-display neon-glow-mag" onClick={() => navigate('/home')}>
+        <div className="nav-brand neon-display neon-glow-mag" onClick={() => navigate('/events')}>
           auê
         </div>
       )}
-      {NAV_ITEMS.map(({ path, label, icon }) => {
+      {NAV_ITEMS.map(({ path, label, icon, badge }) => {
         const active = pathname === path || (path === '/admin/ig' && pathname.startsWith('/admin'))
         return (
           <div
@@ -146,8 +180,28 @@ export default function BottomNav() {
             className={`nav-item${active ? ' nav-item--active' : ''}`}
             onClick={() => navigate(path)}
           >
-            {icon(active)}
-            <span className={`nav-item__label${a11y ? ' nav-item__label--a11y' : ''}`}>{label}</span>
+            <span style={{ position: 'relative', display: 'inline-flex' }}>
+              {icon(active)}
+              {/* Only ever a count of things that need YOU. Capped so a
+                  backlog renders as "9+" instead of stretching the tab. */}
+              {badge > 0 && (
+                <span style={{
+                  position: 'absolute', top: -5, right: -7,
+                  minWidth: 16, height: 16, padding: '0 4px',
+                  borderRadius: 8, background: 'var(--magenta)',
+                  color: 'var(--bg)', fontSize: 10, fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 8px rgba(255, 43, 214, 0.6)',
+                }}>
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
+            </span>
+            <span className={
+              'nav-item__label'
+              + (a11y ? ' nav-item__label--a11y' : '')
+              + (label.length >= 10 ? ' nav-item__label--long' : '')
+            }>{label}</span>
           </div>
         )
       })}

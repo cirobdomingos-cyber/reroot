@@ -96,11 +96,11 @@ export default function AddToGroupSheet({ open, onClose, event }) {
 
   async function handleUnlink(group) {
     if (submittingId || !event?.id) return
-    if (!confirm(`Remover esse evento do grupo "${group.name}"?`)) return
+    if (!confirm(`Remover esse evento do canal "${group.name}"?`)) return
     setSubmittingId(group.id)
     try {
       // Works with the catalog id too: the backend resolves it to this
-      // group's fork. This used to bail with "abra o grupo e remova de
+      // group's fork. This used to bail with "abra o canal e remova de
       // lá" — which sent people looking for an event that, half the
       // time, was never there (the linked check matched by venue alone).
       await unlinkEventFromGroup(event.id, group.id, googleId)
@@ -151,7 +151,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
               <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }}/>
             </div>
             <h3 style={{ fontSize: 15, fontWeight: 700, textAlign: 'center', marginBottom: 6, color: 'var(--charcoal)' }}>
-              Adicionar a um grupo
+              Adicionar a um canal
             </h3>
             <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', textAlign: 'center', marginBottom: 14, lineHeight: 1.4 }}>
               "{event?.name}"
@@ -199,7 +199,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                   fontSize: 11, color: 'var(--charcoal-mid)',
                   marginTop: 8, lineHeight: 1.4,
                 }}>
-                  🔔 Todo mundo do grupo é avisado na hora.
+                  🔔 Todo mundo do canal é avisado na hora.
                 </div>
               </div>
             )}
@@ -212,10 +212,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
               <div style={{ padding: '12px 4px 4px', textAlign: 'center' }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>👥</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--charcoal)', marginBottom: 6 }}>
-                  Você ainda não tem grupos
+                  Você ainda não tem canais
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--charcoal-mid)', lineHeight: 1.4, marginBottom: 16 }}>
-                  Crie um grupo com seus amigos pra combinar de ir junto nesse e em outros eventos.
+                  Crie um canal com seus amigos pra combinar de ir junto nesse e em outros eventos.
                 </div>
                 <button
                   onClick={() => { onClose(); navigate('/groups') }}
@@ -231,7 +231,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                     cursor: 'pointer',
                   }}
                 >
-                  + Criar grupo agora
+                  + Criar canal agora
                 </button>
               </div>
             ) : (

@@ -116,6 +116,43 @@ OUTROS CAMPOS:
 """
 
 
+# Batch genre classification, for events that were scraped before the
+# `genre` field existed (or whose enrichment returned nothing for it).
+#
+# Batched rather than one call per event because the decision needs very
+# little context — a name, a venue and a caption — and 25 of those fit
+# comfortably in one Haiku request. One call per event would be ~25x the
+# requests for the same answer.
+#
+# The instructions deliberately repeat the "na dúvida, nenhum" rule from
+# ENRICHMENT_PROMPT. A batch invites the model to fill every slot, and an
+# invented genre is worse than a missing one: it puts sertanejo in
+# Rockzão, which is exactly the failure the tag exists to prevent.
+GENRE_BACKFILL_PROMPT = """\
+Pra cada evento abaixo, diga qual gênero musical MANDA na noite.
+
+Vocabulário fechado — use exatamente uma destas palavras:
+rock, samba_pagode, sertanejo, eletronica, mpb, rap_trap, forro,
+jazz_blues, classica, pop, nenhum
+
+Regras:
+- "nenhum" quando não for show/festa com música definida: exposição, \
+feira, oficina, teatro, cinema, esporte, roda de conversa, palestra, \
+stand-up.
+- Line-up com vários estilos: escolha o dominante.
+- Na dúvida, ou se o texto não deixar claro, use "nenhum". Chutar errado \
+é pior que não ter — um evento marcado com o gênero errado aparece na \
+lista errada pra quem confiou nela.
+
+Eventos:
+{events}
+
+Responda SOMENTE com o array JSON, sem markdown e sem texto extra, um \
+objeto por evento, na mesma ordem:
+[{{"id": "<id do evento>", "genre": "<uma palavra do vocabulário>"}}]
+"""
+
+
 # Closed vocabulary for the `genre` field. "nenhum" is deliberately absent:
 # the model emits it for non-music nights, and _clean_genre maps anything
 # outside this set (including "nenhum") to "" — so there's one way to say
@@ -275,6 +312,65 @@ class EnrichmentPipeline:
 
         log.info(f"Enriquecimento: {len(results)} ok, {skipped} falhas (de {min(len(raws), max_events)} tentativas)")
         return results
+
+    def classify_genres(self, events: list[dict], batch_size: int = 25) -> dict:
+        """Genre for each event, as {event_id: genre}.
+
+        `events` are dicts with id / name / description / venue_name. Only
+        ids the model answered for come back, and only with genres from
+        the closed vocabulary — an id missing from the result means "no
+        answer", which the caller treats as "leave it alone" rather than
+        writing an empty string over it.
+
+        A failed batch is logged and skipped rather than raised: this
+        runs over a hundred events at a time, and one bad response
+        shouldn't cost the other ninety.
+        """
+        out: dict[str, str] = {}
+        for start in range(0, len(events), batch_size):
+            chunk = events[start:start + batch_size]
+            listing = "\n".join(
+                f'- id: {e["id"]}\n  nome: {e.get("name", "")}\n'
+                f'  local: {e.get("venue_name", "")}\n'
+                f'  texto: {(e.get("description") or "")[:300]}'
+                for e in chunk
+            )
+            try:
+                resp = self.client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=2048,
+                    messages=[{
+                        "role": "user",
+                        "content": GENRE_BACKFILL_PROMPT.format(events=listing),
+                    }],
+                )
+                try:
+                    import token_meter
+                    token_meter.record("genre_backfill", "claude-haiku-4-5", resp.usage)
+                except Exception:
+                    pass  # metering must never cost us a batch
+                raw = resp.content[0].text.strip()
+                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+                items = json.loads(raw)
+            except Exception as e:
+                log.warning(f"Genre backfill batch {start // batch_size} failed: {e}")
+                continue
+
+            valid_ids = {e["id"] for e in chunk}
+            for item in items if isinstance(items, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                ev_id = str(item.get("id") or "")
+                # Guard against the model inventing or echoing an id from
+                # another batch — we'd otherwise tag an unrelated event.
+                if ev_id not in valid_ids:
+                    continue
+                genre = _clean_genre(item.get("genre"))
+                if genre:
+                    out[ev_id] = genre
+        return out
+
 
     def generate_events(self, city: str = "Curitiba", count: int = 15) -> list:
         """
