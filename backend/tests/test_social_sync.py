@@ -308,3 +308,53 @@ def test_the_graph_arrives_intact(tmp_path, monkeypatch, prod):
     assert len(members) == 2
     # And the members are the pseudonyms, not the originals.
     assert all(m["google_id"] in {u["id"] for u in payload["users"]} for m in members)
+
+
+# -- when the other half isn't deployed yet --------------------------
+#
+# The origin serves a SPA, and its catch-all answers any unknown path
+# with index.html and a 200. So a sync endpoint that hasn't reached
+# production yet doesn't 404 — it returns a page, and the only symptom
+# is JSON parsing dying on "<".
+#
+# That reads as "production is broken" when it means "production
+# doesn't have this yet", which is the NORMAL state for the exporting
+# half of a new sync: it lives in production, so production ships
+# first. Reported from a real session as
+# "Falha ao sincronizar pessoas: Method Not Allowed" and then an
+# unreadable JSON error.
+
+class _FakeResponse:
+    def __init__(self, text, status=200):
+        self.status_code = status
+        self.text = text
+
+    def json(self):
+        import json as _json
+        return _json.loads(self.text)
+
+
+def test_an_html_page_is_reported_as_not_deployed_yet(prod):
+    _db, main, _client, _gid = prod
+    from fastapi import HTTPException
+    page = "<!doctype html>\n<html lang=\"pt-BR\"><head><title>auê</title>"
+    with pytest.raises(HTTPException) as exc:
+        main._sync_payload_or_502(_FakeResponse(page), "/social-export")
+    detail = exc.value.detail
+    assert exc.value.status_code == 502
+    assert "ainda não foi pra produção" in detail
+    assert "/social-export" in detail
+
+
+def test_other_garbage_still_fails_without_claiming_to_know_why(prod):
+    _db, main, _client, _gid = prod
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        main._sync_payload_or_502(_FakeResponse("kaboom"), "/catalog-export")
+    assert "não é JSON" in exc.value.detail
+    assert "ainda não foi" not in exc.value.detail
+
+
+def test_real_json_passes_straight_through(prod):
+    _db, main, _client, _gid = prod
+    assert main._sync_payload_or_502(_FakeResponse('{"users": []}'), "/x") == {"users": []}
