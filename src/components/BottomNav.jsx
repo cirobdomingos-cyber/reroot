@@ -22,19 +22,25 @@ export default function BottomNav() {
   // shell: handle CRUD, curators management, usage stats, feedback).
   // Regular curators access handle ADD via the Sources page instead, so
   // this tab is reserved for the deepest admin surface.
-  const [isFounder, setIsFounder] = useState(false)
+  // 'founder' | 'curator' | null. Both get the tab; the label differs,
+  // because a curator opening a tab called "Admin" reads it as someone
+  // else's — and the menu behind it already shows only their jobs.
+  const [role, setRole] = useState(null)
   const email = state.googleUser?.email
 
   useEffect(() => {
-    if (!email) { setIsFounder(false); return }
+    if (!email) { setRole(null); return }
     let cancelled = false
     fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
       // Curators reach the admin shell too. It was founder-only, which
       // left curators with backend rights to the approval queues and no
       // way to get there; the screen keeps its founder-only rows.
-      .then(data => { if (!cancelled) setIsFounder(!!(data?.is_founder || data?.is_curator)) })
-      .catch(() => { if (!cancelled) setIsFounder(false) })
+      .then(data => {
+        if (cancelled) return
+        setRole(data?.is_founder ? 'founder' : data?.is_curator ? 'curator' : null)
+      })
+      .catch(() => { if (!cancelled) setRole(null) })
     return () => { cancelled = true }
   }, [email])
 
@@ -152,9 +158,9 @@ export default function BottomNav() {
     },
     // Admin tab for anyone who curates. Rightmost slot when present
     // (Profile lives behind the Home avatar tap, not in this nav).
-    isFounder && {
+    role && {
       path: '/admin',
-      label: 'Admin',
+      label: role === 'founder' ? 'Admin' : 'Curadoria',
       icon: (active) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           style={glowStyle(active)}
