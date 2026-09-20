@@ -316,15 +316,16 @@ test('the band sits above the catalog, not inside the filters panel', async ({ p
 test('a catalog row names the channel it came from', async ({ page }) => {
   await openEvents(page, FROM_CHANNEL)
   // Named, not badged generically: "auê Rockzera" says why it's here,
-  // "de um canal" doesn't.
+  // "de um canal" doesn't. The ▌ prefix is gone — the card carries a
+  // real lime stripe now, the same one a plan of your own gets.
   await expect(page.getByText('auê Rockzera', { exact: false }).first()).toBeVisible()
-  // Only the row that's actually in the channel.
-  const marked = await page.getByText(/▌auê Rockzera/i).count()
-  expect(marked).toBe(1)
+  // Once in the band, once on the catalog row it belongs to — and not
+  // on the other event.
+  expect(await page.getByText(/auê Rockzera/i).count()).toBe(2)
 })
 
 test('nothing is marked when you follow no channel', async ({ page }) => {
   await openEvents(page, [])
   await expect(page.getByText('Dos teus canais')).toHaveCount(0)
-  await expect(page.getByText(/▌/)).toHaveCount(0)
+  await expect(page.getByText(/auê Rockzera/i)).toHaveCount(0)
 })

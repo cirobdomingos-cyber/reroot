@@ -751,3 +751,53 @@ def test_the_feed_route_is_not_shadowed_by_the_id_route(api):
 def test_a_signed_out_visitor_gets_no_band(api):
     _db, _main, client = api
     assert client.get("/channels/feed").json()["events"] == []
+
+
+# -- 14. a channel's events are not the curator's personal plans ------
+#
+# Reported: "no perfil que sou admin, o evento aparece com banner e em
+# primeiro; no perfil que não sou, aparece como card normal."
+#
+# The curator created the row, so /events/group handed it back as one of
+# their own — which puts it in the group tier, above the whole catalog,
+# with the "your plan" treatment. Everyone else got an ordinary card.
+# Same event, two completely different screens, decided by who published
+# it.
+
+def test_a_channels_event_stays_out_of_the_curators_private_feed(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Corrida JCI")
+    feed = client.get("/events/group?google_id=u_founder").json()["events"]
+    assert [e["name"] for e in feed] == []
+
+
+def test_it_stays_out_for_a_follower_too(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Corrida JCI")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert client.get("/events/group?google_id=u_ana").json()["events"] == []
+
+
+def test_the_channel_still_shows_it_everywhere_it_should(api):
+    """Excluding it from the private feed must not hide it — the band,
+    the channel screen and the follower's view all still carry it."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Corrida JCI")
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+
+    assert len(client.get(f"/channels/{cid}?google_id=u_ana").json()["events"]) == 1
+    assert len(client.get("/channels/feed?google_id=u_ana").json()["events"]) == 1
+
+
+def test_a_real_private_plan_still_reaches_its_creator(api):
+    """The exclusion is channels only. A personal plan is still yours."""
+    _db, _main, client = api
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    client.post(f"/groups/{g['id']}/events", json={
+        "google_id": "u_ana", "name": "Churrasco", "date_start": "2099-01-01T20:00:00",
+    })
+    feed = client.get("/events/group?google_id=u_ana").json()["events"]
+    assert [e["name"] for e in feed] == ["Churrasco"]
