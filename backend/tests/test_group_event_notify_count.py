@@ -142,7 +142,7 @@ def test_linking_your_own_plan_notifies_the_group(api):
     assert r.json()["notified_count"] == 2
     assert {uid for uid, _ in sent} == {"bia", "caio"}
     # Members, so they get the group framing and a link into the group.
-    assert all(kw["url"] == f"/#/groups/{group['id']}" for _, kw in sent)
+    assert all(kw["url"] == f"/#/channels/{group['id']}" for _, kw in sent)
 
 
 def test_linking_does_not_re_notify_people_already_invited(api):

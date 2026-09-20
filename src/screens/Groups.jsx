@@ -61,8 +61,8 @@ export default function Groups({ embedded = false, actionsOnly = false }) {
       // handleJoin below already does this; creating didn't, so the
       // creator landed back on the list looking at a card with a generic
       // "sem eventos" line and no next step. Land on the group instead,
-      // where the primeiros-passos nudge (GroupDetail) picks up from here.
-      navigate(`/groups/${group.id}`)
+      // where the channel screen picks up from here.
+      navigate(`/channels/${group.id}`)
     } catch (err) {
       console.error('[Groups] create failed', err)
       alert(t.groups_create_error ?? 'Erro ao criar canal. Verifique sua conexão.')
@@ -77,7 +77,7 @@ export default function Groups({ embedded = false, actionsOnly = false }) {
       const updated = await fetchGroups(googleId)
       setGroups(updated)
       setShowJoin(false)
-      if (result.group) navigate(`/groups/${result.group.id}`)
+      if (result.group) navigate(`/channels/${result.group.id}`)
     }
     return result
   }
@@ -148,7 +148,7 @@ export default function Groups({ embedded = false, actionsOnly = false }) {
             <motion.div
               key={g.id}
               whileTap={{ scale: 0.98 }}
-              onClick={() => navigate(`/groups/${g.id}`)}
+              onClick={() => navigate(`/channels/${g.id}`)}
               style={cardStyle}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

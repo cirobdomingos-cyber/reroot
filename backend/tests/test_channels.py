@@ -141,11 +141,32 @@ def test_unfollowing_cannot_remove_aues_own_ownership(api):
     assert _db.get_group_member_role(cid, "u_founder") == "admin"
 
 
-def test_following_something_that_is_not_a_channel_is_404(api):
+def test_following_an_id_that_is_not_a_channel_at_all_is_404(api):
+    """Every group IS a channel since the unification, so the 404 is now
+    about the id not existing rather than about the row being the wrong
+    kind. A private channel is followable — that's what puts it in your
+    list and in the band, same as a public one."""
+    _db, _main, client = api
+    assert client.post("/channels/grp_nope/follow",
+                       json={"google_id": "u_ana"}).status_code == 404
+
+
+def test_a_private_channel_can_be_followed_by_its_members(api):
     _db, _main, client = api
     g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
-    r = client.post(f"/channels/{g['id']}/follow", json={"google_id": "u_bia"})
-    assert r.status_code == 404
+    assert client.post(f"/channels/{g['id']}/follow",
+                       json={"google_id": "u_ana"}).status_code == 200
+
+
+def test_a_private_channel_is_still_not_discoverable(api):
+    """The one thing visibility decides. Every pre-existing crew was
+    migrated to private regardless of what its visibility column said —
+    'public' used to mean 'anyone with the LINK', and letting that
+    retroactively mean 'listed to everyone' would have published groups
+    whose creators chose link-sharing."""
+    _db, _main, client = api
+    client.post("/groups", json={"google_id": "u_ana", "name": "Role"})
+    assert client.get("/channels?google_id=u_bia").json()["channels"] == []
 
 
 # -- 3. following is not a write permission --------------------------
@@ -415,10 +436,38 @@ def test_past_events_are_separated_newest_first(api):
     assert [e["name"] for e in body["past_events"]] == ["Recente", "Antigo"]
 
 
-def test_a_group_is_not_reachable_through_the_channel_endpoint(api):
+def test_a_private_channel_is_reachable_by_its_members_only(api):
+    """One screen serves both now, so this endpoint gates the way the
+    old group one did: a private channel is for the people in it, a
+    public one is open because looking before you follow is the model."""
     _db, _main, client = api
     g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
-    assert client.get(f"/channels/{g['id']}").status_code == 404
+    assert client.get(f"/channels/{g['id']}?google_id=u_ana").status_code == 200
+    assert client.get(f"/channels/{g['id']}?google_id=u_bia").status_code == 403
+    assert client.get(f"/channels/{g['id']}").status_code == 403
+
+
+def test_the_payload_says_which_shape_to_render(api):
+    _db, _main, client = api
+    pub = _channel(client)
+    priv = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    assert client.get(f"/channels/{pub}").json()["channel"]["is_public"] is True
+    assert client.get(
+        f"/channels/{priv}?google_id=u_ana").json()["channel"]["is_public"] is False
+
+
+def test_a_private_channels_events_keep_the_invitee_rule(api):
+    """An outsider invited to one specific night must not get the rest
+    of the channel with it."""
+    _db, _main, client = api
+    priv = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": priv["invite_code"]})
+    client.post(f"/groups/{priv['id']}/events", json={
+        "google_id": "u_ana", "name": "Só meu", "date_start": "2099-01-01T20:00:00",
+        "invitee_google_ids": [],
+    })
+    seen = client.get(f"/channels/{priv['id']}?google_id=u_bia").json()["events"]
+    assert seen == []
 
 
 # -- 10. per-follower notification preference ------------------------
@@ -801,3 +850,183 @@ def test_a_real_private_plan_still_reaches_its_creator(api):
     })
     feed = client.get("/events/group?google_id=u_ana").json()["events"]
     assert [e["name"] for e in feed] == ["Churrasco"]
+
+
+# -- 15. one model, two owners ---------------------------------------
+#
+# Public and private were two parallel implementations of one idea:
+# different screens, different endpoints, different words for the people
+# inside, and curators that existed on one side only. Now `visibility`
+# decides discovery and nothing else differs — except who the owner is.
+#
+#     público   dono = auê,        curadores nomeados por auê
+#     privado   dono = quem criou, curadores nomeados por quem criou
+
+def _private(client, owner="u_ana", name="Role do Sax"):
+    return client.post("/groups", json={"google_id": owner, "name": name}).json()["id"]
+
+
+def test_the_creator_of_a_private_channel_can_appoint_curators(api):
+    """The gap this closes: a private channel used to have exactly one
+    person who could change anything."""
+    _db, _main, client = api
+    cid = _private(client)
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    assert r.status_code == 200
+    assert _db.is_channel_curator(cid, "u_bia")
+
+
+def test_that_curator_can_edit_the_private_channel(api):
+    _db, _main, client = api
+    cid = _private(client)
+    client.post(f"/channels/{cid}/curators",
+                json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    r = client.put(f"/groups/{cid}", json={
+        "google_id": "u_bia", "name": "Role do Sax — 2026", "description": "",
+    })
+    assert r.status_code == 200
+    assert _db.get_group(cid)["name"] == "Role do Sax — 2026"
+
+
+def test_the_founder_cannot_touch_someone_elses_private_channel(api):
+    """auê owns the public channels. Letting the founder edit anyone's
+    private one would make "private" mean something it doesn't — the
+    unification is two owners working the same way, not one outranking
+    the other."""
+    _db, _main, client = api
+    cid = _private(client)
+    assert client.put(f"/channels/{cid}", json={
+        "requesting_email": FOUNDER_EMAIL, "name": "Tomado",
+    }).status_code == 403
+    assert client.post(f"/channels/{cid}/curators", json={
+        "requesting_email": FOUNDER_EMAIL, "google_id": "u_bia",
+    }).status_code == 403
+
+
+def test_the_founder_still_owns_the_public_ones(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.put(f"/channels/{cid}", json={
+        "requesting_email": FOUNDER_EMAIL, "name": "Rockzão 2",
+    }).status_code == 200
+
+
+def test_a_curator_cannot_appoint_more_curators_on_a_private_channel(api):
+    """Same rule both sides: one person owns that decision."""
+    _db, _main, client = api
+    cid = _private(client)
+    client.post(f"/channels/{cid}/curators",
+                json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "bia@example.com", "google_id": "u_founder"})
+    assert r.status_code == 403
+
+
+def test_an_ordinary_member_cannot_edit_the_channel(api):
+    _db, _main, client = api
+    cid = _private(client)
+    code = _db.get_group(cid)["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    r = client.put(f"/groups/{cid}", json={"google_id": "u_bia", "name": "Meu agora"})
+    assert r.status_code == 403
+
+
+def test_but_an_ordinary_member_can_still_publish(api):
+    """Control means administration, not publishing. Only 3 of 38
+    accounts have ever created an event — restricting who may add one is
+    the opposite of what that number asks for."""
+    _db, _main, client = api
+    cid = _private(client)
+    code = _db.get_group(cid)["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_bia", "name": "Churrasco", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_publishing_into_a_public_channel_is_still_curators_only(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_ana", "name": "Meu show", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 403
+
+
+# -- 10. "already added" has to see channels -------------------------
+#
+# AddToGroupSheet lists the crews you're in AND the channels you curate,
+# then asks /catalog-events/{id}/groups which of them already hold the
+# event. The scan ran over get_groups_for_user, whose docstring says in
+# so many words that it excludes channels — so the answer was wrong for
+# exactly the rows a curator uses most: an auê channel that already had
+# the event kept offering to add it again.
+
+def _add_to(client, gid, who, name="Masterclass DJ", src="instagram_ig_x_A"):
+    r = client.post(f"/groups/{gid}/events", json={
+        "google_id": who, "name": name, "venue": "MACRO",
+        "date_start": "2099-09-24T20:00:00", "source_event_id": src,
+    })
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _linked(client, event_id, who):
+    r = client.get(f"/catalog-events/{event_id}/groups?google_id={who}")
+    assert r.status_code == 200, r.text
+    return set(r.json()["linked_group_ids"])
+
+
+def test_a_channel_holding_the_event_is_reported_as_linked(api):
+    _db, _main, client = api
+    cid = _channel(client, "auê Samba e Pagode")
+    _add_to(client, cid, "u_founder")
+    assert cid in _linked(client, "instagram_ig_x_A", "u_founder")
+
+
+def test_a_crew_and_a_channel_are_both_reported(api):
+    """The shape that showed the bug: one private, one auê, same night.
+    The private one came back linked and the channel didn't, so the
+    sheet showed a tick on one row and a plus on the other."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_founder", "name": "Curitiba na real"}).json()["id"]
+    cid = _channel(client, "auê Samba e Pagode")
+    _add_to(client, gid, "u_founder")
+    _add_to(client, cid, "u_founder")
+    assert _linked(client, "instagram_ig_x_A", "u_founder") == {gid, cid}
+
+
+def test_asking_with_a_fork_id_answers_for_the_catalog_event(api):
+    """Once an event is in a channel, the row the user is looking at in
+    Eventos IS the fork — so the sheet asks with grp_ev_…, not with the
+    catalog id. Both questions have the same answer."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_founder", "name": "Curitiba na real"}).json()["id"]
+    cid = _channel(client, "auê Samba e Pagode")
+    fork = _add_to(client, gid, "u_founder")
+    _add_to(client, cid, "u_founder")
+    assert _linked(client, fork["id"], "u_founder") == {gid, cid}
+
+
+def test_a_channel_without_the_event_is_not_reported(api):
+    """Guards the fix from the lazy version: returning every channel id
+    would pass the tests above and tick every row in the sheet."""
+    _db, _main, client = api
+    cid = _channel(client, "auê Samba e Pagode")
+    other = _channel(client, "auê Rockzera")
+    _add_to(client, cid, "u_founder")
+    linked = _linked(client, "instagram_ig_x_A", "u_founder")
+    assert cid in linked and other not in linked
+
+
+def test_someone_elses_private_crew_is_never_reported(api):
+    """Channels are scanned for everyone because what a public channel
+    holds is public. A crew is not — and the caller's own membership is
+    still what decides."""
+    _db, _main, client = api
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role da Ana"}).json()["id"]
+    _add_to(client, gid, "u_ana")
+    assert _linked(client, "instagram_ig_x_A", "u_bia") == set()

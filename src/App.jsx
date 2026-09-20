@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
+import { Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Capacitor } from '@capacitor/core'
 import { useApp } from './context/AppContext'
@@ -21,7 +21,6 @@ import Diagnostic     from './screens/Diagnostic'
 import Events         from './screens/Events'
 import Community      from './screens/Community'
 import Groups         from './screens/Groups'
-import GroupDetail    from './screens/GroupDetail'
 import JoinGroup      from './screens/JoinGroup'
 import Friends        from './screens/Friends'
 import Profile        from './screens/Profile'
@@ -60,6 +59,15 @@ function AnimatedPage({ children, wide = false }) {
       <div className={wide ? 'screen-inner screen-inner--wide' : 'screen-inner'}>{children}</div>
     </motion.div>
   )
+}
+
+// A crew's id and a channel's id are the same id — crews *are* channels
+// now, they just aren't public. So this is a rename of the URL, not a
+// lookup: send the same id to the same screen and replace the history
+// entry so Back doesn't bounce off the old path.
+function GroupRedirect() {
+  const { groupId } = useParams()
+  return <Navigate to={`/channels/${groupId}`} replace />
 }
 
 export default function App() {
@@ -148,13 +156,16 @@ export default function App() {
                 ?digest= handling for pushes already out in the wild. */}
             <Route path="/novidades/:digestId" element={<AnimatedPage><Novidades /></AnimatedPage>} />
             <Route path="/notifications" element={<AnimatedPage><Notifications /></AnimatedPage>} />
-            {/* Channels get their own screen rather than GroupDetail
-                with the crew parts switched off — see ChannelDetail. */}
+            {/* One screen for both kinds of channel. A public one is run
+                by auê, a private one by whoever made it — same screen,
+                different permissions. See ChannelDetail. */}
             <Route path="/channels/:channelId" element={<AnimatedPage><ChannelDetail /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />
-            <Route path="/groups/:groupId" element={<AnimatedPage><GroupDetail /></AnimatedPage>} />
+            {/* Crews became channels (Sep 2026). Links already shared —
+                invites, pushes, pasted URLs — keep working. */}
+            <Route path="/groups/:groupId" element={<GroupRedirect />} />
             <Route path="/join/:inviteCode" element={<AnimatedPage><JoinGroup /></AnimatedPage>} />
             <Route path="/friend/:code" element={<AnimatedPage><AddFriend /></AnimatedPage>} />
             <Route path="/friends/:googleId" element={<AnimatedPage><FriendDetail /></AnimatedPage>} />

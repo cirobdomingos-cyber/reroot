@@ -191,6 +191,10 @@ function normalizeBackendEvent(ev) {
     groupIds: ev.groupIds ?? (ev.groupId ? [ev.groupId] : []),
     viewerGroupCount: ev.viewerGroupCount ?? (ev.groupId ? 1 : 0),
     groupName: ev.groupName ?? '',
+    // Every channel of the viewer's this event is in, visible one
+    // first. groupName is one of them; the Eventos list names all of
+    // them, since an event in two channels is still one night.
+    groupNames: ev.groupNames ?? (ev.groupName ? [ev.groupName] : []),
     createdBy: ev.createdBy ?? null,
     inviteeCount: ev.inviteeCount ?? 0,
     extraInviteeIds: ev.extraInviteeIds ?? [],

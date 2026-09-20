@@ -389,6 +389,28 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration (Sep 2026): one kind of channel, and `visibility`
+        # decides discovery. `kind` had been deciding everything — which
+        # screen, which endpoints, who's inside, who may publish — so
+        # the same idea had two parallel implementations.
+        #
+        # The direction of this backfill matters more than it looks.
+        # Before today, visibility='public' on a crew meant "anyone with
+        # the LINK can open it" and nothing was ever listed. Letting
+        # that value now mean "listed to everyone" would publish groups
+        # whose creators chose link-sharing, retroactively. So every
+        # pre-existing crew becomes private regardless of what its
+        # visibility said, and only the rows that were already channels
+        # stay public.
+        try:
+            conn.execute(
+                "UPDATE groups SET visibility = 'public' WHERE kind = 'channel'"
+            )
+            conn.execute(
+                "UPDATE groups SET visibility = 'private' WHERE kind != 'channel'"
+            )
+        except sqlite3.OperationalError:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -4268,7 +4290,7 @@ def list_channels(google_id: str = "") -> list[dict]:
                           AND substr(ge.date_start, 1, 10) >= ?)
                         AS upcoming_event_count
                FROM groups g
-               WHERE g.kind = 'channel'
+               WHERE g.visibility = 'public'
                ORDER BY follower_count DESC, g.name ASC""",
             (google_id or "", google_id or "", google_id or "",
              datetime.now(timezone.utc).date().isoformat()),
@@ -4373,8 +4395,12 @@ def list_channel_curators(group_id: str) -> list[dict]:
 
 
 def is_channel_curator(group_id: str, google_id: str) -> bool:
-    """Whether this person runs this channel. 'admin' counts — that's
-    the row auê itself holds as the creator."""
+    """Whether this person runs this channel: its owner, or someone the
+    owner appointed. 'admin' is how the owner's row is stored.
+
+    Same rule for a private channel as for an auê one — that's the whole
+    point of the unification. Who the owner IS differs; what the role
+    means does not."""
     if not google_id:
         return False
     return get_group_member_role(group_id, google_id) in ("curator", "admin")
@@ -4426,8 +4452,7 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
                    ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
                  JOIN group_members gm
                    ON gm.group_id = g.id AND gm.google_id = ?
-                WHERE g.kind = 'channel'
-                  AND gm.following = 1
+                WHERE gm.following = 1
                   AND gm.prioritize = 1
                   AND substr(ge.date_start, 1, 10) >= ?
              ORDER BY ge.date_start ASC
@@ -4481,11 +4506,36 @@ def get_channel_followers_to_notify(group_id: str) -> list[str]:
 
 
 def is_channel(group_id: str) -> bool:
+    """Whether this row exists at all. Every group is a channel now —
+    the word "group" only survives in column names and shared links."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM groups WHERE id = ?", (group_id,)).fetchone()
+    return row is not None
+
+
+def is_public_channel(group_id: str) -> bool:
+    """Discoverable: listed to everyone, joined by tapping Seguir.
+
+    The single thing that differs between an auê channel and someone's
+    private one. Everything else — curators, publishing, the calendar
+    feed, the band above Eventos — is the same shape with a different
+    owner."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT kind FROM groups WHERE id = ?", (group_id,)
+            "SELECT visibility FROM groups WHERE id = ?", (group_id,)
         ).fetchone()
-    return bool(row) and row["kind"] == "channel"
+    return bool(row) and row["visibility"] == "public"
+
+
+def channel_owner(group_id: str) -> str:
+    """Who the channel belongs to — auê for a public one, the creator
+    for a private one. Stored as created_by and held as role='admin';
+    both names predate the unification and aren't worth a migration."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT created_by FROM groups WHERE id = ?", (group_id,)
+        ).fetchone()
+    return row["created_by"] if row else ""
 
 
 def create_group_event(
