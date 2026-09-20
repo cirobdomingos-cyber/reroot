@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { fetchEvents } from '../services/api'
+import Avatar from './Avatar'
 
 // Extracted from GroupDetail (Sep 2026) so the channel screen can use
 // them too.
@@ -238,7 +239,7 @@ export function CatalogPickerSheet({ open, onClose, onPick }) {
   )
 }
 
-function BottomSheet({ open, onClose, title, children }) {
+export function BottomSheet({ open, onClose, title, children }) {
   // Hide the Companion FAB while this sheet is up.
   useEffect(() => {
     if (!open) return
@@ -279,7 +280,7 @@ function BottomSheet({ open, onClose, title, children }) {
   )
 }
 
-function SheetButton({ icon, label, sublabel, onClick, accent }) {
+export function SheetButton({ icon, label, sublabel, onClick, accent }) {
   return (
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 12,
