@@ -430,7 +430,7 @@ export default function ChannelDetail() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {events.map(ev => (
-          <ChannelRow key={ev.id} ev={ev} navigate={navigate} />
+          <ChannelRow key={ev.id} ev={ev} navigate={navigate} isPrivate={isPrivate} />
         ))}
       </div>
 
@@ -498,7 +498,7 @@ export default function ChannelDetail() {
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, opacity: 0.6 }}>
             {past.map(ev => (
-              <ChannelRow key={ev.id} ev={ev} navigate={navigate} />
+              <ChannelRow key={ev.id} ev={ev} navigate={navigate} isPrivate={isPrivate} />
             ))}
           </div>
         </>
@@ -507,7 +507,12 @@ export default function ChannelDetail() {
   )
 }
 
-function ChannelRow({ ev, navigate }) {
+function ChannelRow({ ev, navigate, isPrivate }) {
+  // A public channel's row is a copy of a catalog event, and the
+  // catalog event is the real one — richer, and the thing the rest of
+  // the app links to. Open that. A private channel's fork carries the
+  // private layer (note, guests, Vou/Não vou), so it opens itself.
+  const openId = (!isPrivate && ev.sourceEventId) ? ev.sourceEventId : ev.id
   return (
     <HomeEventRow
       name={ev.name}
@@ -521,7 +526,7 @@ function ChannelRow({ ev, navigate }) {
       // the padlock this flag draws would say the opposite.
       isGroupEvent={false}
       featured={ev.featured}
-      onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
+      onClick={() => navigate('/events', { state: { openEventId: openId } })}
     />
   )
 }

@@ -2140,11 +2140,20 @@ def get_event(event_id: str, google_id: str = ""):
     if event_id.startswith("grp_ev_"):
         ge = db.get_group_event(event_id)
         if ge:
+            # A fork of a public channel is a public event. The
+            # creator-or-invitee rule below is for private plans; it
+            # used to admit followers by accident, because publishing
+            # into a channel wrote every follower onto the invitee list.
+            # Once that stopped (following is not being invited), every
+            # public-channel fork 403'd for everyone but its curator —
+            # "tento entrar via canal e dá como se fosse privado".
+            linked = {ge.get("group_id"), *(ge.get("group_ids") or [])} - {None, ""}
+            is_public_fork = any(db.is_public_channel(g) for g in linked)
             invitees = ge.get("extra_invitee_ids") or []
             creator_id = ge.get("created_by")
             is_invitee = bool(google_id and google_id in invitees)
             is_creator = bool(google_id and google_id == creator_id)
-            if is_creator or is_invitee or _declined_but_in_its_group(ge, google_id):
+            if is_public_fork or is_creator or is_invitee or _declined_but_in_its_group(ge, google_id):
                 group_name = ""
                 if ge.get("group_id"):
                     group = db.get_group(ge["group_id"])
