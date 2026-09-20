@@ -1237,6 +1237,22 @@ export async function fetchChannels(googleId) {
 // Everything the channel screen needs in one call. Separate from the
 // group endpoint on purpose — a channel needs almost none of what that
 // one answers, and reusing it is how crew chrome creeps back in.
+// Founder-only. The endpoint shipped before any UI did, which is how
+// someone ends up building an auê channel out of the ordinary "criar
+// canal" form and wondering why nobody can see it.
+export async function createAueChannel(requestingEmail, name, description) {
+  const res = await fetchWithTimeout(`${BASE_URL}/admin/channels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requesting_email: requestingEmail, name, description }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Create channel failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function fetchChannel(channelId, googleId) {
   try {
     const res = await fetchWithTimeout(

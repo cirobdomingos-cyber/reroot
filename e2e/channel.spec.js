@@ -144,3 +144,61 @@ test('Descobrir goes away once everything is followed', async ({ page }) => {
   await expect(page.getByText(/^Seguindo/).first()).toBeVisible()
   await expect(page.getByText('Descobrir')).toHaveCount(0)
 })
+
+// Creating an auê channel had an endpoint and no button, so the only
+// ways in were curl or the ordinary "criar canal" form two rows down —
+// which makes a PRIVATE channel nobody else can find. That's how an
+// "AUÊ Samba e Pagode" ends up invisible to everyone.
+
+async function openAsFounder(page, isFounder) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType()
+    return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
+      ? route.continue() : route.abort()
+  })
+  await page.route('**/admin/curators**', route =>
+    route.fulfill({ json: { is_founder: isFounder, is_curator: isFounder } }))
+  await page.route('**/channels?**', route => route.fulfill({ json: { channels: [] } }))
+  await page.addInitScript(() =>
+    localStorage.setItem('aue_state', JSON.stringify({
+      hasJoined: true, googleUser: { id: 'u1', email: 'f@b.com', name: 'Ciro' },
+    })))
+  await page.goto('/#/community')
+  await page.waitForTimeout(1300)
+}
+
+test('the founder can create an auê channel from the channels tab', async ({ page }) => {
+  await openAsFounder(page, true)
+  const button = page.getByRole('button', { name: /Novo canal do auê/i })
+  await expect(button).toBeVisible()
+
+  await button.click()
+  await expect(page.getByPlaceholder(/Nome \(ex/)).toBeVisible()
+  // Says what it makes, because the other create button a few rows down
+  // makes the opposite thing.
+  await expect(page.getByText(/Público e seguível por qualquer pessoa/)).toBeVisible()
+})
+
+test('an ordinary user sees no way to create an auê channel', async ({ page }) => {
+  await openAsFounder(page, false)
+  await expect(page.getByRole('button', { name: /Novo canal do auê/i })).toHaveCount(0)
+})
+
+test('the visibility option no longer promises discovery it cannot deliver', async ({ page }) => {
+  // `visibility` is read in exactly one place — the check that blocks a
+  // non-member from opening a PRIVATE channel. Nothing lists public
+  // ones, so "qualquer pessoa pode encontrar" sent people looking for
+  // an audience that was never coming.
+  await openAsFounder(page, false)
+  await page.getByRole('button', { name: /Criar canal/i }).first().click()
+  await page.waitForTimeout(400)
+
+  // Default is private, and it explains itself now too — the _desc
+  // strings existed in i18n and were never rendered at all.
+  await expect(page.getByText(/Só quem você convidar/)).toBeVisible()
+
+  await page.getByRole('button', { name: /Por link/ }).click()
+  await expect(page.getByText(/Quem tiver o link consegue ver/)).toBeVisible()
+  await expect(page.getByText(/não aparece na lista de canais do auê/)).toBeVisible()
+  await expect(page.getByText(/pode encontrar/i)).toHaveCount(0)
+})
