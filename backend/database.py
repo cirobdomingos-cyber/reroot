@@ -414,6 +414,24 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `following` separates WHAT YOU ARE to a channel from
+        # WHETHER IT'S IN YOUR LIST. role is one column and can't hold
+        # both, so auê's own 'admin' row on its channel made follow and
+        # unfollow inert — INSERT OR IGNORE hit the primary key and the
+        # delete matched no 'follower' row — while the two screens
+        # disagreed about the state, because the list counted any row and
+        # the detail counted only followers.
+        #
+        # Same trap waits for per-channel curators: curating Rockzão
+        # shouldn't decide whether Rockzão is in your list.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN following INTEGER NOT NULL DEFAULT 0"
+            )
+            # Existing followers were following by definition.
+            conn.execute("UPDATE group_members SET following = 1 WHERE role = 'follower'")
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
                 handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'
@@ -4137,7 +4155,8 @@ def get_group_members(group_id: str) -> list[dict]:
     """Return all members of a group with profile info from user_states."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT google_id, role, joined_at FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
+            "SELECT google_id, role, joined_at, following, notify"
+            " FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
             (group_id,),
         ).fetchall()
 
@@ -4160,6 +4179,10 @@ def get_group_members(group_id: str) -> list[dict]:
             members.append({
                 "google_id": gid, "name": name, "picture": picture,
                 "role": row["role"], "joined_at": row["joined_at"],
+                # Whether the channel is in their list, which is separate
+                # from what they ARE to it — auê holds an admin row on
+                # its own channel without being in its audience.
+                "following": bool(row["following"]),
             })
     return members
 
@@ -4204,10 +4227,15 @@ def list_channels(google_id: str = "") -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT g.*,
-                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id)
+                      (SELECT COUNT(*) FROM group_members
+                        WHERE group_id = g.id AND following = 1)
                         AS follower_count,
-                      EXISTS(SELECT 1 FROM group_members
-                             WHERE group_id = g.id AND google_id = ?)
+                      -- `following`, not "has any row". Counting any row
+                      -- reported auê as following its own channel because
+                      -- it holds the admin row, and disagreed with the
+                      -- detail screen, which counted followers.
+                      COALESCE((SELECT following FROM group_members
+                                WHERE group_id = g.id AND google_id = ?), 0)
                         AS is_following,
                       COALESCE((SELECT notify FROM group_members
                                 WHERE group_id = g.id AND google_id = ?), 1)
@@ -4236,13 +4264,19 @@ def list_channels(google_id: str = "") -> list[dict]:
 
 
 def follow_channel(group_id: str, google_id: str) -> bool:
-    """Add a follower. Idempotent — following twice is a no-op, not an
-    error, because the button can be double-tapped."""
+    """Put a channel in someone's list. Idempotent — the button can be
+    double-tapped.
+
+    Sets `following` and leaves `role` alone, so auê or a channel
+    curator can follow their own channel without giving up what they
+    are to it. A brand-new row gets role='follower'; an existing admin
+    or curator keeps theirs."""
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
-            """INSERT OR IGNORE INTO group_members (group_id, google_id, role, joined_at)
-               VALUES (?, ?, 'follower', ?)""",
+            """INSERT INTO group_members (group_id, google_id, role, joined_at, following)
+               VALUES (?, ?, 'follower', ?, 1)
+               ON CONFLICT(group_id, google_id) DO UPDATE SET following = 1""",
             (group_id, google_id, now),
         )
         conn.commit()
@@ -4250,9 +4284,16 @@ def follow_channel(group_id: str, google_id: str) -> bool:
 
 
 def unfollow_channel(group_id: str, google_id: str) -> bool:
-    """Remove a follower. Never removes the channel itself, and never
-    touches an 'admin' row — auê's own membership isn't a follow."""
+    """Take a channel out of someone's list.
+
+    A plain follower's row goes entirely; an admin or curator keeps
+    theirs with following cleared, because stepping out of the audience
+    is not resigning from the job."""
     with get_conn() as conn:
+        conn.execute(
+            "UPDATE group_members SET following = 0 WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        )
         cur = conn.execute(
             """DELETE FROM group_members
                WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
@@ -4260,6 +4301,63 @@ def unfollow_channel(group_id: str, google_id: str) -> bool:
         )
         conn.commit()
     return cur.rowcount > 0
+
+
+# ── Per-channel curators ──────────────────────────────────────────
+# A channel curator is a group_members row with role='curator'. Same
+# table as followers and members, because the question it answers —
+# "what is this person to this channel" — is the same question role
+# already answers everywhere else.
+#
+# Deliberately separate from the global `curators` table. That one is
+# "can touch the catalog": approve suggestions, edit events, add IG
+# handles. This one is "runs Rockzão". Someone can have either without
+# the other, and conflating them means handing catalog-wide powers to a
+# person you wanted to let pick samba nights.
+
+def add_channel_curator(group_id: str, google_id: str) -> bool:
+    """Make someone a curator of this channel.
+
+    Overwrites a 'follower' row if there is one, which means the
+    follower count drops by one when you promote a follower. That's
+    correct: they stopped being an audience member.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO group_members (group_id, google_id, role, joined_at)
+               VALUES (?, ?, 'curator', ?)
+               ON CONFLICT(group_id, google_id) DO UPDATE SET role = 'curator'""",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def remove_channel_curator(group_id: str, google_id: str) -> bool:
+    """Step someone down. Only removes a 'curator' row, so this can
+    never delete auê's own 'admin' ownership of the channel."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """DELETE FROM group_members
+               WHERE group_id = ? AND google_id = ? AND role = 'curator'""",
+            (group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def list_channel_curators(group_id: str) -> list[dict]:
+    """Curators of this channel, with profile info."""
+    return [m for m in get_group_members(group_id) if m.get("role") == "curator"]
+
+
+def is_channel_curator(group_id: str, google_id: str) -> bool:
+    """Whether this person runs this channel. 'admin' counts — that's
+    the row auê itself holds as the creator."""
+    if not google_id:
+        return False
+    return get_group_member_role(group_id, google_id) in ("curator", "admin")
 
 
 def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
@@ -4270,7 +4368,7 @@ def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
             """UPDATE group_members SET notify = ?
-               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+               WHERE group_id = ? AND google_id = ? AND following = 1""",
             (1 if notify else 0, group_id, google_id),
         )
         conn.commit()
@@ -4298,7 +4396,7 @@ def get_channel_followers_to_notify(group_id: str) -> list[str]:
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT google_id FROM group_members
-               WHERE group_id = ? AND role = 'follower' AND notify = 1""",
+               WHERE group_id = ? AND following = 1 AND notify = 1""",
             (group_id,),
         ).fetchall()
     return [r["google_id"] for r in rows]

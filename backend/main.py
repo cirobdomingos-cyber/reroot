@@ -4379,7 +4379,12 @@ def get_channel(group_id: str, google_id: str = ""):
     upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
     past = [e for e in events if (e.get("dateStart") or "")[:10] < today]
 
-    followers = [m for m in db.get_group_members(group_id) if m.get("role") == "follower"]
+    # `following`, the same field the list reads. These two used to
+    # disagree — the list counted any membership row, this counted only
+    # role='follower' — so auê saw "Seguindo" on one screen and "Seguir"
+    # on the other, for the same channel.
+    members = db.get_group_members(group_id)
+    followers = [m for m in members if m.get("following")]
     is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
 
     return {
@@ -4391,6 +4396,12 @@ def get_channel(group_id: str, google_id: str = ""):
             # "seguir" doesn't drop them into a state they didn't pick.
             "notify": db.get_channel_notify(group_id, google_id),
             "upcoming_event_count": len(upcoming),
+            # Whether this viewer may edit the channel and publish into
+            # it: the founder, or a curator OF THIS CHANNEL.
+            "can_curate": bool(google_id) and (
+                db.is_channel_curator(group_id, google_id)
+                or db.is_founder((db.get_user_profile(google_id) or {}).get("email") or "")
+            ),
         },
         "events": upcoming,
         # Recent past, so a channel between shows still looks alive
@@ -4399,6 +4410,86 @@ def get_channel(group_id: str, google_id: str = ""):
         "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
         "followers": followers[:12],
     }
+
+
+class ChannelUpdate(BaseModel):
+    requesting_email: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ChannelCuratorAdd(BaseModel):
+    requesting_email: str
+    google_id: str
+
+
+def _can_curate_channel(group_id: str, email: str) -> bool:
+    """Who may edit a channel and publish into it: the founder, or
+    someone made a curator OF THAT CHANNEL.
+
+    Global curators are deliberately NOT included. That role is "can
+    touch the catalog" — approve suggestions, edit events, add IG
+    handles. Running Rockzão is a different job, and the whole point of
+    per-channel curators is being able to hand out the second without
+    the first."""
+    if db.is_founder(email):
+        return True
+    google_id = db.get_user_id_by_email(email)
+    return bool(google_id) and db.is_channel_curator(group_id, google_id)
+
+
+@app.put("/channels/{group_id}")
+def update_channel(group_id: str, req: ChannelUpdate):
+    """Rename a channel or rewrite its description."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not _can_curate_channel(group_id, req.requesting_email):
+        raise HTTPException(status_code=403, detail="Só a curadoria desse canal pode editar")
+    name = (req.name or "").strip()[:80] if req.name is not None else None
+    if req.name is not None and not name:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    db.update_group(
+        group_id,
+        name=name,
+        description=(req.description or "").strip()[:500] if req.description is not None else None,
+        visibility=None,
+    )
+    return {"ok": True, "channel": db.get_group(group_id)}
+
+
+@app.get("/channels/{group_id}/curators")
+def list_channel_curators(group_id: str, requesting_email: str = ""):
+    """Who runs this channel. Founder-only — a follower has no reason to
+    see the roster, and it's a list of real people."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(requesting_email)
+    return {"curators": db.list_channel_curators(group_id)}
+
+
+@app.post("/channels/{group_id}/curators")
+def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
+    """Hand someone this channel. Founder-only: a curator being able to
+    appoint more curators makes the roster ungovernable, and there's one
+    person who owns that decision."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(req.requesting_email)
+    if not db.get_user_profile(req.google_id):
+        raise HTTPException(status_code=404, detail="Pessoa não encontrada")
+    db.add_channel_curator(group_id, req.google_id)
+    return {"ok": True, "curators": db.list_channel_curators(group_id)}
+
+
+@app.delete("/channels/{group_id}/curators/{google_id}")
+def remove_channel_curator(group_id: str, google_id: str, requesting_email: str = ""):
+    """Step someone down. Only removes a 'curator' row, so auê's own
+    ownership of the channel survives this being called on it."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(requesting_email)
+    db.remove_channel_curator(group_id, google_id)
+    return {"ok": True, "curators": db.list_channel_curators(group_id)}
 
 
 @app.put("/channels/{group_id}/notify")
@@ -4920,10 +5011,13 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # A channel is curated: following it must not grant the right to
     # publish into it. Without this, "seguir" would be an open write to
     # a feed every other follower sees.
-    if db.is_channel(group_id) and not _is_curator_google_id(req.google_id):
+    if db.is_channel(group_id) and not (
+        _is_curator_google_id(req.google_id)
+        or db.is_channel_curator(group_id, req.google_id)
+    ):
         raise HTTPException(
             status_code=403,
-            detail="Só a curadoria do auê publica num canal do auê",
+            detail="Só a curadoria desse canal publica nele",
         )
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:

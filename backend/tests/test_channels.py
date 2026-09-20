@@ -99,12 +99,14 @@ def test_a_private_group_never_appears_in_the_channel_list(api):
 # -- 2. following is opt-in and idempotent ---------------------------
 
 def test_nobody_is_following_a_new_channel(api):
+    """Zero, not one. auê holds an admin row on its own channel, and
+    counting that opened every channel at "1 seguindo" — a number both
+    wrong and unearned. Following is now its own column."""
     _db, _main, client = api
     _channel(client)
     ch = client.get("/channels?google_id=u_ana").json()["channels"][0]
     assert ch["is_following"] is False
-    # The founder's own admin row is not a follow, but it is a member row.
-    assert ch["follower_count"] == 1
+    assert ch["follower_count"] == 0
 
 
 def test_follow_then_unfollow(api):
@@ -114,12 +116,12 @@ def test_follow_then_unfollow(api):
     client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
     ch = client.get("/channels?google_id=u_ana").json()["channels"][0]
     assert ch["is_following"] is True
-    assert ch["follower_count"] == 2
+    assert ch["follower_count"] == 1
 
     client.delete(f"/channels/{cid}/follow?google_id=u_ana")
     ch = client.get("/channels?google_id=u_ana").json()["channels"][0]
     assert ch["is_following"] is False
-    assert ch["follower_count"] == 1
+    assert ch["follower_count"] == 0
 
 
 def test_following_twice_is_not_an_error(api):
@@ -127,7 +129,7 @@ def test_following_twice_is_not_an_error(api):
     cid = _channel(client)
     assert client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"}).status_code == 200
     assert client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"}).status_code == 200
-    assert client.get("/channels?google_id=u_ana").json()["channels"][0]["follower_count"] == 2
+    assert client.get("/channels?google_id=u_ana").json()["channels"][0]["follower_count"] == 1
 
 
 def test_unfollowing_cannot_remove_aues_own_ownership(api):
@@ -472,3 +474,71 @@ def test_the_toggle_reads_pre_armed_before_you_follow(api):
     _db, _main, client = api
     cid = _channel(client)
     assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["notify"] is True
+
+
+# -- 11. following is separate from what you ARE to the channel ------
+#
+# Reported from a real session: "não consigo unfollow" and "o seguir
+# dentro não funciona". Both were the founder testing their own channel.
+#
+# role is one column and can't hold "admin AND in my list", so auê's own
+# admin row made both calls inert — follow was INSERT OR IGNORE against
+# the primary key, unfollow deleted only rows with role='follower'. And
+# the two screens disagreed: the list counted any membership row, the
+# detail counted followers, so the same channel read "Seguindo" in one
+# place and "Seguir" in the other.
+#
+# `following` is now its own column. Same trap would have hit every
+# per-channel curator.
+
+def _follow_state(client, db_, cid, who):
+    listed = next(c for c in client.get(f"/channels?google_id={who}").json()["channels"]
+                  if c["id"] == cid)
+    detail = client.get(f"/channels/{cid}?google_id={who}").json()["channel"]
+    return listed["is_following"], detail["is_following"], db_.get_group_member_role(cid, who)
+
+
+def test_the_founder_can_follow_and_unfollow_its_own_channel(api):
+    _db, _main, client = api
+    cid = _channel(client)
+
+    assert _follow_state(client, _db, cid, "u_founder") == (False, False, "admin")
+
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    assert _follow_state(client, _db, cid, "u_founder") == (True, True, "admin")
+
+    client.delete(f"/channels/{cid}/follow?google_id=u_founder")
+    assert _follow_state(client, _db, cid, "u_founder") == (False, False, "admin")
+
+
+def test_unfollowing_does_not_cost_you_the_channel_you_run(api):
+    """Stepping out of the audience is not resigning from the job."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_founder"})
+    client.delete(f"/channels/{cid}/follow?google_id=u_founder")
+    assert _db.get_group_member_role(cid, "u_founder") == "admin"
+
+
+def test_the_list_and_the_detail_never_disagree(api):
+    """They read one column now. Asserted directly because the bug was
+    exactly this: two definitions of the same word."""
+    _db, _main, client = api
+    cid = _channel(client)
+    for who in ("u_founder", "u_ana"):
+        for action in (None, "follow", "unfollow"):
+            if action == "follow":
+                client.post(f"/channels/{cid}/follow", json={"google_id": who})
+            elif action == "unfollow":
+                client.delete(f"/channels/{cid}/follow?google_id={who}")
+            listed, detail, _ = _follow_state(client, _db, cid, who)
+            assert listed == detail, f"{who} after {action}: {listed} vs {detail}"
+
+
+def test_a_plain_followers_row_disappears_on_unfollow(api):
+    """No orphan rows for people who just changed their mind."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    client.delete(f"/channels/{cid}/follow?google_id=u_ana")
+    assert _db.get_group_member_role(cid, "u_ana") is None
