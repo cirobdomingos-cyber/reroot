@@ -3,13 +3,13 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
-import { CalendarSheet, CatalogPickerSheet, GroupStatsPanel } from '../components/GroupSheets'
+import { CalendarSheet, CatalogPickerSheet } from '../components/GroupSheets'
 import { appLink } from '../lib/share'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
-  createGroupEvent, fetchGroupStats, getGroupCalendarFeedUrl,
+  createGroupEvent, getGroupCalendarFeedUrl,
 } from '../services/api'
 
 // The channel screen.
@@ -39,7 +39,6 @@ export default function ChannelDetail() {
   const [data, setData] = useState(null)   // null = loading
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
-  const [stats, setStats] = useState(null)
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -51,16 +50,6 @@ export default function ChannelDetail() {
   }, [channelId, googleId])
 
   useEffect(() => { load() }, [load])
-
-  // Curator-only. A follower has no use for the activity panel, and the
-  // endpoint refuses them anyway — it's member-gated, and on a channel
-  // only the curation team holds a role.
-  useEffect(() => {
-    if (!googleId || !data?.channel?.can_curate) { setStats(null); return }
-    let cancelled = false
-    fetchGroupStats(channelId, googleId).then(s => { if (!cancelled) setStats(s) })
-    return () => { cancelled = true }
-  }, [channelId, googleId, data?.channel?.can_curate])
 
   // Publishing into the channel from the catalog — this is how a
   // channel gets filled, and it's the same sheet a private channel
@@ -311,14 +300,6 @@ export default function ChannelDetail() {
       <ChannelAction onClick={share} wide>
         {copied ? '✓ Link copiado' : '🔗 Compartilhar canal'}
       </ChannelAction>
-
-      {/* Activity, curator-only — it's the panel that says whether the
-          channel is alive, which is a question for whoever runs it. */}
-      {channel.can_curate && stats && stats.events_total > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <GroupStatsPanel stats={stats} />
-        </div>
-      )}
 
       {/* Who else is here. Shown to everyone, follower or not — it's
           social proof, and you should be able to see it before deciding
