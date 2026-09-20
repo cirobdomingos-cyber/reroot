@@ -4342,6 +4342,80 @@ def create_channel(req: ChannelCreate):
     return {"channel": channel}
 
 
+class ChannelNotify(BaseModel):
+    google_id: str
+    notify: bool
+
+
+@app.get("/channels/{group_id}")
+def get_channel(group_id: str, google_id: str = ""):
+    """Everything the channel screen needs, in one call.
+
+    Separate from GET /groups/{id} on purpose. That endpoint answers
+    "what is this crew" — members, roles, invite code, stats — and a
+    channel needs almost none of it. Reusing it meant the screen either
+    rendered crew chrome it had to hide, or ignored most of the payload;
+    both are how an "...unless it's a channel" branch spreads.
+
+    Open to anyone, signed in or not: a channel that can't be looked at
+    before following makes the follow a blind purchase."""
+    channel = db.get_group(group_id)
+    if not channel or channel.get("kind") != "channel":
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    # Published feed: everyone sees every event, follower or not. auê
+    # creates them with no invitees, so the crew visibility rule would
+    # return an empty list to the channel's own followers.
+    events = [
+        _group_event_to_frontend(
+            e,
+            group_name=channel.get("name") or "",
+            viewer_google_id=google_id,
+            prefer_group_id=group_id,
+        )
+        for e in db.get_group_events(group_id, viewer_google_id=None)
+    ]
+    today = datetime.now(timezone.utc).date().isoformat()
+    upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
+    past = [e for e in events if (e.get("dateStart") or "")[:10] < today]
+
+    followers = [m for m in db.get_group_members(group_id) if m.get("role") == "follower"]
+    is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
+
+    return {
+        "channel": {
+            **channel,
+            "follower_count": len(followers),
+            "is_following": is_following,
+            # Pre-armed for someone who hasn't followed yet, so tapping
+            # "seguir" doesn't drop them into a state they didn't pick.
+            "notify": db.get_channel_notify(group_id, google_id),
+            "upcoming_event_count": len(upcoming),
+        },
+        "events": upcoming,
+        # Recent past, so a channel between shows still looks alive
+        # rather than empty. Newest first — "what you missed", not a
+        # schedule.
+        "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
+        "followers": followers[:12],
+    }
+
+
+@app.put("/channels/{group_id}/notify")
+def set_channel_notify(group_id: str, req: ChannelNotify):
+    """Turn a channel's pushes on or off, for one follower.
+
+    Only a follower has a preference to set — auê's own admin row on its
+    channel is ownership, not a subscription."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta")
+    if not db.set_channel_notify(group_id, req.google_id, req.notify):
+        raise HTTPException(status_code=409, detail="Segue o canal primeiro")
+    return {"ok": True, "notify": req.notify}
+
+
 @app.post("/channels/{group_id}/follow")
 def follow_channel(group_id: str, req: ChannelFollow):
     """Follow a channel. Idempotent: the button can be double-tapped."""

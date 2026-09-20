@@ -58,7 +58,17 @@ export default function GroupDetail() {
   useEffect(() => {
     if (!googleId || !groupId) return
     fetchGroupDetail(groupId, googleId)
-      .then(data => { setGroup(data); setLoading(false) })
+      .then(data => {
+        // Channels have their own screen. This route stays reachable
+        // because links to it exist — shared before the split, and in
+        // whatever bundle a phone hasn't updated past — so it forwards
+        // instead of rendering crew chrome around a feed.
+        if (data?.kind === 'channel') {
+          navigate(`/channels/${data.id}`, { replace: true })
+          return
+        }
+        setGroup(data); setLoading(false)
+      })
       .catch(() => { setError('Failed to load group'); setLoading(false) })
     fetchGroupStats(groupId, googleId).then(s => s && setStats(s))
     fetchFriendsFeed(googleId).then(events => {

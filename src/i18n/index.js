@@ -527,10 +527,16 @@ export const T = {
     groups_description:     'Descrição (opcional)',
     groups_desc_placeholder:'Sobre o que é esse canal...',
     groups_visibility:      'Visibilidade',
-    groups_public:          'Público',
+    groups_public:          'Por link',
     groups_private:         'Privado',
-    groups_public_desc:     'Qualquer pessoa pode encontrar',
-    groups_private_desc:    'Só com código de convite',
+    // Was 'Qualquer pessoa pode encontrar', which nothing in the app
+    // makes true: `visibility` is read in exactly one place — the
+    // check that blocks a non-member from opening a PRIVATE channel.
+    // No endpoint lists public ones. The label promised discovery and
+    // delivered a shareable link, so people picked it and then waited
+    // for an audience that was never coming.
+    groups_public_desc:     'Quem tiver o link consegue ver',
+    groups_private_desc:    'Só quem você convidar',
     groups_save:            'Criar',
     groups_cancel:          'Cancelar',
     groups_members:         'membros',
@@ -604,10 +610,11 @@ T.en.groups_name_placeholder = 'e.g. Friday Yoga, Hiking CWB...'
 T.en.groups_description = 'Description (optional)'
 T.en.groups_desc_placeholder = 'What is this group about...'
 T.en.groups_visibility = 'Visibility'
-T.en.groups_public = 'Public'
+T.en.groups_public = 'By link'
 T.en.groups_private = 'Private'
-T.en.groups_public_desc = 'Anyone can find it'
-T.en.groups_private_desc = 'Invite code only'
+// 'Anyone can find it' was never true — see the pt-BR note above.
+T.en.groups_public_desc = 'Anyone with the link can see it'
+T.en.groups_private_desc = 'Only people you invite'
 T.en.groups_save = 'Create'
 T.en.groups_cancel = 'Cancel'
 T.en.groups_members = 'members'

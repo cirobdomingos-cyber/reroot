@@ -1234,6 +1234,54 @@ export async function fetchChannels(googleId) {
   }
 }
 
+// Everything the channel screen needs in one call. Separate from the
+// group endpoint on purpose — a channel needs almost none of what that
+// one answers, and reusing it is how crew chrome creeps back in.
+// Founder-only. The endpoint shipped before any UI did, which is how
+// someone ends up building an auê channel out of the ordinary "criar
+// canal" form and wondering why nobody can see it.
+export async function createAueChannel(requestingEmail, name, description) {
+  const res = await fetchWithTimeout(`${BASE_URL}/admin/channels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requesting_email: requestingEmail, name, description }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Create channel failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function fetchChannel(channelId, googleId) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/channels/${encodeURIComponent(channelId)}`
+      + `?google_id=${encodeURIComponent(googleId || '')}`,
+    )
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+export async function setChannelNotify(channelId, googleId, notify) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/channels/${encodeURIComponent(channelId)}/notify`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ google_id: googleId, notify }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Notify failed: ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function setChannelFollow(channelId, googleId, following) {
   const url = `${BASE_URL}/channels/${encodeURIComponent(channelId)}/follow`
   const res = following
