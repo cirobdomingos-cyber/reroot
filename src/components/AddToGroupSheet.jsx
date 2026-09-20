@@ -11,7 +11,7 @@ import { fetchGroups, fetchChannels, createGroupEvent, fetchGroupsWithSource, un
 //
 // The catalog event is mirrored into the group's events table — same
 // flow as the channel screen's "Do catálogo" button.
-export default function AddToGroupSheet({ open, onClose, event }) {
+export default function AddToGroupSheet({ open, onClose, event, occurrenceDay = null }) {
   const { state } = useApp()
   const navigate = useNavigate()
   const googleId = state.googleUser?.id
@@ -31,6 +31,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   // member_count: three of the endpoint's four exits send no push, and
   // a locally-computed number would claim otherwise on all of them.
   const [notified, setNotified] = useState({})
+  // Channels added during this sheet's life. Separate from linkedGroupIds,
+  // which also holds the ones that were already linked when it opened —
+  // those were notified (or summarised) whenever that happened, not now.
+  const [justAdded, setJustAdded] = useState(new Set())
 
   useEffect(() => {
     if (!open || !googleId) return
@@ -62,7 +66,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   }, [open, googleId, event?.id])
 
   // Reset the note when the sheet closes/reopens for a different event.
-  useEffect(() => { if (!open) { setNote(''); setNotified({}) } }, [open])
+  useEffect(() => { if (!open) { setNote(''); setNotified({}); setJustAdded(new Set()) } }, [open])
 
   async function handlePick(group) {
     if (submittingId || !event) return
@@ -70,14 +74,25 @@ export default function AddToGroupSheet({ open, onClose, event }) {
     try {
       const desc = (event.description || '').trim()
       const urlSuffix = event.url ? `\n\nVer original: ${event.url}` : ''
+      // A run — a residency, a week-long programação — is one catalog row
+      // rendered on each day it covers. Adding it from the 18th has to
+      // fork the 18th: the row's own dateStart is the day the run
+      // STARTED, so without this the event arrived in the channel
+      // already past and nobody could see it.
+      //
+      // date_end goes with it. The fork is the night the reader picked,
+      // not the whole run, so carrying the range would put the series
+      // back and re-open the same question inside the channel. When
+      // there is no occurrence day the event is a one-off or a run
+      // added as a run, and the range is carried as before — dropping
+      // it unconditionally is what once collapsed every multi-day
+      // event to its opening day.
+      const startTime = (event.dateStart || '').slice(11) || '00:00:00'
       const result = await createGroupEvent(group.id, googleId, {
         name: event.name,
         venue: event.venue || '',
-        date_start: event.dateStart,
-        // Carry the range across the fork. Hardcoding null here collapsed
-        // every multi-day catalog event (Carnaval, a week-long exhibition)
-        // to its opening day the moment someone added it to a group.
-        date_end: event.dateEnd || null,
+        date_start: occurrenceDay ? `${occurrenceDay}T${startTime}` : event.dateStart,
+        date_end: occurrenceDay ? null : (event.dateEnd || null),
         description: (desc + urlSuffix).slice(0, 1000),
         visibility: 'members',
         note: note.trim().slice(0, 280),
@@ -88,6 +103,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
       // "Adicionado · toque pra remover" immediately.
       setLinkedGroupIds(prev => new Set([...prev, group.id]))
       setNotified(prev => ({ ...prev, [group.id]: result?.notified_count ?? 0 }))
+      setJustAdded(prev => new Set([...prev, group.id]))
       setDoneId(group.id)
       setTimeout(() => setDoneId(null), 900)
       // If the backend returned a relinked event with a different id
@@ -301,7 +317,14 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                             // plain label.
                             justNotified > 0
                               ? `${justNotified} ${justNotified === 1 ? 'avisado' : 'avisados'} · toque pra remover`
-                              : 'Adicionado · toque pra remover'
+                              // An auê channel sends no push now — its
+                              // followers get one summary at 20:00. Without
+                              // this line a curator adding five events sees
+                              // nobody notified five times and concludes
+                              // the channel is broken.
+                              : (g._aue && justAdded.has(g.id))
+                                ? 'Adicionado · o canal avisa hoje à noite'
+                                : 'Adicionado · toque pra remover'
                           ) : (
                             <>
                               {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}

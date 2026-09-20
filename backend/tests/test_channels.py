@@ -1030,3 +1030,411 @@ def test_someone_elses_private_crew_is_never_reported(api):
     gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role da Ana"}).json()["id"]
     _add_to(client, gid, "u_ana")
     assert _linked(client, "instagram_ig_x_A", "u_bia") == set()
+
+
+# -- 11. a private channel gets the same two switches ----------------
+#
+# `following` was built for public channels, where opting in is a real
+# choice. A private channel isn't found, you're let into it, so
+# membership already IS that choice. With the column at 0 on every crew
+# row, ChannelDetail hid both switches (it gates them on is_following)
+# and both endpoints answered "Segue o canal primeiro" to people who
+# were already inside.
+
+def _crew(client, who="u_ana", name="Curitiba na real"):
+    return client.post("/groups", json={"google_id": who, "name": name}).json()["id"]
+
+
+def test_making_a_private_channel_puts_it_in_your_list(api):
+    _db, _main, client = api
+    gid = _crew(client)
+    assert client.get(f"/channels/{gid}?google_id=u_ana"
+                      ).json()["channel"]["is_following"] is True
+
+
+def test_being_let_into_one_puts_it_in_yours_too(api):
+    _db, _main, client = api
+    gid = _crew(client)
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    assert client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code}).status_code == 200
+    assert client.get(f"/channels/{gid}?google_id=u_bia"
+                      ).json()["channel"]["is_following"] is True
+
+
+def test_a_member_can_set_the_two_switches(api):
+    """Both used to 409. The switches exist on the same screen for both
+    kinds of channel now, so they have to answer for both."""
+    _db, _main, client = api
+    gid = _crew(client)
+    for path, key in (("notify", "notify"), ("prioritize", "prioritize")):
+        r = client.put(f"/channels/{gid}/{path}",
+                       json={"google_id": "u_ana", key: False})
+        assert r.status_code == 200, (path, r.text)
+        assert r.json()[key] is False
+
+
+def test_following_a_public_channel_is_still_a_separate_act(api):
+    """The fix must not reach public channels. Being listed one is not
+    consent to have it in your list — that distinction is the whole
+    reason the column exists."""
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get(f"/channels/{cid}?google_id=u_ana"
+                      ).json()["channel"]["is_following"] is False
+
+
+def test_the_founders_own_channel_is_not_in_the_founders_list(api):
+    """Creating an auê channel writes an admin row. That's ownership,
+    not a subscription — counting it opened every channel at 1 seguindo."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ch = client.get(f"/channels/{cid}?google_id=u_founder").json()["channel"]
+    assert ch["is_following"] is False
+    assert ch["follower_count"] == 0
+
+
+# -- 12. and the switches now do something ---------------------------
+
+def _crew_event(client, gid, who="u_ana", name="Churrasco do Ze"):
+    r = client.post(f"/groups/{gid}/events", json={
+        "google_id": who, "name": name, "venue": "Quintal",
+        "date_start": "2099-11-01T18:00:00",
+    })
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _feed_names(client, who):
+    return {e["name"] for e in client.get(f"/events/group?google_id={who}").json()["events"]}
+
+
+def test_a_private_channels_events_reach_its_members(api):
+    _db, _main, client = api
+    gid = _crew(client)
+    _crew_event(client, gid)
+    assert "Churrasco do Ze" in _feed_names(client, "u_ana")
+
+
+def test_turning_priority_off_takes_the_channel_out_of_eventos(api):
+    """"Só aqui dentro — fora dos Eventos" is what the switch promises.
+    Until now the flag was read only by the public-channel feed, so on a
+    private channel it promised that to nobody."""
+    _db, _main, client = api
+    gid = _crew(client)
+    _crew_event(client, gid)
+    client.put(f"/channels/{gid}/prioritize",
+               json={"google_id": "u_ana", "prioritize": False})
+    assert "Churrasco do Ze" not in _feed_names(client, "u_ana")
+
+
+def test_it_only_goes_quiet_for_the_person_who_muted_it(api):
+    _db, _main, client = api
+    gid = _crew(client)
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    _crew_event(client, gid)
+    client.put(f"/channels/{gid}/prioritize",
+               json={"google_id": "u_ana", "prioritize": False})
+    assert "Churrasco do Ze" not in _feed_names(client, "u_ana")
+    assert "Churrasco do Ze" in _feed_names(client, "u_bia")
+
+
+def test_muting_one_channel_does_not_hide_what_another_says(api):
+    """Any, not all. An event in a muted channel and a live one is still
+    an event you asked to see."""
+    _db, _main, client = api
+    quiet = _crew(client, name="Canal mudo")
+    loud = _crew(client, name="Canal vivo")
+    ev = _crew_event(client, quiet)
+    client.post(f"/groups/{loud}/events", json={
+        "google_id": "u_ana", "source_event_id": ev["id"],
+        "name": ev["name"], "venue": "Quintal",
+        "date_start": "2099-11-01T18:00:00",
+    })
+    client.put(f"/channels/{quiet}/prioritize",
+               json={"google_id": "u_ana", "prioritize": False})
+    assert "Churrasco do Ze" in _feed_names(client, "u_ana")
+
+
+# -- 13. a public channel summarises, it doesn't fire per event ------
+#
+# Publishing into an auê channel is editorial work and comes in bursts:
+# a curator clearing a backlog sent one push per event, which is the
+# shape that gets an app muted. Private channels keep the instant push —
+# there the event IS the message, and holding it until evening turns it
+# into news about a night that already started.
+
+import asyncio
+from models import EnrichedEvent
+
+
+def _sent(monkeypatch, main):
+    """Capture _send_push_to_user calls instead of sending them."""
+    calls = []
+    monkeypatch.setattr(main, "_send_push_to_user",
+                        lambda gid, **kw: calls.append((gid, kw)))
+    return calls
+
+
+def test_adding_to_a_public_channel_notifies_nobody_right_now(api, monkeypatch):
+    _db, main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    calls = _sent(monkeypatch, main)
+    r = _add_to(client, cid, "u_founder")
+    assert calls == []
+    # And says so. The sheet renders "3 avisados" off this number.
+    assert r["notified_count"] == 0
+
+
+def test_adding_to_a_private_channel_still_notifies_at_once(api, monkeypatch):
+    _db, main, client = api
+    gid = _crew(client)
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    calls = _sent(monkeypatch, main)
+    _crew_event(client, gid)
+    assert "u_bia" in [gid_ for gid_, _ in calls]
+
+
+def test_the_digest_headlines_the_channel_you_chose(api, monkeypatch):
+    """The interesting number is not how many events the city got, it's
+    how many came from a channel you picked. That differs per person,
+    so the push copy is built per person."""
+    _db, main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    for i in range(3):
+        _add_to(client, cid, "u_founder", name=f"Show {i}", src=f"cat_{i}")
+    picks = _db.channel_picks_by_follower(["cat_0", "cat_1", "cat_2"])
+    assert picks == {"u_ana": {"Rockzão": 3}}
+
+
+def test_someone_who_follows_nothing_is_not_in_it(api):
+    _db, main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder", src="cat_0")
+    assert _db.channel_picks_by_follower(["cat_0"]) == {}
+
+
+def test_someone_who_muted_the_channel_is_not_in_it(api):
+    _db, main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    client.put(f"/channels/{cid}/notify", json={"google_id": "u_ana", "notify": False})
+    _add_to(client, cid, "u_founder", src="cat_0")
+    assert _db.channel_picks_by_follower(["cat_0"]) == {}
+
+
+def test_a_private_channel_never_reaches_the_digest(api):
+    """It pushed at the time. Counting it here would be the same news
+    twice, and would put a private channel's name in a summary built
+    from the public catalog."""
+    _db, main, client = api
+    gid = _crew(client)
+    client.post(f"/groups/{gid}/events", json={
+        "google_id": "u_ana", "name": "Churrasco do Ze", "venue": "Quintal",
+        "date_start": "2099-11-01T18:00:00", "source_event_id": "cat_0",
+    })
+    assert _db.channel_picks_by_follower(["cat_0"]) == {}
+
+
+# -- 14. a run forked from one of its days keeps that day -------------
+#
+# A residency or a week-long programação is ONE catalog row, rendered on
+# every day it covers. Adding it from the 18th has to fork the 18th —
+# and then hold it, because _merge_source_event reads a fork's dates
+# back off the catalog row, where the run still starts on the 14th.
+# Reported from production: "Semana do Consumidor" at Janela Bar landed
+# in the channel already over.
+
+RUN_ID = "instagram_ig_janela_A"
+
+
+def _catalog_run(_db, **overrides):
+    """A catalog row covering the 14th through the 20th."""
+    from models import EnrichedEvent
+    base = dict(
+        id=RUN_ID, source="instagram", external_id="ig_janela_A",
+        name="Semana do Consumidor", description="Descontos a semana toda",
+        venue_name="Janela Bar", venue_address="", neighborhood="Batel",
+        city="Curitiba",
+        date_start=datetime(2099, 3, 14, 19, 0, tzinfo=timezone.utc),
+        date_end=datetime(2099, 3, 20, 23, 0, tzinfo=timezone.utc),
+        price_min=0.0, price_max=0.0, currency="BRL", capacity=None,
+        kind="community", category_label="Comunidade", category_emoji="🤝",
+        has_food=True, is_low_pressure=False, is_curated=False,
+        pitch="", price_tier="free", vibe_summary="", expected_size="medium",
+        header_gradient="linear-gradient(135deg, #FFF3E0, #FFE0B2)",
+        url="https://instagram.com/p/A/", image_url=None,
+        fetched_at=datetime.now(timezone.utc), genre="",
+    )
+    base.update(overrides)
+    _db.upsert_event(EnrichedEvent(**base))
+
+
+@pytest.fixture()
+def run_event(api):
+    _db, _main, client = api
+    _catalog_run(_db)
+    return _db, _main, client
+
+
+def test_forking_the_18th_stores_the_18th(run_event):
+    _db, main, client = run_event
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    r = client.post(f"/groups/{gid}/events", json={
+        "google_id": "u_ana", "name": "Semana do Consumidor", "venue": "Janela Bar",
+        "date_start": "2099-03-18T19:00:00", "date_end": None,
+        "source_event_id": RUN_ID,
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["date_start"][:10] == "2099-03-18"
+
+
+def test_and_the_catalog_does_not_put_the_14th_back(run_event):
+    """The half that made the first half useless. Without the pin the
+    fork stores the 18th and every read hands back the 14th."""
+    _db, main, client = run_event
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    client.post(f"/groups/{gid}/events", json={
+        "google_id": "u_ana", "name": "Semana do Consumidor", "venue": "Janela Bar",
+        "date_start": "2099-03-18T19:00:00", "date_end": None,
+        "source_event_id": RUN_ID,
+    })
+    got = client.get("/events/group?google_id=u_ana").json()["events"]
+    assert [e["dateStart"][:10] for e in got] == ["2099-03-18"]
+
+
+def test_a_run_added_as_a_run_still_keeps_its_range(run_event):
+    """The opposite failure, which a previous fix already caused once:
+    dropping date_end unconditionally collapsed every multi-day event to
+    its opening day."""
+    _db, main, client = run_event
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    client.post(f"/groups/{gid}/events", json={
+        "google_id": "u_ana", "name": "Semana do Consumidor", "venue": "Janela Bar",
+        "date_start": "2099-03-14T19:00:00", "date_end": "2099-03-20T23:00:00",
+        "source_event_id": RUN_ID,
+    })
+    got = client.get("/events/group?google_id=u_ana").json()["events"][0]
+    assert got["dateStart"][:10] == "2099-03-14"
+    assert (got.get("dateEnd") or "")[:10] == "2099-03-20"
+
+
+def test_a_plain_fork_still_tracks_the_catalog(run_event):
+    """Pinning must be narrow. An ordinary add keeps following the
+    scrape, which is how a fork's time and cover stay correct."""
+    _db, main, client = run_event
+    gid = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()["id"]
+    client.post(f"/groups/{gid}/events", json={
+        "google_id": "u_ana", "name": "Semana do Consumidor", "venue": "Janela Bar",
+        "date_start": "2099-03-14T19:00:00",
+        "source_event_id": RUN_ID,
+    })
+    # Re-scrape moves the run.
+    _catalog_run(_db, date_start=datetime(2099, 3, 15, 20, 0, tzinfo=timezone.utc))
+    got = client.get("/events/group?google_id=u_ana").json()["events"][0]
+    assert got["dateStart"][:10] == "2099-03-15"
+
+
+# -- 15. following is not being invited ------------------------------
+#
+# Publishing into a channel expanded extra_invitee_ids to every member,
+# and following writes a member row — so an auê channel's whole
+# programme arrived as personal invitations. That list is what every
+# personal surface keys off: "esperando você", "ver convite", the
+# creator-or-invitee visibility rule, isPersonalPlan. Reported from
+# production as "muita coisa tá caindo como convite".
+
+def test_publishing_into_an_aue_channel_invites_nobody(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_bia"})
+    ev = _add_to(client, cid, "u_founder")
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
+
+
+def test_a_channel_event_is_not_in_a_followers_personal_feed(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    _add_to(client, cid, "u_founder")
+    assert client.get("/events/group?google_id=u_ana").json()["events"] == []
+
+
+def test_the_channel_still_shows_it_to_that_follower(api):
+    """The events have to keep reaching people — just not as invitations.
+    The channel screen lists them without consulting the invitee list."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    _add_to(client, cid, "u_founder")
+    got = client.get(f"/channels/{cid}?google_id=u_ana").json()["events"]
+    assert [e["name"] for e in got] == ["Masterclass DJ"]
+
+
+def test_a_private_channel_still_invites_its_members(api):
+    """The opposite failure. A crew's event IS an invitation, and
+    emptying the list here would make it invisible to everyone but its
+    creator."""
+    _db, _main, client = api
+    gid = _crew(client)
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    ev = _crew_event(client, gid)
+    assert "u_bia" in _db.get_group_event(ev["id"])["extra_invitee_ids"]
+    assert [e["name"] for e in
+            client.get("/events/group?google_id=u_bia").json()["events"]] == ["Churrasco do Ze"]
+
+
+def test_followers_already_written_in_are_cleaned_up(api):
+    """The rows that already exist in production. Nothing else reads
+    that list to mean anything but "was invited", so leaving them would
+    leave the symptom in place for every event added so far."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _add_to(client, cid, "u_founder")
+    with _db.get_conn() as conn:
+        conn.execute(
+            "UPDATE group_events SET extra_invitee_ids = ? WHERE id = ?",
+            ('["u_ana","u_bia"]', ev["id"]),
+        )
+        conn.commit()
+    _db.init_db()          # re-run migrations, as a deploy does
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
+
+
+# -- 16. a curator sees their own channel's marks ---------------------
+#
+# auê holds an admin row on its own channels and deliberately doesn't
+# follow them — ownership isn't a subscription, and counting it opened
+# every channel at "1 seguindo". But the channel feed keyed on
+# following=1, so a curator's own channels never reached it: events they
+# had published sat in Eventos as plain catalog rows with nothing saying
+# where they came from. Reported from production.
+
+def test_a_curator_sees_their_own_channels_events_in_the_feed(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    got = _db.get_followed_channel_events("u_founder")
+    assert [e["name"] for e in got] == ["Masterclass DJ"]
+
+
+def test_and_still_is_not_counted_as_a_follower(api):
+    """The fix must not reach the follower count — that's the number the
+    `following` column was split out to keep honest."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ch = client.get(f"/channels/{cid}?google_id=u_founder").json()["channel"]
+    assert ch["follower_count"] == 0
+    assert ch["is_following"] is False
+
+
+def test_a_stranger_still_gets_nothing(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _add_to(client, cid, "u_founder")
+    assert _db.get_followed_channel_events("u_bia") == []

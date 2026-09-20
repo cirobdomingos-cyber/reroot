@@ -20,7 +20,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import AddToCalendar from './AddToCalendar'
 import PostEventAttendees from './PostEventAttendees'
 import Avatar from './Avatar'
 import InviteRequestsPanel from './InviteRequestsPanel'
@@ -1173,12 +1172,6 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
               >
                 👥 Convidar mais gente
               </button>
-            )}
-
-            {rsvped && (
-              <div style={{ marginTop: 10 }}>
-                <AddToCalendar event={ev} />
-              </div>
             )}
 
             {/* Delete — only when caller decides the user has authority

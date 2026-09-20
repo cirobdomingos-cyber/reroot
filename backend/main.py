@@ -2055,8 +2055,23 @@ def list_user_group_events(google_id: str):
         # feed, because members were invited to them. Scoping this to
         # public channels is the difference, and getting it wrong
         # emptied every crew's feed at once.
-        if any(db.is_public_channel(gid) for gid in
-               {ge.get("group_id"), *(ge.get("group_ids") or [])} if gid):
+        linked_gids = {ge.get("group_id"), *(ge.get("group_ids") or [])}
+        linked_gids.discard(None)
+        linked_gids.discard("")
+        if any(db.is_public_channel(gid) for gid in linked_gids):
+            continue
+        # "Só aqui dentro — fora dos Eventos" is what the ☆ switch
+        # promises, and until now it promised it to nobody: the flag was
+        # only read by the public-channel feed. A private channel's
+        # events arrive through here, so this is where turning it off
+        # has to take effect.
+        #
+        # Any, not all: an event in a muted channel and a live one is
+        # still an event you asked to see. Muting one channel is not a
+        # way to hide what another one is telling you about.
+        if linked_gids and all(
+            not db.get_channel_prioritize(gid, google_id) for gid in linked_gids
+        ):
             continue
         out.append(_group_event_to_frontend(
             ge,
@@ -5298,7 +5313,23 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             # out then, not now.
             return {**existing, "notified_count": 0}
 
-    if req.invitee_google_ids is None:
+    # Nobody is invited to a public channel.
+    #
+    # Publishing into one used to write every follower into
+    # extra_invitee_ids, because a channel is a `groups` row and this
+    # expanded members. But that list is what every personal surface
+    # keys off — "esperando você", "ver convite", the creator-or-invitee
+    # visibility rule, isPersonalPlan — so following auê Rockzera turned
+    # its whole programme into a pile of personal invitations, and an
+    # event you were "invited" to by a channel you aren't a member of
+    # came back labelled as your own plan.
+    #
+    # Following is not being invited. A channel's events reach you
+    # through the channel screen and the Eventos section, neither of
+    # which consults this list.
+    if db.is_public_channel(group_id):
+        invitees = []
+    elif req.invitee_google_ids is None:
         invitees = [
             m["google_id"]
             for m in db.get_group_members(group_id)
@@ -5331,6 +5362,25 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         source_event_id=(req.source_event_id or "").strip(),
     )
     event = _attach_instagram_post(event, req.image_url, req.source_url)
+    # A fork reads its facts back off the catalog row it points at, so
+    # that a forked event's name, time and cover keep improving as the
+    # scrape does. That is right for everything except a date the caller
+    # chose on purpose.
+    #
+    # A run — a residency, a week-long programação — is one catalog row
+    # shown on every day it covers. Adding it from the 18th forks the
+    # 18th, but the catalog row still says the run STARTED on the 14th,
+    # and the merge would quietly put the 14th back: the event arrives
+    # in the channel already over, which is how it was reported. Pinning
+    # is the existing way to say "a human decided this".
+    if src_id and (req.date_start or "")[:10]:
+        catalog_row = db.get_event_by_id(src_id)
+        catalog_day = _as_iso(getattr(catalog_row, "date_start", ""))[:10] if catalog_row else ""
+        if catalog_day and catalog_day != req.date_start[:10]:
+            db.pin_group_event_fields(event["id"], ["date_start", "date_end"])
+            event["edited_fields"] = list(
+                set((event.get("edited_fields") or []) + ["date_start", "date_end"])
+            )
     _queue_catalog_request(event, req, background_tasks)
 
     # Auto-RSVP the creator — same contract as create_personal_plan.
@@ -5389,10 +5439,33 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
         m["google_id"] for m in db.get_group_members(group_id)
         if m.get("google_id")
     }
+    # The 🔔 switch on the channel screen wrote to group_members.notify
+    # and nothing read it on this path, so a member of a busy channel
+    # got a push per event with no way to stop it short of leaving.
+    # Members only: an outsider invited to one event has no channel to
+    # have muted, and silencing them would drop the single push that
+    # tells them they were invited at all.
+    muted_ids = {
+        gid for gid in member_ids
+        if not db.get_channel_notify(group_id, gid)
+    }
+    # A public channel is a feed, not an invitation. Publishing into one
+    # is an editorial act that happens several times in an afternoon —
+    # a curator clearing a backlog sent a push per event, which is the
+    # shape people mute the app over. Its followers get one summary a
+    # day instead (send_channel_digests, 20:00), and the count in that
+    # summary is read off the table, so nothing here has to keep score.
+    #
+    # Private channels keep the instant push. There the event IS the
+    # message: somebody you know is doing something, and holding that
+    # until evening makes it news about a night that already started.
+    batched = db.is_public_channel(group_id)
 
     def _fanout_pushes():
         for invitee_id in invitees:
             is_member = invitee_id in member_ids
+            if invitee_id in muted_ids:
+                continue
             try:
                 _send_push_to_user(
                     invitee_id,
@@ -5404,7 +5477,8 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             except Exception as exc:
                 log.warning(f"Group event {event['id']}: push to {invitee_id} failed: {exc}")
 
-    background_tasks.add_task(_fanout_pushes)
+    if not batched:
+        background_tasks.add_task(_fanout_pushes)
     # Run badge eval on the creator so curador progression surfaces on
     # the next /user/state load. Other members get crew_quente tier-ups
     # on their own next interaction (cheaper than evaluating N members
@@ -5414,7 +5488,24 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # BackgroundTask, so this is "queued for", not "delivered to" — an
     # individual send can still fail on a dead token. It is the honest
     # number available at this point, and the only exit that isn't zero.
-    return {**event, "new_badges": new_badges, "notified_count": len(invitees)}
+    #
+    # Muted members are subtracted rather than counted: the sheet shows
+    # this back to the user as "3 avisados", and the loop above skips
+    # them, so counting them would be the same claim the count exists
+    # to avoid — a number computed from the group's size rather than
+    # from what went out.
+    return {
+        **event,
+        "new_badges": new_badges,
+        # Zero on a public channel, and honestly so: nobody is notified
+        # by this call. The sheet says "3 avisados" off this number, and
+        # claiming three when the pushes go out at 20:00 — or don't,
+        # because somebody muted the channel — is the kind of number
+        # this field was narrowed to stop producing.
+        "notified_count": 0 if batched else len(
+            [i for i in invitees if i not in muted_ids]
+        ),
+    }
 
 
 @app.get("/groups/{group_id}/events")
@@ -8416,8 +8507,32 @@ async def send_daily_digest_to_all_subscribers(
     all_users = set(by_user_web) | set(by_user_apns)
 
     # Lazy imports — keeps endpoint usable even without optional deps.
-    web_payload = json.dumps({"title": title, "body": preview, "url": url, "tag": tag})
-    has_vapid = bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY)
+    # Per-person copy, because the interesting part of this push is not
+    # how many events the city got — it's how many came from a channel
+    # you chose. That number is different for everyone, so the payload
+    # can't be built once and reused.
+    #
+    # This replaces the separate 20:00 channel digest. Two daily pushes
+    # about the same events, one saying "23 novos em CWB" and the other
+    # "3 rolês novos no Rockzão", is the app telling you the same news
+    # twice and making you reconcile it.
+    picks_by_user = db.channel_picks_by_follower([e["id"] for e in parsed])
+
+    def _copy_for(google_id: str) -> tuple[str, str]:
+        """Headline the part this person chose; keep the city in the body."""
+        picks = picks_by_user.get(google_id) or {}
+        mine = sum(picks.values())
+        if not mine:
+            return title, preview
+        if len(picks) == 1:
+            channel = next(iter(picks))
+            head = f"✨ {mine} novo{'s' if mine != 1 else ''} no {channel}"
+        else:
+            # Three channel names in a notification is a list, not a
+            # headline — the names are on the screen it opens.
+            head = f"✨ {mine} dos teus {len(picks)} canais"
+        return head, f"+{n} novos em CWB hoje · {preview}"
+
     try:
         from pywebpush import webpush, WebPushException
         has_pywebpush = True
@@ -8438,6 +8553,10 @@ async def send_daily_digest_to_all_subscribers(
             skipped += len(by_user_web.get(google_id, []))
             skipped += len(by_user_apns.get(google_id, []))
             continue
+        u_title, u_body = _copy_for(google_id)
+        web_payload = json.dumps(
+            {"title": u_title, "body": u_body, "url": url, "tag": tag}
+        )
         # Web push channel
         if has_vapid and has_pywebpush:
             for sub in by_user_web.get(google_id, []):
@@ -8462,7 +8581,7 @@ async def send_daily_digest_to_all_subscribers(
         # APNs channel
         if has_apns:
             for tok in by_user_apns.get(google_id, []):
-                ok, reason = apns_send(tok["token"], title, preview, url=url, tag=tag)
+                ok, reason = apns_send(tok["token"], u_title, u_body, url=url, tag=tag)
                 if ok:
                     sent += 1
                 else:
