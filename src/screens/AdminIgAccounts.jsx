@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { fetchVenueLeaderboard, checkBackendHealth } from '../services/api'
 import Aue from '../components/Aue'
 import Avatar from '../components/Avatar'
+import AddHandleForm from '../components/AddHandleForm'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 
 // Admin: a menu first, then one screen per job.
@@ -537,9 +538,12 @@ export default function AdminIgAccounts() {
 
       {isCurator && section === 'contas' && (
         <SectionShell home={homeLabel} title="📷 Contas @" onBack={() => navigate('/admin')}>
+          {/* Adding a handle happens here now. It lived on Fontes, which
+              sent everyone — curators included — to a screen that is
+              for looking, and made that screen read as an admin tool. */}
+          <AddHandleForm email={email} onAdded={load} flush />
           <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
-            Adicionar novas contas é na aba <b>Fontes</b>. Aqui você edita,
-            desliga, scrapeia — e o 📍 leva ao pin do lugar no mapa.
+            Edita, desliga, scrapeia — e o 📍 leva ao pin do lugar no mapa.
           </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <input

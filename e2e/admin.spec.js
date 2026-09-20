@@ -133,3 +133,8 @@ test('a curator\'s tab says Curadoria, not Admin', async ({ page }) => {
   await expect(page.getByText('Curadoria', { exact: true })).toHaveCount(2)
   await expect(page.getByText('Admin', { exact: true })).toHaveCount(0)
 })
+
+test('adding a handle lives in Contas @, not on Fontes', async ({ page }) => {
+  await openAdmin(page, { founder: false, path: '/#/admin/contas' })
+  await expect(page.getByRole('button', { name: /Adicionar nova fonte do Instagram/ })).toBeVisible()
+})

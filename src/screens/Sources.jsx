@@ -7,10 +7,6 @@ import Avatar from '../components/Avatar'
 
 import { API_BASE } from '../lib/apiBase'
 
-// Add-handle form preset list: same taxonomy as CATEGORY_META, ordered.
-// Kept in sync automatically since both come from the shared module.
-const CATEGORY_PRESETS = CATEGORY_ORDER
-
 // Unified browser for every catalog source — institutional + Instagram
 // handles, grouped by category. Same taxonomy as the Events tab filter
 // chips (both import CATEGORY_META from src/data/categories).
@@ -24,7 +20,6 @@ function categoryFor(source, isIg) {
 export default function Sources() {
   const navigate = useNavigate()
   const { state, dispatch } = useApp()
-  const email = state.googleUser?.email || ''
   // Opt-out follow list (lib/follows.js) — handles the user hid.
   const unfollowed = useMemo(
     () => new Set((state.unfollowedSources || []).map(h => h.toLowerCase())),
@@ -41,13 +36,6 @@ export default function Sources() {
   // (search narrows further within whatever category is active).
   const [activeCategory, setActiveCategory] = useState('all')
 
-  // Curator status — when true, the page renders a top 'Adicionar @
-  // handle' form so curators can grow the catalog without needing the
-  // full Curar tab (which is now founder-only). Both is_curator and
-  // is_founder grant the form; the backend's POST /admin/ig-accounts
-  // accepts either role.
-  const [canCurate, setCanCurate] = useState(false)
-
   useEffect(() => {
     let cancelled = false
     fetchSources().then(d => {
@@ -57,26 +45,6 @@ export default function Sources() {
     })
     return () => { cancelled = true }
   }, [])
-
-  // Determine curator/founder role on mount + when the user changes.
-  useEffect(() => {
-    if (!email) { setCanCurate(false); return }
-    let cancelled = false
-    fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled) return
-        setCanCurate(!!(d?.is_curator || d?.is_founder))
-      })
-      .catch(() => { if (!cancelled) setCanCurate(false) })
-    return () => { cancelled = true }
-  }, [email])
-
-  // Refresh sources after a successful add so the new handle shows up
-  // immediately without a manual reload.
-  function refreshSources() {
-    fetchSources().then(d => setData(d || { institutional: [], instagram: [] }))
-  }
 
   // Normalize every source — institutional + IG — into a single shape so
   // the rest of the page is a flat list grouped by category. Each entry
@@ -220,26 +188,11 @@ export default function Sources() {
         )}
       </div>
 
-      {/* Curator add-handle form — only renders when the user is a
-          curator or founder. Mirrors the form on the Curar tab so the
-          two paths share the same UX. */}
-      {/* Entry to the catalog review queue. The Admin tab is founder-only,
-          so without this a curator's only way into the queue was tapping
-          the push — dismiss it and pending requests had nowhere to be found.
-          Fontes is already where curators get their own tools. */}
-      {!loading && canCurate && (
-        <CatalogQueueLink email={email} onOpen={() => navigate('/curadoria')} />
-      )}
-
-      {!loading && canCurate && (
-        <AddHandleForm email={email} onAdded={refreshSources} />
-      )}
-
-      {/* Anyone signed in can suggest an account; curators approve it in
-          /curadoria. Curators add directly with the form above instead. */}
-      {!loading && !canCurate && state.googleUser?.id && (
-        <SuggestAccountForm googleId={state.googleUser.id} />
-      )}
+      {/* This screen is for looking: which sources auê watches, and
+          the one personal choice you get here — whether a source is in
+          your feed. Curation (adding handles, the review queue) lives on
+          the Curadoria tab; it used to sit at the top of this page and
+          made it read as an admin tool to everyone else. */}
 
       {/* Search */}
       {!loading && (
@@ -383,59 +336,20 @@ export default function Sources() {
         })}
         </>
       )}
+
+      {/* At the bottom, for anyone signed in — curators included. A
+          suggestion goes to the review queue, which is how the catalog
+          grows from outside the team. Down here it's an offer, not a
+          form the page opens with. */}
+      {!loading && state.googleUser?.id && (
+        <SuggestAccountForm googleId={state.googleUser.id} />
+      )}
     </div>
   )
 }
 
 
-function CatalogQueueLink({ email, onOpen }) {
-  const [count, setCount] = useState(null)
-
-  // Both queues: events suggested from Instagram links and accounts
-  // suggested in Fontes.
-  useEffect(() => {
-    let cancelled = false
-    const q = `status=review&requesting_email=${encodeURIComponent(email)}`
-    const countOf = url => fetch(url)
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => (Array.isArray(d?.requests) ? d.requests.length : null))
-      .catch(() => null)
-    Promise.all([
-      countOf(`${API_BASE}/admin/catalog-requests?${q}`),
-      countOf(`${API_BASE}/admin/account-requests?${q}`),
-    ]).then(([events, accounts]) => {
-      if (cancelled) return
-      setCount(events === null && accounts === null ? null : (events || 0) + (accounts || 0))
-    })
-    return () => { cancelled = true }
-  }, [email])
-
-  const waiting = count > 0
-  return (
-    <button
-      onClick={onOpen}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        width: '100%', margin: '0 0 12px', padding: '12px 14px', borderRadius: 12,
-        border: `1px solid ${waiting ? 'var(--lime)' : 'var(--line)'}`,
-        background: 'var(--bg2)', color: 'var(--text)',
-        fontSize: 14, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
-      }}
-    >
-      <span>📋 Pedidos pro catálogo</span>
-      <span style={{
-        fontSize: 12, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
-        background: waiting ? 'var(--lime)' : 'transparent',
-        color: waiting ? 'var(--on-lime)' : 'var(--text3)',
-      }}>
-        {count === null ? '→' : waiting ? `${count} esperando` : 'nenhum'}
-      </span>
-    </button>
-  )
-}
-
-
-// "Sugerir uma conta" — for everyone who isn't a curator. Goes to the
+// "Sugerir uma conta" — for anyone signed in. Goes to the
 // curator queue (/curadoria?tab=contas) instead of straight into tracking:
 // every tracked account costs an Apify + Claude pass each day.
 function SuggestAccountForm({ googleId }) {
@@ -564,147 +478,6 @@ function SuggestAccountForm({ googleId }) {
   )
 }
 
-
-function AddHandleForm({ email, onAdded }) {
-  const [open, setOpen] = useState(false)
-  const [handle, setHandle] = useState('')
-  const [label, setLabel] = useState('')
-  const [category, setCategory] = useState('bar')
-  const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState(null)
-
-  async function submit(e) {
-    e.preventDefault()
-    const cleanHandle = handle.trim().replace(/^@/, '')
-    if (!/^[A-Za-z0-9._]{1,30}$/.test(cleanHandle)) {
-      setFeedback({ kind: 'err', msg: 'Handle inválido (letras, números, "." ou "_")' })
-      return
-    }
-    setSubmitting(true)
-    setFeedback(null)
-    try {
-      const r = await fetch(`${API_BASE}/admin/ig-accounts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({
-          handle: cleanHandle,
-          label: label.trim(),
-          category,
-          enabled: true,
-          notes: '',
-          requesting_email: email,
-        }),
-      })
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}))
-        setFeedback({ kind: 'err', msg: err.detail || `HTTP ${r.status}` })
-      } else {
-        setFeedback({ kind: 'ok', msg: `@${cleanHandle} adicionado.` })
-        setHandle(''); setLabel('')
-        onAdded?.()
-        setTimeout(() => setFeedback(null), 3500)
-      }
-    } catch (e) {
-      setFeedback({ kind: 'err', msg: e?.message || 'Erro ao adicionar' })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  // Collapsed state: a single-line "+" pill so the form doesn't dominate
-  // the page for browsing curators. Tapping expands to the full form.
-  if (!open) {
-    return (
-      <div style={{ padding: '0 16px 12px' }}>
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            width: '100%', padding: '10px 14px',
-            background: 'var(--terra-pale)', color: 'var(--terra)',
-            border: '1.5px dashed var(--terra)',
-            borderRadius: 12, cursor: 'pointer',
-            fontSize: 13, fontWeight: 700, letterSpacing: 0.3,
-          }}
-        >
-          + Adicionar nova fonte do Instagram
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <form
-      onSubmit={submit}
-      style={{
-        margin: '0 16px 14px', padding: '14px',
-        background: 'var(--white)', borderRadius: 14,
-        border: '1px solid var(--border)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--charcoal)' }}>
-          Nova fonte do Instagram
-        </div>
-        <button
-          type="button"
-          onClick={() => { setOpen(false); setFeedback(null) }}
-          aria-label="Fechar"
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--charcoal-light)', fontSize: 16, padding: 4,
-          }}
-        >✕</button>
-      </div>
-      <input
-        value={handle}
-        onChange={e => setHandle(e.target.value)}
-        placeholder="@handle"
-        autoCapitalize="none"
-        autoCorrect="off"
-        style={inputStyle}
-      />
-      <input
-        value={label}
-        onChange={e => setLabel(e.target.value)}
-        placeholder="Nome (opcional, ex: Café Lucca)"
-        style={{ ...inputStyle, marginTop: 8 }}
-      />
-      <select
-        value={category}
-        onChange={e => setCategory(e.target.value)}
-        style={{ ...inputStyle, marginTop: 8 }}
-      >
-        {CATEGORY_PRESETS.map(c => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </select>
-      {feedback && (
-        <div style={{
-          marginTop: 10, padding: '7px 10px',
-          background: feedback.kind === 'ok' ? 'var(--sage-pale)' : '#FFF3E0',
-          color: feedback.kind === 'ok' ? 'var(--sage)' : '#BF360C',
-          borderRadius: 8, fontSize: 12, textAlign: 'center',
-        }}>
-          {feedback.msg}
-        </div>
-      )}
-      <button
-        type="submit"
-        disabled={submitting || !handle.trim()}
-        style={{
-          width: '100%', marginTop: 10, padding: '11px',
-          background: 'var(--terra)', color: 'white',
-          border: 'none', borderRadius: 12,
-          fontSize: 13, fontWeight: 700,
-          cursor: submitting ? 'wait' : 'pointer',
-          opacity: (submitting || !handle.trim()) ? 0.55 : 1,
-        }}
-      >
-        {submitting ? 'Adicionando…' : 'Adicionar'}
-      </button>
-    </form>
-  )
-}
 
 const inputStyle = {
   width: '100%', boxSizing: 'border-box',
