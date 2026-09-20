@@ -5436,17 +5436,24 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # Without this, "Adicionar a um grupo" leaves the creator showing
     # in their own Pendentes section, asking them to confirm an event
     # they just created. They're already going by definition.
-    try:
-        db.upsert_rsvp(
-            google_id=req.google_id,
-            event_id=event["id"],
-            event_name=req.name.strip(),
-            event_venue=event.get("venue", ""),
-            event_date=req.date_start,
-            event_url="",
-        )
-    except Exception as e:
-        log.warning(f"Group event {event['id']}: auto-RSVP failed: {e}")
+    #
+    # Except in a public channel, where they are not. Publishing into
+    # auê Rockzera is editorial work, not attendance: a curator clearing
+    # an afternoon's backlog ended up marked as going to fifteen nights
+    # across the city, and their friends saw it — "vou" is one of the
+    # few things this app says about you to other people.
+    if not db.is_public_channel(group_id):
+        try:
+            db.upsert_rsvp(
+                google_id=req.google_id,
+                event_id=event["id"],
+                event_name=req.name.strip(),
+                event_venue=event.get("venue", ""),
+                event_date=req.date_start,
+                event_url="",
+            )
+        except Exception as e:
+            log.warning(f"Group event {event['id']}: auto-RSVP failed: {e}")
 
     # Notify everyone on the invitee list (group members + outsiders).
     # Tag per (group, event) so accidental double-creates collapse

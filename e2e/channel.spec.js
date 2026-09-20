@@ -243,7 +243,7 @@ test('anyone can pass a channel along, follower or not', async ({ page }) => {
 
 test('the curator-only actions stay curator-only', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: false })
-  await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toHaveCount(0)
+  await expect(page.getByTitle(/Adicionar rolê/i)).toHaveCount(0)
 })
 
 test('no channel offers a calendar subscription any more', async ({ page }) => {
@@ -256,7 +256,8 @@ test('no channel offers a calendar subscription any more', async ({ page }) => {
 
 test('a curator gets the catalog picker', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: true })
-  await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toBeVisible()
+  await page.getByTitle(/Adicionar rolê/i).click()
+  await expect(page.getByText('Adicionar do catálogo')).toBeVisible()
 })
 
 test('no channel carries a stats panel, public or private', async ({ page }) => {
@@ -294,9 +295,15 @@ test('a private channel says so instead of wearing the auê badge', async ({ pag
   await expect(titleRow.getByText('auê', { exact: true })).toHaveCount(0)
 })
 
-test('a private channel can be invited into', async ({ page }) => {
-  await openChannel(page, { is_public: false, viewer_role: 'member' })
-  await expect(page.getByTitle(/Convidar pro canal/i)).toBeVisible()
+test('a private channel invites by passing the link along', async ({ page }) => {
+  // The separate invite ➕ is gone. Sharing IS the invitation, so the
+  // link has to be the one that lets someone in — /channels/:id 403s a
+  // non-member, which sent people to a locked door.
+  await openChannel(page, {
+    is_public: false, viewer_role: 'member', invite_code: 'AB12CD34',
+  })
+  await expect(page.getByTitle(/Convidar pro canal/i)).toHaveCount(0)
+  await expect(page.getByTitle(/Compartilhar canal/i)).toBeVisible()
 })
 
 test('anyone inside a private channel can add an event', async ({ page }) => {
@@ -305,14 +312,31 @@ test('anyone inside a private channel can add an event', async ({ page }) => {
   await openChannel(page, {
     is_public: false, viewer_role: 'member', can_curate: false,
   })
-  await expect(page.getByTitle(/Novo evento/i)).toBeVisible()
+  await expect(page.getByTitle(/Adicionar rolê/i)).toBeVisible()
 })
 
-test('a public channel gives no one the add-event button', async ({ page }) => {
-  // Publishing into a public channel goes through the catalog picker,
-  // and only for a curator. Nobody gets to post a free-form event.
+test('one icon covers both ways of adding one', async ({ page }) => {
+  // It was ＋ for a new one and 🌍 for the catalog, which made the
+  // reader pick a mechanism before picking a night.
+  await openChannel(page, {
+    is_public: false, viewer_role: 'admin', can_curate: true,
+  })
+  await expect(page.getByTitle(/Adicionar do catálogo/i)).toHaveCount(0)
+  await page.getByTitle(/Adicionar rolê/i).click()
+  await expect(page.getByText('Do catálogo', { exact: true })).toBeVisible()
+  await expect(page.getByText('Novo rolê', { exact: true })).toBeVisible()
+})
+
+test('a public channel curator goes straight to the catalog', async ({ page }) => {
+  // Publishing into a public channel goes through the catalog, and only
+  // for a curator — no free-form event, so no chooser either. A chooser
+  // with one choice is a tap that asks nothing.
   await openChannel(page, { is_following: true, can_curate: true })
-  await expect(page.getByTitle(/Novo evento/i)).toHaveCount(0)
+  await page.getByTitle(/Adicionar rolê/i).click()
+  // The chooser's own option, exact — "Do catálogo" is a substring of
+  // the catalog sheet's title, and getByText matches substrings.
+  await expect(page.getByText('Do catálogo', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Adicionar do catálogo')).toBeVisible()
 })
 
 test('the old crew URL still opens the channel', async ({ page }) => {

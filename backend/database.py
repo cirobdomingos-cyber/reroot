@@ -372,6 +372,63 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # tables not created yet on a fresh DB
 
+        # ...including the ones that have since left their channel.
+        #
+        # The pass below only reaches forks still linked to a public
+        # channel. A fork that was unlinked kept the follower list it
+        # was given, and a catalog copy belonging to no channel with
+        # people on its invitee list reads as a personal invitation from
+        # the curator — which is why "ver convite" survived the first
+        # clean-up on events nobody was ever invited to.
+        #
+        # Scoped to forks of catalog events: a from-scratch plan with
+        # guests is a real invitation and is left alone.
+        try:
+            conn.execute(
+                """UPDATE group_events SET extra_invitee_ids = '[]'
+                     WHERE (group_id IS NULL OR group_id = '')
+                       AND (group_ids IS NULL OR group_ids IN ('[]', ''))
+                       AND source_event_id IS NOT NULL
+                       AND TRIM(source_event_id) != ''
+                       AND extra_invitee_ids NOT IN ('[]', '')"""
+            )
+        except sqlite3.OperationalError:
+            pass
+
+        # A curator publishing is not a curator attending.
+        #
+        # Adding an event to a channel auto-RSVP'd the creator, which is
+        # right for a plan you made and wrong for editorial work: a
+        # curator clearing an afternoon's backlog came out marked as
+        # going to fifteen nights across the city, and "vou" is one of
+        # the few things this app says about you to other people — their
+        # friends' "para onde seus amigos estão indo" filled up with it.
+        #
+        # New publishes don't RSVP (see create_group_event). This clears
+        # what was already written: a curator's RSVP on a catalog event
+        # that one of their own channels published, where they are on no
+        # invitee list for it. If any of those was a night they really
+        # meant to attend, saying so again is one tap.
+        try:
+            conn.execute(
+                """DELETE FROM rsvps
+                     WHERE (google_id, event_id) IN (
+                       SELECT gm.google_id, ge.source_event_id
+                         FROM group_events ge
+                         JOIN groups g
+                           ON (ge.group_id = g.id
+                               OR ge.group_ids LIKE '%"' || g.id || '"%')
+                         JOIN group_members gm
+                           ON gm.group_id = g.id
+                        WHERE g.visibility = 'public'
+                          AND gm.role IN ('admin', 'curator')
+                          AND ge.source_event_id IS NOT NULL
+                          AND TRIM(ge.source_event_id) != ''
+                     )"""
+            )
+        except sqlite3.OperationalError:
+            pass
+
         # Strip followers out of public channels' invitee lists.
         #
         # Publishing into a channel expanded `extra_invitee_ids` to every

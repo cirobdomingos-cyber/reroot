@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
 import {
-  CatalogPickerSheet, InviteSheet, MembersSheet,
+  CatalogPickerSheet, MembersSheet, BottomSheet, SheetButton,
 } from '../components/GroupSheets'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
@@ -50,9 +50,9 @@ export default function ChannelDetail() {
   // Private-channel affordances. They live on the same screen as the
   // public ones and differ by permission, not by existing somewhere
   // else — which is what let GroupDetail go away.
-  const [showInvite, setShowInvite] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const [showNewEvent, setShowNewEvent] = useState(false)
+  const [showAddPicker, setShowAddPicker] = useState(false)
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -90,8 +90,16 @@ export default function ChannelDetail() {
   // whole difference from a private channel, where the link IS the
   // invitation and opening it puts you in.
   async function share() {
-    const url = appLink(`/channels/${channelId}`)
-    const text = `Olha esse canal no auê: ${channel.name}`
+    // On a private channel the link you pass along has to be the one
+    // that lets someone in. /channels/:id 403s a non-member, so sharing
+    // it sent people to a locked door — which is why invite lived as a
+    // separate ➕ beside it. Passing the link along IS the invitation.
+    const url = isPrivate && channel.invite_code
+      ? appLink(`/join/${channel.invite_code}`)
+      : appLink(`/channels/${channelId}`)
+    const text = isPrivate
+      ? `Bora pro ${channel.name} no auê?`
+      : `Olha esse canal no auê: ${channel.name}`
     trackEvent('channel_shared', { channel_id: channelId })
     try {
       if (navigator.share) {
@@ -344,28 +352,24 @@ export default function ChannelDetail() {
                 
                 A private channel still pushes at the moment. There the
                 event IS the message. */}
-            {/* Invite belongs to a private channel only: you follow a
-                public one from an open list, and there is nobody to
-                invite into something anyone can already find. */}
-            {isPrivate && (
-              <IconAction onClick={() => setShowInvite(true)} title="Convidar pro canal">
-                ➕
-              </IconAction>
-            )}
             <IconAction onClick={share} title="Compartilhar canal">
               {copied ? '✓' : '🔗'}
             </IconAction>
-            {/* Anyone in a private channel can add an event — control
-                means administration, not publishing. In a public one
-                that's the curation team, and the catalog picker is how. */}
-            {isPrivate && (
-              <IconAction onClick={() => setShowNewEvent(true)} accent title="Novo evento">
+            {/* One way in for an event, whatever its source.
+            
+                It was two icons — ＋ for a new one, 🌍 for the catalog —
+                which made the reader pick a mechanism before picking a
+                night. The question is "what are we adding", and where
+                it comes from is the first thing the sheet asks. */}
+            {(isPrivate || channel.can_curate) && (
+              <IconAction
+                onClick={() => (isPrivate && channel.can_curate
+                  ? setShowAddPicker(true)
+                  : isPrivate ? setShowNewEvent(true) : setShowCatalog(true))}
+                accent
+                title="Adicionar rolê"
+              >
                 ＋
-              </IconAction>
-            )}
-            {channel.can_curate && (
-              <IconAction onClick={() => setShowCatalog(true)} accent title="Adicionar do catálogo">
-                🌍
               </IconAction>
             )}
           </div>
@@ -430,12 +434,6 @@ export default function ChannelDetail() {
         ))}
       </div>
 
-      <InviteSheet
-        open={showInvite}
-        onClose={() => setShowInvite(false)}
-        group={channel}
-        t={{}}
-      />
       <MembersSheet
         open={showMembers}
         onClose={() => setShowMembers(false)}
@@ -449,6 +447,29 @@ export default function ChannelDetail() {
         viewerGoogleId={googleId}
         onRoleChanged={load}
       />
+      {/* Only when both sources are open to you — a member of a
+          private channel you don't curate goes straight to the form,
+          and a public channel's curator straight to the catalog. A
+          chooser with one choice is a tap that asks nothing. */}
+      <BottomSheet
+        open={showAddPicker}
+        onClose={() => setShowAddPicker(false)}
+        title="Adicionar rolê"
+      >
+        <SheetButton
+          icon="🌍"
+          label="Do catálogo"
+          sublabel="Algo que já tá rolando em Curitiba"
+          onClick={() => { setShowAddPicker(false); setShowCatalog(true) }}
+        />
+        <SheetButton
+          icon="✏️"
+          label="Novo rolê"
+          sublabel="Cola um link do Insta ou escreve na mão"
+          onClick={() => { setShowAddPicker(false); setShowNewEvent(true) }}
+        />
+      </BottomSheet>
+
       <PersonalPlanSheet
         open={showNewEvent}
         onClose={() => setShowNewEvent(false)}

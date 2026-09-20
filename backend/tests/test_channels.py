@@ -1527,12 +1527,16 @@ def test_the_migration_removes_an_orphan(api):
 
 
 def test_the_rsvp_moves_to_the_catalog_event(api):
-    """Adding to a channel auto-RSVPs the creator, and that "vou" was
-    about the night — which still exists in the catalog. Deleting the
-    row without moving it would quietly un-confirm them."""
+    """Adding to a PRIVATE channel auto-RSVPs the creator, and that
+    "vou" was about the night — which still exists in the catalog.
+    Deleting the row without moving it would quietly un-confirm them.
+
+    Private, because publishing into a public channel is editorial work
+    and no longer RSVPs anyone."""
     _db, _main, client = api
-    cid = _channel(client)
-    ev = _orphan(client, _db, cid)
+    gid = _crew(client, "u_founder")
+    ev = _add_to(client, gid, "u_founder")
+    _db.unlink_event_from_group(ev["id"], gid)
     def _rsvped(event_id):
         with _db.get_conn() as conn:
             return conn.execute(
