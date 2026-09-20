@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { useT } from '../i18n'
 import Friends from './Friends'
 import Groups from './Groups'
+import MyRsvps from './MyRsvps'
 import FriendsFeed from '../components/FriendsFeed'
 import ChannelList from '../components/ChannelList'
 
@@ -13,9 +14,16 @@ export default function Community() {
   // Home's friend-request notice uses it so the aviso lands on the list
   // that has the Aceitar buttons instead of on Canais.
   const location = useLocation()
-  const [tab, setTab] = useState(
-    location.state?.tab === 'friends' ? 'friends' : 'groups',
-  ) // 'groups' | 'friends'
+  // 'groups' (canais) | 'friends' | 'rsvps'
+  //
+  // RSVPs moved in here when it lost its own tab (Sep 2026). It was the
+  // least-used slot in the bar, and "what I said I'd go to" belongs
+  // next to the people and channels it came from rather than beside
+  // the catalog.
+  const [tab, setTab] = useState(() => {
+    const requested = location.state?.tab
+    return ['friends', 'rsvps'].includes(requested) ? requested : 'groups'
+  })
 
   return (
     <div>
@@ -31,9 +39,11 @@ export default function Community() {
           background: 'var(--cream)', borderRadius: 14,
           border: '1px solid var(--border)',
         }}>
-          {['groups', 'friends'].map(key => {
+          {['groups', 'friends', 'rsvps'].map(key => {
             const active = tab === key
-            const label = key === 'friends' ? t.community_tab_friends : t.community_tab_groups
+            const label = key === 'friends' ? t.community_tab_friends
+              : key === 'rsvps' ? 'Meus rolês'
+              : t.community_tab_groups
             return (
               <button
                 key={key}
@@ -59,7 +69,7 @@ export default function Community() {
       {/* Where friends are going — first thing on the tab, above both
           sub-tabs, since it's the only part of Community that changes
           day to day. Hidden when empty. */}
-      <FriendsFeed />
+      {tab !== 'rsvps' && <FriendsFeed />}
 
       {/* Content */}
       <motion.div
@@ -68,11 +78,14 @@ export default function Community() {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.18 }}
       >
-        {tab === 'friends' ? <FriendsInline /> : (
+        {tab === 'friends' && <FriendsInline />}
+        {tab === 'rsvps' && <MyRsvps embedded />}
+        {tab === 'groups' && (
           <>
-            {/* Channels sit above your own groups, not mixed into them.
-                They're a different relationship — you follow one, you
-                don't join it — and the list hides itself when empty. */}
+            {/* Channels sit above your own ones, not mixed into them.
+                They're a different relationship — you follow an auê
+                channel, you don't join it — and the list hides itself
+                when empty. */}
             <ChannelList />
             <GroupsInline />
           </>

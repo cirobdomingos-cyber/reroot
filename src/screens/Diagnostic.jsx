@@ -62,7 +62,7 @@ export default function Diagnostic() {
 
   function handleBegin() {
     dispatch({ type: 'MARK_DIAGNOSTIC_SEEN' })
-    navigate('/home')
+    navigate('/events')
   }
 
   return (

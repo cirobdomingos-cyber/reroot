@@ -69,20 +69,17 @@ export default function BottomNav() {
     ? { filter: 'drop-shadow(0 0 6px rgba(255, 43, 214, 0.7))' }
     : undefined
 
+  // Home dissolved in Sep 2026. People opened the app wanting the
+  // catalog and went to community second, so Eventos is the landing
+  // screen and the tab bar is what's left once Home's pieces found
+  // real homes: pendências and the digest card went to Notificações,
+  // the friends feed to Comunidade, the week strip was already
+  // duplicated inside Eventos, and the create-plan CTA already lived
+  // in the Eventos header.
+  //
+  // RSVPs lost its slot too — it was a tab nobody used, and it belongs
+  // next to friends and channels rather than beside the catalog.
   const NAV_ITEMS = [
-    {
-      path: '/home',
-      label: t.nav_home,
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          style={glowStyle(active)}
-          stroke={stroke(active)}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
-          <path d="M9 21V12h6v9"/>
-        </svg>
-      ),
-    },
     {
       path: '/events',
       label: t.nav_events,
@@ -113,19 +110,6 @@ export default function BottomNav() {
       ),
     },
     {
-      path: '/my-rsvps',
-      label: 'RSVPs',
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          style={glowStyle(active)}
-          stroke={stroke(active)}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 11l3 3L22 4"/>
-          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-        </svg>
-      ),
-    },
-    {
       path: '/community',
       label: t.nav_community,
       icon: (active) => (
@@ -140,7 +124,9 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    isDesktop && {
+    // On phones Perfil used to live behind the Home avatar. Home is
+    // gone, so it needs a slot of its own everywhere.
+    {
       path: '/profile',
       label: t.nav_profile ?? 'Perfil',
       icon: (active) => (
@@ -174,7 +160,7 @@ export default function BottomNav() {
   return (
     <nav className="bottom-nav">
       {isDesktop && (
-        <div className="nav-brand neon-display neon-glow-mag" onClick={() => navigate('/home')}>
+        <div className="nav-brand neon-display neon-glow-mag" onClick={() => navigate('/events')}>
           auê
         </div>
       )}

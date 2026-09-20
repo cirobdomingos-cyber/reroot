@@ -17,7 +17,10 @@ import HomeEventRow from '../components/HomeEventRow'
 //   - Sem data       (legacy entries without metadata — pre-rebrand
 //                     rsvps that were never re-confirmed; cleanable)
 
-export default function MyRsvps() {
+// `embedded` drops the screen's own header and back button — Comunidade
+// provides both when this renders as a sub-tab. Same prop Friends and
+// Groups already take.
+export default function MyRsvps({ embedded = false }) {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const now = Date.now()
@@ -252,18 +255,22 @@ export default function MyRsvps() {
   }
 
   return (
-    <div style={{ padding: '20px 0 80px' }}>
+    <div style={{ padding: embedded ? '4px 0 80px' : '20px 0 80px' }}>
       <div style={{ padding: '0 20px 14px' }}>
-        <button
-          onClick={() => navigate('/home')}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 8,
-          }}
-        >
-          ← Voltar
-        </button>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>RSVPs</h1>
+        {!embedded && (
+          <>
+            <button
+              onClick={() => navigate('/events')}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 8,
+              }}
+            >
+              ← Voltar
+            </button>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Meus rolês</h1>
+          </>
+        )}
         <div style={{ fontSize: 13, color: 'var(--charcoal-light)', marginTop: 2 }}>
           {entries.length === 0 && friendsUpcoming.length === 0 && pending.length === 0
             ? 'Você ainda não confirmou nenhum evento.'
