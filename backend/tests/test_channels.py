@@ -1724,3 +1724,19 @@ def test_appointing_per_channel_curators_stays_the_founders(api):
     r = client.post(f"/channels/{cid}/curators",
                     json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
     assert r.status_code == 403
+
+
+def test_a_curator_does_not_get_someones_private_crew(api):
+    """Every power, over auê's channels. A private crew is its members'
+    — for the founder (who is a curator too) as much as for anyone."""
+    _db, _main, client = api
+    _make_general_curator(_db, "bia@example.com")
+    gid = _crew(client, "u_ana")
+    assert client.put(f"/channels/{gid}", json={
+        "requesting_email": "bia@example.com", "name": "x", "description": "",
+    }).status_code == 403
+    # Not even told they could: the screen would show edit affordances
+    # on a channel they can't touch.
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    assert client.get(f"/channels/{gid}?google_id=u_bia").json()["channel"]["can_curate"] is False
