@@ -27,7 +27,8 @@ const CHANNEL = {
   },
   events: [
     { id: 'e1', name: 'Terno Rei na Pedreira', dateStart: '2099-10-04T21:00:00',
-      time: '21:00', venue: 'Pedreira Paulo Leminski · Abranches' },
+      time: '21:00', venue: 'Pedreira Paulo Leminski · Abranches',
+      imageUrl: '/event-images/terno-rei.png' },
     { id: 'e2', name: 'Noite Grunge', dateStart: '2099-10-09T22:00:00',
       time: '22:00', venue: 'Hard Rock Café · Batel' },
   ],
@@ -55,6 +56,16 @@ async function openChannel(page, overrides = {}) {
   }))
   await page.route('**/channels/**', route => route.fulfill({
     json: { ...CHANNEL, channel: { ...CHANNEL.channel, ...overrides } },
+  }))
+  // The catch-all lets `image` requests through to the preview server,
+  // which has no /event-images/ and 404s — and HomeEventRow removes its
+  // <img> on error, so a flyer test would count 0 for the wrong reason.
+  await page.route('**/event-images/**', route => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ),
   }))
   await page.addInitScript(() =>
     localStorage.setItem('aue_state', JSON.stringify({
@@ -696,4 +707,15 @@ test('Seguindo groups by kind before counting events', async ({ page }) => {
     page.getByText('auê Movimentado').boundingBox().then(b => b.y),
   ])
   expect(crewY).toBeLessThan(aueY)
+})
+
+// ── The flyer shows up in the channel, not only in Eventos ──
+
+test('a channel row renders the flyer the event carries', async ({ page }) => {
+  // The plumbing that regressed: fetchChannel handed rows back raw, so a
+  // relative /event-images/ path resolved against the wrong origin in
+  // the app and the <img> hid itself on error.
+  await openChannel(page)
+  const img = page.locator('img[src*="terno-rei.png"]')
+  await expect(img).toHaveCount(1)
 })
