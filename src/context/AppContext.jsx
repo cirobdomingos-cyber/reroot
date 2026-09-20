@@ -168,7 +168,7 @@ export function myPicture(state) {
 }
 
 // ── Reducer ────────────────────────────────────────────────
-function reducer(state, action) {
+export function reducer(state, action) {
   switch (action.type) {
     case 'JOIN_COHORT':
       return { ...state, hasJoined: true, joinedAt: state.joinedAt ?? Date.now() }
@@ -334,9 +334,10 @@ function reducer(state, action) {
         return { ...state, googleUser: null, userName: '', customPicture: '' }
       }
       const { id, name, givenName, email, picture } = action.payload
-      // If a different Google account is signing in, take their name as the
-      // new display name. (When the same account re-logs in, we preserve
-      // a custom name the user might have edited via the Profile pencil.)
+      // Seed the display name from the provider. This is only ever a
+      // placeholder: logout clears googleUser, so a re-login is never
+      // "the same user" here, and the name the person actually chose
+      // comes back from the server in RESTORE_STATE, which prefers it.
       const isSameUser = state.googleUser?.id === id
       return {
         ...state,
@@ -420,7 +421,14 @@ function reducer(state, action) {
         frameworkRead:            remote.frameworkRead            ?? state.frameworkRead,
         diagnosticSeen:           remote.diagnosticSeen           ?? state.diagnosticSeen,
         language:     state.language     || remote.language,
-        userName:     state.userName     || remote.userName,
+        // Remote wins. The name you typed in Perfil lives in the remote
+        // state; what's local at this point is whatever SET_GOOGLE_USER
+        // just seeded from the provider, because logout cleared it. With
+        // local winning, every logout-and-login put the Google first
+        // name back — and then the save pushed it to the server, so
+        // everyone else saw it revert too. A brand-new account has no
+        // remote name yet and keeps the seeded one.
+        userName:     remote.userName     || state.userName,
         customPicture: state.customPicture || remote.customPicture || '',
         unfollowedSources: remote.unfollowedSources ?? state.unfollowedSources ?? [],
         neighborhood: state.neighborhood || remote.neighborhood,

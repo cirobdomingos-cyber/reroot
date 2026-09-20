@@ -4676,15 +4676,15 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
                    ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
                  JOIN group_members gm
                    ON gm.group_id = g.id AND gm.google_id = ?
-                  -- Following, OR running it. auê holds an admin row on
-                  -- its own channels and deliberately doesn't follow them
-                  -- (ownership isn't a subscription, and counting it
-                  -- opened every channel at "1 seguindo"). But that also
-                  -- meant a curator's own channels never reached this
-                  -- feed, so events they had published sat in Eventos
-                  -- looking like plain catalog rows with nothing saying
-                  -- where they came from — reported from production.
-                WHERE (gm.following = 1 OR gm.role IN ('admin', 'curator'))
+                  -- Following, and only following. Running a channel is
+                  -- about what you may do to it, not what your Eventos
+                  -- shows: a curator follows and unfollows their own
+                  -- channels like anyone else. For one round this also
+                  -- admitted admin and curator rows, so a curator's
+                  -- channels sat at the top of their Eventos whether they
+                  -- followed or not — "a ordenação está travada só pro
+                  -- admin". Ownership isn't a subscription either way.
+                WHERE gm.following = 1
                   AND gm.prioritize = 1
                   -- Public only. A private channel's events already
                   -- reach Eventos through /events/group, and now that
