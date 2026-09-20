@@ -470,6 +470,7 @@ export default function AdminIgAccounts() {
   ].filter(m => canSee(m.id))
 
   const waiting = (pendingCatalog || 0) + (pendingAccounts || 0)
+  const homeLabel = isFounder ? 'Admin' : 'Curadoria'
 
   return (
     <div style={{ padding: '20px 16px 80px', maxWidth: 720, margin: '0 auto' }}>
@@ -527,7 +528,7 @@ export default function AdminIgAccounts() {
       )}
 
       {isCurator && section && !canSee(section) && (
-        <SectionShell title="Sem acesso" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="Sem acesso" onBack={() => navigate('/admin')}>
           <div style={{ fontSize: 13, color: 'var(--charcoal-light)' }}>
             Essa parte é do fundador.
           </div>
@@ -535,7 +536,7 @@ export default function AdminIgAccounts() {
       )}
 
       {isCurator && section === 'contas' && (
-        <SectionShell title="📷 Contas @" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="📷 Contas @" onBack={() => navigate('/admin')}>
           <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
             Adicionar novas contas é na aba <b>Fontes</b>. Aqui você edita,
             desliga, scrapeia — e o 📍 leva ao pin do lugar no mapa.
@@ -620,7 +621,7 @@ export default function AdminIgAccounts() {
       )}
 
       {isFounder && section === 'pessoas' && (
-        <SectionShell title="👥 Pessoas" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="👥 Pessoas" onBack={() => navigate('/admin')}>
           <div style={{ fontSize: 12, color: 'var(--charcoal-light)', marginBottom: 12 }}>
             Todo mundo que entrou, o que fez, e quem cura. Liberar alguém
             como curador é na linha da pessoa — assim o e-mail é o que a
@@ -640,13 +641,13 @@ export default function AdminIgAccounts() {
       )}
 
       {isFounder && section === 'uso' && usage && (
-        <SectionShell title="📊 Uso do app" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="📊 Uso do app" onBack={() => navigate('/admin')}>
           <UsageSection usage={usage} />
         </SectionShell>
       )}
 
       {isFounder && section === 'feedback' && (
-        <SectionShell title="💬 Feedback" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="💬 Feedback" onBack={() => navigate('/admin')}>
           <FeedbackSection
             feedback={feedback}
             email={email}
@@ -658,7 +659,7 @@ export default function AdminIgAccounts() {
       )}
 
       {isFounder && section === 'ferramentas' && (
-        <SectionShell title="🛠 Ferramentas" onBack={() => navigate('/admin')}>
+        <SectionShell home={homeLabel} title="🛠 Ferramentas" onBack={() => navigate('/admin')}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
             <button onClick={triggerRefresh} disabled={busy} style={ghostBtn('var(--sage)')}>
               ▶ Disparar refresh agora
@@ -1207,7 +1208,7 @@ function MenuCard({ icon, label, hint, count, extra, onClick }) {
 
 
 // The frame every section sits in: a way back, and a title.
-function SectionShell({ title, onBack, children }) {
+function SectionShell({ title, onBack, home = 'Admin', children }) {
   return (
     <section>
       <button
@@ -1219,7 +1220,7 @@ function SectionShell({ title, onBack, children }) {
           textTransform: 'uppercase', marginBottom: 10,
         }}
       >
-        ← Admin
+        ← {home}
       </button>
       <h2 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 10px' }}>{title}</h2>
       {children}
@@ -1515,7 +1516,10 @@ function Header({ userName, email, isCurator, isFounder, enabledCount, totalCoun
   const roleColor = isFounder ? '#FF8F00' : isCurator ? 'var(--sage)' : 'var(--charcoal-light)'
   return (
     <div style={{ marginBottom: 20 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Admin</h1>
+      {/* The screen is called what the person is — same rule as the
+          nav tab. A curator's screen titled "Admin" reads as someone
+          else's. */}
+      <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{isFounder ? 'Admin' : 'Curadoria'}</h1>
       <p style={{ fontSize: 13, color: 'var(--charcoal-light)', margin: '4px 0 0' }}>
         {enabledCount} de {totalCount} contas ativas. {' '}
         Você está logado como{' '}
