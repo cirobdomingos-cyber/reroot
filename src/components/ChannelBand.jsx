@@ -1,7 +1,4 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
-import { fetchChannelFeed } from '../services/api'
 
 // "Dos teus canais" — a band above the catalog, not a merge into it.
 //
@@ -18,19 +15,13 @@ import { fetchChannelFeed } from '../services/api'
 // Hides itself entirely when empty, which is also what an unfollowed
 // account sees, so nobody gets an empty shelf explaining a feature they
 // haven't opted into.
-export default function ChannelBand() {
+// Takes its events as a prop now. Eventos fetches the channel feed
+// once and uses it twice — for this band, and to mark the catalog rows
+// that came from a channel you follow. Fetching it in both places
+// would have been two calls for one answer, and two chances for them
+// to disagree.
+export default function ChannelBand({ events = [] }) {
   const navigate = useNavigate()
-  const { state } = useApp()
-  const googleId = state.googleUser?.id
-  const [events, setEvents] = useState([])
-
-  useEffect(() => {
-    let cancelled = false
-    fetchChannelFeed(googleId).then(list => {
-      if (!cancelled) setEvents(list)
-    })
-    return () => { cancelled = true }
-  }, [googleId])
 
   if (events.length === 0) return null
 
