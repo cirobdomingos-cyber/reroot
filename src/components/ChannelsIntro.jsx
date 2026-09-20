@@ -54,8 +54,8 @@ export default function ChannelsIntro({ followedCount, loading }) {
         body="A gente separa por gênero e vibe — rock, samba, eletrônica. É só seguir, e dá pra parar quando quiser."
       />
       <Kind
-        badge="🔒"
-        badgeBg="transparent"
+        badge="🔒 seu"
+        badgeBg="var(--cyan)"
         title="Seus canais"
         body="Privados, pra tua turma combinar o que fazer. Só entra quem você convida."
       />
@@ -71,8 +71,7 @@ function Kind({ badge, badgeBg, title, body }) {
         flexShrink: 0, marginTop: 2,
         minWidth: 26, height: 18, padding: '0 6px', borderRadius: 7,
         background: badgeBg,
-        border: badgeBg === 'transparent' ? '1px solid var(--line)' : 'none',
-        color: badgeBg === 'transparent' ? 'var(--text2)' : 'var(--bg)',
+        color: 'var(--bg)',
         fontSize: 10, fontWeight: 800, letterSpacing: '0.06em',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}>

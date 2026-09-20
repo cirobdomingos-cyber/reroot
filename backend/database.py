@@ -414,6 +414,35 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: `following` separates WHAT YOU ARE to a channel from
+        # WHETHER IT'S IN YOUR LIST. role is one column and can't hold
+        # both, so auê's own 'admin' row on its channel made follow and
+        # unfollow inert — INSERT OR IGNORE hit the primary key and the
+        # delete matched no 'follower' row — while the two screens
+        # disagreed about the state, because the list counted any row and
+        # the detail counted only followers.
+        #
+        # Same trap waits for per-channel curators: curating Rockzão
+        # shouldn't decide whether Rockzão is in your list.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN following INTEGER NOT NULL DEFAULT 0"
+            )
+            # Existing followers were following by definition.
+            conn.execute("UPDATE group_members SET following = 1 WHERE role = 'follower'")
+        except sqlite3.OperationalError:
+            pass  # column already present
+        # Migration: whether this channel's events surface in the band
+        # above Eventos. Defaults to 1 — following a channel and then
+        # seeing nothing from it anywhere but its own screen is a follow
+        # that did nothing, which is how people conclude the feature is
+        # broken rather than off.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN prioritize INTEGER NOT NULL DEFAULT 1"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
                 handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'
@@ -3888,6 +3917,13 @@ def get_groups_for_user(google_id: str) -> list[dict]:
         rows = conn.execute(
             """SELECT g.*, gm.role,
                       (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+                      -- Same field name the channel list uses, so one row
+                      -- component can render both without knowing which
+                      -- kind it got.
+                      (SELECT COUNT(*) FROM group_events ge
+                        WHERE (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                          AND substr(ge.date_start, 1, 10) >= date('now'))
+                        AS upcoming_event_count,
                       COALESCE(
                           (SELECT MAX(created_at) FROM group_events WHERE group_id = g.id),
                           ''
@@ -4130,7 +4166,8 @@ def get_group_members(group_id: str) -> list[dict]:
     """Return all members of a group with profile info from user_states."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT google_id, role, joined_at FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
+            "SELECT google_id, role, joined_at, following, notify"
+            " FROM group_members WHERE group_id = ? ORDER BY joined_at ASC",
             (group_id,),
         ).fetchall()
 
@@ -4153,6 +4190,10 @@ def get_group_members(group_id: str) -> list[dict]:
             members.append({
                 "google_id": gid, "name": name, "picture": picture,
                 "role": row["role"], "joined_at": row["joined_at"],
+                # Whether the channel is in their list, which is separate
+                # from what they ARE to it — auê holds an admin row on
+                # its own channel without being in its audience.
+                "following": bool(row["following"]),
             })
     return members
 
@@ -4197,10 +4238,15 @@ def list_channels(google_id: str = "") -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT g.*,
-                      (SELECT COUNT(*) FROM group_members WHERE group_id = g.id)
+                      (SELECT COUNT(*) FROM group_members
+                        WHERE group_id = g.id AND following = 1)
                         AS follower_count,
-                      EXISTS(SELECT 1 FROM group_members
-                             WHERE group_id = g.id AND google_id = ?)
+                      -- `following`, not "has any row". Counting any row
+                      -- reported auê as following its own channel because
+                      -- it holds the admin row, and disagreed with the
+                      -- detail screen, which counted followers.
+                      COALESCE((SELECT following FROM group_members
+                                WHERE group_id = g.id AND google_id = ?), 0)
                         AS is_following,
                       COALESCE((SELECT notify FROM group_members
                                 WHERE group_id = g.id AND google_id = ?), 1)
@@ -4229,13 +4275,19 @@ def list_channels(google_id: str = "") -> list[dict]:
 
 
 def follow_channel(group_id: str, google_id: str) -> bool:
-    """Add a follower. Idempotent — following twice is a no-op, not an
-    error, because the button can be double-tapped."""
+    """Put a channel in someone's list. Idempotent — the button can be
+    double-tapped.
+
+    Sets `following` and leaves `role` alone, so auê or a channel
+    curator can follow their own channel without giving up what they
+    are to it. A brand-new row gets role='follower'; an existing admin
+    or curator keeps theirs."""
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute(
-            """INSERT OR IGNORE INTO group_members (group_id, google_id, role, joined_at)
-               VALUES (?, ?, 'follower', ?)""",
+            """INSERT INTO group_members (group_id, google_id, role, joined_at, following)
+               VALUES (?, ?, 'follower', ?, 1)
+               ON CONFLICT(group_id, google_id) DO UPDATE SET following = 1""",
             (group_id, google_id, now),
         )
         conn.commit()
@@ -4243,9 +4295,16 @@ def follow_channel(group_id: str, google_id: str) -> bool:
 
 
 def unfollow_channel(group_id: str, google_id: str) -> bool:
-    """Remove a follower. Never removes the channel itself, and never
-    touches an 'admin' row — auê's own membership isn't a follow."""
+    """Take a channel out of someone's list.
+
+    A plain follower's row goes entirely; an admin or curator keeps
+    theirs with following cleared, because stepping out of the audience
+    is not resigning from the job."""
     with get_conn() as conn:
+        conn.execute(
+            "UPDATE group_members SET following = 0 WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        )
         cur = conn.execute(
             """DELETE FROM group_members
                WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
@@ -4253,6 +4312,121 @@ def unfollow_channel(group_id: str, google_id: str) -> bool:
         )
         conn.commit()
     return cur.rowcount > 0
+
+
+# ── Per-channel curators ──────────────────────────────────────────
+# A channel curator is a group_members row with role='curator'. Same
+# table as followers and members, because the question it answers —
+# "what is this person to this channel" — is the same question role
+# already answers everywhere else.
+#
+# Deliberately separate from the global `curators` table. That one is
+# "can touch the catalog": approve suggestions, edit events, add IG
+# handles. This one is "runs Rockzão". Someone can have either without
+# the other, and conflating them means handing catalog-wide powers to a
+# person you wanted to let pick samba nights.
+
+def add_channel_curator(group_id: str, google_id: str) -> bool:
+    """Make someone a curator of this channel.
+
+    Overwrites a 'follower' row if there is one, which means the
+    follower count drops by one when you promote a follower. That's
+    correct: they stopped being an audience member.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO group_members (group_id, google_id, role, joined_at)
+               VALUES (?, ?, 'curator', ?)
+               ON CONFLICT(group_id, google_id) DO UPDATE SET role = 'curator'""",
+            (group_id, google_id, now),
+        )
+        conn.commit()
+    return True
+
+
+def remove_channel_curator(group_id: str, google_id: str) -> bool:
+    """Step someone down. Only removes a 'curator' row, so this can
+    never delete auê's own 'admin' ownership of the channel."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """DELETE FROM group_members
+               WHERE group_id = ? AND google_id = ? AND role = 'curator'""",
+            (group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def list_channel_curators(group_id: str) -> list[dict]:
+    """Curators of this channel, with profile info."""
+    return [m for m in get_group_members(group_id) if m.get("role") == "curator"]
+
+
+def is_channel_curator(group_id: str, google_id: str) -> bool:
+    """Whether this person runs this channel. 'admin' counts — that's
+    the row auê itself holds as the creator."""
+    if not google_id:
+        return False
+    return get_group_member_role(group_id, google_id) in ("curator", "admin")
+
+
+def set_channel_prioritize(group_id: str, google_id: str, prioritize: bool) -> bool:
+    """Whether this channel's events show in the band above Eventos."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE group_members SET prioritize = ?
+               WHERE group_id = ? AND google_id = ? AND following = 1""",
+            (1 if prioritize else 0, group_id, google_id),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def get_channel_prioritize(group_id: str, google_id: str) -> bool:
+    """Defaults to True for someone who isn't following yet, so the
+    switch renders pre-armed and "seguir" doesn't drop them into a state
+    they never picked."""
+    if not google_id:
+        return True
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT prioritize FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone()
+    return bool(row["prioritize"]) if row else True
+
+
+def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
+    """Upcoming events from the channels this person follows and hasn't
+    turned off.
+
+    Its own query rather than a join into the main feed: channel events
+    have no invitee list, so the feed's creator-or-invitee rule would
+    drop every one of them. Keeping it separate also keeps the band
+    separate — the catalog below stays exactly what it was.
+    """
+    if not google_id:
+        return []
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT ge.*, g.name AS channel_name, g.id AS channel_id
+                 FROM group_events ge
+                 JOIN groups g
+                   ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                 JOIN group_members gm
+                   ON gm.group_id = g.id AND gm.google_id = ?
+                WHERE g.kind = 'channel'
+                  AND gm.following = 1
+                  AND gm.prioritize = 1
+                  AND substr(ge.date_start, 1, 10) >= ?
+             ORDER BY ge.date_start ASC
+                LIMIT ?""",
+            (google_id, today, limit),
+        ).fetchall()
+    # Same row shaping the rest of the group_events readers get.
+    return [_hydrate_invitees(dict(r)) for r in rows]
 
 
 def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
@@ -4263,7 +4437,7 @@ def set_channel_notify(group_id: str, google_id: str, notify: bool) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
             """UPDATE group_members SET notify = ?
-               WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
+               WHERE group_id = ? AND google_id = ? AND following = 1""",
             (1 if notify else 0, group_id, google_id),
         )
         conn.commit()
@@ -4291,7 +4465,7 @@ def get_channel_followers_to_notify(group_id: str) -> list[str]:
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT google_id FROM group_members
-               WHERE group_id = ? AND role = 'follower' AND notify = 1""",
+               WHERE group_id = ? AND following = 1 AND notify = 1""",
             (group_id,),
         ).fetchall()
     return [r["google_id"] for r in rows]
@@ -5598,6 +5772,245 @@ _IG_EXPORT_COLUMNS = (
     "promo_code", "promo_perk",
 )
 
+
+# -- Social export, anonymised at the source -----------------------
+#
+# Staging needs a realistic graph — friendships that exist, channels
+# with real sizes, RSVPs with a real distribution — because most bugs in
+# this app are relational and an empty staging hides them.
+#
+# What it does NOT need is who those people actually are. So the
+# anonymisation happens HERE, on the production side, before anything
+# leaves: real names, emails and photos never travel over the wire and
+# never sit in a response body. Scrubbing on the staging side would mean
+# the real data made the trip and only got cleaned on arrival, which
+# protects nothing.
+#
+# Pseudonyms are a salted hash of the real id, so they are stable across
+# pulls: the same person is the same fake person every time, and the
+# graph lines up with what staging already has instead of duplicating.
+#
+# Never copied at all:
+#   push_subscriptions / apns_device_tokens — staging has SMTP and push
+#     configured, so a test digest reaching a real device is not a
+#     hypothetical, it is the scheduler doing its job in the wrong place
+#   auth_providers — nobody should be able to sign in as a copy
+#   feedback — free text, written by people who expected one reader
+
+_ANON_FIRST = [
+    "Ana", "Bruno", "Carla", "Diego", "Elisa", "Fabio", "Gabi", "Heitor",
+    "Iris", "Joao", "Katia", "Lucas", "Marina", "Nando", "Olivia", "Pedro",
+    "Rafa", "Sofia", "Teo", "Vera",
+]
+_ANON_LAST = [
+    "Alves", "Barros", "Cardoso", "Dias", "Esteves", "Franco", "Gomes",
+    "Horta", "Iizuka", "Jardim", "Lima", "Moreira", "Nunes", "Peixoto",
+]
+
+
+def _pseudonym(real_id: str, salt: str) -> dict:
+    """A stable fake identity for one real user id.
+
+    Deterministic so repeated pulls produce the same graph — someone who
+    was "Marina Lima" last sync is still Marina Lima this sync, and
+    staging rows keep lining up rather than piling up.
+    """
+    digest = hashlib.sha256(f"{salt}:{real_id}".encode()).hexdigest()
+    n = int(digest[:12], 16)
+    first = _ANON_FIRST[n % len(_ANON_FIRST)]
+    last = _ANON_LAST[(n // len(_ANON_FIRST)) % len(_ANON_LAST)]
+    short = digest[:10]
+    return {
+        "id": f"anon_{short}",
+        "name": f"{first} {last}",
+        # .invalid is reserved by RFC 2606 and can never resolve, so a
+        # stray send from staging bounces instead of reaching anyone.
+        "email": f"{first.lower()}.{short}@staging.invalid",
+    }
+
+
+def export_social(salt: str, keep_real: tuple = ()) -> dict:
+    """The relational shape of production, with the people scrubbed.
+
+    `keep_real` is emails whose rows pass through untouched — the
+    founder's own account, so they can sign into staging as themselves
+    and appear in the graph they are testing. It is their data and their
+    call; nobody else is in that position.
+    """
+    with get_conn() as conn:
+        users = [dict(r) for r in conn.execute(
+            "SELECT id, display_name, email, picture, created_at FROM users"
+        )]
+        wanted = {e.strip().lower() for e in keep_real if e}
+        keep = {u["id"] for u in users
+                if (u.get("email") or "").strip().lower() in wanted}
+
+        alias = {}
+        out_users = []
+        for u in users:
+            if u["id"] in keep:
+                out_users.append(u)
+                alias[u["id"]] = {"id": u["id"], "name": u.get("display_name") or "",
+                                  "email": u.get("email") or ""}
+                continue
+            fake = _pseudonym(u["id"], salt)
+            alias[u["id"]] = fake
+            out_users.append({
+                "id": fake["id"],
+                "display_name": fake["name"],
+                "email": fake["email"],
+                "picture": "",          # real faces do not travel
+                "created_at": u["created_at"],
+            })
+
+        def a(real_id):
+            """Real id to exported id, or None when the row should drop."""
+            entry = alias.get(real_id or "")
+            return entry["id"] if entry else None
+
+        def rows(sql):
+            return [dict(r) for r in conn.execute(sql)]
+
+        friendships = []
+        for f in rows("SELECT * FROM friendships"):
+            ua, ub = a(f["user_a"]), a(f["user_b"])
+            if not ua or not ub:
+                continue
+            friendships.append({**f, "user_a": ua, "user_b": ub,
+                                "initiated_by": a(f["initiated_by"]) or ua})
+
+        groups = []
+        for g in rows("SELECT * FROM groups"):
+            owner = a(g["created_by"])
+            if owner:
+                groups.append({**g, "created_by": owner})
+
+        members = []
+        for m in rows("SELECT * FROM group_members"):
+            gid = a(m["google_id"])
+            if gid:
+                members.append({**m, "google_id": gid})
+
+        group_events = []
+        for e in rows("SELECT * FROM group_events"):
+            creator = a(e["created_by"])
+            if not creator:
+                continue
+            try:
+                invitees = [a(i) for i in json.loads(e.get("extra_invitee_ids") or "[]")]
+                declined = [a(i) for i in json.loads(e.get("declined_ids") or "[]")]
+            except (ValueError, TypeError):
+                invitees, declined = [], []
+            group_events.append({
+                **e,
+                "created_by": creator,
+                "extra_invitee_ids": json.dumps([i for i in invitees if i]),
+                "declined_ids": json.dumps([i for i in declined if i]),
+            })
+
+        rsvps = []
+        for r in rows("SELECT * FROM rsvps"):
+            gid = a(r["google_id"])
+            if gid:
+                rsvps.append({**r, "google_id": gid})
+
+        # user_states carries the profile blob the app reads for names
+        # and pictures, so it has to agree with the scrubbed users table
+        # — otherwise staging renders real names out of a clean database.
+        states = []
+        for s in rows("SELECT * FROM user_states"):
+            gid = a(s["google_id"])
+            if not gid:
+                continue
+            if s["google_id"] in keep:
+                states.append(dict(s))
+                continue
+            fake = alias[s["google_id"]]
+            try:
+                blob = json.loads(s["state_json"])
+            except (ValueError, TypeError):
+                blob = {}
+            blob["userName"] = fake["name"]
+            google_user = blob.get("googleUser")
+            if isinstance(google_user, dict):
+                blob["googleUser"] = {
+                    **google_user,
+                    "name": fake["name"],
+                    "givenName": fake["name"].split()[0],
+                    "email": fake["email"],
+                    "picture": "",
+                }
+            # Keep every other column (updated_at, created_at) — they're
+            # NOT NULL, and they're the timestamps the activity views
+            # read, so a realistic graph needs them intact.
+            states.append({**s, "google_id": gid, "state_json": json.dumps(blob)})
+
+    return {
+        "users": out_users,
+        "user_states": states,
+        "friendships": friendships,
+        "groups": groups,
+        "group_members": members,
+        "group_events": group_events,
+        "rsvps": rsvps,
+        "anonymised": True,
+        "kept_real": sorted(keep),
+    }
+
+
+def import_social(payload: dict) -> dict:
+    """Replace this environment's social graph with an exported one.
+
+    Overwrite, not merge. A merge would leave behind whatever staging
+    had from the last round of manual testing, and the point of pulling
+    production is looking at production's shape — not at production plus
+    residue.
+
+    Refuses a payload that is not marked anonymised. The guard lives on
+    the importing side as well as the exporting one because this writes
+    real identities into a database with weaker protections, and a
+    single misconfigured origin should not be enough to do it.
+    """
+    if not payload.get("anonymised"):
+        raise ValueError("Refusing a social payload that is not anonymised")
+
+    tables = (
+        ("rsvps", "google_id, event_id, event_name, event_venue, event_date,"
+                  " event_url, created_at"),
+        ("group_events", None),
+        ("group_members", None),
+        ("groups", None),
+        ("friendships", "user_a, user_b, status, initiated_by, created_at"),
+        ("user_states", None),
+        ("users", "id, display_name, email, picture, created_at"),
+    )
+    counts = {}
+    with get_conn() as conn:
+        # Wipe children before parents, then insert parents before
+        # children, so nothing points at a row that is not there yet.
+        for name, _ in tables:
+            conn.execute(f"DELETE FROM {name}")
+        for name, _ in reversed(tables):
+            incoming = payload.get(name) or []
+            counts[name] = len(incoming)
+            for row in incoming:
+                cols = list(row.keys())
+                placeholders = ", ".join("?" for _ in cols)
+                conn.execute(
+                    f"INSERT OR REPLACE INTO {name} ({', '.join(cols)})"
+                    f" VALUES ({placeholders})",
+                    [row[c] for c in cols],
+                )
+        # Devices belong to whoever was really holding them. Anything
+        # already registered here pointed at ids that no longer exist,
+        # and a copied graph must never inherit a way to reach someone.
+        for name in ("push_subscriptions", "apns_device_tokens"):
+            try:
+                conn.execute(f"DELETE FROM {name}")
+            except sqlite3.OperationalError:
+                pass
+        conn.commit()
+    return counts
 
 def export_catalog(event_limit: int = 5000) -> dict:
     """The catalog and nothing else — events, venues, tracked IG handles.

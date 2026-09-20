@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { BASE_URL, createAueChannel, fetchChannels, setChannelFollow, trackEvent } from '../services/api'
+import { BASE_URL, createAueChannel, fetchChannels, fetchGroups, setChannelFollow, trackEvent } from '../services/api'
 import ChannelsIntro from './ChannelsIntro'
 
 // Canais do auê — curated collections you follow.
@@ -23,6 +23,11 @@ export default function ChannelList() {
   const { state } = useApp()
   const googleId = state.googleUser?.id
   const [channels, setChannels] = useState([])
+  // Your own private channels, fetched here rather than by a separate
+  // list below. "Seguindo" and "Meus canais" were two sections for one
+  // idea — channels in your life — and splitting them by who created
+  // them made the reader do bookkeeping the app should be doing.
+  const [mine, setMine] = useState([])
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(null)   // id being toggled
   // Founder-only: creating an auê channel had an endpoint and no
@@ -44,8 +49,12 @@ export default function ChannelList() {
 
   const reload = useCallback(() => {
     setLoading(true)
-    return fetchChannels(googleId).then(list => {
+    return Promise.all([
+      fetchChannels(googleId),
+      googleId ? fetchGroups(googleId) : Promise.resolve([]),
+    ]).then(([list, groups]) => {
       setChannels(list)
+      setMine(groups || [])
       setLoading(false)
     })
   }, [googleId])
@@ -80,18 +89,28 @@ export default function ChannelList() {
   // everything IS discovery, and a "Seguindo (0)" heading over nothing
   // is noise. Same reasoning the other way — once you follow all of
   // them, "Descobrir" has nothing to show and goes away.
-  const following = channels.filter(c => c.is_following)
-  const discover = channels.filter(c => !c.is_following)
+  // One pile for "channels in my life": the auê ones you follow and the
+  // private ones you're in. Ordered by what's actually happening in
+  // them, so the section leads with the one worth opening.
+  const following = [
+    ...channels.filter(c => c.is_following).map(c => ({ ...c, _aue: true })),
+    ...mine.map(g => ({ ...g, _aue: false })),
+  ].sort((a, b) => (b.upcoming_event_count || 0) - (a.upcoming_event_count || 0))
 
-  function row(channel) {
+  const explore = channels.filter(c => !c.is_following)
+
+  function row(item) {
     return (
       <ChannelRow
-        key={channel.id}
-        channel={channel}
+        key={item.id}
+        channel={item}
+        aue={item._aue !== false}
         canFollow={!!googleId}
-        busy={pending === channel.id}
-        onOpen={() => navigate(`/channels/${channel.id}`)}
-        onToggle={() => toggle(channel)}
+        busy={pending === item.id}
+        onOpen={() => navigate(
+          item._aue === false ? `/groups/${item.id}` : `/channels/${item.id}`,
+        )}
+        onToggle={() => toggle(item)}
       />
     )
   }
@@ -143,15 +162,15 @@ export default function ChannelList() {
           </>
         )}
 
-        {discover.length > 0 && (
+        {explore.length > 0 && (
           <>
             {/* Named for what you do here, not for who made them. Before
                 the first follow there's nothing to contrast with, so it
                 keeps the plain name. */}
             <SectionHeading spaced={following.length > 0}>
-              {following.length > 0 ? 'Descobrir' : 'Canais do auê'}
+              {following.length > 0 ? 'Explorar' : 'Canais do auê'}
             </SectionHeading>
-            {discover.map(row)}
+            {explore.map(row)}
           </>
         )}
       </div>
@@ -172,17 +191,29 @@ function SectionHeading({ children, count, spaced }) {
   )
 }
 
-function ChannelRow({ channel, canFollow, busy, onOpen, onToggle }) {
+// One row for both kinds. They differ by a badge and by what the
+// meta line counts — followers for an auê channel, members for a
+// private one — not by layout. Two visually different cards for the
+// same idea was most of why the tab read as two unrelated lists.
+function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
   const events = channel.upcoming_event_count ?? 0
+  const people = aue ? channel.follower_count : channel.member_count
+  // An auê channel you already follow and a private one you're in are
+  // both "yours" — same marker, because to the reader they're the same
+  // state.
+  const isMine = aue ? channel.is_following : true
+  // Brand split: magenta is the primary accent — the logo, the active
+  // nav, auê itself — so auê's channels carry it. Private ones take
+  // cyan, the secondary accent. Both are already in the palette, so
+  // the distinction reads as the product rather than as two arbitrary
+  // colours, and it survives a glance that never reaches the badge.
+  const accent = aue ? 'var(--magenta)' : 'var(--cyan)'
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       background: 'var(--bg2)', border: '1px solid var(--line)',
       borderRadius: 14, padding: '12px 14px', marginBottom: 8,
-      // A followed channel is marked on the row itself, not only by the
-      // button's wording — the state should survive a glance that never
-      // reaches the right-hand edge.
-      boxShadow: channel.is_following ? 'inset 3px 0 0 var(--magenta)' : 'none',
+      boxShadow: isMine ? `inset 3px 0 0 ${accent}` : 'none',
     }}>
       <div onClick={onOpen} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
         <div style={{
@@ -192,26 +223,40 @@ function ChannelRow({ channel, canFollow, busy, onOpen, onToggle }) {
           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {channel.name}
           </span>
-          {/* What separates an auê channel from a crew at a glance, now
-              that they share a word. */}
-          <span
-            title="Canal curado pelo auê"
-            style={{
-              flexShrink: 0, fontSize: 10, fontWeight: 800,
-              padding: '2px 7px', borderRadius: 7,
-              background: 'var(--magenta)', color: 'var(--bg)',
-              letterSpacing: '0.06em',
-            }}
-          >
-            auê
-          </span>
+          {aue ? (
+            <span
+              title="Canal curado pelo auê"
+              style={{
+                flexShrink: 0, fontSize: 10, fontWeight: 800,
+                padding: '2px 7px', borderRadius: 7,
+                background: 'var(--magenta)', color: 'var(--bg)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              auê
+            </span>
+          ) : (
+            <span
+              title="Canal privado — só quem você convidar"
+              style={{
+                flexShrink: 0, fontSize: 10, fontWeight: 800,
+                padding: '2px 7px', borderRadius: 7,
+                background: 'var(--cyan)', color: 'var(--bg)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              🔒 seu
+            </span>
+          )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
-          {/* What's in it comes first. A channel that says "12 seguindo"
-              and nothing else is asking for a follow without saying
+          {/* What's in it comes first. A channel that only reports how
+              many people are in it is asking for a tap without saying
               what for. */}
           {events > 0 ? `${events} ${events === 1 ? 'rolê' : 'rolês'}` : 'sem rolê marcado'}
-          {' · '}{channel.follower_count} seguindo
+          {people != null && (
+            <> · {people} {aue ? 'seguindo' : (people === 1 ? 'membro' : 'membros')}</>
+          )}
         </div>
         {channel.description && (
           <div style={{
@@ -222,7 +267,10 @@ function ChannelRow({ channel, canFollow, busy, onOpen, onToggle }) {
         )}
       </div>
 
-      {canFollow && (
+      {/* Only auê channels have a follow to toggle. A private one you're
+          already in has no equivalent action here — you leave it from
+          inside, which is a heavier decision than this row should carry. */}
+      {aue && canFollow && (
         <button
           onClick={onToggle}
           disabled={busy}

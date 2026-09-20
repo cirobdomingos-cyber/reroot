@@ -4347,6 +4347,36 @@ class ChannelNotify(BaseModel):
     notify: bool
 
 
+@app.get("/channels/feed")
+def channel_feed(google_id: str = "", limit: int = 40):
+    """Upcoming events from the channels this person follows, for the
+    band above Eventos.
+
+    Declared BEFORE /channels/{group_id} on purpose: FastAPI matches
+    in declaration order, so the other way round this resolves as a
+    channel whose id is literally "feed" and 404s. Same trap the
+    /digests/latest route already carries a note about.
+
+    A separate call from the catalog on purpose. Channel events have no
+    invitee list, so the main feed's creator-or-invitee rule drops every
+    one of them — and keeping the band separate keeps the catalog below
+    exactly what it was. Following three channels shouldn't bury the
+    city under them.
+    """
+    if not google_id:
+        return {"events": []}
+    rows = db.get_followed_channel_events(google_id, limit=min(limit, 100))
+    return {"events": [
+        _group_event_to_frontend(
+            e,
+            group_name=e.get("channel_name") or "",
+            viewer_google_id=google_id,
+            prefer_group_id=e.get("channel_id"),
+        )
+        for e in rows
+    ]}
+
+
 @app.get("/channels/{group_id}")
 def get_channel(group_id: str, google_id: str = ""):
     """Everything the channel screen needs, in one call.
@@ -4379,7 +4409,12 @@ def get_channel(group_id: str, google_id: str = ""):
     upcoming = [e for e in events if (e.get("dateStart") or "")[:10] >= today]
     past = [e for e in events if (e.get("dateStart") or "")[:10] < today]
 
-    followers = [m for m in db.get_group_members(group_id) if m.get("role") == "follower"]
+    # `following`, the same field the list reads. These two used to
+    # disagree — the list counted any membership row, this counted only
+    # role='follower' — so auê saw "Seguindo" on one screen and "Seguir"
+    # on the other, for the same channel.
+    members = db.get_group_members(group_id)
+    followers = [m for m in members if m.get("following")]
     is_following = any(m["google_id"] == google_id for m in followers) if google_id else False
 
     return {
@@ -4390,7 +4425,14 @@ def get_channel(group_id: str, google_id: str = ""):
             # Pre-armed for someone who hasn't followed yet, so tapping
             # "seguir" doesn't drop them into a state they didn't pick.
             "notify": db.get_channel_notify(group_id, google_id),
+            "prioritize": db.get_channel_prioritize(group_id, google_id),
             "upcoming_event_count": len(upcoming),
+            # Whether this viewer may edit the channel and publish into
+            # it: the founder, or a curator OF THIS CHANNEL.
+            "can_curate": bool(google_id) and (
+                db.is_channel_curator(group_id, google_id)
+                or db.is_founder((db.get_user_profile(google_id) or {}).get("email") or "")
+            ),
         },
         "events": upcoming,
         # Recent past, so a channel between shows still looks alive
@@ -4399,6 +4441,103 @@ def get_channel(group_id: str, google_id: str = ""):
         "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
         "followers": followers[:12],
     }
+
+
+class ChannelUpdate(BaseModel):
+    requesting_email: str
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ChannelCuratorAdd(BaseModel):
+    requesting_email: str
+    google_id: str
+
+
+def _can_curate_channel(group_id: str, email: str) -> bool:
+    """Who may edit a channel and publish into it: the founder, or
+    someone made a curator OF THAT CHANNEL.
+
+    Global curators are deliberately NOT included. That role is "can
+    touch the catalog" — approve suggestions, edit events, add IG
+    handles. Running Rockzão is a different job, and the whole point of
+    per-channel curators is being able to hand out the second without
+    the first."""
+    if db.is_founder(email):
+        return True
+    google_id = db.get_user_id_by_email(email)
+    return bool(google_id) and db.is_channel_curator(group_id, google_id)
+
+
+@app.put("/channels/{group_id}")
+def update_channel(group_id: str, req: ChannelUpdate):
+    """Rename a channel or rewrite its description."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not _can_curate_channel(group_id, req.requesting_email):
+        raise HTTPException(status_code=403, detail="Só a curadoria desse canal pode editar")
+    name = (req.name or "").strip()[:80] if req.name is not None else None
+    if req.name is not None and not name:
+        raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    db.update_group(
+        group_id,
+        name=name,
+        description=(req.description or "").strip()[:500] if req.description is not None else None,
+        visibility=None,
+    )
+    return {"ok": True, "channel": db.get_group(group_id)}
+
+
+@app.get("/channels/{group_id}/curators")
+def list_channel_curators(group_id: str, requesting_email: str = ""):
+    """Who runs this channel. Founder-only — a follower has no reason to
+    see the roster, and it's a list of real people."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(requesting_email)
+    return {"curators": db.list_channel_curators(group_id)}
+
+
+@app.post("/channels/{group_id}/curators")
+def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
+    """Hand someone this channel. Founder-only: a curator being able to
+    appoint more curators makes the roster ungovernable, and there's one
+    person who owns that decision."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(req.requesting_email)
+    if not db.get_user_profile(req.google_id):
+        raise HTTPException(status_code=404, detail="Pessoa não encontrada")
+    db.add_channel_curator(group_id, req.google_id)
+    return {"ok": True, "curators": db.list_channel_curators(group_id)}
+
+
+@app.delete("/channels/{group_id}/curators/{google_id}")
+def remove_channel_curator(group_id: str, google_id: str, requesting_email: str = ""):
+    """Step someone down. Only removes a 'curator' row, so auê's own
+    ownership of the channel survives this being called on it."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    _require_founder(requesting_email)
+    db.remove_channel_curator(group_id, google_id)
+    return {"ok": True, "curators": db.list_channel_curators(group_id)}
+
+
+class ChannelPrioritize(BaseModel):
+    google_id: str
+    prioritize: bool
+
+
+@app.put("/channels/{group_id}/prioritize")
+def set_channel_prioritize(group_id: str, req: ChannelPrioritize):
+    """Whether this channel's events surface in the band above Eventos."""
+    if not db.is_channel(group_id):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    if not req.google_id:
+        raise HTTPException(status_code=401, detail="Entra na tua conta")
+    if not db.set_channel_prioritize(group_id, req.google_id, req.prioritize):
+        raise HTTPException(status_code=409, detail="Segue o canal primeiro")
+    return {"ok": True, "prioritize": req.prioritize}
 
 
 @app.put("/channels/{group_id}/notify")
@@ -4920,10 +5059,13 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
     # A channel is curated: following it must not grant the right to
     # publish into it. Without this, "seguir" would be an open write to
     # a feed every other follower sees.
-    if db.is_channel(group_id) and not _is_curator_google_id(req.google_id):
+    if db.is_channel(group_id) and not (
+        _is_curator_google_id(req.google_id)
+        or db.is_channel_curator(group_id, req.google_id)
+    ):
         raise HTTPException(
             status_code=403,
-            detail="Só a curadoria do auê publica num canal do auê",
+            detail="Só a curadoria desse canal publica nele",
         )
     role = db.get_group_member_role(group_id, req.google_id)
     if role is None:
@@ -6542,6 +6684,132 @@ def catalog_export(token: str = "", event_limit: int = 5000):
     return db.export_catalog(event_limit=min(event_limit, 20000))
 
 
+def _sync_payload_or_502(resp, endpoint: str) -> dict:
+    """Parse a sync response, or fail with something worth reading.
+
+    The origin serves a SPA, and its catch-all answers any unknown path
+    with index.html and a 200. So an endpoint that hasn't been deployed
+    there yet doesn't 404 — it returns a page, and the only symptom is
+    JSON parsing dying on "<". That reads as "production is broken"
+    when it means "production doesn't have this yet", which is the
+    normal state for the exporting half of a new sync: it lives in
+    production, so production has to ship first.
+    """
+    try:
+        return resp.json()
+    except Exception:
+        body = (resp.text or "")[:80].lstrip().lower()
+        if body.startswith("<!doctype") or body.startswith("<html"):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"A produção devolveu a página do app em {endpoint}, não dados — "
+                    "esse endpoint ainda não foi pra produção. A metade que exporta "
+                    "precisa estar lá antes desta aqui funcionar."
+                ),
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Produção respondeu algo que não é JSON em {endpoint}.",
+        )
+
+
+@app.get("/social-export")
+def social_export(token: str = ""):
+    """Production side of the social sync, anonymised before it leaves.
+
+    Same token gate as /catalog-export, and the same 404-when-unset
+    behaviour: with CATALOG_SYNC_TOKEN missing this looks like it was
+    never deployed.
+
+    The scrubbing happens in db.export_social, on this side, on purpose.
+    Real names, emails and photos never travel and never sit in a
+    response body — anonymising on the staging side would mean the real
+    data made the trip and only got cleaned on arrival, which protects
+    nobody. The token doubles as the pseudonym salt, so the same person
+    maps to the same fake person on every pull and staging's graph lines
+    up instead of piling up.
+
+    The founder's own row passes through untouched, so they can sign
+    into staging as themselves and appear in the graph they're testing.
+    That's their data and their call; nobody else is in that position.
+    """
+    if not settings.catalog_sync_token:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not secrets.compare_digest(token, settings.catalog_sync_token):
+        raise HTTPException(status_code=404, detail="Not found")
+    return db.export_social(
+        salt=settings.catalog_sync_token,
+        keep_real=(settings.founder_email,),
+    )
+
+
+@app.post("/admin/sync-social")
+def admin_sync_social(requesting_email: str = ""):
+    """Staging side. Replaces this environment's social graph with
+    production's anonymised one.
+
+    Founder-only, a step up from sync-catalog's curator gate: this drops
+    every user, friendship, channel and RSVP in the environment before
+    writing. The catalog sync is additive and recoverable by re-running
+    it; this one is not.
+
+    Direction is enforced twice, which is deliberate for something whose
+    wrong direction would overwrite production's users:
+
+      1. env_name must not be "production" — and it DEFAULTS to
+         "production", so a service with the variable missing refuses
+         rather than importing over real people.
+      2. db.import_social refuses a payload not marked anonymised, so a
+         misconfigured origin isn't enough on its own.
+
+    There is no staging-to-production path, and adding one would mean
+    writing an endpoint that doesn't exist.
+    """
+    _require_founder(requesting_email)
+    if settings.env_name == "production":
+        raise HTTPException(
+            status_code=400,
+            detail="Sync só roda fora da produção — é ela que é a fonte.",
+        )
+    if not settings.catalog_sync_token:
+        raise HTTPException(
+            status_code=400,
+            detail="CATALOG_SYNC_TOKEN não configurado neste serviço.",
+        )
+
+    url = f"{settings.catalog_sync_origin.rstrip('/')}/social-export"
+    try:
+        resp = httpx.get(url, params={"token": settings.catalog_sync_token}, timeout=120.0)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Não consegui falar com a produção: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Produção respondeu {resp.status_code} — token errado ou origem errada?",
+        )
+    payload = _sync_payload_or_502(resp, "/social-export")
+
+    try:
+        counts = db.import_social(payload)
+    except ValueError as e:
+        # The anonymised guard. A 400 rather than a 500: nothing broke,
+        # we refused.
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log.exception("Social sync: import_social falhou")
+        raise HTTPException(status_code=500, detail=f"Import falhou: {type(e).__name__}: {e}")
+
+    log.info(f"Social sync de {settings.catalog_sync_origin}: {counts}")
+    return {
+        "ok": True,
+        "source": settings.catalog_sync_origin,
+        "anonymised": True,
+        "kept_real": payload.get("kept_real") or [],
+        **counts,
+    }
+
+
 @app.post("/admin/sync-catalog")
 def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
     """Staging side. Pulls production's catalog and upserts it here.
@@ -6596,10 +6864,7 @@ def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
             ),
         )
 
-    try:
-        payload = resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Produção respondeu algo que não é JSON: {e}")
+    payload = _sync_payload_or_502(resp, "/catalog-export")
 
     try:
         result = db.import_catalog(payload)
