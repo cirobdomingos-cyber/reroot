@@ -458,3 +458,40 @@ test('a private event with no catalog twin still shows', async ({ page }) => {
   await expect(page.getByText('Churrasco do Zé')).toHaveCount(1)
   await expect(page.getByText('Turma A')).toHaveCount(1)
 })
+
+
+// ── One RSVP control ──
+//
+// A catalog event used to get a lone "Confirmar presença" that flipped
+// to "Cancelar confirmação"; an event from a channel got "Vou / Não
+// vou". Same act, two vocabularies, two shapes — and after the dedupe,
+// which one you saw depended on how the night happened to reach you.
+
+async function openDetail(page, { channelEvents = [], groupEvents = [], id }) {
+  await openEvents(page, channelEvents, groupEvents)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.getByText(id).first().click()
+  await page.waitForTimeout(900)
+}
+
+test('a catalog event says Vou, not Confirmar presença', async ({ page }) => {
+  await openDetail(page, { id: 'Feira do Passeio' })
+  await expect(page.getByRole('button', { name: 'Vou', exact: true })).toBeVisible()
+  await expect(page.getByText('Confirmar presença')).toHaveCount(0)
+})
+
+test('a catalog event is not asked a question nobody put to it', async ({ page }) => {
+  // "Não vou" takes you off an invitee list and tells the host. The
+  // city posting a show is neither, and the endpoint 404s on it.
+  await openDetail(page, { id: 'Feira do Passeio' })
+  // Anchored on something positive first: an assertion that only counts
+  // absences passes just as well when the panel never opened.
+  await expect(page.getByRole('button', { name: 'Vou', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Não vou/ })).toHaveCount(0)
+})
+
+test('a channel event keeps both answers', async ({ page }) => {
+  await openDetail(page, { groupEvents: PRIVATE_FORK, id: 'Terno Rei na Pedreira' })
+  await expect(page.getByRole('button', { name: 'Vou', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Não vou', exact: true })).toBeVisible()
+})
