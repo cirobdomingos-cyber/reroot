@@ -325,6 +325,53 @@ def init_db():
                 PRIMARY KEY (google_id, event_id)
             )
         """)
+        # Delete orphaned catalog forks, moving their RSVPs to the
+        # catalog event first.
+        #
+        # unlink_event_from_group nulls the group and keeps the row, so
+        # taking a night out of a channel left a copy of a catalog event
+        # belonging to nothing — and every personal surface reads a
+        # group-less event as a plan its creator made. They showed up as
+        # unremovable private plans on events anyone can see in the
+        # catalog. New unlinks are suppressed on read and re-adopted on
+        # re-add; this clears the ones already written.
+        #
+        # The RSVP moves rather than dying with the row: adding to a
+        # channel auto-RSVPs the creator, and that "vou" was about the
+        # night, which still exists in the catalog. INSERT OR IGNORE
+        # because they may already have RSVP'd the catalog row directly.
+        #
+        # Narrow, same rule as the read-side suppression: a fork with
+        # invitees or a note is something a person built on top of the
+        # catalog row, and that is a plan.
+        try:
+            orphans = conn.execute(
+                """SELECT id, source_event_id FROM group_events
+                     WHERE (group_id IS NULL OR group_id = '')
+                       AND (group_ids IS NULL OR group_ids IN ('[]', ''))
+                       AND source_event_id IS NOT NULL
+                       AND TRIM(source_event_id) != ''
+                       AND (extra_invitee_ids IS NULL
+                            OR extra_invitee_ids IN ('[]', ''))
+                       AND (note IS NULL OR TRIM(note) = '')"""
+            ).fetchall()
+            for o in orphans:
+                conn.execute(
+                    """INSERT OR IGNORE INTO rsvps
+                       (google_id, event_id, event_name, event_venue,
+                        event_date, event_url, created_at)
+                       SELECT google_id, ?, event_name, event_venue,
+                              event_date, event_url, created_at
+                         FROM rsvps WHERE event_id = ?""",
+                    (o["source_event_id"], o["id"]),
+                )
+                conn.execute("DELETE FROM rsvps WHERE event_id = ?", (o["id"],))
+                conn.execute("DELETE FROM group_events WHERE id = ?", (o["id"],))
+            if orphans:
+                log.info(f"Limpeza: {len(orphans)} forks órfãos removidos")
+        except sqlite3.OperationalError:
+            pass  # tables not created yet on a fresh DB
+
         # Strip followers out of public channels' invitee lists.
         #
         # Publishing into a channel expanded `extra_invitee_ids` to every
@@ -5136,6 +5183,24 @@ def link_event_to_group(event_id: str, group_id: str, extra_invitees: list[str])
         )
         conn.commit()
     return get_group_event(event_id)
+
+
+def find_orphaned_fork(google_id: str, source_event_id: str) -> Optional[dict]:
+    """This person's own copy of a catalog event that belongs to no
+    channel. Used when adding that event to a channel: re-link the copy
+    instead of writing a second one beside it."""
+    if not google_id or not source_event_id:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT * FROM group_events
+                WHERE created_by = ? AND source_event_id = ?
+                  AND (group_id IS NULL OR group_id = '')
+                  AND (group_ids IS NULL OR group_ids IN ('[]', ''))
+                LIMIT 1""",
+            (google_id, source_event_id),
+        ).fetchone()
+    return _hydrate_invitees(dict(row)) if row else None
 
 
 def unlink_event_from_group(event_id: str, group_id: str) -> Optional[dict]:

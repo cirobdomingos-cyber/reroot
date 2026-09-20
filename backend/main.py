@@ -2060,6 +2060,29 @@ def list_user_group_events(google_id: str):
         linked_gids.discard("")
         if any(db.is_public_channel(gid) for gid in linked_gids):
             continue
+        # An orphaned catalog fork is not a plan.
+        #
+        # Taking a night out of its last channel nulls the group and
+        # keeps the row (unlink_event_from_group), which leaves a copy
+        # of a catalog event belonging to no channel and invited to by
+        # nobody. Every surface here reads a group-less event as a plan
+        # its creator made, so it came back as an unremovable private
+        # plan — with a padlock, on an event anyone can see in the
+        # catalog. The catalog row already represents it.
+        #
+        # Suppressed rather than deleted: adding to a channel
+        # auto-RSVPs the creator, so these rows carry a real RSVP and
+        # throwing them away would throw that away too. Re-adding the
+        # event re-links this very row (find_orphaned_fork), and it
+        # comes back as the channel's event.
+        #
+        # Narrow: a fork with invitees or a note is something a person
+        # built on top of the catalog row, and that IS a plan.
+        if (not linked_gids
+                and (ge.get("source_event_id") or "").strip()
+                and not (ge.get("extra_invitee_ids") or [])
+                and not (ge.get("note") or "").strip()):
+            continue
         # "Só aqui dentro — fora dos Eventos" is what the ☆ switch
         # promises, and until now it promised it to nobody: the flag was
         # only read by the public-channel feed. A private channel's
@@ -5293,6 +5316,32 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
 
     if src_id:
         existing = db.find_group_event_by_source(group_id, src_id)
+        if not existing:
+            # Your own copy of this night that belongs to no channel —
+            # left behind by taking it out of one. Re-link it instead of
+            # writing a second row beside it: the duplicate check looks
+            # for a fork in THIS group, and an orphan is in none, so
+            # remove-and-re-add used to leave two rows for one night
+            # with nothing saying they were the same.
+            orphan = db.find_orphaned_fork(req.google_id, src_id)
+            if orphan:
+                # link_event_to_group REPLACES the invitee list rather
+                # than merging into it — its docstring says so, and the
+                # list is empty on an orphan anyway. Public channels
+                # invite nobody; a private one invites its members, the
+                # same rule the create path below applies.
+                if db.is_public_channel(group_id):
+                    relink_invitees: list[str] = []
+                else:
+                    relink_invitees = sorted({
+                        m["google_id"] for m in db.get_group_members(group_id)
+                        if m.get("google_id") and m["google_id"] != req.google_id
+                    })
+                relinked = db.link_event_to_group(
+                    orphan["id"], group_id, relink_invitees
+                )
+                if relinked:
+                    return {**relinked, "notified_count": 0}
         if existing:
             # Self-heal legacy events that pre-date the create-time
             # auto-RSVP — re-tapping "Adicionar a um grupo" on the

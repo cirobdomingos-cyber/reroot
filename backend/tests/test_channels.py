@@ -1438,3 +1438,130 @@ def test_a_stranger_still_gets_nothing(api):
     cid = _channel(client)
     _add_to(client, cid, "u_founder")
     assert _db.get_followed_channel_events("u_bia") == []
+
+
+# -- 17. taking a night out of a channel leaves no ghost --------------
+#
+# unlink_event_from_group nulls the group and keeps the row, which
+# leaves a copy of a catalog event belonging to no channel and invited
+# to by nobody. Every personal surface reads a group-less event as a
+# plan its creator made — so removing a night from a channel turned it
+# into a private plan, with a padlock, on an event anyone can see in the
+# catalog. Reported from production: "ainda aparece como plano".
+
+def _orphan(client, _db, cid):
+    ev = _add_to(client, cid, "u_founder")
+    _db.unlink_event_from_group(ev["id"], cid)
+    return ev
+
+
+def test_an_orphaned_fork_is_not_shown_as_a_plan(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _orphan(client, _db, cid)
+    assert client.get("/events/group?google_id=u_founder").json()["events"] == []
+
+
+def test_the_row_survives_so_the_rsvp_does(api):
+    """Adding to a channel auto-RSVPs the creator. Deleting the row on
+    unlink would throw that away, so it is suppressed, not destroyed."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    assert _db.get_group_event(ev["id"]) is not None
+
+
+def test_re_adding_relinks_it_instead_of_writing_a_second_row(api):
+    """The duplicate check looks for a fork in THIS group, and an orphan
+    is in none — so remove-and-re-add used to leave two rows for one
+    night with nothing saying they were the same."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    again = _add_to(client, cid, "u_founder")
+    assert again["id"] == ev["id"]
+
+
+def test_and_it_comes_back_as_the_channels_event(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _orphan(client, _db, cid)
+    _add_to(client, cid, "u_founder")
+    got = client.get(f"/channels/{cid}?google_id=u_founder").json()["events"]
+    assert [e["name"] for e in got] == ["Masterclass DJ"]
+
+
+def test_relinking_into_a_public_channel_invites_nobody(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    _add_to(client, cid, "u_founder")
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
+
+
+def test_a_fork_someone_built_on_is_still_a_plan(api):
+    """Narrow on purpose. A note or an invitee list means a person made
+    something out of the catalog row, and that survives as a plan."""
+    _db, _main, client = api
+    cid = _channel(client)
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_founder", "name": "Masterclass DJ", "venue": "MACRO",
+        "date_start": "2099-09-24T20:00:00", "source_event_id": "instagram_ig_x_A",
+        "note": "bora nessa",
+    })
+    _db.unlink_event_from_group(r.json()["id"], cid)
+    names = [e["name"] for e in
+             client.get("/events/group?google_id=u_founder").json()["events"]]
+    assert names == ["Masterclass DJ"]
+
+
+# -- 18. and the ghosts already written are cleared -------------------
+
+def test_the_migration_removes_an_orphan(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    _db.init_db()                      # re-run migrations, as a deploy does
+    assert _db.get_group_event(ev["id"]) is None
+
+
+def test_the_rsvp_moves_to_the_catalog_event(api):
+    """Adding to a channel auto-RSVPs the creator, and that "vou" was
+    about the night — which still exists in the catalog. Deleting the
+    row without moving it would quietly un-confirm them."""
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _orphan(client, _db, cid)
+    def _rsvped(event_id):
+        with _db.get_conn() as conn:
+            return conn.execute(
+                "SELECT 1 FROM rsvps WHERE google_id = ? AND event_id = ?",
+                ("u_founder", event_id),
+            ).fetchone() is not None
+
+    assert _rsvped(ev["id"])
+    _db.init_db()
+    assert _rsvped("instagram_ig_x_A")
+    assert not _rsvped(ev["id"])
+
+
+def test_a_fork_someone_built_on_survives_the_migration(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_founder", "name": "Masterclass DJ", "venue": "MACRO",
+        "date_start": "2099-09-24T20:00:00", "source_event_id": "instagram_ig_x_A",
+        "note": "bora nessa",
+    })
+    _db.unlink_event_from_group(r.json()["id"], cid)
+    _db.init_db()
+    assert _db.get_group_event(r.json()["id"]) is not None
+
+
+def test_an_event_still_in_a_channel_is_untouched(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    ev = _add_to(client, cid, "u_founder")
+    _db.init_db()
+    assert _db.get_group_event(ev["id"]) is not None
