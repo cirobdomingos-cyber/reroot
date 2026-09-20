@@ -59,7 +59,7 @@ test('a channel leads with what it publishes', async ({ page }) => {
   await expect(page.getByText(/Tudo que tem guitarra/)).toBeVisible()
   // What's in it before who else is in it — a channel reporting only
   // followers asks for a follow without saying what for.
-  await expect(page.getByText(/2 rolês marcados · 128 seguindo/i)).toBeVisible()
+  await expect(page.getByText(/2 rolês · 128 seguindo/i)).toBeVisible()
   await expect(page.getByText('Terno Rei na Pedreira')).toBeVisible()
   await expect(page.getByText('Noite Grunge')).toBeVisible()
 })
@@ -75,7 +75,12 @@ test('a channel shows none of the crew machinery', async ({ page }) => {
 test('following is the one action, and it carries a notification choice', async ({ page }) => {
   await openChannel(page)
   await expect(page.getByRole('button', { name: /Seguindo/ })).toBeVisible()
-  await expect(page.getByText(/Te avisamos quando entrar rolê novo/)).toBeVisible()
+  // The notification choice is an icon now, not a row with a sentence.
+  // Six full-width rows pushed the first event to 478px of an 844px
+  // screen; the meaning lives in the accessible name instead.
+  await expect(
+    page.getByRole('button', { name: /Avisamos quando entrar rolê novo/ }),
+  ).toBeVisible()
 })
 
 test('the notification switch only exists once you follow', async ({ page }) => {
@@ -83,7 +88,7 @@ test('the notification switch only exists once you follow', async ({ page }) => 
   // subject.
   await openChannel(page, { is_following: false })
   await expect(page.getByRole('button', { name: /^Seguir$/ })).toBeVisible()
-  await expect(page.getByText(/Te avisamos quando/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Avisamos quando/ })).toHaveCount(0)
 })
 
 test('an empty channel says what following would get you', async ({ page }) => {
@@ -232,7 +237,7 @@ test('anyone can pass a channel along, follower or not', async ({ page }) => {
 
 test('the curator-only actions stay curator-only', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: false })
-  await expect(page.getByRole('button', { name: /Do catálogo/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toHaveCount(0)
   // But the calendar is for anyone following — a channel with a
   // schedule is more useful in a calendar than a private one is.
   await expect(page.getByRole('button', { name: /Assinar calendário/ })).toBeVisible()
@@ -240,7 +245,7 @@ test('the curator-only actions stay curator-only', async ({ page }) => {
 
 test('a curator gets the catalog picker', async ({ page }) => {
   await openChannel(page, { is_following: true, can_curate: true })
-  await expect(page.getByRole('button', { name: /Do catálogo/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Adicionar do catálogo/ })).toBeVisible()
 })
 
 test('a channel carries no stats panel', async ({ page }) => {
