@@ -29,6 +29,7 @@ import Profile        from './screens/Profile'
 import AdminIgAccounts from './screens/AdminIgAccounts'
 import AdminVenues from './screens/AdminVenues'
 import Notifications from './screens/Notifications'
+import ChannelDetail from './screens/ChannelDetail'
 import AddFriend       from './screens/AddFriend'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
@@ -148,6 +149,9 @@ export default function App() {
                 ?digest= handling for pushes already out in the wild. */}
             <Route path="/novidades/:digestId" element={<AnimatedPage><Novidades /></AnimatedPage>} />
             <Route path="/notifications" element={<AnimatedPage><Notifications /></AnimatedPage>} />
+            {/* Channels get their own screen rather than GroupDetail
+                with the crew parts switched off — see ChannelDetail. */}
+            <Route path="/channels/:channelId" element={<AnimatedPage><ChannelDetail /></AnimatedPage>} />
             <Route path="/community" element={<AnimatedPage><Community /></AnimatedPage>} />
             <Route path="/groups"  element={<Navigate to="/community" replace />} />
             <Route path="/friends" element={<Navigate to="/community" replace />} />

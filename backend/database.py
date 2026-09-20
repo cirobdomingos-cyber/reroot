@@ -389,17 +389,6 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
-        # Migration: per-follower push preference for channels. Defaults
-        # to 1 because following IS the opt-in — someone who just tapped
-        # "seguir" and then gets nothing has no idea the switch exists.
-        # Recorded from the first follow so the pilot push targets real
-        # choices instead of assuming consent at send time.
-        try:
-            conn.execute(
-                "ALTER TABLE group_members ADD COLUMN notify INTEGER NOT NULL DEFAULT 1"
-            )
-        except sqlite3.OperationalError:
-            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -409,6 +398,22 @@ def init_db():
                 PRIMARY KEY (group_id, google_id)
             )
         """)
+        # Migration: per-follower push preference for channels. Defaults
+        # to 1 because following IS the opt-in — someone who just tapped
+        # "seguir" and then gets nothing has no idea the switch exists.
+        # Recorded from the first follow so the pilot push targets real
+        # choices instead of assuming consent at send time.
+        #
+        # Must sit AFTER the CREATE above: an ALTER on a table that
+        # doesn't exist yet raises OperationalError, which the except
+        # below swallows as "already present" — so on a fresh database
+        # the column silently never appeared.
+        try:
+            conn.execute(
+                "ALTER TABLE group_members ADD COLUMN notify INTEGER NOT NULL DEFAULT 1"
+            )
+        except sqlite3.OperationalError:
+            pass  # column already present
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tracked_ig_accounts (
                 handle              TEXT PRIMARY KEY,        -- lowercased Instagram handle, no '@'

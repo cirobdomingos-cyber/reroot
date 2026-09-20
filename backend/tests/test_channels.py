@@ -358,3 +358,117 @@ def test_a_past_event_does_not_pad_the_count(api):
     cid = _channel(client)
     _publish(client, cid, name="Já rolou", when="2020-01-01T20:00:00")
     assert client.get("/channels").json()["channels"][0]["upcoming_event_count"] == 0
+
+
+# -- 9. the channel screen's own endpoint ----------------------------
+#
+# GET /channels/{id} is separate from GET /groups/{id} on purpose. The
+# group endpoint answers "what is this crew" — members, roles, invite
+# code, stats — and a channel needs almost none of it. Reusing it meant
+# the screen either rendered crew chrome it had to hide or ignored most
+# of the payload, which is how an "...unless it's a channel" branch
+# spreads through a file.
+
+def test_the_channel_endpoint_serves_the_whole_screen(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    body = client.get(f"/channels/{cid}?google_id=u_ana").json()
+    assert body["channel"]["name"] == "Rockzão"
+    assert body["channel"]["follower_count"] == 0
+    assert body["channel"]["upcoming_event_count"] == 1
+    assert [e["name"] for e in body["events"]] == ["Terno Rei na Pedreira"]
+
+
+def test_the_follower_count_excludes_aue_itself(api):
+    """auê's admin row is ownership, not a subscription. Counting it
+    would open every new channel at "1 seguindo" — a number that is
+    both wrong and unearned."""
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get(f"/channels/{cid}").json()["channel"]["follower_count"] == 0
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert client.get(f"/channels/{cid}").json()["channel"]["follower_count"] == 1
+
+
+def test_a_signed_out_visitor_can_read_the_whole_screen(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid)
+    body = client.get(f"/channels/{cid}").json()
+    assert len(body["events"]) == 1
+    assert body["channel"]["is_following"] is False
+
+
+def test_past_events_are_separated_newest_first(api):
+    """A channel between shows should still read as alive. This is
+    "what you missed", so the most recent leads."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _publish(client, cid, name="Antigo", when="2020-01-01T20:00:00")
+    _publish(client, cid, name="Recente", when="2021-06-01T20:00:00")
+    _publish(client, cid, name="Futuro", when="2099-01-01T20:00:00")
+    body = client.get(f"/channels/{cid}").json()
+    assert [e["name"] for e in body["events"]] == ["Futuro"]
+    assert [e["name"] for e in body["past_events"]] == ["Recente", "Antigo"]
+
+
+def test_a_group_is_not_reachable_through_the_channel_endpoint(api):
+    _db, _main, client = api
+    g = client.post("/groups", json={"google_id": "u_ana", "name": "Role"}).json()
+    assert client.get(f"/channels/{g['id']}").status_code == 404
+
+
+# -- 10. per-follower notification preference ------------------------
+
+def test_following_arms_notifications(api):
+    """Following IS the opt-in. Someone who just tapped "seguir" and
+    then gets nothing has no idea the switch exists."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["notify"] is True
+
+
+def test_a_follower_can_turn_pushes_off_and_back_on(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+
+    assert client.put(f"/channels/{cid}/notify",
+                      json={"google_id": "u_ana", "notify": False}).status_code == 200
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["notify"] is False
+    assert _db.get_channel_followers_to_notify(cid) == []
+
+    client.put(f"/channels/{cid}/notify", json={"google_id": "u_ana", "notify": True})
+    assert _db.get_channel_followers_to_notify(cid) == ["u_ana"]
+
+
+def test_you_cannot_set_a_preference_without_following(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    r = client.put(f"/channels/{cid}/notify", json={"google_id": "u_ana", "notify": False})
+    assert r.status_code == 409
+
+
+def test_aue_is_never_a_recipient_of_its_own_channel(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    assert "u_founder" not in _db.get_channel_followers_to_notify(cid)
+
+
+def test_unfollowing_removes_you_from_the_push_list(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    client.delete(f"/channels/{cid}/follow?google_id=u_ana")
+    assert _db.get_channel_followers_to_notify(cid) == []
+
+
+def test_the_toggle_reads_pre_armed_before_you_follow(api):
+    """So tapping "seguir" doesn't drop someone into a state they never
+    chose — the switch shows what following will actually do."""
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["notify"] is True
