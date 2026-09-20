@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
-import { fetchChannel, setChannelFollow, setChannelNotify, trackEvent } from '../services/api'
+import Avatar from '../components/Avatar'
+import {
+  BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
+  removeChannelCurator, setChannelFollow, setChannelNotify, trackEvent,
+  updateChannel,
+} from '../services/api'
 
 // The channel screen.
 //
@@ -188,6 +193,36 @@ export default function ChannelDetail() {
         </p>
       )}
 
+      {/* Who else is here. Shown to everyone, follower or not — it's
+          social proof, and you should be able to see it before deciding
+          whether to follow. What never ships on a curated channel is a
+          prompt asking you to bring friends into it. */}
+      {(data.followers || []).length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
+          <div style={{ display: 'flex' }}>
+            {(data.followers || []).slice(0, 6).map((f, i) => (
+              <span key={f.google_id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
+                <Avatar name={f.name} src={f.picture} size={26} />
+              </span>
+            ))}
+          </div>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+            {channel.follower_count === 1
+              ? `${(data.followers[0] || {}).name || 'Alguém'} segue`
+              : `${channel.follower_count} seguindo`}
+          </span>
+        </div>
+      )}
+
+      {/* ── Curadoria ── */}
+      {channel.can_curate && (
+        <ChannelCuration
+          channel={channel}
+          email={state.googleUser?.email}
+          onChanged={load}
+        />
+      )}
+
       {/* ── The feed ── */}
       <h2 className="neon-mono" style={{
         fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
@@ -284,4 +319,201 @@ function Shell({ children, onBack }) {
       {children}
     </div>
   )
+}
+
+// Curation panel — editing the channel and choosing who runs it.
+//
+// Shown to whoever can curate THIS channel: the founder, or someone the
+// founder made a curator of it. That's a different permission from the
+// global curator role, which is "can touch the catalog" — approve
+// suggestions, edit events, add IG handles. Running Rockzão shouldn't
+// require any of that, and handing it out shouldn't grant any of it.
+//
+// Appointing stays founder-only, enforced server-side: a curator who
+// can appoint curators makes the roster ungovernable.
+function ChannelCuration({ channel, email, onChanged }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(channel.name || '')
+  const [description, setDescription] = useState(channel.description || '')
+  const [curators, setCurators] = useState(null)
+  const [people, setPeople] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    fetchChannelCurators(channel.id, email).then(setCurators)
+    // Founder-only endpoint; a non-founder curator gets nothing back
+    // and never sees the appoint control.
+    fetch(`${BASE_URL}/admin/users?requesting_email=${encodeURIComponent(email || '')}&limit=200`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setPeople(d?.users || []))
+      .catch(() => setPeople([]))
+  }, [open, channel.id, email])
+
+  async function save() {
+    if (!name.trim() || busy) return
+    setBusy(true); setError('')
+    try {
+      await updateChannel(channel.id, email, { name: name.trim(), description: description.trim() })
+      trackEvent('channel_edited', { channel_id: channel.id })
+      onChanged()
+    } catch (e) {
+      setError(e?.message || 'Não rolou salvar.')
+    }
+    setBusy(false)
+  }
+
+  async function appoint(googleId) {
+    setBusy(true); setError('')
+    try {
+      setCurators(await addChannelCurator(channel.id, email, googleId))
+      onChanged()
+    } catch (e) {
+      setError(e?.message || 'Não rolou.')
+    }
+    setBusy(false)
+  }
+
+  async function stepDown(googleId) {
+    setBusy(true); setError('')
+    try {
+      setCurators(await removeChannelCurator(channel.id, email, googleId))
+      onChanged()
+    } catch (e) {
+      setError(e?.message || 'Não rolou.')
+    }
+    setBusy(false)
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="neon-mono"
+        style={{
+          width: '100%', marginTop: 12, padding: '9px',
+          borderRadius: 12, border: '1px dashed var(--magenta)',
+          background: 'transparent', color: 'var(--magenta)',
+          fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+          cursor: 'pointer',
+        }}
+      >
+        ⚙ Curadoria do canal
+      </button>
+    )
+  }
+
+  const curatorIds = new Set((curators || []).map(c => c.google_id))
+  const candidates = people.filter(p => !curatorIds.has(p.google_id)).slice(0, 40)
+
+  return (
+    <div style={{
+      marginTop: 12, padding: 13, borderRadius: 14,
+      border: '1px solid var(--magenta)', background: 'var(--bg2)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span className="neon-mono" style={{
+          flex: 1, fontSize: 10, letterSpacing: '0.18em',
+          textTransform: 'uppercase', color: 'var(--magenta)',
+        }}>
+          Curadoria do canal
+        </span>
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            background: 'none', border: 'none', color: 'var(--text3)',
+            fontSize: 16, cursor: 'pointer', padding: 0, lineHeight: 1,
+          }}
+        >×</button>
+      </div>
+
+      <input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        maxLength={80}
+        placeholder="Nome do canal"
+        style={curationInput}
+      />
+      <input
+        value={description}
+        onChange={e => setDescription(e.target.value)}
+        maxLength={200}
+        placeholder="Uma linha sobre o que entra aqui"
+        style={curationInput}
+      />
+      <button
+        onClick={save}
+        disabled={busy || !name.trim()}
+        style={{
+          padding: '9px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+          border: 'none', background: 'var(--magenta)', color: 'var(--bg)',
+          cursor: busy ? 'wait' : 'pointer', opacity: (busy || !name.trim()) ? 0.6 : 1,
+        }}
+      >
+        {busy ? '...' : 'Salvar'}
+      </button>
+
+      {/* Roster. Only the founder gets it back from the server, so a
+          channel curator sees the edit fields above and nothing here. */}
+      {curators !== null && (
+        <>
+          <div className="neon-mono" style={{
+            fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+            color: 'var(--text2)', marginTop: 4,
+          }}>
+            Quem cura ({curators.length})
+          </div>
+          {curators.length === 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.45 }}>
+              Só você por enquanto. Quem você colocar aqui pode publicar e
+              editar esse canal — e nada além dele.
+            </div>
+          )}
+          {curators.map(c => (
+            <div key={c.google_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Avatar name={c.name} src={c.picture} size={24} />
+              <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>{c.name}</span>
+              <button
+                onClick={() => stepDown(c.google_id)}
+                disabled={busy}
+                style={{
+                  padding: '5px 9px', borderRadius: 8, fontSize: 11,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--text2)', cursor: 'pointer',
+                }}
+              >
+                Tirar
+              </button>
+            </div>
+          ))}
+
+          {candidates.length > 0 && (
+            <select
+              value=""
+              onChange={e => e.target.value && appoint(e.target.value)}
+              disabled={busy}
+              style={curationInput}
+            >
+              <option value="">+ Adicionar curador…</option>
+              {candidates.map(p => (
+                <option key={p.google_id} value={p.google_id}>
+                  {p.name || p.email || p.google_id}
+                </option>
+              ))}
+            </select>
+          )}
+        </>
+      )}
+
+      {error && <div style={{ fontSize: 11, color: '#EF9A9A' }}>{error}</div>}
+    </div>
+  )
+}
+
+const curationInput = {
+  width: '100%', padding: '9px 11px', borderRadius: 10,
+  border: '1px solid var(--line)', fontSize: 13, outline: 'none',
+  boxSizing: 'border-box', background: 'var(--bg)', color: 'var(--text)',
 }

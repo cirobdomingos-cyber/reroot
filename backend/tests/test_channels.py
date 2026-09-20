@@ -542,3 +542,119 @@ def test_a_plain_followers_row_disappears_on_unfollow(api):
     client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
     client.delete(f"/channels/{cid}/follow?google_id=u_ana")
     assert _db.get_group_member_role(cid, "u_ana") is None
+
+
+# -- 12. per-channel curators ----------------------------------------
+#
+# A different permission from the global curator role. That one is "can
+# touch the catalog" — approve suggestions, edit events, add IG handles.
+# Running Rockzão is a different job, and the whole point is handing out
+# the second without the first.
+
+def _make_curator(client, cid, google_id):
+    return client.post(f"/channels/{cid}/curators",
+                       json={"requesting_email": FOUNDER_EMAIL, "google_id": google_id})
+
+
+def test_a_channel_curator_can_publish_into_it(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    assert _make_curator(client, cid, "u_ana").status_code == 200
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_ana", "name": "Roda de samba", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 200, r.text
+
+
+def test_a_channel_curator_can_rename_it(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _make_curator(client, cid, "u_ana")
+    r = client.put(f"/channels/{cid}", json={
+        "requesting_email": "ana@example.com", "name": "Samba e Pagode",
+        "description": "Roda toda semana",
+    })
+    assert r.status_code == 200
+    assert _db.get_group(cid)["name"] == "Samba e Pagode"
+
+
+def test_curating_one_channel_grants_nothing_anywhere_else(api):
+    """The reason this role exists at all. A samba curator must not
+    inherit the catalog."""
+    _db, _main, client = api
+    cid = _channel(client)
+    other = _channel(client, name="Rockzão 2")
+    _make_curator(client, cid, "u_ana")
+
+    # Not the other channel.
+    assert client.put(f"/channels/{other}", json={
+        "requesting_email": "ana@example.com", "name": "Tomado",
+    }).status_code == 403
+    # Not the catalog.
+    assert not _db.is_curator("ana@example.com")
+
+
+def test_a_channel_curator_cannot_appoint_more_curators(api):
+    """Founder-only. A curator who can appoint curators makes the roster
+    ungovernable, and one person owns that decision."""
+    _db, _main, client = api
+    cid = _channel(client)
+    _make_curator(client, cid, "u_ana")
+    r = client.post(f"/channels/{cid}/curators",
+                    json={"requesting_email": "ana@example.com", "google_id": "u_bia"})
+    assert r.status_code in (401, 403)
+
+
+def test_a_follower_cannot_edit_the_channel(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    r = client.put(f"/channels/{cid}", json={
+        "requesting_email": "ana@example.com", "name": "Meu agora",
+    })
+    assert r.status_code == 403
+
+
+def test_stepping_a_curator_down_takes_the_permission_with_it(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _make_curator(client, cid, "u_ana")
+    client.delete(f"/channels/{cid}/curators/u_ana?requesting_email={FOUNDER_EMAIL}")
+    r = client.post(f"/groups/{cid}/events", json={
+        "google_id": "u_ana", "name": "Não devia", "date_start": "2099-01-01T20:00:00",
+    })
+    assert r.status_code == 403
+
+
+def test_stepping_down_cannot_remove_aue_from_its_own_channel(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.delete(f"/channels/{cid}/curators/u_founder?requesting_email={FOUNDER_EMAIL}")
+    assert _db.get_group_member_role(cid, "u_founder") == "admin"
+
+
+def test_promoting_a_follower_keeps_the_channel_in_their_list(api):
+    """Curating a channel has nothing to do with whether it's in your
+    list — the exact confusion `following` was split out to prevent."""
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    _make_curator(client, cid, "u_ana")
+    detail = client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]
+    assert detail["is_following"] is True
+    assert detail["can_curate"] is True
+
+
+def test_can_curate_is_false_for_everyone_else(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    assert client.get(f"/channels/{cid}?google_id=u_ana").json()["channel"]["can_curate"] is False
+    assert client.get(f"/channels/{cid}").json()["channel"]["can_curate"] is False
+
+
+def test_the_roster_is_founder_only(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    _make_curator(client, cid, "u_ana")
+    assert client.get(f"/channels/{cid}/curators?requesting_email={FOUNDER_EMAIL}").status_code == 200
+    assert client.get(f"/channels/{cid}/curators?requesting_email=ana@example.com").status_code in (401, 403)
