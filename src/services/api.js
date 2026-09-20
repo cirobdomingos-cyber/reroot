@@ -1266,6 +1266,68 @@ export async function fetchChannel(channelId, googleId) {
   }
 }
 
+// ── Channel curation ──────────────────────────────────────
+// Editing a channel and managing who runs it. Deliberately distinct
+// from the global curator role: that one is "can touch the catalog",
+// this one is "runs Rockzão".
+export async function updateChannel(channelId, requestingEmail, fields) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/channels/${encodeURIComponent(channelId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requesting_email: requestingEmail, ...fields }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Update failed: ${res.status}`)
+  }
+  return res.json()
+}
+
+export async function fetchChannelCurators(channelId, requestingEmail) {
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/channels/${encodeURIComponent(channelId)}/curators`
+      + `?requesting_email=${encodeURIComponent(requestingEmail || '')}`,
+    )
+    if (!res.ok) return []
+    return (await res.json()).curators || []
+  } catch {
+    return []
+  }
+}
+
+export async function addChannelCurator(channelId, requestingEmail, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/channels/${encodeURIComponent(channelId)}/curators`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requesting_email: requestingEmail, google_id: googleId }),
+    },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Add curator failed: ${res.status}`)
+  }
+  return (await res.json()).curators || []
+}
+
+export async function removeChannelCurator(channelId, requestingEmail, googleId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/channels/${encodeURIComponent(channelId)}/curators/`
+    + `${encodeURIComponent(googleId)}?requesting_email=${encodeURIComponent(requestingEmail)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `Remove curator failed: ${res.status}`)
+  }
+  return (await res.json()).curators || []
+}
+
 export async function setChannelNotify(channelId, googleId, notify) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/channels/${encodeURIComponent(channelId)}/notify`,

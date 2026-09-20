@@ -202,12 +202,18 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
   // both "yours" — same marker, because to the reader they're the same
   // state.
   const isMine = aue ? channel.is_following : true
+  // Brand split: magenta is the primary accent — the logo, the active
+  // nav, auê itself — so auê's channels carry it. Private ones take
+  // cyan, the secondary accent. Both are already in the palette, so
+  // the distinction reads as the product rather than as two arbitrary
+  // colours, and it survives a glance that never reaches the badge.
+  const accent = aue ? 'var(--magenta)' : 'var(--cyan)'
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       background: 'var(--bg2)', border: '1px solid var(--line)',
       borderRadius: 14, padding: '12px 14px', marginBottom: 8,
-      boxShadow: isMine ? 'inset 3px 0 0 var(--magenta)' : 'none',
+      boxShadow: isMine ? `inset 3px 0 0 ${accent}` : 'none',
     }}>
       <div onClick={onOpen} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
         <div style={{
@@ -233,11 +239,13 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
             <span
               title="Canal privado — só quem você convidar"
               style={{
-                flexShrink: 0, fontSize: 10, padding: '2px 6px', borderRadius: 7,
-                border: '1px solid var(--line)', color: 'var(--text2)',
+                flexShrink: 0, fontSize: 10, fontWeight: 800,
+                padding: '2px 7px', borderRadius: 7,
+                background: 'var(--cyan)', color: 'var(--bg)',
+                letterSpacing: '0.06em',
               }}
             >
-              🔒
+              🔒 seu
             </span>
           )}
         </div>
