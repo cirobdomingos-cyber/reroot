@@ -96,10 +96,10 @@ test('the tab bar carries exactly the four screens it should, in order', async (
   const labels = await page.locator('.bottom-nav .nav-item__label').allTextContents()
   // Admin only renders for a signed-in founder; these tests are signed out.
   //
-  // Notificações sits last: it's where you go when the badge says to,
-  // not somewhere you browse, and a count pulsing next to the catalog
-  // competes with what people actually opened the app for.
-  expect(labels).toEqual(['Eventos', 'Comunidade', 'Perfil', 'Notificações'])
+  // Notificações sits near the end: it's where you go when the badge
+  // says to, not somewhere you browse. Perfil keeps the last slot,
+  // which is where every other app puts it.
+  expect(labels).toEqual(['Eventos', 'Comunidade', 'Notificações', 'Perfil'])
 })
 
 test('no tab label clips on a narrow phone', async ({ page }) => {

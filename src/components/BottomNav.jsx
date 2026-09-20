@@ -110,25 +110,11 @@ export default function BottomNav() {
         </svg>
       ),
     },
-    // On phones Perfil used to live behind the Home avatar. Home is
-    // gone, so it needs a slot of its own everywhere.
-    {
-      path: '/profile',
-      label: t.nav_profile ?? 'Perfil',
-      icon: (active) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-          style={glowStyle(active)}
-          stroke={stroke(active)}
-          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="8" r="4"/>
-          <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/>
-        </svg>
-      ),
-    },
-    // Notificações sits at the end rather than beside Eventos. It's
-    // where you go when the badge says to, not somewhere you browse —
-    // and a count that pulses next to the catalog competes with the
-    // thing people actually opened the app for.
+    // Notificações sits near the end rather than beside Eventos: it's
+    // where you go when the badge says to, not somewhere you browse,
+    // and a count pulsing next to the catalog competes with the thing
+    // people actually opened the app for. Perfil keeps the last slot,
+    // which is where every other app puts it.
     //
     // Labelled "Notificações", not "Avisos": "aviso" in pt-BR reads as
     // a warning, which is the wrong register for a friend invite.
@@ -143,6 +129,21 @@ export default function BottomNav() {
           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
           <path d="M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+      ),
+    },
+    // On phones Perfil used to live behind the Home avatar. Home is
+    // gone, so it needs a slot of its own everywhere.
+    {
+      path: '/profile',
+      label: t.nav_profile ?? 'Perfil',
+      icon: (active) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          style={glowStyle(active)}
+          stroke={stroke(active)}
+          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/>
         </svg>
       ),
     },
