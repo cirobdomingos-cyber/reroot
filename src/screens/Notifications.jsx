@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { fetchNotifications, trackEvent } from '../services/api'
+import PushBanner from '../components/PushBanner'
 
 // Notificações — what's waiting on you, plus what's new.
 //
@@ -101,6 +102,11 @@ export default function Notifications() {
           Notifi<span className="neon-glow-mag">cações</span>
         </h1>
       </div>
+
+      {/* The push ask, made from the screen about being notified. It
+          lived on Home until Home dissolved; this is the first place it
+          has actually been about something. */}
+      <PushBanner />
 
       <div style={{ padding: '16px 18px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items === null && (
