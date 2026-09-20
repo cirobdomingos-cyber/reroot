@@ -452,6 +452,21 @@ def init_db():
             )
             # Existing followers were following by definition.
             conn.execute("UPDATE group_members SET following = 1 WHERE role = 'follower'")
+            # And so was every member of a private channel. `following`
+            # was built for public channels, where it is a real choice:
+            # you find one, you opt in. A private channel is not found,
+            # you are let into it, so membership already IS the choice —
+            # asking you to follow what you were invited to is a second
+            # act for a decision you made once. With this row at 0 the
+            # notify and priority switches were hidden on every crew
+            # (ChannelDetail gates them on is_following) and both
+            # endpoints answered "Segue o canal primeiro" to people who
+            # were already inside.
+            conn.execute(
+                """UPDATE group_members SET following = 1
+                     WHERE group_id IN (SELECT id FROM groups
+                                         WHERE visibility != 'public')"""
+            )
         except sqlite3.OperationalError:
             pass  # column already present
         # Migration: whether this channel's events surface in the band
@@ -3908,9 +3923,12 @@ def create_group(google_id: str, name: str, description: str = "",
             (group_id, name, description, visibility, invite_code, feed_token,
              google_id, now, kind),
         )
+        # following = 1: see the migration in init_db. You don't follow a
+        # channel you just made, you're in it.
         conn.execute(
-            "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'admin', ?)",
-            (group_id, google_id, now),
+            """INSERT INTO group_members (group_id, google_id, role, joined_at, following)
+               VALUES (?, ?, 'admin', ?, ?)""",
+            (group_id, google_id, now, 0 if kind == "channel" else 1),
         )
         conn.commit()
 
@@ -4043,8 +4061,12 @@ def join_group(group_id: str, google_id: str) -> bool:
         ).fetchone()
         if existing:
             return False
+        # Being let into a private channel puts it in your list. Public
+        # channels go through follow_channel instead, where following is
+        # the separate, deliberate act it was built to be.
         conn.execute(
-            "INSERT INTO group_members (group_id, google_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+            """INSERT INTO group_members (group_id, google_id, role, joined_at, following)
+               VALUES (?, ?, 'member', ?, 1)""",
             (group_id, google_id, now),
         )
         conn.commit()
@@ -4454,6 +4476,13 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
                    ON gm.group_id = g.id AND gm.google_id = ?
                 WHERE gm.following = 1
                   AND gm.prioritize = 1
+                  -- Public only. A private channel's events already
+                  -- reach Eventos through /events/group, and now that
+                  -- its members carry following = 1 they would arrive
+                  -- here as well — two paths for one row, with the
+                  -- second one telling the frontend they came from an
+                  -- auê channel and painting them magenta.
+                  AND g.visibility = 'public'
                   AND substr(ge.date_start, 1, 10) >= ?
              ORDER BY ge.date_start ASC
                 LIMIT ?""",
@@ -4490,6 +4519,44 @@ def get_channel_notify(group_id: str, google_id: str) -> bool:
             (group_id, google_id),
         ).fetchone()
     return bool(row["notify"]) if row else True
+
+
+def channel_picks_by_follower(event_ids: list[str]) -> dict[str, dict[str, int]]:
+    """For a set of catalog event ids, who follows a public channel that
+    picked one, and how many.
+
+    Returns {google_id: {channel_name: count}}.
+
+    One query rather than one per person: the daily digest fans out to
+    every subscriber, and a per-user lookup there turns a single push
+    into N round trips at exactly the moment the app is busiest.
+
+    Matches on source_event_id — a channel's copy is a fork pointing at
+    the catalog row, and the digest is built from catalog rows.
+    """
+    if not event_ids:
+        return {}
+    out: dict[str, dict[str, int]] = {}
+    placeholders = ",".join("?" for _ in event_ids)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT gm.google_id AS who, g.name AS channel,
+                       COUNT(DISTINCT ge.source_event_id) AS n
+                  FROM group_events ge
+                  JOIN groups g
+                    ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
+                  JOIN group_members gm
+                    ON gm.group_id = g.id
+                 WHERE g.visibility = 'public'
+                   AND gm.following = 1
+                   AND gm.notify = 1
+                   AND ge.source_event_id IN ({placeholders})
+              GROUP BY gm.google_id, g.name""",
+            event_ids,
+        ).fetchall()
+    for r in rows:
+        out.setdefault(r["who"], {})[r["channel"]] = int(r["n"] or 0)
+    return out
 
 
 def get_channel_followers_to_notify(group_id: str) -> list[str]:

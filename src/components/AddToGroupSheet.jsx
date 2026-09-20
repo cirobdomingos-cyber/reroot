@@ -31,6 +31,10 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   // member_count: three of the endpoint's four exits send no push, and
   // a locally-computed number would claim otherwise on all of them.
   const [notified, setNotified] = useState({})
+  // Channels added during this sheet's life. Separate from linkedGroupIds,
+  // which also holds the ones that were already linked when it opened —
+  // those were notified (or summarised) whenever that happened, not now.
+  const [justAdded, setJustAdded] = useState(new Set())
 
   useEffect(() => {
     if (!open || !googleId) return
@@ -62,7 +66,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
   }, [open, googleId, event?.id])
 
   // Reset the note when the sheet closes/reopens for a different event.
-  useEffect(() => { if (!open) { setNote(''); setNotified({}) } }, [open])
+  useEffect(() => { if (!open) { setNote(''); setNotified({}); setJustAdded(new Set()) } }, [open])
 
   async function handlePick(group) {
     if (submittingId || !event) return
@@ -88,6 +92,7 @@ export default function AddToGroupSheet({ open, onClose, event }) {
       // "Adicionado · toque pra remover" immediately.
       setLinkedGroupIds(prev => new Set([...prev, group.id]))
       setNotified(prev => ({ ...prev, [group.id]: result?.notified_count ?? 0 }))
+      setJustAdded(prev => new Set([...prev, group.id]))
       setDoneId(group.id)
       setTimeout(() => setDoneId(null), 900)
       // If the backend returned a relinked event with a different id
@@ -301,7 +306,14 @@ export default function AddToGroupSheet({ open, onClose, event }) {
                             // plain label.
                             justNotified > 0
                               ? `${justNotified} ${justNotified === 1 ? 'avisado' : 'avisados'} · toque pra remover`
-                              : 'Adicionado · toque pra remover'
+                              // An auê channel sends no push now — its
+                              // followers get one summary at 20:00. Without
+                              // this line a curator adding five events sees
+                              // nobody notified five times and concludes
+                              // the channel is broken.
+                              : (g._aue && justAdded.has(g.id))
+                                ? 'Adicionado · o canal avisa hoje à noite'
+                                : 'Adicionado · toque pra remover'
                           ) : (
                             <>
                               {g.member_count} {g.member_count === 1 ? 'membro' : 'membros'}

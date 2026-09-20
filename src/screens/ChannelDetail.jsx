@@ -12,7 +12,7 @@ import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
-  createGroupEvent, getGroupCalendarFeedUrl,
+  createGroupEvent, getGroupCalendarFeedUrl, leaveGroup,
 } from '../services/api'
 
 // The channel screen — the only one, for both kinds.
@@ -57,6 +57,22 @@ export default function ChannelDetail() {
   const [copied, setCopied] = useState(false)
   const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  // Leaving is not unfollowing. You lose the events, the invite and the
+  // way back in — someone has to let you in again — so it confirms,
+  // says what it costs, and then sends you out of a screen you can no
+  // longer read.
+  async function leave() {
+    if (!confirm(`Sair de "${channel?.name}"? Você perde os rolês do canal, e só volta se alguém te convidar de novo.`)) return
+    setBusy(true)
+    try {
+      await leaveGroup(channelId, googleId)
+      navigate('/community')
+    } catch {
+      alert('Não deu pra sair agora. Tenta de novo.')
+      setBusy(false)
+    }
+  }
 
   const load = useCallback(() => {
     fetchChannel(channelId, googleId)
@@ -182,6 +198,9 @@ export default function ChannelDetail() {
   const accentGlow = isPrivate
     ? 'var(--from-private-glow)'
     : 'var(--from-aue-glow)'
+  // Nothing to open on a channel nobody is in yet — and an underline
+  // that opens an empty sheet is worse than no underline.
+  const hasPeople = (data?.followers || []).length > 0
   const accentSoft = isPrivate
     ? 'var(--from-private-soft)'
     : 'var(--from-aue-soft)'
@@ -220,15 +239,25 @@ export default function ChannelDetail() {
           else is here, and a couple of faces. The follower strip used
           to be its own row lower down, which cost 40px to say what
           fits in four words here. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+      <button
+        onClick={hasPeople ? () => setShowMembers(true) : undefined}
+        // One target: faces and count together. It used to be the
+        // avatars alone, and only on a private channel — so on an auê
+        // one there was no way to see who else was there, and on a
+        // private one the way in was three 22px circles with nothing
+        // saying they were a button.
+        //
+        // Who is in a channel is not a private-channel question. It is
+        // most of the answer to "is this worth following".
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+          background: 'none', border: 'none', padding: 0, textAlign: 'left',
+          cursor: hasPeople ? 'pointer' : 'default',
+          width: '100%',
+        }}
+      >
         {(data.followers || []).length > 0 && (
-          <div
-            onClick={isPrivate ? () => setShowMembers(true) : undefined}
-            style={{
-              display: 'flex', flexShrink: 0,
-              cursor: isPrivate ? 'pointer' : 'default',
-            }}
-          >
+          <div style={{ display: 'flex', flexShrink: 0 }}>
             {(data.followers || []).slice(0, 3).map((f, i) => (
               <span key={f.google_id} style={{ marginLeft: i === 0 ? 0 : -8 }}>
                 <Avatar name={f.name} src={f.picture} size={22} />
@@ -241,9 +270,16 @@ export default function ChannelDetail() {
           color: 'var(--text2)',
         }}>
           {count > 0 ? `${count} ${count === 1 ? 'rolê' : 'rolês'}` : 'sem rolê marcado'}
-          {' · '}{channel.follower_count} {peopleWord}
+          {' · '}
+          <span style={{
+            color: hasPeople ? accent : 'var(--text2)',
+            textDecoration: hasPeople ? 'underline' : 'none',
+            textUnderlineOffset: 3,
+          }}>
+            {channel.follower_count} {peopleWord}
+          </span>
         </span>
-      </div>
+      </button>
 
       {/* One decision at full width — the only one most people make
           here. Everything else became an icon.
@@ -255,21 +291,35 @@ export default function ChannelDetail() {
           is read every week, and the layout should say so. */}
       {googleId ? (
         <>
-          <button
-            onClick={toggleFollow}
-            disabled={busy}
-            style={{
-              width: '100%', marginTop: 14, padding: '13px', borderRadius: 12,
-              fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
-              border: channel.is_following ? '1.5px solid var(--line)' : 'none',
-              background: channel.is_following ? 'transparent' : accent,
-              color: channel.is_following ? 'var(--text2)' : 'var(--bg)',
-              boxShadow: channel.is_following ? 'none' : `0 0 18px ${accentGlow}`,
-              opacity: busy ? 0.7 : 1,
-            }}
-          >
-            {channel.is_following ? '✓ Seguindo' : 'Seguir'}
-          </button>
+          {/* Follow is a public-channel decision. You find one and opt
+              in, and "deixar de seguir" undoes exactly that.
+
+              A private channel isn't found — you were let in. There is
+              nothing to opt into, and the button had nothing to undo:
+              unfollow_channel only deletes rows with role='follower',
+              and a member's row says 'member'. So it sat there reading
+              "✓ Seguindo" and refusing to turn off.
+
+              The real action is leaving, which is not a toggle — it
+              costs you access — so it gets a word, low emphasis, and a
+              confirm rather than the primary slot. */}
+          {!isPrivate && (
+            <button
+              onClick={toggleFollow}
+              disabled={busy}
+              style={{
+                width: '100%', marginTop: 14, padding: '13px', borderRadius: 12,
+                fontSize: 14, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
+                border: channel.is_following ? '1.5px solid var(--line)' : 'none',
+                background: channel.is_following ? 'transparent' : accent,
+                color: channel.is_following ? 'var(--text2)' : 'var(--bg)',
+                boxShadow: channel.is_following ? 'none' : `0 0 18px ${accentGlow}`,
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              {channel.is_following ? '✓ Seguindo' : 'Seguir'}
+            </button>
+          )}
 
           {/* Icon row. State is the colour, and every one carries a
               title so the meaning is reachable without a label — the
@@ -283,30 +333,18 @@ export default function ChannelDetail() {
             '--channel-accent': accent,
             '--channel-accent-soft': accentSoft,
           }}>
-            {channel.is_following && (
-              <IconAction
-                on={channel.notify}
-                onClick={toggleNotify}
-                disabled={busy}
-                title={channel.notify
-                  ? 'Avisamos quando entrar rolê novo'
-                  : 'Sem aviso — você vê quando abrir o app'}
-              >
-                {channel.notify ? '🔔' : '🔕'}
-              </IconAction>
-            )}
-            {channel.is_following && (
-              <IconAction
-                on={channel.prioritize}
-                onClick={togglePrioritize}
-                disabled={busy}
-                title={channel.prioritize
-                  ? 'Aparece no topo dos Eventos'
-                  : 'Só aqui dentro — fora dos Eventos'}
-              >
-                {channel.prioritize ? '⭐' : '☆'}
-              </IconAction>
-            )}
+            {/* The 🔔 and ⭐ switches lived here.
+                
+                Notification moved to the daily novidades push, which
+                now says how many of the day's events came from your
+                channels — one push instead of one per channel, which is
+                what a person actually wants told once. Ordering stopped
+                being a setting: a channel you're in belongs at the top
+                of Eventos, and a switch for that was asking people to
+                turn on the reason they joined.
+                
+                A private channel still pushes at the moment. There the
+                event IS the message. */}
             {channel.feed_token
               && (channel.is_following || channel.can_curate || isPrivate) && (
               <IconAction onClick={() => setShowCalendar(true)} title="Assinar calendário">
@@ -338,6 +376,19 @@ export default function ChannelDetail() {
               </IconAction>
             )}
           </div>
+          {isPrivate && (
+            <button
+              onClick={leave}
+              disabled={busy}
+              style={{
+                marginTop: 10, padding: '6px 0', background: 'none',
+                border: 'none', fontSize: 11.5, color: 'var(--text3)',
+                cursor: busy ? 'wait' : 'pointer', letterSpacing: '0.02em',
+              }}
+            >
+              Sair do canal
+            </button>
+          )}
         </>
       ) : (
         <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
@@ -397,6 +448,10 @@ export default function ChannelDetail() {
         onClose={() => setShowMembers(false)}
         group={{ ...channel, members: data.followers || [] }}
         t={{}}
+        peopleWord={peopleWord}
+        // Role management, kick and promote are the owner's. A follower
+        // opening an auê channel's list gets the same sheet read-only —
+        // names and "+ amigo", which is what they came for.
         viewerIsAdmin={channel.viewer_role === 'admin'}
         viewerGoogleId={googleId}
         onRoleChanged={load}
