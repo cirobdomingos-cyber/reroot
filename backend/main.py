@@ -5411,6 +5411,14 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
             # auto-RSVP — re-tapping "Adicionar a um grupo" on the
             # same source now ensures the user is RSVP'd. upsert_rsvp
             # is idempotent so this is a no-op for fresh events.
+            #
+            # Not in a public channel: publishing is editorial, not
+            # attendance — the same rule the create branch got. This
+            # branch kept the old behaviour, and the three duplicate
+            # handles in the channel rebuild went through it, so the
+            # founder came out going to three nights in Rockzera.
+            if db.is_public_channel(group_id):
+                return {**existing, "notified_count": 0}
             try:
                 db.upsert_rsvp(
                     google_id=req.google_id,
