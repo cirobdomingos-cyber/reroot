@@ -1352,6 +1352,30 @@ def rsvp_exists(google_id: str, event_id: str) -> bool:
 
 # ── User state persistence ─────────────────────────────────
 
+def rsvps_as_state_map(google_id: str) -> dict:
+    """The rsvps table, in the shape the client keeps under state.rsvps:
+    {event_id: {dateStart, name, venue}}. This is what GET /user/state
+    hands back in place of whatever the blob stored — the table is what
+    the friends feed, the attendee list and the counts read, so it is
+    what "vou" means to everyone else."""
+    if not google_id:
+        return {}
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT event_id, event_name, event_venue, event_date
+                 FROM rsvps WHERE google_id = ?""",
+            (google_id,),
+        ).fetchall()
+    return {
+        r["event_id"]: {
+            "dateStart": r["event_date"] or "",
+            "name": r["event_name"] or "",
+            "venue": r["event_venue"] or "",
+        }
+        for r in rows
+    }
+
+
 def get_user_state(google_id: str) -> Optional[dict]:
     """Return parsed state dict for the given Google account, or None."""
     with get_conn() as conn:
