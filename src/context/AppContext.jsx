@@ -557,22 +557,44 @@ export function AppProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
-  // Load remote state once per Google login — fire-and-forget
-  const lastLoadedGoogleId = useRef(null)
+  // Load remote state once per Google login.
+  //
+  // `safeToSaveFor` is the account whose remote state this session has
+  // loaded — or been told doesn't exist. Until then nothing is saved:
+  // on login the state holds only what the provider seeded (for Apple,
+  // an empty name on every login but the first), and a save at that
+  // point overwrites the server's copy — the only copy — of the name
+  // and photo this person chose. That is how an Apple user lost both.
+  // A failed load leaves the mark unset and tries again on the next
+  // state change, so a bad connection at login costs a retry, not an
+  // identity.
+  const safeToSaveFor = useRef(null)
+  const loadAttemptedFor = useRef(null)
   useEffect(() => {
     const googleId = state.googleUser?.id
-    if (!googleId || googleId === lastLoadedGoogleId.current) return
-    lastLoadedGoogleId.current = googleId
-    loadUserState(googleId).then(remoteState => {
-      if (remoteState) dispatch({ type: 'RESTORE_STATE', payload: remoteState })
+    if (!googleId) { safeToSaveFor.current = null; loadAttemptedFor.current = null; return }
+    if (safeToSaveFor.current === googleId || loadAttemptedFor.current === googleId) return
+    loadAttemptedFor.current = googleId
+    loadUserState(googleId).then(result => {
+      if (result?.state) {
+        safeToSaveFor.current = googleId
+        dispatch({ type: 'RESTORE_STATE', payload: result.state })
+      } else if (result?.notFound) {
+        safeToSaveFor.current = googleId        // new account: nothing to protect
+      } else {
+        loadAttemptedFor.current = null         // failed: retry on the next change
+      }
     })
-  }, [state.googleUser?.id])
+  }, [state.googleUser?.id, state])
 
   // Debounce-save to backend on any state change while logged in
   const saveTimerRef = useRef(null)
   useEffect(() => {
     const googleId = state.googleUser?.id
     if (!googleId) return
+    // Never before this session has loaded this account's remote state
+    // (or learned there is none). See the load effect above.
+    if (safeToSaveFor.current !== googleId) return
     clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => saveUserState(googleId, state), 500)
     return () => clearTimeout(saveTimerRef.current)
