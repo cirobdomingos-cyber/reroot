@@ -147,11 +147,17 @@ async def run_refresh(settings):
                 local_url = await asyncio.to_thread(rehost_image, ev.id, ev.image_url)
                 if local_url:
                     ev.image_url = local_url
-            was_new = db.upsert_event(ev)
-            if was_new:
+            # Nothing reaches the public catalog without a curator saying
+            # so. A new event is queued for review, already enriched; an
+            # event a curator has published before is refreshed in place.
+            # `inserts_by_source` now counts what was queued — the refresh
+            # log and the summary email read it as "new", which it is.
+            # new_event_ids stays empty: Novidades announces approvals now
+            # (the approve endpoint parks each id for the 09:00 digest).
+            fate = db.route_scraped_event(ev)
+            if fate == "queued":
                 inserts_by_source[ev.source] += 1
-                new_event_ids.append(ev.id)
-            else:
+            elif fate == "updated":
                 updates_by_source[ev.source] += 1
             saved += 1
         except Exception as e:
@@ -187,6 +193,17 @@ async def run_refresh(settings):
             log.info(f"  Gap-fill: {len(generated_enriched)} eventos gerados pela IA")
         except Exception as e:
             log.error(f"  Gap-fill por IA falhou: {e}")
+
+    # ── One push to the curators, for the whole run ──
+    # One per event would be twenty-odd pushes in a row on a normal day,
+    # which is the shape people mute the app over.
+    queued_total = sum(inserts_by_source.values())
+    if queued_total:
+        try:
+            from main import notify_curators_of_scrape
+            await asyncio.to_thread(notify_curators_of_scrape, queued_total)
+        except Exception as e:
+            log.warning(f"  Aviso aos curadores falhou: {e}")
 
     # ── Finalize per-source log rows with truthful counts ──
     for source_key, log_id in pending_log_ids.items():

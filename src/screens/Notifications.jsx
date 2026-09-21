@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { fetchNotifications, trackEvent } from '../services/api'
 import PushBanner from '../components/PushBanner'
+import CurationBanner from '../components/CurationBanner'
 
 // Notificações — what's waiting on you, plus what's new.
 //
@@ -107,6 +108,9 @@ export default function Notifications() {
           lived on Home until Home dissolved; this is the first place it
           has actually been about something. */}
       <PushBanner />
+      {/* For curators: how many scraped events are waiting. One strip,
+          not an inbox item per event. */}
+      <CurationBanner />
 
       <div style={{ padding: '16px 18px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {items === null && (

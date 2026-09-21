@@ -460,6 +460,12 @@ def init_db():
             "ADD COLUMN reviewed_by TEXT NOT NULL DEFAULT ''",
             "ADD COLUMN reviewed_at TEXT",
             "ADD COLUMN review_note TEXT NOT NULL DEFAULT ''",
+            # The scrape's own enrichment, kept whole. A scraped event
+            # reaches the queue already enriched (category, genre, pitch,
+            # vibe); approval publishes THIS instead of rebuilding from
+            # name/venue/date and enriching again. Empty for human
+            # suggestions, which keep the old path.
+            "ADD COLUMN enriched_payload TEXT NOT NULL DEFAULT ''",
         ):
             try:
                 conn.execute(f"ALTER TABLE submitted_events {col_def}")
@@ -1070,6 +1076,65 @@ def insert_catalog_request(*, name: str, description: str, venue_name: str,
         )
         conn.commit()
         return cur.lastrowid
+
+
+def _ig_parts(external_id: str) -> tuple[str, str]:
+    """('handle', 'shortcode') from a scraper external_id 'ig_<handle>_<code>'."""
+    eid = (external_id or "").strip()
+    if not eid.startswith("ig_") or "_" not in eid[3:]:
+        return "", ""
+    handle, code = eid[3:].rsplit("_", 1)
+    return handle, code
+
+
+def insert_scraped_request(ev) -> Optional[int]:
+    """Queue a freshly scraped, already-enriched event for curator review.
+    Returns the request id, or None when this post is already queued or
+    approved (rejected ones may come back — a curator said no once, the
+    scrape may well find it again and they can say no again)."""
+    handle, code = _ig_parts(getattr(ev, "external_id", ""))
+    if not code:
+        return None
+    if find_catalog_request_by_shortcode(code):
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    # Stored in the shape the review form produces (naive "YYYY-MM-DDTHH:MM:SS"):
+    # that is what the approve path validates and what the form displays.
+    # The payload keeps the real, tz-aware datetime.
+    ds = ev.date_start.strftime("%Y-%m-%dT%H:%M:%S") if hasattr(ev.date_start, "strftime") else str(ev.date_start or "")
+    with get_conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO submitted_events
+                 (name, description, venue_name, venue_address, city, date_start,
+                  price_min, price_max, url, submitted_by, status, created_at,
+                  image_url, ig_handle, shortcode, group_event_id, enriched_payload)
+               VALUES (?, ?, ?, '', 'Curitiba', ?, 0, 0, ?, NULL, 'review', ?, ?, ?, ?, '', ?)""",
+            (ev.name, ev.description or "", ev.venue_name or "", ds, ev.url or "",
+             now, ev.image_url or "", handle, code, ev.model_dump_json()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def route_scraped_event(ev) -> str:
+    """Where a scraped event goes. 'updated' — it is already in the catalog
+    (a curator approved it once), so the re-scrape refreshes it in place;
+    'queued' — new, waits for a curator; 'skipped' — already waiting or
+    not identifiable. The daily refresh calls this instead of upsert_event
+    so nothing reaches the public catalog without a person saying so."""
+    if get_event_by_id(ev.id):
+        upsert_event(ev)
+        return "updated"
+    return "queued" if insert_scraped_request(ev) else "skipped"
+
+
+def count_catalog_requests(status: str = "review") -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM submitted_events WHERE status = ? AND shortcode != ''",
+            (status,),
+        ).fetchone()
+    return int(row["n"] or 0)
 
 
 def find_catalog_request_by_shortcode(shortcode: str) -> Optional[dict]:

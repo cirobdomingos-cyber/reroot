@@ -2431,6 +2431,21 @@ def _queue_catalog_request(event: dict, req, background_tasks: BackgroundTasks) 
     )
 
 
+def notify_curators_of_scrape(queued: int) -> None:
+    """One push per curator per refresh: how many scraped events are
+    waiting. Not one per event — a normal day queues twenty-odd."""
+    if queued <= 0:
+        return
+    body = (f"{queued} evento{'s' if queued != 1 else ''} novo{'s' if queued != 1 else ''} "
+            f"esperando revisão")
+    for uid in db.user_ids_for_emails(db.list_curator_emails()):
+        try:
+            _send_push_to_user(uid, title="📋 Curadoria", body=body,
+                               url="/#/curadoria", tag="curation-scrape")
+        except Exception as exc:
+            log.warning(f"curator scrape push to {uid} failed: {exc}")
+
+
 def _notify_curators_of_request(request_id: int, name: str, venue: str, requester: str) -> None:
     """Push every curator. Roles are stored by email and pushes by account
     id, so this joins through users.email — a curator who signs in only via
@@ -7695,6 +7710,9 @@ def _catalog_request_out(row: dict) -> dict:
     return {
         "id": row["id"],
         "status": row["status"],
+        # 'scrape' rows carry their enrichment and have no person behind
+        # them; the list says "Do scrape" instead of "Sugestão".
+        "source": "scrape" if (row.get("enriched_payload") or "").strip() else "suggestion",
         "name": row["name"],
         "description": row["description"],
         "venue_name": row["venue_name"],
@@ -7753,7 +7771,18 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
         raise HTTPException(status_code=400, detail="Nome e data válidos são obrigatórios pra publicar.")
 
     shortcode = row.get("shortcode") or _ig_shortcode(row["url"])
-    event_id = _catalog_event_id_for(shortcode)
+    # A scraped request carries its own enrichment and its own id. The id
+    # matters: the scraper's is `instagram_ig_<handle>_<code>`, and the
+    # next re-scrape updates THAT row — publishing under a different id
+    # would give the catalog two cards for one post, one of them stale.
+    scraped = None
+    if (row.get("enriched_payload") or "").strip():
+        try:
+            from models import EnrichedEvent
+            scraped = EnrichedEvent.model_validate_json(row["enriched_payload"])
+        except Exception as exc:
+            log.warning(f"Catalog request {request_id}: stored payload unreadable: {exc}")
+    event_id = scraped.id if scraped else _catalog_event_id_for(shortcode)
     # Claim the request first: the conditional update is what stops two
     # curators publishing the same request at the same moment.
     if not db.resolve_catalog_request(request_id, "approved", curator,
@@ -7763,12 +7792,28 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
         image = ""
         if row.get("image_url") and _is_allowed_submission_image(event_id, row["image_url"]):
             image = image_store.rehost_image(event_id, row["image_url"]) or row["image_url"]
-        ev = _build_catalog_event(
-            event_id=event_id, external_id=f"igpost_{shortcode}", name=name,
-            description=row["description"], venue_name=row["venue_name"],
-            date_start=ds, url=row["url"], image_url=image,
-        )
+        if scraped:
+            # Curator edits on top of the scrape's enrichment.
+            scraped.name = name
+            if (row.get("description") or "").strip():
+                scraped.description = row["description"]
+            if (row.get("venue_name") or "").strip():
+                scraped.venue_name = row["venue_name"]
+            if req.date_start:
+                scraped.date_start = ds  # the curator moved it
+            if image:
+                scraped.image_url = image
+            ev = scraped
+        else:
+            ev = _build_catalog_event(
+                event_id=event_id, external_id=f"igpost_{shortcode}", name=name,
+                description=row["description"], venue_name=row["venue_name"],
+                date_start=ds, url=row["url"], image_url=image,
+            )
         db.upsert_event(ev)
+        # Novidades announces approvals now, not scrapes: park the id and
+        # the 09:00 digest carries everything approved since the last one.
+        db.defer_digest_events([event_id])
     except Exception as exc:
         db.reopen_catalog_request(request_id)
         log.error(f"Catalog request {request_id}: publish failed: {exc}")
@@ -7793,7 +7838,10 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
         else:
             tracked = bool(known[handle].get("enabled"))
 
-    background_tasks.add_task(_enrich_catalog_event, ev)
+    if not scraped:
+        # A human suggestion arrives bare and is enriched after approval.
+        # A scraped one was enriched before it was queued.
+        background_tasks.add_task(_enrich_catalog_event, ev)
     if row.get("submitted_by"):
         background_tasks.add_task(
             _send_push_to_user, row["submitted_by"], "✅ No catálogo",
@@ -7814,6 +7862,35 @@ def admin_reject_catalog_request(request_id: int, req: CatalogRequestDecision):
     if not db.resolve_catalog_request(request_id, "rejected", curator, note=req.note):
         raise HTTPException(status_code=409, detail="Esse pedido já foi resolvido.")
     return {"ok": True}
+
+
+class CatalogRequestBulk(BaseModel):
+    requesting_email: str
+    ids: list[int]
+
+
+@app.post("/admin/catalog-requests/approve-many")
+def admin_approve_catalog_requests_many(req: CatalogRequestBulk,
+                                        background_tasks: BackgroundTasks):
+    """Approve several requests as they are — no edits. The daily scrape
+    queues twenty-odd on a normal day, and one tap each is how a queue
+    stops getting cleared. Each one goes through the single-approve
+    path, guard included, so two curators clearing the same list at once
+    each get told which ones the other took."""
+    _require_curator(req.requesting_email)
+    results = []
+    for rid in req.ids[:200]:
+        try:
+            out = admin_approve_catalog_request(
+                rid, CatalogRequestDecision(requesting_email=req.requesting_email),
+                background_tasks,
+            )
+            results.append({"id": rid, "ok": True, "catalog_event_id": out.get("catalog_event_id")})
+        except HTTPException as exc:
+            results.append({"id": rid, "ok": False, "status": exc.status_code,
+                            "detail": exc.detail if isinstance(exc.detail, str) else str(exc.detail)})
+    approved = sum(1 for r in results if r["ok"])
+    return {"ok": True, "approved": approved, "results": results}
 
 
 @app.post("/admin/submissions/backfill-images")
