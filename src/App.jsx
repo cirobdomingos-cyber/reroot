@@ -29,6 +29,7 @@ import AdminVenues from './screens/AdminVenues'
 import Notifications from './screens/Notifications'
 import ChannelDetail from './screens/ChannelDetail'
 import AddFriend       from './screens/AddFriend'
+import AvatarCorner    from './components/AvatarCorner'
 import MyRsvps         from './screens/MyRsvps'
 import FriendDetail    from './screens/FriendDetail'
 import Sources         from './screens/Sources'
@@ -56,6 +57,10 @@ function AnimatedPage({ children, wide = false }) {
       exit="exit"
       transition={pageTransition}
     >
+      {/* Your photo, on every screen — it rides the shell so no screen
+          has to know. The component hides itself on Perfil and when
+          signed out. */}
+      <AvatarCorner />
       <div className={wide ? 'screen-inner screen-inner--wide' : 'screen-inner'}>{children}</div>
     </motion.div>
   )
