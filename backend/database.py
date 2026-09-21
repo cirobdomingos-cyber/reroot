@@ -429,31 +429,6 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
-        # Strip followers out of public channels' invitee lists.
-        #
-        # Publishing into a channel expanded `extra_invitee_ids` to every
-        # member, and following a channel writes a member row — so a
-        # channel's whole programme arrived as personal invitations. New
-        # events stopped doing this (see create_group_event); the ones
-        # already written have to be corrected, because nothing else
-        # reads the list to mean anything but "was invited".
-        try:
-            rows = conn.execute(
-                """SELECT ge.id FROM group_events ge
-                     JOIN groups g
-                       ON (ge.group_id = g.id
-                           OR ge.group_ids LIKE '%"' || g.id || '"%')
-                    WHERE g.visibility = 'public'
-                      AND ge.extra_invitee_ids NOT IN ('[]', '')"""
-            ).fetchall()
-            for r in rows:
-                conn.execute(
-                    "UPDATE group_events SET extra_invitee_ids = '[]' WHERE id = ?",
-                    (r["id"],),
-                )
-        except sqlite3.OperationalError:
-            pass  # tables not created yet on a fresh DB
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS submitted_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -935,9 +910,17 @@ def init_db():
         # creator, who's tracked via created_by) into extra_invitee_ids.
         # Idempotent: rows that already have a non-empty invitee list are
         # skipped, so re-running is a no-op for converged data.
+        # Private channels only. A public channel's event has an empty
+        # invitee list ON PURPOSE — following is not being invited (see
+        # create_group_event) — and this ran on every boot, refilling
+        # exactly what the strip below empties: every deploy re-invited
+        # every follower to every channel event.
         legacy_rows = conn.execute("""
-            SELECT id, group_id, created_by FROM group_events
-             WHERE group_id IS NOT NULL AND extra_invitee_ids = '[]'
+            SELECT ge.id, ge.group_id, ge.created_by
+              FROM group_events ge
+              JOIN groups g ON g.id = ge.group_id
+             WHERE ge.extra_invitee_ids = '[]'
+               AND g.visibility != 'public'
         """).fetchall()
         for row in legacy_rows:
             members = conn.execute(
@@ -951,6 +934,31 @@ def init_db():
                     (json.dumps(invitees), row["id"]),
                 )
         conn.commit()
+        # Strip followers out of public channels' invitee lists.
+        #
+        # Publishing into a channel expanded `extra_invitee_ids` to every
+        # member, and following a channel writes a member row — so a
+        # channel's whole programme arrived as personal invitations. New
+        # events stopped doing this (see create_group_event); the ones
+        # already written have to be corrected, because nothing else
+        # reads the list to mean anything but "was invited".
+        try:
+            rows = conn.execute(
+                """SELECT ge.id FROM group_events ge
+                     JOIN groups g
+                       ON (ge.group_id = g.id
+                           OR ge.group_ids LIKE '%"' || g.id || '"%')
+                    WHERE g.visibility = 'public'
+                      AND ge.extra_invitee_ids NOT IN ('[]', '')"""
+            ).fetchall()
+            for r in rows:
+                conn.execute(
+                    "UPDATE group_events SET extra_invitee_ids = '[]' WHERE id = ?",
+                    (r["id"],),
+                )
+        except sqlite3.OperationalError:
+            pass  # tables not created yet on a fresh DB
+
         # Achievements/badges. One row per (user, badge) once earned —
         # categorical, never revoked. Metadata column captures context like
         # which venue triggered a "Local da casa" badge. Tier captures
