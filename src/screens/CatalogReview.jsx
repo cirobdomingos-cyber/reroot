@@ -270,6 +270,12 @@ function RequestList({ email }) {
   const navigate = useNavigate()
   const [items, setItems] = useState(null)
   const [error, setError] = useState('')
+  // Bulk approve. The daily scrape queues twenty-odd on a normal day;
+  // one tap each is how a queue stops getting cleared. Picking is per
+  // row, "todos" is one tap, and approval goes as-is — anything that
+  // needs an edit is opened on its own.
+  const [picked, setPicked] = useState(() => new Set())
+  const [bulk, setBulk] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -280,15 +286,66 @@ function RequestList({ email }) {
     return () => { cancelled = true }
   }, [email])
 
-  if (error) return <Muted>{error}</Muted>
+  async function approvePicked() {
+    if (!picked.size) return
+    setBulk('working')
+    setError('')
+    try {
+      const data = await fetch(`${API_BASE}/admin/catalog-requests/approve-many`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requesting_email: email, ids: [...picked] }),
+      }).then(readJson)
+      const done = new Set((data.results || []).filter(r => r.ok).map(r => r.id))
+      setItems(list => (list || []).filter(r => !done.has(r.id)))
+      setPicked(new Set())
+      const failed = (data.results || []).filter(r => !r.ok)
+      if (failed.length) setError(`${failed.length} não ${failed.length === 1 ? 'foi' : 'foram'} aprovado(s) — outro curador resolveu ou faltou dado.`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBulk('')
+    }
+  }
+
+  if (error && !items) return <Muted>{error}</Muted>
   if (!items) return <Muted>Carregando pedidos…</Muted>
   if (!items.length) return <Muted>Nada esperando revisão. 🎉</Muted>
 
+  const allPicked = picked.size === items.length
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Muted>{items.length} {items.length === 1 ? 'pedido esperando' : 'pedidos esperando'} — os mais antigos primeiro.</Muted>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setPicked(allPicked ? new Set() : new Set(items.map(r => r.id)))}
+          style={ghostBtn}
+        >
+          {allPicked ? 'Limpar seleção' : `Selecionar todos (${items.length})`}
+        </button>
+        <button
+          onClick={approvePicked}
+          disabled={!picked.size || !!bulk}
+          style={{ ...primaryBtn, opacity: (!picked.size || bulk) ? 0.5 : 1 }}
+        >
+          {bulk ? 'Aprovando…' : `Aprovar ${picked.size} selecionado${picked.size === 1 ? '' : 's'}`}
+        </button>
+      </div>
+      {error && <Muted>{error}</Muted>}
       {items.map(r => (
-        <button key={r.id} onClick={() => navigate(`/curadoria/${r.id}`)} style={{ ...card, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+        <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input
+          type="checkbox"
+          aria-label={`Selecionar ${r.name}`}
+          checked={picked.has(r.id)}
+          onChange={() => setPicked(prev => {
+            const next = new Set(prev)
+            if (next.has(r.id)) next.delete(r.id); else next.add(r.id)
+            return next
+          })}
+          style={{ width: 18, height: 18, flexShrink: 0, accentColor: 'var(--lime)' }}
+        />
+        <button onClick={() => navigate(`/curadoria/${r.id}`)} style={{ ...card, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
           <Thumb src={r.image_url} size={56} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
@@ -296,11 +353,12 @@ function RequestList({ email }) {
               {fmtWhen(r.date_start)}{r.venue_name ? ` · ${r.venue_name}` : ''}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-              {r.submitted_by_name ? `${r.submitted_by_name} sugeriu` : 'Sugestão'}{r.ig_handle ? ` · @${r.ig_handle}` : ''}
+              {r.submitted_by_name ? `${r.submitted_by_name} sugeriu` : (r.source === 'scrape' ? 'Do scrape' : 'Sugestão')}{r.ig_handle ? ` · @${r.ig_handle}` : ''}
             </div>
           </div>
           <span style={{ color: 'var(--text3)', fontSize: 18 }}>›</span>
         </button>
+        </div>
       ))}
     </div>
   )
