@@ -1760,3 +1760,60 @@ def test_a_curator_does_not_get_someones_private_crew(api):
     code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
     client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
     assert client.get(f"/channels/{gid}?google_id=u_bia").json()["channel"]["can_curate"] is False
+
+
+# -- 22. a boot must not re-invite followers ----------------------------
+#
+# The May-2026 invitee backfill ran on every boot and snapshotted group
+# members into any event with an empty invitee list — public channels
+# included, whose lists are empty on purpose. Every deploy re-invited
+# every follower to every channel event.
+
+def test_a_second_boot_does_not_reinvite_followers(api):
+    _db, _main, client = api
+    cid = _channel(client)
+    client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
+    ev = _add_to(client, cid, "u_founder")
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
+    _db.init_db()                      # a deploy
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == []
+
+
+def test_a_private_crews_legacy_event_still_gets_its_members(api):
+    """The backfill's actual job: a crew event written before invitee
+    snapshots existed gets the crew's members on the next boot."""
+    _db, _main, client = api
+    gid = _crew(client, "u_ana")
+    code = client.get(f"/channels/{gid}?google_id=u_ana").json()["channel"]["invite_code"]
+    client.post("/groups/join", json={"google_id": "u_bia", "invite_code": code})
+    ev = _crew_event(client, gid)
+    with _db.get_conn() as conn:
+        conn.execute("UPDATE group_events SET extra_invitee_ids = '[]' WHERE id = ?", (ev["id"],))
+        conn.commit()
+    _db.init_db()
+    assert _db.get_group_event(ev["id"])["extra_invitee_ids"] == ["u_bia"]
+
+
+# -- 23. re-adding to a public channel does not RSVP the curator ------
+
+def test_re_adding_the_same_event_to_a_channel_does_not_rsvp(api):
+    """The dedup branch of POST /groups/{id}/events kept the old
+    auto-RSVP. Three duplicate handles in the rebuild went through it."""
+    _db, _main, client = api
+    cid = _channel(client)
+    first = _add_to(client, cid, "u_founder")
+    again = _add_to(client, cid, "u_founder")
+    assert again["id"] == first["id"]
+    with _db.get_conn() as conn:
+        assert conn.execute("SELECT 1 FROM rsvps WHERE google_id = ? AND event_id = ?",
+                            ("u_founder", first["id"])).fetchone() is None
+
+
+def test_re_adding_to_a_private_crew_still_rsvps_the_creator(api):
+    _db, _main, client = api
+    gid = _crew(client, "u_ana")
+    first = _add_to(client, gid, "u_ana")
+    _add_to(client, gid, "u_ana")
+    with _db.get_conn() as conn:
+        assert conn.execute("SELECT 1 FROM rsvps WHERE google_id = ? AND event_id = ?",
+                            ("u_ana", first["id"])).fetchone() is not None
