@@ -2967,6 +2967,12 @@ def get_user_state_endpoint(google_id: str):
     saved = db.get_user_state(google_id)
     if saved is None:
         raise HTTPException(status_code=404, detail="No state found for this user")
+    # The blob's rsvps are replaced by the table's. Two stores used to
+    # describe the same yes and nothing reconciled them: a founder RSVP
+    # the migration had moved onto a catalog event was invisible in
+    # Meus rolês (blob) and visible to every friend at once (table).
+    # The table is what the world reads, so it is what you read too.
+    saved = {**saved, "rsvps": db.rsvps_as_state_map(google_id)}
     return {"state": saved}
 
 
@@ -2985,6 +2991,11 @@ def save_user_state_endpoint(req: UserStateSaveRequest):
         log.warning(f"State validation failed for {req.google_id[:20]}: missing keys")
         raise HTTPException(status_code=400, detail="Invalid state object — missing required keys")
 
+    # The client's rsvps map is not stored. RSVPs reach the table through
+    # POST/DELETE /rsvp (syncRsvp fires both), and the next load hands
+    # the table back — storing the map here is how a stale device could
+    # resurrect an RSVP the server had already removed.
+    req.state = {**req.state, "rsvps": {}}
     state_json = json.dumps(req.state)
     if len(state_json) > MAX_STATE_SIZE_BYTES:
         log.warning(f"State too large for {req.google_id[:20]}: {len(state_json)} bytes")
