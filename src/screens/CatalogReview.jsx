@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
+import { resolveImageUrl } from '../services/api'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 
 // Curator review queue for the public catalog.
@@ -364,8 +365,13 @@ function RequestList({ email }) {
   )
 }
 
-function Thumb({ src, size }) {
+function Thumb({ src: raw, size }) {
   const [broken, setBroken] = useState(false)
+  // A scraped request carries the rehosted flyer as "/event-images/…".
+  // On the web that is same-origin; inside the iOS wrapper the origin is
+  // capacitor://localhost and a relative path 404s — resolve it against
+  // the API base the way every other screen does.
+  const src = resolveImageUrl(raw)
   if (!src || broken) {
     return <div style={{ width: size, height: size, borderRadius: 10, background: 'var(--line)', flexShrink: 0 }} />
   }
