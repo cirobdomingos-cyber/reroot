@@ -378,22 +378,29 @@ export function resolveImageUrl(url) {
 let _loadInFlight = false
 export function isLoadInFlight() { return _loadInFlight }
 
+// Resolves to { state } when there is remote state, { notFound: true }
+// when the server has none for this account, and { failed: true } when
+// the load didn't happen (network, timeout, 5xx). The caller has to
+// tell the last two apart: after "not found" it is safe to start
+// saving (a new account); after "failed" it is not — the server may
+// hold the only copy of this person's name and photo, and a save now
+// would overwrite it with whatever the fresh login seeded.
 export async function loadUserState(googleId) {
   _loadInFlight = true
   try {
     const res = await fetchWithTimeout(`${BASE_URL}/user/state/${encodeURIComponent(googleId)}`)
     if (res.ok) {
       const data = await res.json()
-      return data.state
+      return { state: data.state }
     }
-    if (res.status === 404) return null // no remote state yet — not an error
+    if (res.status === 404) return { notFound: true }
     reportError('sync_load_failed', `HTTP ${res.status}`, { googleId: googleId.slice(0, 20) }, googleId)
   } catch (err) {
     reportError('sync_load_failed', err.message, { googleId: googleId.slice(0, 20) }, googleId)
   } finally {
     _loadInFlight = false
   }
-  return null
+  return { failed: true }
 }
 
 const MAX_SAVE_RETRIES = 3
