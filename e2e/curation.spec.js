@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test'
 // Notificações, and bulk approve in /curadoria.
 
 const QUEUE = { requests: [
-  { id: 1, status: 'review', source: 'scrape', name: 'Samba do Folia', venue_name: 'Bar Folia', date_start: '2099-09-20T18:00:00', ig_handle: 'barfolia', image_url: '' },
+  { id: 1, status: 'review', source: 'scrape', name: 'Samba do Folia', venue_name: 'Bar Folia', date_start: '2099-09-20T18:00:00', ig_handle: 'barfolia', image_url: '/event-images/instagram_ig_barfolia_ABC.jpg' },
   { id: 2, status: 'review', source: 'scrape', name: 'Terno Rei', venue_name: 'Pedreira', date_start: '2099-10-04T21:00:00', ig_handle: 'pedreira', image_url: '' },
   { id: 3, status: 'review', source: 'suggestion', name: 'Feira do Passeio', venue_name: 'Passeio', date_start: '2099-10-05T10:00:00', submitted_by_name: 'Bia', image_url: '' },
 ] }
@@ -15,6 +15,12 @@ async function open(page, { curator, path }) {
     return ['document', 'script', 'stylesheet', 'image', 'font', 'manifest'].includes(t)
       ? route.continue() : route.abort()
   })
+  // The catch-all above aborts images, and Thumb swaps a broken image
+  // for a grey box — so serve the flyer as a 1x1 PNG.
+  await page.route('**/event-images/**', route => route.fulfill({
+    contentType: 'image/png',
+    body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'),
+  }))
   await page.route('**/admin/curators**', route => route.fulfill({ json: { curators: [], is_curator: !!curator, is_founder: false } }))
   await page.route('**/admin/catalog-requests/approve-many', route => route.fulfill({ json: {
     ok: true, approved: 3, results: [{ id: 1, ok: true }, { id: 2, ok: true }, { id: 3, ok: true }],
@@ -40,6 +46,12 @@ test('a curator sees one banner in Notificações, with the count', async ({ pag
 test('nobody else sees it', async ({ page }) => {
   await open(page, { curator: false, path: '/#/notifications' })
   await expect(page.getByTestId('curation-banner')).toHaveCount(0)
+})
+
+test('a scraped request shows its rehosted flyer', async ({ page }) => {
+  await open(page, { curator: true, path: '/#/curadoria' })
+  const img = page.locator('img[src*="instagram_ig_barfolia_ABC.jpg"]')
+  await expect(img).toHaveCount(1)
 })
 
 test('the queue says where each item came from', async ({ page }) => {
