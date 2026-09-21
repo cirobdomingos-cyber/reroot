@@ -138,3 +138,15 @@ test('adding a handle lives in Contas @, not on Fontes', async ({ page }) => {
   await openAdmin(page, { founder: false, path: '/#/admin/contas' })
   await expect(page.getByRole('button', { name: /Adicionar nova fonte do Instagram/ })).toBeVisible()
 })
+
+test('people fits without a sideways scroll on a phone-wide table', async ({ page }) => {
+  // Ten columns never fit 390px however tight the name cell is; on a
+  // phone the table shows six and the rest come back from 600px up.
+  await openAdmin(page, { founder: true, path: '/#/admin/pessoas' })
+  const table = page.locator('table')
+  await expect(table).toBeVisible()
+  const overflow = await table.evaluate(t => t.scrollWidth - t.parentElement.clientWidth)
+  // Phone project is 390px wide; allow the numeric columns their room
+  // but not a second screen's worth.
+  expect(overflow).toBeLessThan(120)
+})

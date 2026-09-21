@@ -206,6 +206,10 @@ function DigestRow({ ev, navigate }) {
       isRecurring={ev.isRecurring}
       isGroupEvent={ev.isGroupEvent}
       featured={ev.featured}
+      // The flyer, same 56px square as Eventos and the channel screen.
+      // This row predates the prop, which is why Novidades was the one
+      // list still showing text only.
+      thumbUrl={ev.imageUrl || ''}
       onClick={() => navigate('/events', { state: { openEventId: ev.id } })}
     />
   )
