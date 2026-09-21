@@ -955,9 +955,27 @@ function UsageSection({ usage }) {
 // ── UsersTable — who the users are, not just how many ─────
 // The dashboard could only show the ten most recent logins. This is the
 // whole list with per-user activity, sorted client-side (tens of rows).
+// Inline styles can't be reached by media queries; this is the same
+// shape as useIsDesktop, for one table's column set.
+function useMinWidth(px) {
+  const query = `(min-width: ${px}px)`
+  const [ok, setOk] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = () => setOk(mq.matches)
+    onChange()
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+  return ok
+}
+
 function UsersTable({ data, error, onRetry, curators = [], selfEmail = '', onGrant, onRevoke, busy }) {
   const [sort, setSort] = useState('last_seen')
   const [query, setQuery] = useState('')
+  const isWide = useMinWidth(600)
   // Role by email, from the curators table. Feedbacker-only rows don't
   // count as a role any more (feedback is open to everyone).
   const roleOf = (u) => {
@@ -999,15 +1017,18 @@ function UsersTable({ data, error, onRetry, curators = [], selfEmail = '', onGra
   }
   if (!data) return null
 
+  // Ten columns at 12px are ~600px however tight the name cell is, so a
+  // phone gets the six that answer "who is active, who curates"; the
+  // rest come back from 600px up. `wide` marks the ones that wait.
   const cols = [
-    { key: 'joined', label: 'Entrou', num: false },
+    { key: 'joined', label: 'Entrou', num: false, wide: true },
     { key: 'last_seen', label: 'Visto', num: false },
     { key: 'days_active', label: 'Dias', num: true },
     { key: 'rsvps', label: 'RSVPs', num: true },
-    { key: 'friends', label: 'Amigos', num: true },
-    { key: 'groups', label: 'Canais', num: true },
-    { key: 'events_created', label: 'Criou', num: true },
-  ]
+    { key: 'friends', label: 'Amigos', num: true, wide: true },
+    { key: 'groups', label: 'Canais', num: true, wide: true },
+    { key: 'events_created', label: 'Criou', num: true, wide: true },
+  ].filter(c => isWide || !c.wide)
   const q = query.trim().toLowerCase()
   const rows = (data.users || [])
     .filter(u => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
@@ -1068,7 +1089,7 @@ function UsersTable({ data, error, onRetry, curators = [], selfEmail = '', onGra
             {rows.map(u => (
               <tr key={u.google_id} style={{ borderBottom: '1px solid var(--cream)' }}>
                 <td style={{ padding: '6px 6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 160 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 104 }}>
                     {u.picture ? (
                       <img src={u.picture} alt="" referrerPolicy="no-referrer"
                         style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0 }} />
@@ -1079,29 +1100,29 @@ function UsersTable({ data, error, onRetry, curators = [], selfEmail = '', onGra
                         fontSize: 10, flexShrink: 0,
                       }}>{(u.name || u.email || '?')[0]?.toUpperCase()}</div>
                     )}
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{
+                    {/* One line, 110px, email in the tooltip. The cell used
+                        to reserve 160px and stack the email under the name,
+                        which on a phone pushed the whole table into a
+                        sideways scroll for the sake of a second line few
+                        people read. The search box still matches email. */}
+                    <div
+                      title={u.email && u.email !== u.name ? u.email : undefined}
+                      style={{
                         fontWeight: 600, color: 'var(--charcoal)',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
-                      }}>
-                        {u.name || u.email || u.google_id.slice(0, 10)}
-                      </div>
-                      {u.email && u.email !== u.name && (
-                        <div style={{
-                          fontSize: 10, color: 'var(--charcoal-light)',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
-                        }}>{u.email}</div>
-                      )}
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110,
+                      }}
+                    >
+                      {u.name || u.email || u.google_id.slice(0, 10)}
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmtDay(u.joined)}</td>
+                {isWide && <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmtDay(u.joined)}</td>}
                 <td style={{ padding: '6px 6px', color: 'var(--charcoal-mid)', whiteSpace: 'nowrap' }}>{fmtDay(u.last_seen)}</td>
                 <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.days_active}</td>
                 <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.rsvps}</td>
-                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.friends}</td>
-                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.groups}</td>
-                <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.events_created}</td>
+                {isWide && <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.friends}</td>}
+                {isWide && <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.groups}</td>}
+                {isWide && <td style={{ padding: '6px 6px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{u.events_created}</td>}
                 <td style={{ padding: '6px 6px', textAlign: 'right' }}>{u.push_devices > 0 ? '🔔' : '—'}</td>
                 <td style={{ padding: '6px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <RoleCell

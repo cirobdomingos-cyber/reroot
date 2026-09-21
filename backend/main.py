@@ -436,107 +436,115 @@ _INSTALL_HTML = """<!DOCTYPE html>
 <meta name="twitter:image" content="https://auecuritiba.com/og-image.png" />
 <link rel="canonical" href="https://auecuritiba.com/install" />
 <style>
+  /* The auê palette, inlined: this page ships without the app's CSS.
+     Same tokens as src/styles/globals.css —
+       bg #0A0510 · bg2 #14081E · line #2A1640 · magenta #FF2BD6
+       cyan #00E5FF · lime #C6FF00 · text #F4ECFF · text2 #B8A8D8 · text3 #6E5C8E
+     It wore the Reroot terracotta-on-cream until Sep 2026: the card in
+     WhatsApp said auê and the page behind it said a product that no
+     longer exists. */
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #FCF5EB; color: #2C2C2C;
+    background: #0A0510; color: #F4ECFF;
     -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
   }
   .container { max-width: 480px; margin: 0 auto; padding: 36px 20px 48px; }
-  .logo { font-size: 56px; font-weight: 900; color: #E8623F; text-align: center;
-          margin: 0 0 4px; letter-spacing: -2px; line-height: 1; }
-  .tag  { text-align: center; color: #2C2C2C; opacity: 0.65;
+  .logo { font-size: 56px; font-weight: 900; color: #FF2BD6; text-align: center;
+          margin: 0 0 4px; letter-spacing: -2px; line-height: 1;
+          text-shadow: 0 0 24px rgba(255, 43, 214, 0.45); }
+  .tag  { text-align: center; color: #B8A8D8;
           font-size: 13px; font-weight: 500; margin-bottom: 32px;
           text-transform: uppercase; letter-spacing: 1.5px; }
-  h1 { font-size: 24px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
-  .sub { color: #2C2C2C; opacity: 0.7; font-size: 14px;
+  h1 { font-size: 24px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; color: #F4ECFF; }
+  .sub { color: #B8A8D8; font-size: 14px;
          margin: 0 0 24px; line-height: 1.55; }
   .warning {
-    background: #FFF4E5; border-left: 4px solid #E8A93F;
+    background: rgba(0, 229, 255, 0.08); border-left: 4px solid #00E5FF;
     padding: 14px 16px; border-radius: 10px; margin-bottom: 18px;
-    font-size: 14px; line-height: 1.5;
+    font-size: 14px; line-height: 1.5; color: #F4ECFF;
   }
-  .warning strong { color: #B8761F; display: block; margin-bottom: 6px; }
+  .warning strong { color: #00E5FF; display: block; margin-bottom: 6px; }
   .warning button, .copy-btn {
     display: block; width: 100%; margin-top: 10px;
-    background: #E8623F; color: white; border: none;
+    background: #FF2BD6; color: #0A0510; border: none;
     padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 700;
     cursor: pointer; -webkit-tap-highlight-color: transparent;
     font-family: inherit;
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
   }
-  .warning button:active, .copy-btn:active { background: #C84F30; }
+  .warning button:active, .copy-btn:active { background: #D91FB4; }
   .step {
-    background: white; border-radius: 16px; padding: 16px;
+    background: #14081E; border: 1px solid #2A1640; border-radius: 16px; padding: 16px;
     margin-bottom: 10px; display: flex; gap: 14px; align-items: flex-start;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
   }
   .num {
     width: 30px; height: 30px; border-radius: 50%;
-    background: #E8623F; color: white;
+    background: #FF2BD6; color: #0A0510;
     display: flex; align-items: center; justify-content: center;
     font-weight: 800; font-size: 14px; flex-shrink: 0;
   }
   .sc { flex: 1; min-width: 0; }
-  .st { font-weight: 700; font-size: 15px; margin-bottom: 3px; line-height: 1.3; }
-  .sd { font-size: 13px; color: #2C2C2C; opacity: 0.75; line-height: 1.5; }
+  .st { font-weight: 700; font-size: 15px; margin-bottom: 3px; line-height: 1.3; color: #F4ECFF; }
+  .sd { font-size: 13px; color: #B8A8D8; line-height: 1.5; }
   .ic {
     display: inline-flex; align-items: center; justify-content: center;
     width: 24px; height: 24px; vertical-align: -6px;
-    background: #F4EFE6; border-radius: 5px; padding: 3px; margin: 0 2px;
+    background: #2A1640; border-radius: 5px; padding: 3px; margin: 0 2px;
   }
   .done {
     text-align: center; margin-top: 16px;
-    background: #7A9E7E12; border: 1px solid #7A9E7E40;
+    background: rgba(198, 255, 0, 0.08); border: 1px solid rgba(198, 255, 0, 0.35);
     padding: 14px; border-radius: 12px;
-    font-size: 13px; color: #2C2C2C; line-height: 1.5;
+    font-size: 13px; color: #F4ECFF; line-height: 1.5;
   }
-  .done strong { color: #5A7E5E; display: block; margin-bottom: 4px; font-size: 14px; }
+  .done strong { color: #C6FF00; display: block; margin-bottom: 4px; font-size: 14px; }
   .share {
     margin-top: 32px; padding: 18px 16px; border-radius: 14px;
-    background: white; border: 1px solid #E8623F30;
+    background: #14081E; border: 1px solid #2A1640;
     text-align: center;
   }
   .share-title {
-    font-size: 13px; font-weight: 700; color: #2C2C2C;
+    font-size: 13px; font-weight: 700; color: #F4ECFF;
     margin-bottom: 4px;
   }
   .share-sub {
-    font-size: 12px; color: #2C2C2C; opacity: 0.6;
+    font-size: 12px; color: #B8A8D8;
     margin-bottom: 12px;
   }
   .share button {
     display: inline-block; width: auto; min-width: 220px;
-    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
-    color: white; border: none;
+    background: #FF2BD6;
+    color: #0A0510; border: none;
     padding: 12px 22px; border-radius: 999px; font-size: 14px; font-weight: 700;
     cursor: pointer; font-family: inherit;
-    box-shadow: 0 4px 14px rgba(232, 98, 63, 0.35);
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
   }
   .share button:active { transform: translateY(1px); }
-  .share .copied { font-size: 12px; color: #5A7E5E; margin-top: 8px; min-height: 16px; }
+  .share .copied { font-size: 12px; color: #C6FF00; margin-top: 8px; min-height: 16px; }
   .open-app {
     display: block; width: 100%;
-    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
-    color: white !important; text-align: center; text-decoration: none;
+    background: #FF2BD6;
+    color: #0A0510 !important; text-align: center; text-decoration: none;
     padding: 14px 18px; border-radius: 14px; font-size: 15px; font-weight: 700;
-    box-shadow: 0 6px 18px rgba(232, 98, 63, 0.32);
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
     margin-bottom: 8px;
     -webkit-tap-highlight-color: transparent;
   }
   .open-app:active { transform: translateY(1px); }
   .open-hint {
-    font-size: 11px; color: #B8761F;
-    background: #FFF4E5; border-radius: 8px;
+    font-size: 11px; color: #00E5FF;
+    background: rgba(0, 229, 255, 0.08); border-radius: 8px;
     padding: 8px 12px; margin-bottom: 16px;
     line-height: 1.45;
   }
   .footer {
     text-align: center; margin-top: 24px; font-size: 12px;
-    color: #2C2C2C; opacity: 0.55; line-height: 1.7;
+    color: #6E5C8E; line-height: 1.7;
   }
-  .footer a { color: #7A9E7E; text-decoration: none; }
+  .footer a { color: #00E5FF; text-decoration: none; }
   .footer a:hover { text-decoration: underline; }
   [hidden] { display: none !important; }
 
@@ -545,35 +553,35 @@ _INSTALL_HTML = """<!DOCTYPE html>
   /* R3 finding: 36 mentions of users giving up here. */
   .iab-overlay {
     position: fixed; inset: 0; z-index: 9000;
-    background: rgba(40, 30, 20, 0.92);
+    background: rgba(10, 5, 16, 0.92);
     display: flex; align-items: center; justify-content: center;
     padding: 24px;
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   }
   .iab-card {
-    background: white; border-radius: 24px;
+    background: #14081E; border: 1px solid #2A1640; border-radius: 24px;
     padding: 32px 26px 26px;
     max-width: 380px; width: 100%;
-    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255, 43, 214, 0.08);
     text-align: center;
   }
   .iab-icon { font-size: 48px; line-height: 1; margin-bottom: 14px; }
   .iab-title {
     font-size: 20px; font-weight: 800; line-height: 1.25;
-    color: #2C2C2C; margin-bottom: 10px;
+    color: #F4ECFF; margin-bottom: 10px;
   }
   .iab-body {
-    font-size: 14px; color: #5A5A5A; line-height: 1.55;
+    font-size: 14px; color: #B8A8D8; line-height: 1.55;
     margin-bottom: 22px;
   }
-  .iab-body strong { color: #2C2C2C; }
+  .iab-body strong { color: #F4ECFF; }
   .iab-cta {
     display: block; width: 100%;
-    background: linear-gradient(135deg, #E8623F 0%, #F08869 100%);
-    color: white; border: none; cursor: pointer;
+    background: #FF2BD6;
+    color: #0A0510; border: none; cursor: pointer;
     padding: 16px 22px; border-radius: 14px;
     font-size: 15px; font-weight: 800; letter-spacing: 0.2px;
-    box-shadow: 0 6px 18px rgba(232, 98, 63, 0.4);
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.4);
     -webkit-tap-highlight-color: transparent;
     font-family: inherit;
   }
@@ -581,10 +589,10 @@ _INSTALL_HTML = """<!DOCTYPE html>
   .iab-secondary {
     display: block; width: 100%; margin-top: 10px;
     background: none; border: none; cursor: pointer;
-    padding: 10px; font-size: 12px; color: #999;
+    padding: 10px; font-size: 12px; color: #6E5C8E;
     font-family: inherit;
   }
-  .iab-secondary:active { color: #666; }
+  .iab-secondary:active { color: #B8A8D8; }
 </style>
 </head>
 <body>
@@ -604,21 +612,21 @@ _INSTALL_HTML = """<!DOCTYPE html>
       <div class="num">2</div>
       <div class="sc">
         <div class="st">Lá no auê, toque o botão Compartilhar</div>
-        <div class="sd">É o ícone <span class="ic"><svg width="14" height="18" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#2C2C2C" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
+        <div class="sd">É o ícone <span class="ic"><svg width="14" height="18" viewBox="0 0 16 20" fill="none"><path d="M8 1L4 5h3v8h2V5h3L8 1z" stroke="#F4ECFF" stroke-width="1.4" stroke-linejoin="round"/><path d="M2 13v5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-5" stroke="#F4ECFF" stroke-width="1.4" stroke-linejoin="round"/></svg></span> no menu inferior do Safari (no iPad fica no canto superior).</div>
       </div>
     </div>
     <div class="step">
       <div class="num">3</div>
       <div class="sc">
         <div class="st">Role e toque "Adicionar à Tela de Início"</div>
-        <div class="sd">A opção fica perto do final da lista. Tem um ícone <span class="ic"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#2C2C2C" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#2C2C2C" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
+        <div class="sd">A opção fica perto do final da lista. Tem um ícone <span class="ic"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2.5" stroke="#F4ECFF" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="#F4ECFF" stroke-width="1.4" stroke-linecap="round"/></svg></span> ao lado.</div>
       </div>
     </div>
     <div class="step">
       <div class="num">4</div>
       <div class="sc">
         <div class="st">Toque "Adicionar" no canto superior direito</div>
-        <div class="sd">Pronto. O ícone laranja do auê aparece na sua tela inicial.</div>
+        <div class="sd">Pronto. O ícone do auê aparece na sua tela inicial.</div>
       </div>
     </div>
     <div class="done"><strong>🎉 É isso</strong>Da próxima vez, é só tocar no ícone — abre tela cheia, sem Safari por cima.</div>
@@ -2959,6 +2967,12 @@ def get_user_state_endpoint(google_id: str):
     saved = db.get_user_state(google_id)
     if saved is None:
         raise HTTPException(status_code=404, detail="No state found for this user")
+    # The blob's rsvps are replaced by the table's. Two stores used to
+    # describe the same yes and nothing reconciled them: a founder RSVP
+    # the migration had moved onto a catalog event was invisible in
+    # Meus rolês (blob) and visible to every friend at once (table).
+    # The table is what the world reads, so it is what you read too.
+    saved = {**saved, "rsvps": db.rsvps_as_state_map(google_id)}
     return {"state": saved}
 
 
@@ -2977,6 +2991,11 @@ def save_user_state_endpoint(req: UserStateSaveRequest):
         log.warning(f"State validation failed for {req.google_id[:20]}: missing keys")
         raise HTTPException(status_code=400, detail="Invalid state object — missing required keys")
 
+    # The client's rsvps map is not stored. RSVPs reach the table through
+    # POST/DELETE /rsvp (syncRsvp fires both), and the next load hands
+    # the table back — storing the map here is how a stale device could
+    # resurrect an RSVP the server had already removed.
+    req.state = {**req.state, "rsvps": {}}
     state_json = json.dumps(req.state)
     if len(state_json) > MAX_STATE_SIZE_BYTES:
         log.warning(f"State too large for {req.google_id[:20]}: {len(state_json)} bytes")
