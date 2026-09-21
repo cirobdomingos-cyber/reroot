@@ -47,3 +47,13 @@ def test_an_iphone_is_still_sent_to_the_store(client):
     r = client.get("/install", headers={"User-Agent": IPHONE}, follow_redirects=False)
     assert r.status_code == 302
     assert "apps.apple.com" in r.headers["location"] or "testflight" in r.headers["location"]
+
+
+def test_the_page_wears_the_aue_palette(client):
+    """The card in WhatsApp said auê; the page behind it wore the Reroot
+    terracotta-on-cream until Sep 2026. The tokens are inlined because
+    this page ships without the app's CSS."""
+    html = client.get("/install", headers={"User-Agent": WHATSAPP}).text
+    assert "#0A0510" in html and "#FF2BD6" in html
+    for old in ("#E8623F", "#FCF5EB", "#2C2C2C"):
+        assert old not in html, old
