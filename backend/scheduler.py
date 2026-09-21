@@ -147,16 +147,14 @@ async def run_refresh(settings):
                 local_url = await asyncio.to_thread(rehost_image, ev.id, ev.image_url)
                 if local_url:
                     ev.image_url = local_url
-            # Nothing reaches the public catalog without a curator saying
-            # so. A new event is queued for review, already enriched; an
-            # event a curator has published before is refreshed in place.
-            # `inserts_by_source` now counts what was queued — the refresh
-            # log and the summary email read it as "new", which it is.
-            # new_event_ids stays empty: Novidades announces approvals now
-            # (the approve endpoint parks each id for the 09:00 digest).
+            # A new event is published now and queued for curation in the
+            # same step; a known one is refreshed in place. Novidades
+            # announces the day's scrape (new_event_ids) — curation is a
+            # pass after the fact, not a gate.
             fate = db.route_scraped_event(ev)
-            if fate == "queued":
+            if fate == "published":
                 inserts_by_source[ev.source] += 1
+                new_event_ids.append(ev.id)
             elif fate == "updated":
                 updates_by_source[ev.source] += 1
             saved += 1
@@ -195,8 +193,9 @@ async def run_refresh(settings):
             log.error(f"  Gap-fill por IA falhou: {e}")
 
     # ── One push to the curators, for the whole run ──
-    # One per event would be twenty-odd pushes in a row on a normal day,
-    # which is the shape people mute the app over.
+    # "N new in the catalog, not curated yet." One per event would be
+    # twenty-odd pushes in a row on a normal day, which is the shape
+    # people mute the app over.
     queued_total = sum(inserts_by_source.values())
     if queued_total:
         try:

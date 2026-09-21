@@ -1,5 +1,12 @@
 """
-The daily scrape goes through curators before the catalog.
+The daily scrape publishes, and curators pass over it afterwards.
+
+A day of the blocking queue (first real run: 12 events waiting) showed
+the gate is daily mandatory work for whoever curates, and a trip stops
+the catalog. So: the scrape publishes as before AND queues every new
+event as "not curated yet"; approving is "tá certo", rejecting pulls
+the event from the catalog. Rows parked under the blocking model (not
+yet public) still publish on approval.
 """
 import sys
 from datetime import datetime, timezone
@@ -62,82 +69,120 @@ def _scraped(code="ABC123", handle="barfolia", **over):
     return EnrichedEvent(**base)
 
 
+EID = "instagram_ig_barfolia_ABC123"
+
+
 def _queue(client):
     return client.get(f"/admin/catalog-requests?status=review&requesting_email={FOUNDER_EMAIL}").json()["requests"]
 
 
-# -- 1. the scrape queues, it does not publish ------------------------
+def _approve(client, rid, **edits):
+    return client.post(f"/admin/catalog-requests/{rid}/approve",
+                       json={"requesting_email": FOUNDER_EMAIL, **edits})
 
-def test_a_new_scraped_event_waits_for_a_curator(api):
+
+# -- 1. the scrape publishes AND queues ---------------------------------
+
+def test_a_new_scraped_event_is_public_now_and_queued_for_curation(api):
     _db, _main, client = api
-    assert _db.route_scraped_event(_scraped()) == "queued"
-    assert _db.get_event_by_id("instagram_ig_barfolia_ABC123") is None
+    assert _db.route_scraped_event(_scraped()) == "published"
+    assert _db.get_event_by_id(EID) is not None          # public
     q = _queue(client)
-    assert [r["name"] for r in q] == ["Samba do Folia"]
+    assert [r["name"] for r in q] == ["Samba do Folia"]  # and queued
     assert q[0]["source"] == "scrape"
+    assert q[0]["in_catalog"] is True
+    assert q[0]["catalog_event_id"] == EID
 
 
-def test_the_same_post_is_not_queued_twice(api):
+def test_a_re_scrape_refreshes_in_place_and_does_not_queue_again(api):
     _db, _main, client = api
-    assert _db.route_scraped_event(_scraped()) == "queued"
-    assert _db.route_scraped_event(_scraped()) == "skipped"
+    assert _db.route_scraped_event(_scraped()) == "published"
+    assert _db.route_scraped_event(_scraped(name="Samba do Folia (nova data)")) == "updated"
+    assert _db.get_event_by_id(EID).name == "Samba do Folia (nova data)"
     assert len(_queue(client)) == 1
 
 
-def test_an_event_a_curator_already_published_is_refreshed_in_place(api):
-    """A re-scrape of a published event is not a new decision."""
-    _db, _main, client = api
-    _db.upsert_event(_scraped())
-    assert _db.route_scraped_event(_scraped(name="Samba do Folia (nova data)")) == "updated"
-    assert _db.get_event_by_id("instagram_ig_barfolia_ABC123").name == "Samba do Folia (nova data)"
-    assert _queue(client) == []
+# -- 2. approve = "tá certo" ---------------------------------------------
 
-
-# -- 2. approving publishes the scrape's own enrichment -----------------
-
-def test_approving_publishes_the_stored_enrichment_under_the_scrapers_id(api):
+def test_approving_a_public_event_keeps_it_and_applies_the_edits_to_the_live_row(api):
     _db, _main, client = api
     _db.route_scraped_event(_scraped())
+    # A later re-scrape changed the live row; edits must land on THAT.
+    _db.route_scraped_event(_scraped(pitch="Roda de samba, agora no salão"))
     rid = _queue(client)[0]["id"]
-    r = client.post(f"/admin/catalog-requests/{rid}/approve", json={"requesting_email": FOUNDER_EMAIL})
+    r = _approve(client, rid, name="Samba do Folia — edição especial")
     assert r.status_code == 200, r.text
-    # The scraper's id, so the next re-scrape updates this row.
-    assert r.json()["catalog_event_id"] == "instagram_ig_barfolia_ABC123"
-    ev = _db.get_event_by_id("instagram_ig_barfolia_ABC123")
-    assert ev is not None
-    assert ev.genre == "samba_pagode" and ev.pitch == "Roda de samba no quintal"
+    ev = _db.get_event_by_id(EID)
+    assert ev.name == "Samba do Folia — edição especial"
+    assert ev.pitch == "Roda de samba, agora no salão"     # live row, not the snapshot
+    assert ev.genre == "samba_pagode"
     assert _queue(client) == []
 
 
-def test_curator_edits_ride_on_top_of_the_enrichment(api):
+def test_approving_a_public_event_does_not_park_it_for_the_digest_again(api):
+    """The scrape's digest already carried it."""
     _db, _main, client = api
     _db.route_scraped_event(_scraped())
     rid = _queue(client)[0]["id"]
-    client.post(f"/admin/catalog-requests/{rid}/approve",
-                json={"requesting_email": FOUNDER_EMAIL, "name": "Samba do Folia — edição especial"})
-    ev = _db.get_event_by_id("instagram_ig_barfolia_ABC123")
-    assert ev.name == "Samba do Folia — edição especial"
-    assert ev.genre == "samba_pagode"          # kept
+    _approve(client, rid)
+    assert _db.take_deferred_digest_events() == []
 
 
-def test_approval_is_what_novidades_announces(api):
-    """The id is parked for the 09:00 digest — the scrape itself no
-    longer announces anything, since nothing it found is public yet."""
+def test_a_row_parked_before_this_model_still_publishes_on_approval(api):
+    """Queued but not public — the blocking model's leftovers. Approving
+    publishes the stored enrichment under the scraper's id and parks it
+    for the digest, since no scrape announced it."""
+    _db, _main, client = api
+    _db.insert_scraped_request(_scraped())
+    assert _db.get_event_by_id(EID) is None
+    q = _queue(client)
+    assert q[0]["in_catalog"] is False
+    r = _approve(client, q[0]["id"])
+    assert r.status_code == 200, r.text
+    assert r.json()["catalog_event_id"] == EID
+    ev = _db.get_event_by_id(EID)
+    assert ev is not None and ev.genre == "samba_pagode"
+    assert _db.take_deferred_digest_events() == [EID]
+
+
+# -- 3. reject = "tirar do catálogo" -------------------------------------
+
+def test_rejecting_a_scraped_event_pulls_it_from_the_catalog(api):
     _db, _main, client = api
     _db.route_scraped_event(_scraped())
     rid = _queue(client)[0]["id"]
-    client.post(f"/admin/catalog-requests/{rid}/approve", json={"requesting_email": FOUNDER_EMAIL})
-    assert _db.take_deferred_digest_events() == ["instagram_ig_barfolia_ABC123"]
+    r = client.post(f"/admin/catalog-requests/{rid}/reject", json={"requesting_email": "ana@example.com"})
+    assert r.status_code == 200, r.text
+    assert r.json()["removed_from_catalog"] is True
+    assert _db.get_event_by_id(EID) is None
+    assert _queue(client) == []
 
 
-# -- 3. bulk ------------------------------------------------------------
+def test_rejecting_a_human_suggestion_touches_no_catalog_event(api):
+    _db, _main, client = api
+    _db.route_scraped_event(_scraped())                    # an unrelated public event
+    now = datetime.now(timezone.utc).isoformat()
+    with _db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO submitted_events (name, date_start, url, status, created_at, shortcode, ig_handle)"
+            " VALUES (?,?,?,?,?,?,?)",
+            ("Feira do Passeio", "2099-10-05T10:00:00", "https://instagram.com/p/XYZ/", "review", now, "XYZ", "passeio"),
+        )
+        conn.commit()
+    rid = [r for r in _queue(client) if r["source"] == "suggestion"][0]["id"]
+    r = client.post(f"/admin/catalog-requests/{rid}/reject", json={"requesting_email": FOUNDER_EMAIL})
+    assert r.status_code == 200
+    assert r.json()["removed_from_catalog"] is False
+    assert _db.get_event_by_id(EID) is not None
+
+
+# -- 4. bulk ------------------------------------------------------------
 
 def test_approve_many_clears_what_it_can_and_names_what_it_cannot(api):
     _db, _main, client = api
     for code in ("A1", "B2", "C3"):
         _db.route_scraped_event(_scraped(code=code, name=f"Show {code}"))
     ids = [r["id"] for r in _queue(client)]
-    # A curator resolves one of them first.
     client.post(f"/admin/catalog-requests/{ids[1]}/reject", json={"requesting_email": "ana@example.com"})
     r = client.post("/admin/catalog-requests/approve-many",
                     json={"requesting_email": FOUNDER_EMAIL, "ids": ids})
@@ -147,6 +192,10 @@ def test_approve_many_clears_what_it_can_and_names_what_it_cannot(api):
     failed = [x for x in out["results"] if not x["ok"]]
     assert [x["id"] for x in failed] == [ids[1]] and failed[0]["status"] == 409
     assert _queue(client) == []
+    # The two approved stay public; the rejected one is gone.
+    assert _db.get_event_by_id("instagram_ig_barfolia_A1") is not None
+    assert _db.get_event_by_id("instagram_ig_barfolia_B2") is None
+    assert _db.get_event_by_id("instagram_ig_barfolia_C3") is not None
 
 
 def test_approve_many_is_curators_only(api):
@@ -156,19 +205,19 @@ def test_approve_many_is_curators_only(api):
     assert r.status_code in (401, 403)
 
 
-# -- 4. one push per refresh ------------------------------------------
+# -- 5. one push per refresh ------------------------------------------
 
-def test_curators_get_one_push_per_refresh_with_the_count(api, monkeypatch):
+def test_curators_get_one_push_per_refresh_saying_the_events_are_already_public(api, monkeypatch):
     _db, main, client = api
     sent = []
     monkeypatch.setattr(main, "_send_push_to_user", lambda uid, **kw: sent.append((uid, kw)))
     main.notify_curators_of_scrape(23)
     assert sorted(u for u, _ in sent) == ["u_ana", "u_founder"]
-    assert all("23 eventos novos" in kw["body"] for _, kw in sent)
+    assert all(kw["body"] == "23 eventos novos no catálogo, sem curadoria ainda" for _, kw in sent)
     assert all(kw["url"] == "/#/curadoria" for _, kw in sent)
 
 
-def test_no_push_when_nothing_was_queued(api, monkeypatch):
+def test_no_push_when_nothing_was_new(api, monkeypatch):
     _db, main, client = api
     sent = []
     monkeypatch.setattr(main, "_send_push_to_user", lambda uid, **kw: sent.append(uid))

@@ -2432,12 +2432,14 @@ def _queue_catalog_request(event: dict, req, background_tasks: BackgroundTasks) 
 
 
 def notify_curators_of_scrape(queued: int) -> None:
-    """One push per curator per refresh: how many scraped events are
-    waiting. Not one per event — a normal day queues twenty-odd."""
+    """One push per curator per refresh: how many scraped events went into
+    the catalog without a curator's eyes yet. Informative, not a gate —
+    the events are already public. Not one per event: a normal day is
+    twenty-odd."""
     if queued <= 0:
         return
     body = (f"{queued} evento{'s' if queued != 1 else ''} novo{'s' if queued != 1 else ''} "
-            f"esperando revisão")
+            f"no catálogo, sem curadoria ainda")
     for uid in db.user_ids_for_emails(db.list_curator_emails()):
         try:
             _send_push_to_user(uid, title="📋 Curadoria", body=body,
@@ -7705,9 +7707,32 @@ def _reviewer_name(email: str) -> str:
     return email.split("@")[0]
 
 
+def _scraped_request_event_id(row: dict) -> str:
+    """The scraper's event id carried in a scraped request's payload, or
+    "" for a human suggestion (which has no payload)."""
+    payload = (row.get("enriched_payload") or "").strip()
+    if not payload:
+        return ""
+    try:
+        return str(json.loads(payload).get("id") or "")
+    except (ValueError, AttributeError):
+        return ""
+
+
 def _catalog_request_out(row: dict) -> dict:
     handle = (row.get("ig_handle") or "").lower()
+    # A scraped request's event is normally already public (the scrape
+    # publishes and queues in one step). The screen reads `in_catalog` to
+    # say "tá certo / tirar do catálogo" instead of "publicar / recusar",
+    # and to link the live event. Rows parked under the earlier blocking
+    # model (published on approval) come out as not-in-catalog.
+    live_id = ""
+    if row["status"] == "review":
+        sid = _scraped_request_event_id(row)
+        if sid and db.get_event_by_id(sid):
+            live_id = sid
     return {
+        "in_catalog": bool(live_id),
         "id": row["id"],
         "status": row["status"],
         # 'scrape' rows carry their enrichment and have no person behind
@@ -7726,7 +7751,7 @@ def _catalog_request_out(row: dict) -> dict:
         "reviewed_by": row.get("reviewed_by") or "",
         "reviewed_by_name": _reviewer_name(row.get("reviewed_by") or ""),
         "reviewed_at": row.get("reviewed_at") or "",
-        "catalog_event_id": row.get("enriched_event_id") or "",
+        "catalog_event_id": row.get("enriched_event_id") or live_id,
     }
 
 
@@ -7788,22 +7813,30 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
     if not db.resolve_catalog_request(request_id, "approved", curator,
                                       catalog_event_id=event_id, note=req.note):
         raise HTTPException(status_code=409, detail="Outro curador acabou de resolver esse pedido.")
+    already_public = False
     try:
         image = ""
         if row.get("image_url") and _is_allowed_submission_image(event_id, row["image_url"]):
             image = image_store.rehost_image(event_id, row["image_url"]) or row["image_url"]
         if scraped:
-            # Curator edits on top of the scrape's enrichment.
-            scraped.name = name
+            # The scrape publishes and queues in one step, so the event is
+            # normally live already — curator edits go on the live row (a
+            # later re-scrape may have refreshed it), not on the snapshot.
+            # A row parked before that model (not live) publishes the
+            # snapshot, edits on top.
+            live = db.get_event_by_id(scraped.id)
+            already_public = live is not None
+            base = live or scraped
+            base.name = name
             if (row.get("description") or "").strip():
-                scraped.description = row["description"]
+                base.description = row["description"]
             if (row.get("venue_name") or "").strip():
-                scraped.venue_name = row["venue_name"]
+                base.venue_name = row["venue_name"]
             if req.date_start:
-                scraped.date_start = ds  # the curator moved it
+                base.date_start = ds  # the curator moved it
             if image:
-                scraped.image_url = image
-            ev = scraped
+                base.image_url = image
+            ev = base
         else:
             ev = _build_catalog_event(
                 event_id=event_id, external_id=f"igpost_{shortcode}", name=name,
@@ -7811,9 +7844,10 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
                 date_start=ds, url=row["url"], image_url=image,
             )
         db.upsert_event(ev)
-        # Novidades announces approvals now, not scrapes: park the id and
-        # the 09:00 digest carries everything approved since the last one.
-        db.defer_digest_events([event_id])
+        if not already_public:
+            # First time this event is public: the 09:00 digest should
+            # carry it. An already-public one was in the scrape's digest.
+            db.defer_digest_events([event_id])
     except Exception as exc:
         db.reopen_catalog_request(request_id)
         log.error(f"Catalog request {request_id}: publish failed: {exc}")
@@ -7853,15 +7887,24 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
 
 @app.post("/admin/catalog-requests/{request_id}/reject")
 def admin_reject_catalog_request(request_id: int, req: CatalogRequestDecision):
-    """Turn a suggestion down. The private event is untouched, and the same
-    post can be suggested again later. No push to the person who suggested
-    it — auê doesn't tell people their plans weren't good enough."""
+    """Turn a request down. For a scraped one the event is already public,
+    so rejecting means pulling it from the catalog (a past date, a wrong
+    city, not an event). For a human suggestion the private event is
+    untouched and the same post can be suggested again later; no push to
+    the person — auê doesn't tell people their plans weren't good enough."""
     curator = _require_curator(req.requesting_email)
-    if not db.get_catalog_request(request_id):
+    row = db.get_catalog_request(request_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
     if not db.resolve_catalog_request(request_id, "rejected", curator, note=req.note):
         raise HTTPException(status_code=409, detail="Esse pedido já foi resolvido.")
-    return {"ok": True}
+    removed = False
+    sid = _scraped_request_event_id(row)
+    if sid:
+        removed = db.delete_catalog_event(sid)
+        if removed:
+            log.info(f"Catalog request {request_id}: {sid} pulled from the catalog by {curator}")
+    return {"ok": True, "removed_from_catalog": removed}
 
 
 class CatalogRequestBulk(BaseModel):
@@ -7872,9 +7915,9 @@ class CatalogRequestBulk(BaseModel):
 @app.post("/admin/catalog-requests/approve-many")
 def admin_approve_catalog_requests_many(req: CatalogRequestBulk,
                                         background_tasks: BackgroundTasks):
-    """Approve several requests as they are — no edits. The daily scrape
-    queues twenty-odd on a normal day, and one tap each is how a queue
-    stops getting cleared. Each one goes through the single-approve
+    """Mark several requests as fine as they are — no edits. The daily
+    scrape queues twenty-odd on a normal day, and one tap each is how a
+    queue stops getting cleared. Each one goes through the single-approve
     path, guard included, so two curators clearing the same list at once
     each get told which ones the other took."""
     _require_curator(req.requesting_email)
