@@ -311,12 +311,15 @@ function RequestList({ email }) {
 
   if (error && !items) return <Muted>{error}</Muted>
   if (!items) return <Muted>Carregando pedidos…</Muted>
-  if (!items.length) return <Muted>Nada esperando revisão. 🎉</Muted>
+  if (!items.length) return <Muted>Tudo curado. 🎉</Muted>
 
   const allPicked = picked.size === items.length
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <Muted>{items.length} {items.length === 1 ? 'pedido esperando' : 'pedidos esperando'} — os mais antigos primeiro.</Muted>
+      <Muted>
+        {items.length} {items.length === 1 ? 'evento sem curadoria' : 'eventos sem curadoria'} — os mais antigos primeiro.
+        Já estão no catálogo; aqui é conferir, ajustar ou tirar.
+      </Muted>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           onClick={() => setPicked(allPicked ? new Set() : new Set(items.map(r => r.id)))}
@@ -354,7 +357,7 @@ function RequestList({ email }) {
               {fmtWhen(r.date_start)}{r.venue_name ? ` · ${r.venue_name}` : ''}
             </div>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
-              {r.submitted_by_name ? `${r.submitted_by_name} sugeriu` : (r.source === 'scrape' ? 'Do scrape' : 'Sugestão')}{r.ig_handle ? ` · @${r.ig_handle}` : ''}
+              {r.submitted_by_name ? `${r.submitted_by_name} sugeriu` : (r.source === 'scrape' ? 'Do scrape' : 'Sugestão')}{r.ig_handle ? ` · @${r.ig_handle}` : ''}{r.in_catalog ? ' · no catálogo' : ''}
             </div>
           </div>
           <span style={{ color: 'var(--text3)', fontSize: 18 }}>›</span>
@@ -445,7 +448,9 @@ function RequestDetail({ id, email }) {
     return (
       <div style={{ ...card, flexDirection: 'column', alignItems: 'stretch', gap: 12, padding: 16 }}>
         <div style={{ fontSize: 18, fontWeight: 800 }}>
-          {done.kind === 'approve' ? '✅ Publicado no catálogo' : 'Pedido recusado'}
+          {done.kind === 'approve'
+            ? (req.in_catalog ? '✅ Curado' : '✅ Publicado no catálogo')
+            : (req.in_catalog ? 'Tirado do catálogo' : 'Pedido recusado')}
         </div>
         {done.kind === 'approve' && done.tracked && req.ig_handle && (
           <Muted>@{req.ig_handle} agora é monitorado todo dia.</Muted>
@@ -464,6 +469,20 @@ function RequestDetail({ id, email }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* A scraped event is public from the scrape; this screen is a
+          pass after the fact. The link is how a curator gets to
+          "Adicionar a um canal" on the live event. */}
+      {req.in_catalog && !resolved && (
+        <div style={{ ...card, justifyContent: 'space-between', gap: 10 }}>
+          <Muted>Já está no catálogo desde o scrape.</Muted>
+          <button
+            onClick={() => navigate(`/events?event=${encodeURIComponent(req.catalog_event_id)}`)}
+            style={{ ...ghostBtn, flexShrink: 0 }}
+          >
+            Ver no catálogo
+          </button>
+        </div>
+      )}
       <div style={{ ...card, alignItems: 'flex-start' }}>
         <Thumb src={form.image_url} size={96} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -556,10 +575,14 @@ function RequestDetail({ id, email }) {
           {error && <div style={{ fontSize: 13, color: 'var(--magenta)' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => decide('approve')} disabled={!!busy} style={{ ...primaryBtn, flex: 1, opacity: busy ? 0.6 : 1 }}>
-              {busy === 'approve' ? 'Publicando…' : 'Aprovar e publicar'}
+              {busy === 'approve'
+                ? (req.in_catalog ? 'Salvando…' : 'Publicando…')
+                : (req.in_catalog ? 'Tá certo' : 'Aprovar e publicar')}
             </button>
             <button onClick={() => decide('reject')} disabled={!!busy} style={{ ...ghostBtn, opacity: busy ? 0.6 : 1 }}>
-              {busy === 'reject' ? 'Recusando…' : 'Recusar'}
+              {busy === 'reject'
+                ? (req.in_catalog ? 'Tirando…' : 'Recusando…')
+                : (req.in_catalog ? 'Tirar do catálogo' : 'Recusar')}
             </button>
           </div>
         </>

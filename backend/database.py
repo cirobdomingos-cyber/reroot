@@ -1088,7 +1088,7 @@ def _ig_parts(external_id: str) -> tuple[str, str]:
 
 
 def insert_scraped_request(ev) -> Optional[int]:
-    """Queue a freshly scraped, already-enriched event for curator review.
+    """Queue a freshly scraped, already-enriched event for curation.
     Returns the request id, or None when this post is already queued or
     approved (rejected ones may come back — a curator said no once, the
     scrape may well find it again and they can say no again)."""
@@ -1117,15 +1117,16 @@ def insert_scraped_request(ev) -> Optional[int]:
 
 
 def route_scraped_event(ev) -> str:
-    """Where a scraped event goes. 'updated' — it is already in the catalog
-    (a curator approved it once), so the re-scrape refreshes it in place;
-    'queued' — new, waits for a curator; 'skipped' — already waiting or
-    not identifiable. The daily refresh calls this instead of upsert_event
-    so nothing reaches the public catalog without a person saying so."""
-    if get_event_by_id(ev.id):
-        upsert_event(ev)
+    """Save a scraped event and say what happened. 'updated' — a re-scrape
+    of an event already in the catalog, refreshed in place; 'published' —
+    new: in the catalog now AND in the curation queue as "not curated
+    yet". The catalog never waits on a person (a day of the blocking
+    queue showed that is daily mandatory work, and a trip stops the app);
+    curators confirm, fix or pull events after the fact."""
+    if not upsert_event(ev):
         return "updated"
-    return "queued" if insert_scraped_request(ev) else "skipped"
+    insert_scraped_request(ev)
+    return "published"
 
 
 def count_catalog_requests(status: str = "review") -> int:

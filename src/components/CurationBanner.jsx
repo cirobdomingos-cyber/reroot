@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
 
-// One strip, for curators, saying how many events are waiting for
-// review. One — the alternative was an inbox item per event, twenty-odd
-// on a normal day, which is spam by another name. Hidden for everyone
-// else and when the queue is empty.
+// One strip, for curators, saying how many scraped events are in the
+// catalog without a curator's pass yet. Informative, not a gate: the
+// events are already public. One strip — the alternative was an inbox
+// item per event, twenty-odd on a normal day, which is spam by another
+// name. Hidden for everyone else and when the queue is empty.
 export default function CurationBanner() {
   const { state } = useApp()
   const navigate = useNavigate()
@@ -49,7 +50,7 @@ export default function CurationBanner() {
           Curadoria
         </span>
         <span style={{ fontSize: 14, fontWeight: 700 }}>
-          {count} {count === 1 ? 'evento esperando revisão' : 'eventos esperando revisão'}
+          {count} {count === 1 ? 'evento novo sem curadoria' : 'eventos novos sem curadoria'}
         </span>
       </span>
       <span style={{ fontSize: 18, color: 'var(--text3)' }}>›</span>
