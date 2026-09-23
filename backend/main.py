@@ -4557,23 +4557,18 @@ class ChannelNotify(BaseModel):
     notify: bool
 
 
-@app.get("/channels/picks")
-def channel_picks():
-    """Which public channels hold which catalog event — the "📡 auê Rock"
-    mark on a row in Eventos. Every public channel, for every viewer,
-    signed in or not: which channel a night sits in is as public as
-    the channel itself. See db.list_public_channel_picks for why this
-    stopped being read off the followed-channel feed.
-
-    Declared before /channels/{group_id}, like /feed, or it resolves as
-    a channel whose id is literally "picks"."""
-    return {"picks": db.list_public_channel_picks()}
-
-
 @app.get("/channels/feed")
-def channel_feed(google_id: str = "", limit: int = 40):
-    """Upcoming events from the channels this person follows, for the
-    band above Eventos.
+def channel_feed(google_id: str = "", limit: int = 400):
+    """Upcoming events from the channels this person follows. Eventos
+    reads it as a lookup — which catalog rows get the "Dos teus canais"
+    section and the channel's name — not as a list to render.
+
+    The limit was 40 (capped at 100) from when this fed a horizontal
+    band. Once the rule fill put ~30 nights into each channel, following
+    three of them overflowed the cap and most of their rows came back
+    unmarked, which read as "the events aren't tagged". A lookup has to
+    be complete, so the default now covers every channel in the city
+    several times over.
 
     Declared BEFORE /channels/{group_id} on purpose: FastAPI matches
     in declaration order, so the other way round this resolves as a
@@ -4588,7 +4583,7 @@ def channel_feed(google_id: str = "", limit: int = 40):
     """
     if not google_id:
         return {"events": []}
-    rows = db.get_followed_channel_events(google_id, limit=min(limit, 100))
+    rows = db.get_followed_channel_events(google_id, limit=min(limit, 1000))
     return {"events": [
         _group_event_to_frontend(
             e,

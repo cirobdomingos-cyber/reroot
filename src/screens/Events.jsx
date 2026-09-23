@@ -6,7 +6,7 @@ import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelPicks, BASE_URL } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
@@ -258,18 +258,13 @@ export default function Events() {
   const [editCatalogEvent, setEditCatalogEvent] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
   const [isFounder, setIsFounder] = useState(false)
-  // Which public channel picked which catalog event, {catalogId: [name]}.
-  // A catalog event added to a public channel is a separate row (a fork
-  // carrying source_event_id), so this is a lookup, not a list to
-  // render: the catalog row stays the one that shows, carrying the
-  // channel's name. Showing the fork as well is how the same night used
-  // to appear twice with nothing connecting them.
-  //
-  // Every public channel, not the ones you follow: this used to be read
-  // off /channels/feed, which is capped at 40 and knows only followed
-  // channels, so once the rule fill put ~150 nights into channels most
-  // rows lost their mark and a new channel marked nothing.
-  const [channelPicks, setChannelPicks] = useState({})
+  // The channel feed. A catalog event added to a public channel is a
+  // separate row (a fork carrying source_event_id), so this is read as
+  // a lookup — which catalog id did one of my channels pick — rather
+  // than as a list to render. The catalog row stays the one that shows,
+  // carrying the channel's name; showing the fork as well is how the
+  // same night used to appear twice with nothing connecting them.
+  const [channelEvents, setChannelEvents] = useState([])
 
   useEffect(() => {
     const googleId = state.googleUser?.id
@@ -289,19 +284,27 @@ export default function Events() {
 
   useEffect(() => {
     let cancelled = false
-    fetchChannelPicks().then(picks => {
-      if (!cancelled) setChannelPicks(picks || {})
+    fetchChannelFeed(state.googleUser?.id).then(list => {
+      if (!cancelled) setChannelEvents(list || [])
     })
     return () => { cancelled = true }
-  }, [])
+  }, [state.googleUser?.id])
 
-  // Keyed by the catalog id the channel's copy points at. A list per
-  // key, not one name: two channels can pick the same night, and
-  // keeping only the last one would quietly drop the other.
-  const publicChannelsBySourceId = useMemo(
-    () => new Map(Object.entries(channelPicks)),
-    [channelPicks],
-  )
+  // Which public channels of yours picked which catalog event, keyed by
+  // the catalog id their copy points at. A list per key, not one name:
+  // two channels can pick the same night, and keeping only the last one
+  // would quietly drop the other.
+  const publicChannelsBySourceId = useMemo(() => {
+    const map = new Map()
+    for (const ev of channelEvents) {
+      if (!ev.sourceEventId) continue
+      const list = map.get(ev.sourceEventId) || []
+      const name = ev.groupName || 'um canal'
+      if (!list.includes(name)) list.push(name)
+      map.set(ev.sourceEventId, list)
+    }
+    return map
+  }, [channelEvents])
 
   // Curator status gates the "corrigir evento" affordance on catalog
   // events. Curator, not founder: the people who notice a wrong venue
@@ -808,8 +811,7 @@ export default function Events() {
   // the card can colour each name for itself. Kind is derived, not
   // stored: /events/group excludes public-channel events, so anything
   // arriving as isGroupEvent is private by construction, and anything
-  // in publicChannelsBySourceId came from /channels/picks, which only
-  // lists public channels.
+  // in publicChannelsBySourceId came from the followed-channel feed.
   const channelSourcesFor = (ev) => {
     // A personal plan carries isGroupEvent too (it reuses the private
     // styling) but belongs to no channel. It still isn't part of the

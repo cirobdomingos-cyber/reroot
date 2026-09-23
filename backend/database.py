@@ -4950,39 +4950,6 @@ def channel_picks_by_follower(event_ids: list[str]) -> dict[str, dict[str, int]]
     return out
 
 
-def list_public_channel_picks() -> dict[str, list[str]]:
-    """Which public channels hold which catalog event, as
-    {catalog_event_id: [channel name, ...]}, upcoming forks only.
-
-    This is what marks a row in Eventos with "📡 auê Rock". It used to
-    be read off the followed-channel feed, which is capped at 40 and
-    only knows the channels YOU follow — so once the rule fill put ~150
-    nights into channels, most rows lost their mark, and a channel with
-    no followers yet (Comédia, Livros on day one) marked nothing at all.
-    Which public channel holds a night is public — you can open the
-    channel and read it — so the mark doesn't depend on the viewer.
-    """
-    today = datetime.now(timezone.utc).date().isoformat()
-    with get_conn() as conn:
-        rows = conn.execute(
-            """SELECT ge.source_event_id, g.name
-                 FROM group_events ge
-                 JOIN groups g
-                   ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')
-                WHERE g.visibility = 'public'
-                  AND ge.source_event_id != ''
-                  AND substr(COALESCE(ge.date_end, ge.date_start), 1, 10) >= ?
-                ORDER BY g.name ASC""",
-            (today,),
-        ).fetchall()
-    out: dict[str, list[str]] = {}
-    for r in rows:
-        names = out.setdefault(r["source_event_id"], [])
-        if r["name"] not in names:
-            names.append(r["name"])
-    return out
-
-
 def get_channel_followers_to_notify(group_id: str) -> list[str]:
     """google_ids to push for this channel. Followers only, and only
     those who left the switch on — auê's own admin row is never a
