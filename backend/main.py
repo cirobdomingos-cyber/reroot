@@ -2153,6 +2153,19 @@ def _declined_but_in_its_group(ge: dict, google_id: str) -> bool:
     return False
 
 
+def _can_view_group_event(ge: dict, google_id: str) -> bool:
+    """Who a private event is for: its creator, anyone invited, anyone
+    who declined but is still in its group — and everyone, when it's a
+    fork in a public channel. GET /events/{id} answers 403 to the rest;
+    the founder's edit power stops at the same line (_can_edit_group_event)."""
+    linked = {ge.get("group_id"), *(ge.get("group_ids") or [])} - {None, ""}
+    is_public_fork = any(db.is_public_channel(g) for g in linked)
+    invitees = ge.get("extra_invitee_ids") or []
+    is_invitee = bool(google_id and google_id in invitees)
+    is_creator = bool(google_id and google_id == ge.get("created_by"))
+    return is_public_fork or is_creator or is_invitee or _declined_but_in_its_group(ge, google_id)
+
+
 @app.get("/events/{event_id}")
 def get_event(event_id: str, google_id: str = ""):
     # Catalog events first.
@@ -2178,13 +2191,7 @@ def get_event(event_id: str, google_id: str = ""):
             # Once that stopped (following is not being invited), every
             # public-channel fork 403'd for everyone but its curator —
             # "tento entrar via canal e dá como se fosse privado".
-            linked = {ge.get("group_id"), *(ge.get("group_ids") or [])} - {None, ""}
-            is_public_fork = any(db.is_public_channel(g) for g in linked)
-            invitees = ge.get("extra_invitee_ids") or []
-            creator_id = ge.get("created_by")
-            is_invitee = bool(google_id and google_id in invitees)
-            is_creator = bool(google_id and google_id == creator_id)
-            if is_public_fork or is_creator or is_invitee or _declined_but_in_its_group(ge, google_id):
+            if _can_view_group_event(ge, google_id):
                 group_name = ""
                 if ge.get("group_id"):
                     group = db.get_group(ge["group_id"])
@@ -4426,6 +4433,31 @@ def _is_curator_google_id(google_id: str) -> bool:
     return db.is_curator(user.get("email") or "")
 
 
+def _is_founder_google_id(google_id: str) -> bool:
+    """Same as _is_curator_google_id, for the founder flag."""
+    if not google_id:
+        return False
+    user = db.get_user_profile(google_id) or {}
+    return db.is_founder(user.get("email") or "")
+
+
+def _can_edit_group_event(event: dict, google_id: str) -> bool:
+    """Who may change a private event's content and cover: its creator,
+    any co-host — and the founder, on any private event they can see.
+
+    The founder is the one people report a wrong time or a missing
+    flyer to, and until now fixing it meant asking the host for co-host
+    powers first. "Can see" (the GET /events/{id} rule) keeps this to
+    the rows the app would show them anyway; someone else's plan that
+    the founder isn't invited to stays out of reach. Deleting, inviting
+    and naming co-hosts remain the hosts' alone."""
+    if not google_id:
+        return False
+    if event.get("created_by") == google_id or google_id in (event.get("co_host_ids") or []):
+        return True
+    return _is_founder_google_id(google_id) and _can_view_group_event(event, google_id)
+
+
 def _founder_google_id() -> str:
     """The founder's user id, used as the owner of every auê channel.
 
@@ -5718,33 +5750,51 @@ def decline_event(event_id: str, google_id: str):
 
 
 class UpdateGroupEventRequest(BaseModel):
-    google_id: str                       # the requester (must be creator or co-host)
+    google_id: str                       # the requester — see _can_edit_group_event
     name: Optional[str] = None
     venue: Optional[str] = None
     date_start: Optional[str] = None
     date_end: Optional[str] = None
     description: Optional[str] = None
     note: Optional[str] = None
+    # Connecting the event to the Instagram post it came from, after the
+    # fact. The same four fields the creation sheet sends from its link
+    # field: the post link, what /events/extract-ig read from it (cover,
+    # account, parsed fields). None leaves the link as it is.
+    source_url: Optional[str] = None
+    image_url: Optional[str] = None
+    source_ig_handle: Optional[str] = None
+    post: Optional[dict] = None
+
+
+_IG_LINK_RE = re.compile(r"https://(www\.)?instagram\.com/")
 
 
 @app.patch("/events/{event_id}")
-def edit_group_event(event_id: str, req: UpdateGroupEventRequest):
-    """Edit an event's content fields. Allowed for the event's creator
-    OR any co-host — same permission set as image management and
-    invitee additions. Works for both group-tagged events and
+def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tasks: BackgroundTasks):
+    """Edit an event's content fields. Allowed for the event's creator,
+    any co-host, or the founder on an event they can see
+    (_can_edit_group_event). Works for both group-tagged events and
     standalone personal plans (same row schema).
 
-    Image, co-hosts, and visibility have separate endpoints — this is
-    only for name / venue / date / description / note."""
+    Co-hosts and visibility have separate endpoints — this is for
+    name / venue / date / description / note, plus connecting the
+    event to its Instagram post (`source_url`), which also brings the
+    post's flyer as cover when the event has none.
+
+    Returns the raw row (`event`) and the same shape GET /events/{id}
+    serves (`view`), so the screen can mirror the link and the cover
+    without a second request."""
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    is_creator = event["created_by"] == req.google_id
-    is_co_host = req.google_id in (event.get("co_host_ids") or [])
-    if not (is_creator or is_co_host):
-        raise HTTPException(status_code=403, detail="Só criador ou co-organizadores podem editar")
+    if not _can_edit_group_event(event, req.google_id):
+        raise HTTPException(status_code=403, detail="Só criador, co-organizadores ou o admin do auê podem editar")
 
-    fields = req.model_dump(exclude={"google_id"}, exclude_none=True)
+    fields = req.model_dump(
+        include={"name", "venue", "date_start", "date_end", "description", "note"},
+        exclude_none=True,
+    )
     # Sanitize text fields. Length limits mirror the create flow.
     for k, limit in (("name", 200), ("venue", 200), ("description", 1000), ("note", 280)):
         if k in fields:
@@ -5752,8 +5802,47 @@ def edit_group_event(event_id: str, req: UpdateGroupEventRequest):
     if "name" in fields and not fields["name"]:
         raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
 
+    new_link = (req.source_url or "").strip()
+    if new_link and not _IG_LINK_RE.match(new_link):
+        raise HTTPException(status_code=400, detail="Só links do Instagram (instagram.com/p/… ou /reel/…)")
+    # The Instagram link rides at the end of the description as
+    # "Ver original: <url>" (_description_with_source), and the screen
+    # edits the description WITHOUT it — _group_event_to_frontend strips
+    # the suffix for the "Ver no Instagram" button. Saving an edited
+    # description used to write it back bare, and the link was gone.
+    link = new_link or _source_url_of(event)
+    if "description" in fields and link:
+        fields["description"] = _description_with_source(
+            re.sub(r"\n*Ver original:.*$", "", fields["description"]).strip(), link,
+        )
+
     updated = db.update_group_event(event_id, fields)
-    return {"ok": True, "event": updated}
+    if new_link and new_link != _source_url_of(event):
+        updated = _connect_instagram_post(updated, req, background_tasks)
+    return {
+        "ok": True,
+        "event": updated,
+        "view": _group_event_to_frontend(updated, viewer_google_id=req.google_id),
+    }
+
+
+def _connect_instagram_post(event: dict, req: UpdateGroupEventRequest,
+                            background_tasks: BackgroundTasks) -> dict:
+    """Attach an Instagram post to an existing private event — what
+    create_personal_plan does from its link field, done later from the
+    edit sheet. Same three consequences, in the same order:
+      - the link goes into the description suffix (not pinned: the
+        person attached a link, they didn't write the description, so
+        the catalog twin keeps improving it);
+      - the row binds to the catalog's copy of the post when there is
+        one, or the post is suggested for the catalog (_queue_catalog_request);
+      - the post's flyer becomes the cover when the event has none."""
+    db.attach_group_event_source_url(event["id"], req.source_url.strip(), req.source_ig_handle or "")
+    event = db.get_group_event(event["id"]) or event
+    _queue_catalog_request(event, req, background_tasks)
+    if not event.get("image_url"):
+        event = _attach_instagram_post(event, req.image_url or "", req.source_url)
+    return db.get_group_event(event["id"]) or event
 
 
 class AddInviteesRequest(BaseModel):
@@ -5905,7 +5994,8 @@ async def upload_event_image(
     google_id: str = Form(...),
 ):
     """Upload (or replace) the cover image for a private event. Allowed
-    for the creator OR any co-host — same role set as invite/delete.
+    for the creator, any co-host, or the founder — the edit role set
+    (_can_edit_group_event).
 
     Stored on the same /event-images/ volume as catalog rehosts; same
     filename convention (`<event_id>.<ext>`) so a replace overwrites
@@ -5914,10 +6004,8 @@ async def upload_event_image(
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    is_creator = event["created_by"] == google_id
-    is_co_host = google_id in (event.get("co_host_ids") or [])
-    if not (is_creator or is_co_host):
-        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem editar a foto")
+    if not _can_edit_group_event(event, google_id):
+        raise HTTPException(status_code=403, detail="Só criador, co-organizadores ou o admin do auê podem editar a foto")
     content = await file.read()
     if len(content) > _EVENT_IMAGE_UPLOAD_CAP:
         raise HTTPException(status_code=413, detail="Imagem maior que 8MB")
@@ -5934,10 +6022,8 @@ def delete_event_image(event_id: str, google_id: str):
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    is_creator = event["created_by"] == google_id
-    is_co_host = google_id in (event.get("co_host_ids") or [])
-    if not (is_creator or is_co_host):
-        raise HTTPException(status_code=403, detail="Só o criador ou co-organizadores podem remover a foto")
+    if not _can_edit_group_event(event, google_id):
+        raise HTTPException(status_code=403, detail="Só criador, co-organizadores ou o admin do auê podem remover a foto")
     image_store.delete_event_image(event_id)
     db.set_event_image_url(event_id, "")
     return {"ok": True}
