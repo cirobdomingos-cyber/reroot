@@ -4557,6 +4557,19 @@ class ChannelNotify(BaseModel):
     notify: bool
 
 
+@app.get("/channels/picks")
+def channel_picks():
+    """Which public channels hold which catalog event — the "📡 auê Rock"
+    mark on a row in Eventos. Every public channel, for every viewer,
+    signed in or not: which channel a night sits in is as public as
+    the channel itself. See db.list_public_channel_picks for why this
+    stopped being read off the followed-channel feed.
+
+    Declared before /channels/{group_id}, like /feed, or it resolves as
+    a channel whose id is literally "picks"."""
+    return {"picks": db.list_public_channel_picks()}
+
+
 @app.get("/channels/feed")
 def channel_feed(google_id: str = "", limit: int = 40):
     """Upcoming events from the channels this person follows, for the

@@ -1356,6 +1356,20 @@ export async function removeChannelCurator(channelId, requestingEmail, googleId)
 // A separate call from the catalog on purpose: channel events have no
 // invitee list, so the main feed's visibility rule drops them all, and
 // keeping the band separate keeps the catalog below unchanged.
+// {catalogEventId: [channel name, …]} for every public channel — what
+// marks a row in Eventos with "📡 auê Rock". Not the feed: that one is
+// capped and knows only the channels you follow.
+export async function fetchChannelPicks() {
+  try {
+    const res = await fetchWithTimeout(`${BASE_URL}/channels/picks`)
+    if (!res.ok) return {}
+    return (await res.json()).picks || {}
+  } catch {
+    // Offline-first: unmarked rows are a valid render.
+    return {}
+  }
+}
+
 export async function fetchChannelFeed(googleId) {
   if (!googleId) return []
   try {
