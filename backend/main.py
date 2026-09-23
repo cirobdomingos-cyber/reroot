@@ -7120,6 +7120,10 @@ async def admin_ig_extract_debug(url: str, requesting_email: str = ""):
         "posted_at": (posts[0].get("timestamp") or "")[:10],
         "caption": debug.get("caption", "")[:1500],
         "image_sent_to_model": bool(debug.get("image_sent_to_model")),
+        # A carousel is several flyers; "the image reached the model" is
+        # only half the question when a week is spread over six slides.
+        "slides_found": debug.get("slides_found", 0),
+        "slides_sent": debug.get("slides_sent", 0),
         "model_answer": debug.get("model_answer"),
         "extracted": [
             {
