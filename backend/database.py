@@ -5102,6 +5102,28 @@ def _ig_handle_from_catalog_id(event_id: str) -> str:
     return rest[:idx].lower() if idx > 0 else ""
 
 
+def channel_holds_source(group_id: str, source_event_id: str) -> bool:
+    """Whether this channel already has a fork of exactly this catalog
+    event. Exact match on source_event_id only — no handle+day fallback.
+
+    The fill used find_group_event_by_source, whose legacy fallback
+    matches the same handle on the same day. For a channel that is the
+    normal case, not a collision: Club Vibe's 22h night on a Saturday
+    read as "already in" because its 18h night was, and so did Roberto
+    Carlos's show extra and the second stand-up of the night at Comedy
+    Club. Every fork the fill writes carries the column, so exact is
+    right here."""
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM group_events
+                WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
+                  AND source_event_id = ?
+                LIMIT 1""",
+            (group_id, group_id, source_event_id),
+        ).fetchone()
+    return row is not None
+
+
 def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
                                      group_ids: Optional[list[str]] = None) -> dict[str, int]:
     """Fork every upcoming catalog event into every rule channel it
@@ -5135,7 +5157,7 @@ def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
         for ev in events:
             if not rule_matches(ch["rule_tipos"], ch["rule_genres"], ev["tipo"], ev["genre"]):
                 continue
-            if ev["id"] in excluded or find_group_event_by_source(ch["id"], ev["id"]):
+            if ev["id"] in excluded or channel_holds_source(ch["id"], ev["id"]):
                 continue
             description = (ev.get("description") or "").strip()
             url = (ev.get("url") or "").strip()
