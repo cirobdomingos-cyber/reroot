@@ -98,3 +98,15 @@ class EnrichedEvent(BaseModel):
     # this field existed still load (upsert_event stores model_dump_json,
     # so absent keys fall back to the default).
     genre: str = ""
+
+    # What kind of night this is — show, festa, comedia, teatro… Closed
+    # vocabulary (see TIPOS in enrichment.py); empty means "not classified
+    # yet", which only rows enriched before the field existed carry until
+    # the scrape's backfill pass reaches them.
+    #
+    # This is the axis `kind` never was: 129 of 167 upcoming events were
+    # "community" on 23 Sep 2026, which discriminates nothing. Genre
+    # answers "what sound" for a music night and is silent for the other
+    # half of the catalog; tipo answers "what happens" for all of it. A
+    # channel rule is a pair of the two.
+    tipo: str = ""

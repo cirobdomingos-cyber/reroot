@@ -5,6 +5,7 @@ Grain: um evento enriquecido por (source, external_id).
 import hashlib
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import json
@@ -521,6 +522,31 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass
+        # Migration (23 Sep 2026): a channel can carry a rule — which
+        # event tipos and/or genres belong in it — and the scrape then
+        # fills it. Stored as comma-separated vocabulary words, empty
+        # meaning "no rule on this axis". A channel with neither is
+        # hand-filled only, exactly as before. See route_catalog_events_
+        # to_channels for the matching semantics.
+        for col in ("rule_tipos", "rule_genres"):
+            try:
+                conn.execute(
+                    f"ALTER TABLE groups ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already present
+        # A curator pulling an auto-filled event out of a channel is a
+        # decision, and the next scrape must not put it straight back.
+        # This is the record of that decision: (channel, catalog event).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS channel_exclusions (
+                group_id         TEXT NOT NULL,
+                source_event_id  TEXT NOT NULL,
+                removed_by       TEXT NOT NULL DEFAULT '',
+                removed_at       TEXT NOT NULL,
+                PRIMARY KEY (group_id, source_event_id)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -1252,6 +1278,35 @@ def set_group_event_source(event_id: str, source_event_id: str) -> bool:
         )
         conn.commit()
         return cur.rowcount == 1
+
+
+def attach_group_event_source_url(event_id: str, url: str, ig_handle: str = "") -> bool:
+    """Write the Instagram post link a private event came from, as the
+    "Ver original: <url>" suffix its description carries, replacing any
+    earlier one. Deliberately NOT through update_group_event: that pins
+    the description as humanly edited, and a link is metadata the person
+    attached, not text they wrote — the catalog twin should keep
+    improving the description around it. Fills source_ig_handle when it
+    was empty so the venue's Painel gets credit for the night."""
+    url = (url or "").strip()
+    if not url:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT description, source_ig_handle FROM group_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+        if not row:
+            return False
+        desc = re.sub(r"\n*Ver original:.*$", "", row["description"] or "").strip()
+        desc = f"{desc}\n\nVer original: {url}".strip()
+        handle = (row["source_ig_handle"] or "") or (ig_handle or "")
+        conn.execute(
+            "UPDATE group_events SET description = ?, source_ig_handle = ? WHERE id = ?",
+            (desc, handle, event_id),
+        )
+        conn.commit()
+    return True
 
 
 def pin_group_event_fields(event_id: str, fields: list[str]) -> bool:
@@ -3079,6 +3134,34 @@ def list_events_needing_genre(limit: int = 200) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_events_needing_tipo(limit: int = 200) -> list[dict]:
+    """Upcoming events with no tipo yet. Same scope and same respect for
+    a curator's hand-set value as list_events_needing_genre — the two
+    passes run back to back inside the scrape."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id,
+                      json_extract(payload, '$.name')        AS name,
+                      json_extract(payload, '$.description') AS description,
+                      json_extract(payload, '$.venue_name')  AS venue_name
+               FROM events
+               WHERE COALESCE(json_extract(payload, '$.tipo'), '') = ''
+                 AND edited_fields NOT LIKE '%"tipo"%'
+                 AND (
+                   (json_extract(payload, '$.date_end') IS NULL
+                    AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+                   OR (json_extract(payload, '$.date_end') IS NOT NULL
+                       AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+                   OR json_extract(payload, '$.is_recurring') = 1
+                 )
+               ORDER BY json_extract(payload, '$.date_start') ASC
+               LIMIT ?""",
+            (today, today, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_catalog_edited_fields(event_id: str) -> list[str]:
     """Which fields on this catalog event were corrected by hand."""
     with get_conn() as conn:
@@ -4245,7 +4328,7 @@ def get_group(group_id: str) -> Optional[dict]:
     """Return a single group by ID, or None."""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM groups WHERE id = ?", (group_id,)).fetchone()
-    return dict(row) if row else None
+    return _shape_channel_rules(dict(row)) if row else None
 
 
 def get_group_by_invite_code(invite_code: str) -> Optional[dict]:
@@ -4619,7 +4702,7 @@ def list_channels(google_id: str = "") -> list[dict]:
         ).fetchall()
     out = []
     for r in rows:
-        d = dict(r)
+        d = _shape_channel_rules(dict(r))
         d["is_following"] = bool(d["is_following"])
         d["notify"] = bool(d["notify"])
         d["can_curate"] = bool(d["can_curate"])
@@ -4878,6 +4961,375 @@ def get_channel_followers_to_notify(group_id: str) -> list[str]:
             (group_id,),
         ).fetchall()
     return [r["google_id"] for r in rows]
+
+
+# ── Channel rules: the scrape fills a channel ─────────────────────
+#
+# A channel is, at its simplest, a saved query with a name and the right
+# to notify (docs/NEXT.md, 19 Sep). This is that query: a set of event
+# tipos and/or a set of genres. The two axes AND together, values within
+# one axis OR together — "genre in {mpb, jazz_blues}" is one channel,
+# "tipo = festa AND genre = eletronica" is another. A channel with no
+# rule on either axis is hand-filled only, which is what every channel
+# was before 23 Sep 2026.
+#
+# The fill only ever ADDS. A curator removing an event writes a
+# channel_exclusions row and the next pass skips that pair; a curator
+# adding an event that doesn't match the rule is an ordinary fork and
+# nothing here touches it. Automation proposes, the human disposes.
+
+def _split_rule(value) -> list[str]:
+    return [v for v in (value or "").split(",") if v]
+
+
+def _shape_channel_rules(d: dict) -> dict:
+    """Comma-separated columns → lists, on any group/channel dict."""
+    d["rule_tipos"] = _split_rule(d.get("rule_tipos"))
+    d["rule_genres"] = _split_rule(d.get("rule_genres"))
+    return d
+
+
+def rule_matches(rule_tipos, rule_genres, tipo: str, genre: str) -> bool:
+    """Whether an event with this (tipo, genre) belongs in a channel with
+    these rules. No rule at all never matches — an empty rule is "hand-
+    filled", not "everything"."""
+    if not rule_tipos and not rule_genres:
+        return False
+    if rule_tipos and (tipo or "") not in rule_tipos:
+        return False
+    if rule_genres and (genre or "") not in rule_genres:
+        return False
+    return True
+
+
+def set_channel_rules(group_id: str, tipos: Optional[list[str]] = None,
+                      genres: Optional[list[str]] = None) -> bool:
+    """Write one or both rule axes. None leaves that axis as it is; an
+    empty list clears it. Values are already validated by the caller."""
+    updates, params = [], []
+    if tipos is not None:
+        updates.append("rule_tipos = ?")
+        params.append(",".join(dict.fromkeys(t for t in tipos if t)))
+    if genres is not None:
+        updates.append("rule_genres = ?")
+        params.append(",".join(dict.fromkeys(g for g in genres if g)))
+    if not updates:
+        return False
+    params.append(group_id)
+    with get_conn() as conn:
+        cur = conn.execute(f"UPDATE groups SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    return cur.rowcount > 0
+
+
+def list_rule_channels() -> list[dict]:
+    """Public channels that carry a rule on at least one axis."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM groups
+                WHERE visibility = 'public'
+                  AND (rule_tipos != '' OR rule_genres != '')
+                ORDER BY name ASC"""
+        ).fetchall()
+    return [_shape_channel_rules(dict(r)) for r in rows]
+
+
+def list_upcoming_catalog_events_for_routing(limit: int = 2000) -> list[dict]:
+    """The catalog rows a rule can pick from: upcoming and in the catalog
+    (is_curated). The fields a fork needs, plus the two tag axes."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT id,
+                      json_extract(payload, '$.name')          AS name,
+                      json_extract(payload, '$.description')   AS description,
+                      json_extract(payload, '$.venue_name')    AS venue_name,
+                      json_extract(payload, '$.date_start')    AS date_start,
+                      json_extract(payload, '$.date_end')      AS date_end,
+                      json_extract(payload, '$.image_url')     AS image_url,
+                      json_extract(payload, '$.url')           AS url,
+                      COALESCE(json_extract(payload, '$.tipo'), '')  AS tipo,
+                      COALESCE(json_extract(payload, '$.genre'), '') AS genre
+               FROM events
+               WHERE json_extract(payload, '$.is_curated') = 1
+                 AND (
+                   (json_extract(payload, '$.date_end') IS NULL
+                    AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
+                   OR (json_extract(payload, '$.date_end') IS NOT NULL
+                       AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
+                 )
+               ORDER BY json_extract(payload, '$.date_start') ASC
+               LIMIT ?""",
+            (today, today, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_channel_exclusion(group_id: str, source_event_id: str, removed_by: str = "") -> bool:
+    """Record "this event does not belong in this channel", so the fill
+    never puts it back. Idempotent."""
+    if not group_id or not source_event_id:
+        return False
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO channel_exclusions
+               (group_id, source_event_id, removed_by, removed_at)
+               VALUES (?, ?, ?, ?)""",
+            (group_id, source_event_id, removed_by or "",
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    return True
+
+
+def excluded_source_ids(group_id: str) -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT source_event_id FROM channel_exclusions WHERE group_id = ?",
+            (group_id,),
+        ).fetchall()
+    return {r["source_event_id"] for r in rows}
+
+
+def _ig_handle_from_catalog_id(event_id: str) -> str:
+    """`instagram_ig_<handle>_<post>` → handle. Same parse as main's
+    _handle_from_event_id; here so routing has no import back into main."""
+    eid = (event_id or "").strip()
+    if not eid.startswith("instagram_ig_"):
+        return ""
+    rest = eid[len("instagram_ig_"):]
+    idx = rest.rfind("_")
+    return rest[:idx].lower() if idx > 0 else ""
+
+
+def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
+                                     group_ids: Optional[list[str]] = None) -> dict[str, int]:
+    """Fork every upcoming catalog event into every rule channel it
+    matches and isn't in yet. Returns {channel_id: forks_added}, only
+    for channels that gained something.
+
+    `event_ids` narrows to those events (a curator just re-tagged one);
+    `group_ids` narrows to those channels (a rule was just written).
+    Both None means the whole catalog against every rule channel, which
+    is what the scrape runs.
+
+    The fork is the same row a curator's "adicionar ao canal" writes,
+    owned by the channel's owner (auê), with no invitees — a public
+    channel invites nobody — and no RSVP. Name, date, cover and text are
+    read back off the catalog row at render time (_merge_source_event),
+    so the fork keeps improving as the scrape does.
+    """
+    channels = list_rule_channels()
+    if group_ids is not None:
+        wanted = set(group_ids)
+        channels = [c for c in channels if c["id"] in wanted]
+    if not channels:
+        return {}
+    events = list_upcoming_catalog_events_for_routing()
+    if event_ids is not None:
+        wanted_ev = set(event_ids)
+        events = [e for e in events if e["id"] in wanted_ev]
+    added: dict[str, int] = {}
+    for ch in channels:
+        excluded = excluded_source_ids(ch["id"])
+        for ev in events:
+            if not rule_matches(ch["rule_tipos"], ch["rule_genres"], ev["tipo"], ev["genre"]):
+                continue
+            if ev["id"] in excluded or find_group_event_by_source(ch["id"], ev["id"]):
+                continue
+            description = (ev.get("description") or "").strip()
+            url = (ev.get("url") or "").strip()
+            if url.startswith("https://www.instagram.com/") or url.startswith("https://instagram.com/"):
+                description = f"{description}\n\nVer original: {url}".strip()
+            fork = create_group_event(
+                group_id=ch["id"],
+                google_id=ch["created_by"],
+                name=ev.get("name") or "",
+                description=description,
+                venue=ev.get("venue_name") or "",
+                date_start=ev.get("date_start") or "",
+                date_end=ev.get("date_end"),
+                visibility="members",
+                extra_invitee_ids=[],
+                source_ig_handle=_ig_handle_from_catalog_id(ev["id"]),
+                source_event_id=ev["id"],
+            )
+            if ev.get("image_url"):
+                set_event_image_url(fork["id"], ev["image_url"])
+            added[ch["id"]] = added.get(ch["id"], 0) + 1
+    return added
+
+
+def rebalance_rule_channels() -> list[dict]:
+    """Move forks that sit in a rule channel they don't match into the
+    one rule channel they do. Returns the moves as
+    [{event_id, source_event_id, from_group_id, to_group_id}].
+
+    Exists for the reshape: when auê Cultura was split, its comedy and
+    book nights had to end up in auê Comédia and auê Livros rather than
+    be forked twice. A fork that matches no other rule channel stays —
+    it's a curator's hand-pick, and the fill never overrules one. A fork
+    that would match two channels stays too; that's a call, not a move.
+    """
+    channels = list_rule_channels()
+    moves: list[dict] = []
+    # One connection, reads before writes: the file is in rollback-journal
+    # mode, so a helper opening a second connection mid-transaction is a
+    # lock waiting to happen.
+    with get_conn() as conn:
+        held: dict[str, set[str]] = {}       # channel → source ids it holds
+        excluded: dict[str, set[str]] = {}   # channel → source ids pulled
+        for ch in channels:
+            held[ch["id"]] = {
+                r["source_event_id"] for r in conn.execute(
+                    """SELECT source_event_id FROM group_events
+                        WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
+                          AND source_event_id != ''""",
+                    (ch["id"], ch["id"]),
+                ).fetchall()
+            }
+            excluded[ch["id"]] = {
+                r["source_event_id"] for r in conn.execute(
+                    "SELECT source_event_id FROM channel_exclusions WHERE group_id = ?",
+                    (ch["id"],),
+                ).fetchall()
+            }
+        plan: list[tuple] = []  # (row, from, to, drop)
+        for ch in channels:
+            rows = conn.execute(
+                """SELECT id, source_event_id, group_ids FROM group_events
+                    WHERE group_id = ? AND source_event_id != ''""",
+                (ch["id"],),
+            ).fetchall()
+            for r in rows:
+                tags = conn.execute(
+                    """SELECT COALESCE(json_extract(payload, '$.tipo'), '')  AS tipo,
+                              COALESCE(json_extract(payload, '$.genre'), '') AS genre
+                         FROM events WHERE id = ?""",
+                    (r["source_event_id"],),
+                ).fetchone()
+                if not tags:
+                    continue
+                if rule_matches(ch["rule_tipos"], ch["rule_genres"], tags["tipo"], tags["genre"]):
+                    continue
+                targets = [
+                    c for c in channels
+                    if c["id"] != ch["id"]
+                    and rule_matches(c["rule_tipos"], c["rule_genres"], tags["tipo"], tags["genre"])
+                ]
+                if len(targets) != 1:
+                    continue
+                target = targets[0]
+                drop = (r["source_event_id"] in excluded[target["id"]]
+                        or r["source_event_id"] in held[target["id"]])
+                held[target["id"]].add(r["source_event_id"])
+                plan.append((dict(r), ch["id"], target["id"], drop))
+        for r, from_id, to_id, drop in plan:
+            if drop:
+                # Already there, or pulled from there on purpose: drop
+                # this copy rather than keep a misfiled one.
+                conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
+                conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
+            else:
+                try:
+                    gids = json.loads(r["group_ids"] or "[]")
+                except (json.JSONDecodeError, TypeError):
+                    gids = []
+                gids = [to_id if g == from_id else g for g in gids] or [to_id]
+                conn.execute(
+                    "UPDATE group_events SET group_id = ?, group_ids = ? WHERE id = ?",
+                    (to_id, json.dumps(gids), r["id"]),
+                )
+            moves.append({
+                "event_id": r["id"], "source_event_id": r["source_event_id"],
+                "from_group_id": from_id, "to_group_id": to_id, "dropped": drop,
+            })
+        conn.commit()
+    return moves
+
+
+def merge_channel_into(source_id: str, target_id: str) -> dict:
+    """Fold one channel into another and delete the source.
+
+    Followers carry over (a follow of the source becomes a follow of the
+    target; someone already following both keeps their target row),
+    curators too, and every event moves — except a fork of a catalog
+    event the target already holds, which is dropped rather than
+    duplicated. Exclusions carry over so a "não entra aqui" survives
+    the rename. The source's admin row is not copied: the target has
+    its own owner.
+    """
+    if source_id == target_id:
+        raise ValueError("source and target are the same channel")
+    with get_conn() as conn:
+        if not conn.execute("SELECT 1 FROM groups WHERE id = ?", (target_id,)).fetchone():
+            raise ValueError("target channel not found")
+        if not conn.execute("SELECT 1 FROM groups WHERE id = ?", (source_id,)).fetchone():
+            raise ValueError("source channel not found")
+        # People.
+        conn.execute(
+            """INSERT OR IGNORE INTO group_members
+               (group_id, google_id, role, joined_at, following, notify, prioritize)
+               SELECT ?, google_id, role, joined_at, following, notify, prioritize
+                 FROM group_members WHERE group_id = ? AND role != 'admin'""",
+            (target_id, source_id),
+        )
+        conn.execute(
+            """UPDATE group_members SET following = 1
+                WHERE group_id = ? AND google_id IN (
+                    SELECT google_id FROM group_members
+                     WHERE group_id = ? AND following = 1)""",
+            (target_id, source_id),
+        )
+        members_moved = conn.execute(
+            "DELETE FROM group_members WHERE group_id = ?", (source_id,)
+        ).rowcount
+        # Decisions.
+        conn.execute(
+            """INSERT OR IGNORE INTO channel_exclusions
+               (group_id, source_event_id, removed_by, removed_at)
+               SELECT ?, source_event_id, removed_by, removed_at
+                 FROM channel_exclusions WHERE group_id = ?""",
+            (target_id, source_id),
+        )
+        conn.execute("DELETE FROM channel_exclusions WHERE group_id = ?", (source_id,))
+        # Events. Same connection for the "already there" check — see
+        # rebalance_rule_channels on why no helper is called mid-write.
+        target_sources = {
+            r["source_event_id"] for r in conn.execute(
+                """SELECT source_event_id FROM group_events
+                    WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
+                      AND source_event_id != ''""",
+                (target_id, target_id),
+            ).fetchall()
+        }
+        rows = conn.execute(
+            """SELECT id, group_id, group_ids, source_event_id FROM group_events
+                WHERE group_id = ? OR group_ids LIKE '%"' || ? || '"%'""",
+            (source_id, source_id),
+        ).fetchall()
+        moved = dropped = 0
+        for r in rows:
+            src = (r["source_event_id"] or "").strip()
+            if src and src in target_sources:
+                conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
+                conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
+                dropped += 1
+                continue
+            try:
+                gids = json.loads(r["group_ids"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                gids = []
+            gids = list(dict.fromkeys(target_id if g == source_id else g for g in gids)) or [target_id]
+            primary = target_id if r["group_id"] == source_id else r["group_id"]
+            conn.execute(
+                "UPDATE group_events SET group_id = ?, group_ids = ? WHERE id = ?",
+                (primary, json.dumps(gids), r["id"]),
+            )
+            moved += 1
+        conn.execute("DELETE FROM groups WHERE id = ?", (source_id,))
+        conn.commit()
+    return {"members_moved": members_moved, "events_moved": moved, "events_dropped": dropped}
 
 
 def is_channel(group_id: str) -> bool:

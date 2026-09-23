@@ -204,6 +204,22 @@ async def run_refresh(settings):
         except Exception as e:
             log.warning(f"  Aviso aos curadores falhou: {e}")
 
+    # ── Tags the enrichment didn't set, then the channels ──
+    # Two batched Haiku passes over upcoming events still missing a genre
+    # or a tipo (cheap in steady state — new events arrive tagged), then
+    # every rule channel is filled from the catalog and its followers get
+    # one push per channel. Off the loop, same reason as enrich_batch.
+    # Imported lazily: main imports scheduler at module load.
+    try:
+        from main import backfill_missing_tags, fill_channels_from_catalog
+        tags = await asyncio.to_thread(backfill_missing_tags, pipeline)
+        log.info(f"  Tags: {tags}")
+        filled = await asyncio.to_thread(fill_channels_from_catalog)
+        if filled:
+            log.info(f"  Canais preenchidos: {filled}")
+    except Exception as e:
+        log.warning(f"  Preenchimento de canais falhou: {e}")
+
     # ── Finalize per-source log rows with truthful counts ──
     for source_key, log_id in pending_log_ids.items():
         db.log_refresh_finish(

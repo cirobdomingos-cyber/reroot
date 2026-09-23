@@ -1,18 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { updateGroupEvent } from '../services/api'
+import { updateGroupEvent, extractIgEvent } from '../services/api'
 
 // Bottom sheet for editing the content fields of a group event or
-// personal plan. Image, co-hosts, visibility, and invitees have their
-// own dedicated affordances — this sheet covers only what the existing
-// PATCH endpoint accepts: name, venue, date, description, note.
+// personal plan. Co-hosts, visibility, and invitees have their own
+// dedicated affordances — this sheet covers what the PATCH endpoint
+// accepts: name, venue, date, description, note, and — for an event
+// that has no Instagram link yet — the post it came from. Pasting a
+// post link reads the post (same call as the creation sheet) to fill
+// what's still empty, and saving attaches link + flyer.
 //
 // Permission: caller is responsible for only mounting this when the
-// viewer is creator or co-host. The backend re-checks anyway, but the
-// UI shouldn't tease the option to people who can't use it.
+// viewer is creator, co-host or the founder. The backend re-checks
+// anyway, but the UI shouldn't tease the option to people who can't
+// use it.
 
 const FIELD_LIMITS = { name: 200, venue: 200, description: 1000, note: 280 }
+const IG_POST_RE = /instagram\.com\/(p|reel)\//i
 
 // Convert backend ISO 8601 ("2026-05-15T20:00:00") to the shape iOS's
 // <input type="datetime-local"> expects: same format minus seconds and
@@ -31,6 +36,15 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Instagram link, offered only when the event has none yet.
+  const [igUrl, setIgUrl] = useState('')
+  const [postData, setPostData] = useState(null)
+  const [extracting, setExtracting] = useState(false)
+  const [extractMsg, setExtractMsg] = useState('')
+  const extractTimer = useRef(null)
+  const extractSeq = useRef(0)
+
+  const hasIgLink = IG_POST_RE.test(event?.url || '')
 
   // Reset form whenever the sheet opens for a new event. Only repopulate
   // when `open` flips true so we don't clobber in-progress edits if the
@@ -42,14 +56,58 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
     setDateStart(toLocalInputValue(event.dateStart || event.date_start || ''))
     setDescription(event.description || '')
     setNote(event.note || '')
+    setIgUrl('')
+    setPostData(null)
+    setExtractMsg('')
     setError('')
   }, [open, event?.id])
+
+  useEffect(() => () => clearTimeout(extractTimer.current), [])
+
+  function handleLinkChange(val) {
+    setIgUrl(val)
+    setExtractMsg('')
+    clearTimeout(extractTimer.current)
+    if (!val.trim()) { setPostData(null); return }
+    if (!IG_POST_RE.test(val)) return
+    // Debounced: fires once the user stops typing/pasting. Apify can take
+    // several seconds on a cold start, so the fields fill in when it lands.
+    extractTimer.current = setTimeout(async () => {
+      const seq = ++extractSeq.current
+      setExtracting(true)
+      try {
+        const data = await extractIgEvent(val.trim())
+        if (seq !== extractSeq.current) return
+        setPostData(data)
+        // Fill only what's still empty — never overwrite something typed.
+        if (data.name) setName(prev => prev || data.name)
+        if (data.venue_name) setVenue(prev => prev || data.venue_name)
+        if (data.description) setDescription(prev => prev || data.description)
+        if (data.date_start) setDateStart(prev => prev || String(data.date_start).slice(0, 16))
+        const filled = data.name || data.date_start || data.venue_name
+        setExtractMsg(data.image_url
+          ? (filled ? '✓ Li o post — flyer vem junto ao salvar' : '✓ Flyer vem junto ao salvar')
+          : 'Não consegui ler o post. O link fica salvo mesmo assim.')
+      } catch {
+        if (seq !== extractSeq.current) return
+        setPostData(null)
+        setExtractMsg('Não consegui ler o post. O link fica salvo mesmo assim.')
+      } finally {
+        if (seq === extractSeq.current) setExtracting(false)
+      }
+    }, 800)
+  }
 
   async function handleSave() {
     if (!event || saving) return
     const trimmedName = name.trim()
     if (!trimmedName) {
       setError('Nome não pode ficar vazio')
+      return
+    }
+    const link = igUrl.trim()
+    if (link && !IG_POST_RE.test(link)) {
+      setError('Cola o link de um post do Instagram (instagram.com/p/… ou /reel/…)')
       return
     }
     setSaving(true)
@@ -61,8 +119,17 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
         date_start: dateStart || null,
         description: description.trim().slice(0, FIELD_LIMITS.description),
         note: note.trim().slice(0, FIELD_LIMITS.note),
+        // Only when the person attached a post: the backend leaves the
+        // link alone otherwise. Same four fields the creation sheet
+        // sends from its link field.
+        ...(link ? {
+          source_url: link,
+          image_url: postData?.image_url || '',
+          source_ig_handle: postData?.handle || '',
+          post: postData,
+        } : {}),
       })
-      onSaved?.(result.event)
+      onSaved?.(result.event, result.view)
       onClose()
     } catch (err) {
       setError('Falha ao salvar. Tenta de novo.')
@@ -156,6 +223,24 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
                 style={{ ...inputStyle, resize: 'none', fontFamily: 'inherit' }}
               />
             </Field>
+
+            {!hasIgLink && (
+              <Field label="Link do Instagram (opcional)">
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={igUrl}
+                  onChange={(e) => handleLinkChange(e.target.value)}
+                  placeholder="https://www.instagram.com/p/…"
+                  style={inputStyle}
+                />
+                {(extracting || extractMsg) && (
+                  <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 4 }}>
+                    {extracting ? 'Lendo o post…' : extractMsg}
+                  </div>
+                )}
+              </Field>
+            )}
 
             <Field label="Mensagem pra galera (opcional)">
               <textarea

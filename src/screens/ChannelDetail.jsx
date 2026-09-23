@@ -8,6 +8,8 @@ import {
 } from '../components/GroupSheets'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
+import { GENRE_META, GENRE_ORDER } from '../data/genres'
+import { TIPO_META, TIPO_ORDER } from '../data/tipos'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
@@ -241,6 +243,12 @@ export default function ChannelDetail() {
           {channel.description}
         </p>
       )}
+
+      {/* The rule the scrape fills this channel by. Shown to everyone:
+          a follower deserves to know the feed is "every comedy night in
+          the catalog", not a person's picks — and a curator sees at a
+          glance what will arrive without opening the panel below. */}
+      <RuleLine tipos={channel.rule_tipos} genres={channel.rule_genres} />
 
       {/* Everything about the channel in one line: what's on, who
           else is here, and a couple of faces. The follower strip used
@@ -585,6 +593,10 @@ function ChannelCuration({ channel, email, onChanged }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(channel.name || '')
   const [description, setDescription] = useState(channel.description || '')
+  // The fill rule. Saved with the name and description; the server fills
+  // the channel on save, so the events are there when the screen reloads.
+  const [ruleTipos, setRuleTipos] = useState(channel.rule_tipos || [])
+  const [ruleGenres, setRuleGenres] = useState(channel.rule_genres || [])
   const [curators, setCurators] = useState(null)
   const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
@@ -605,7 +617,10 @@ function ChannelCuration({ channel, email, onChanged }) {
     if (!name.trim() || busy) return
     setBusy(true); setError('')
     try {
-      await updateChannel(channel.id, email, { name: name.trim(), description: description.trim() })
+      await updateChannel(channel.id, email, {
+        name: name.trim(), description: description.trim(),
+        rule_tipos: ruleTipos, rule_genres: ruleGenres,
+      })
       trackEvent('channel_edited', { channel_id: channel.id })
       onChanged()
     } catch (e) {
@@ -693,6 +708,26 @@ function ChannelCuration({ channel, email, onChanged }) {
         placeholder="Uma linha sobre o que entra aqui"
         style={curationInput}
       />
+
+      {/* The rule. Tipos and genres AND together, so picking both
+          means "festas que são eletrônica"; leave one side empty for
+          "tudo de comédia" or "tudo de rock". Nothing picked on either
+          side keeps the channel hand-filled. */}
+      <RulePicker
+        label="Entra sozinho: tipo"
+        order={TIPO_ORDER} meta={TIPO_META}
+        value={ruleTipos} onChange={setRuleTipos}
+      />
+      <RulePicker
+        label="Entra sozinho: som"
+        order={GENRE_ORDER} meta={GENRE_META}
+        value={ruleGenres} onChange={setRuleGenres}
+      />
+      <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.45, marginTop: -4 }}>
+        {ruleTipos.length || ruleGenres.length
+          ? 'Todo scrape coloca aqui o que casar com isso. O que você tirar, não volta.'
+          : 'Sem regra: o canal só recebe o que a curadoria adicionar.'}
+      </div>
       <button
         onClick={save}
         disabled={busy || !name.trim()}
@@ -758,6 +793,67 @@ function ChannelCuration({ channel, email, onChanged }) {
       )}
 
       {error && <div style={{ fontSize: 11, color: '#EF9A9A' }}>{error}</div>}
+    </div>
+  )
+}
+
+// One line under the description: what the scrape puts here on its own.
+// Reads "🎤 Comédia" or "🪩 Festa · 🎛️ Eletrônica"; renders nothing on a
+// hand-filled channel, since "sem regra" tells a follower nothing useful.
+function RuleLine({ tipos, genres }) {
+  const parts = [
+    ...(tipos || []).map(t => TIPO_META[t]).filter(Boolean),
+    ...(genres || []).map(g => GENRE_META[g]).filter(Boolean),
+  ]
+  if (!parts.length) return null
+  return (
+    <div className="neon-mono" style={{
+      marginTop: 8, fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase',
+      color: 'var(--text3)', lineHeight: 1.6,
+    }}>
+      ⚡ Entra sozinho: {parts.map(p => `${p.emoji} ${p.label}`).join(' · ')}
+    </div>
+  )
+}
+
+// A row of toggle chips over a closed vocabulary. `value` is the
+// selected keys, in vocabulary order — the same order the backend keeps
+// them, so a save doesn't reshuffle the line above.
+function RulePicker({ label, order, meta, value, onChange }) {
+  const selected = new Set(value || [])
+  function toggle(key) {
+    const next = order.filter(k => (k === key ? !selected.has(k) : selected.has(k)))
+    onChange(next)
+  }
+  return (
+    <div>
+      <div className="neon-mono" style={{
+        fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+        color: 'var(--text2)', marginBottom: 6,
+      }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {order.map(key => {
+          const on = selected.has(key)
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              style={{
+                padding: '5px 9px', borderRadius: 999, fontSize: 11.5, cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--magenta)' : 'var(--line)'}`,
+                background: on ? 'var(--magenta)' : 'transparent',
+                color: on ? 'var(--bg)' : 'var(--text2)',
+                fontWeight: on ? 700 : 500,
+              }}
+            >
+              {meta[key].emoji} {meta[key].label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

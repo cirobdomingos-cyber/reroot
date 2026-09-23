@@ -65,6 +65,7 @@ Responda SOMENTE com JSON válido (sem markdown, sem texto extra):
   "vibe_summary": "<frase de 1 linha em pt-BR descrevendo a experiência sem hype>",
   "expected_size": "small" | "medium" | "large",
   "genre": "rock" | "samba_pagode" | "sertanejo" | "eletronica" | "mpb" | "rap_trap" | "forro" | "jazz_blues" | "classica" | "pop" | "nenhum",
+  "tipo": "show" | "festa" | "comedia" | "teatro" | "cinema" | "literatura" | "exposicao" | "gastronomia" | "oficina" | "esporte" | "kids" | "feira" | "outro",
   "neighborhood_guess": "<bairro de Curitiba ou vazio se não souber>"
 }}
 
@@ -113,6 +114,22 @@ OUTROS CAMPOS:
   música definida — exposição, feira, oficina, teatro, cinema, esporte, roda de \
   conversa. Line-up com vários estilos: escolhe o dominante. Na dúvida, ou se a \
   legenda não deixa claro, usa "nenhum" — chutar gênero errado é pior que não ter.
+- tipo: O QUE acontece, independente do lugar. Um bar pode ter show, festa ou \
+  lançamento de livro — o tipo é do evento, não do lugar.
+    - show: banda/artista ao vivo, apresentação musical, concerto
+    - festa: balada, baile, DJ set, rave, pista — a música é pra dançar
+    - comedia: stand-up, comédia, humor, improviso cômico
+    - teatro: peça, espetáculo, circo, dança contemporânea, musical de palco
+    - cinema: sessão, estreia, mostra de filmes
+    - literatura: lançamento de livro, sarau, clube do livro, leitura, escrita
+    - exposicao: exposição, vernissage, mostra de arte, museu
+    - gastronomia: festival gastronômico, degustação, jantar, brunch, cerveja/vinho
+    - oficina: oficina, workshop, curso, aula
+    - esporte: corrida, caminhada, pedal, trilha, yoga, jogo
+    - kids: evento infantil ou pra família com criança
+    - feira: feira de rua, bazar, mercado, feira de artesanato/vinil
+    - outro: quando nenhum encaixa
+  Roda de conversa, palestra, encontro de comunidade → "outro".
 """
 
 
@@ -175,6 +192,59 @@ def _clean_genre(value) -> str:
     return genre if genre in GENRES else ""
 
 
+# Closed vocabulary for the `tipo` field — what happens at the event,
+# regardless of where. "outro" IS in the set: unlike "nenhum" for genre,
+# "this is a real event that fits no bucket" is an answer worth keeping,
+# and it tells the backfill not to ask again.
+TIPOS = frozenset({
+    "show", "festa", "comedia", "teatro", "cinema", "literatura",
+    "exposicao", "gastronomia", "oficina", "esporte", "kids", "feira",
+    "outro",
+})
+
+
+def _clean_tipo(value) -> str:
+    """Keep only tipos from the closed vocabulary above; anything else
+    reads as "not classified" so the backfill pass picks it up."""
+    tipo = (value or "").strip().lower()
+    return tipo if tipo in TIPOS else ""
+
+
+# Batch tipo classification, same shape and reasoning as the genre one:
+# a name, a venue and a caption decide it, so 25 fit in one Haiku call.
+# Runs inside the scrape for events enriched before `tipo` existed.
+TIPO_BACKFILL_PROMPT = """\
+Pra cada evento abaixo, diga O QUE acontece — o tipo do evento, não do lugar. \
+Um bar pode ter show, festa ou lançamento de livro.
+
+Vocabulário fechado — use exatamente uma destas palavras:
+show, festa, comedia, teatro, cinema, literatura, exposicao, gastronomia, \
+oficina, esporte, kids, feira, outro
+
+Guia:
+- show: banda/artista ao vivo, apresentação musical, concerto
+- festa: balada, baile, DJ set, rave, pista — a música é pra dançar
+- comedia: stand-up, comédia, humor, improviso cômico
+- teatro: peça, espetáculo, circo, dança contemporânea, musical de palco
+- cinema: sessão, estreia, mostra de filmes
+- literatura: lançamento de livro, sarau, clube do livro, leitura, escrita
+- exposicao: exposição, vernissage, mostra de arte, museu
+- gastronomia: festival gastronômico, degustação, jantar, brunch, cerveja/vinho
+- oficina: oficina, workshop, curso, aula
+- esporte: corrida, caminhada, pedal, trilha, yoga, jogo
+- kids: evento infantil ou pra família com criança
+- feira: feira de rua, bazar, mercado, feira de artesanato/vinil
+- outro: roda de conversa, palestra, encontro, ou quando nenhum encaixa
+
+Eventos:
+{events}
+
+Responda SOMENTE com o array JSON, sem markdown e sem texto extra, um \
+objeto por evento, na mesma ordem:
+[{{"id": "<id do evento>", "tipo": "<uma palavra do vocabulário>"}}]
+"""
+
+
 class EnrichmentPipeline:
     def __init__(self, api_key: str):
         self.client = Anthropic(api_key=api_key)
@@ -230,6 +300,7 @@ class EnrichmentPipeline:
         # safe default in that case using `or`.
         category = data.get("kind") or "community"
         genre = _clean_genre(data.get("genre"))
+        tipo = _clean_tipo(data.get("tipo"))
         emoji, label = CATEGORY_META.get(category, ("🤝", "Comunidade"))
         gradient = CATEGORY_GRADIENTS.get(category, CATEGORY_GRADIENTS["community"])
 
@@ -269,6 +340,7 @@ class EnrichmentPipeline:
                 vibe_summary=data.get("vibe_summary") or raw.name,
                 expected_size=data.get("expected_size") or "medium",
                 genre=genre,
+                tipo=tipo,
                 header_gradient=gradient,
 
                 url=raw.url,
@@ -326,6 +398,29 @@ class EnrichmentPipeline:
         runs over a hundred events at a time, and one bad response
         shouldn't cost the other ninety.
         """
+        return self._classify_batch(
+            events, batch_size,
+            prompt=GENRE_BACKFILL_PROMPT, field="genre",
+            clean=_clean_genre, meter_key="genre_backfill",
+        )
+
+    def classify_tipos(self, events: list[dict], batch_size: int = 25) -> dict:
+        """Tipo for each event, as {event_id: tipo}. Same contract as
+        classify_genres: only answered ids, only vocabulary values."""
+        return self._classify_batch(
+            events, batch_size,
+            prompt=TIPO_BACKFILL_PROMPT, field="tipo",
+            clean=_clean_tipo, meter_key="tipo_backfill",
+        )
+
+    def _classify_batch(self, events: list[dict], batch_size: int, *,
+                        prompt: str, field: str, clean, meter_key: str) -> dict:
+        """One tag per event from a closed vocabulary, in batches.
+
+        `prompt` lists the events and asks for `field`; `clean` is the
+        validator that maps anything outside the vocabulary to "", which
+        the loop treats as "no answer" and leaves out of the result.
+        """
         out: dict[str, str] = {}
         for start in range(0, len(events), batch_size):
             chunk = events[start:start + batch_size]
@@ -341,12 +436,12 @@ class EnrichmentPipeline:
                     max_tokens=2048,
                     messages=[{
                         "role": "user",
-                        "content": GENRE_BACKFILL_PROMPT.format(events=listing),
+                        "content": prompt.format(events=listing),
                     }],
                 )
                 try:
                     import token_meter
-                    token_meter.record("genre_backfill", "claude-haiku-4-5", resp.usage)
+                    token_meter.record(meter_key, "claude-haiku-4-5", resp.usage)
                 except Exception:
                     pass  # metering must never cost us a batch
                 raw = resp.content[0].text.strip()
@@ -354,7 +449,7 @@ class EnrichmentPipeline:
                 raw = re.sub(r"\s*```$", "", raw)
                 items = json.loads(raw)
             except Exception as e:
-                log.warning(f"Genre backfill batch {start // batch_size} failed: {e}")
+                log.warning(f"{field} backfill batch {start // batch_size} failed: {e}")
                 continue
 
             valid_ids = {e["id"] for e in chunk}
@@ -366,9 +461,9 @@ class EnrichmentPipeline:
                 # another batch — we'd otherwise tag an unrelated event.
                 if ev_id not in valid_ids:
                     continue
-                genre = _clean_genre(item.get("genre"))
-                if genre:
-                    out[ev_id] = genre
+                value = clean(item.get(field))
+                if value:
+                    out[ev_id] = value
         return out
 
 
