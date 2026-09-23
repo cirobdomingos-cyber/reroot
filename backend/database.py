@@ -5,6 +5,7 @@ Grain: um evento enriquecido por (source, external_id).
 import hashlib
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import json
@@ -1252,6 +1253,35 @@ def set_group_event_source(event_id: str, source_event_id: str) -> bool:
         )
         conn.commit()
         return cur.rowcount == 1
+
+
+def attach_group_event_source_url(event_id: str, url: str, ig_handle: str = "") -> bool:
+    """Write the Instagram post link a private event came from, as the
+    "Ver original: <url>" suffix its description carries, replacing any
+    earlier one. Deliberately NOT through update_group_event: that pins
+    the description as humanly edited, and a link is metadata the person
+    attached, not text they wrote — the catalog twin should keep
+    improving the description around it. Fills source_ig_handle when it
+    was empty so the venue's Painel gets credit for the night."""
+    url = (url or "").strip()
+    if not url:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT description, source_ig_handle FROM group_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+        if not row:
+            return False
+        desc = re.sub(r"\n*Ver original:.*$", "", row["description"] or "").strip()
+        desc = f"{desc}\n\nVer original: {url}".strip()
+        handle = (row["source_ig_handle"] or "") or (ig_handle or "")
+        conn.execute(
+            "UPDATE group_events SET description = ?, source_ig_handle = ? WHERE id = ?",
+            (desc, handle, event_id),
+        )
+        conn.commit()
+    return True
 
 
 def pin_group_event_fields(event_id: str, fields: list[str]) -> bool:

@@ -257,6 +257,7 @@ export default function Events() {
   // curators fix the shared catalog, creators edit their own fork.
   const [editCatalogEvent, setEditCatalogEvent] = useState(null)
   const [isCurator, setIsCurator] = useState(false)
+  const [isFounder, setIsFounder] = useState(false)
   // The channel feed. A catalog event added to a public channel is a
   // separate row (a fork carrying source_event_id), so this is read as
   // a lookup — which catalog id did one of my channels pick — rather
@@ -316,10 +317,29 @@ export default function Events() {
     let cancelled = false
     fetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled) setIsCurator(!!(d?.is_curator || d?.is_founder)) })
-      .catch(() => { if (!cancelled) setIsCurator(false) })
+      .then(d => {
+        if (cancelled) return
+        setIsCurator(!!(d?.is_curator || d?.is_founder))
+        setIsFounder(!!d?.is_founder)
+      })
+      .catch(() => { if (!cancelled) { setIsCurator(false); setIsFounder(false) } })
     return () => { cancelled = true }
   }, [state.googleUser?.email])
+
+  // Who runs a private event: its creator or a co-host. This role set
+  // deletes, invites and names co-hosts.
+  const hostsEvent = (ev) => !!(
+    ev?.isGroupEvent && state.googleUser?.id && (
+      ev.createdBy === state.googleUser.id ||
+      (ev.coHostIds || []).includes(state.googleUser.id)
+    )
+  )
+  // Who may change its content and cover: the hosts, plus the founder
+  // on any private event they can see — the drawer only ever holds
+  // those. The founder is who a wrong time or a missing flyer gets
+  // reported to; this is the fix without asking for co-host powers.
+  // Same rule as the backend's _can_edit_group_event.
+  const editsEvent = (ev) => hostsEvent(ev) || !!(isFounder && ev?.isGroupEvent && state.googleUser?.id)
 
   // Build the IG handle → category map once so the filter chips below
   // can use the same source taxonomy the Sources page uses.
@@ -1731,15 +1751,11 @@ export default function Events() {
                 onSourceTap={(sid) => { closeDetail(); navigate(`/sources/${encodeURIComponent(sid)}`) }}
                 onAddToGroup={state.googleUser?.id ? () => setAddToGroupEvent(detailEvent) : null}
                 onEdit={
-                  // Two different edits behind one slot. A creator or
-                  // co-host edits their own fork of an event; a curator
-                  // corrects the shared catalog row everyone sees. An
-                  // event is only ever one of the two.
-                  !!(state.googleUser?.id &&
-                  detailEvent.isGroupEvent && (
-                    detailEvent.createdBy === state.googleUser.id ||
-                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
-                  ))
+                  // Two different edits behind one slot. A host (or the
+                  // founder) edits a private event; a curator corrects
+                  // the shared catalog row everyone sees. An event is
+                  // only ever one of the two.
+                  editsEvent(detailEvent)
                     ? () => setEditEvent(detailEvent)
                     : (isCurator && !detailEvent.isGroupEvent)
                       ? () => setEditCatalogEvent(detailEvent)
@@ -1758,11 +1774,7 @@ export default function Events() {
                   // group. Group admins still have the full Excluir flow
                   // inside a channel; this button is the catalog-side
                   // shortcut for the same action.
-                  state.googleUser?.id &&
-                  detailEvent.isGroupEvent && (
-                    detailEvent.createdBy === state.googleUser.id ||
-                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
-                  )
+                  hostsEvent(detailEvent)
                     ? async () => {
                         if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
                         try {
@@ -1798,11 +1810,7 @@ export default function Events() {
                 canInvite={
                   // Creator OR co-host, and only on private events.
                   // Catalog events have no invitee list to add to.
-                  !!(state.googleUser?.id &&
-                  detailEvent.isGroupEvent && (
-                    detailEvent.createdBy === state.googleUser.id ||
-                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
-                  ))
+                  hostsEvent(detailEvent)
                 }
                 onInvited={({ invitee_google_ids }) => {
                   // Mirror the new list into local state so the next
@@ -1822,13 +1830,9 @@ export default function Events() {
                     : prev)
                 }}
                 canEdit={
-                  // Image management = same role set as invite/delete.
+                  // Image management = same role set as the edit sheet.
                   // Catalog events are not editable.
-                  !!(state.googleUser?.id &&
-                  detailEvent.isGroupEvent && (
-                    detailEvent.createdBy === state.googleUser.id ||
-                    (detailEvent.coHostIds || []).includes(state.googleUser.id)
-                  ))
+                  editsEvent(detailEvent)
                 }
                 onImageChanged={(newImageUrl) => {
                   setDetailEvent(prev => prev && prev.id === detailEvent.id
@@ -1886,12 +1890,14 @@ export default function Events() {
         onClose={() => setEditEvent(null)}
         event={editEvent}
         googleId={state.googleUser?.id}
-        onSaved={(updatedRow) => {
-          // Backend returns the raw DB row (snake_case). Mirror it into
-          // the live detail panel and the user's group-events feed so the
-          // changes show without a full refetch. Field names follow the
-          // frontend's normalized shape (Events.jsx already maps name,
-          // venue, dateStart, etc. when reading from the catalog).
+        onSaved={(updatedRow, view) => {
+          // Backend returns the raw DB row (snake_case) and, since the
+          // Instagram link came to the sheet, the same shape GET
+          // /events/{id} serves: url, cover and the description with
+          // the link already stripped. Mirror that into the live detail
+          // panel so the "Ver no Instagram" button and the flyer show
+          // without a full refetch; the row is the fallback for older
+          // responses.
           setDetailEvent(prev => prev && prev.id === updatedRow.id ? {
             ...prev,
             name: updatedRow.name,
@@ -1899,6 +1905,13 @@ export default function Events() {
             dateStart: updatedRow.date_start,
             description: updatedRow.description,
             note: updatedRow.note,
+            ...(view ? {
+              description: view.description,
+              date: view.date, time: view.time,
+              url: view.url,
+              imageUrl: view.imageUrl,
+              sourceIgHandle: view.sourceIgHandle,
+            } : {}),
           } : prev)
           const gid = state.googleUser?.id
           if (gid) fetchUserGroupEvents(gid).then(events => setGroupEvents(events || []))
