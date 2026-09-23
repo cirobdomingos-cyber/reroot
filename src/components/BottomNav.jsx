@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
+import { useApp, myPicture } from '../context/AppContext'
 import { useT } from '../i18n'
+import Avatar from './Avatar'
 
 import { API_BASE } from '../lib/apiBase'
 import { fetchNotifications } from '../services/api'
@@ -143,10 +144,34 @@ export default function BottomNav() {
     },
     // On phones Perfil used to live behind the Home avatar. Home is
     // gone, so it needs a slot of its own everywhere.
+    //
+    // Signed in, the tab IS your photo. It used to float fixed in the
+    // top-right corner of every screen ("deixar a foto do usuário em
+    // cima em todas as telas"), which is exactly where every screen
+    // puts its header buttons — it covered Eventos' 🔍. The nav is the
+    // one place no screen draws on, and Perfil's first thing is the
+    // photo with "Trocar foto", so the tap still lands where it did.
     {
       path: '/profile',
       label: t.nav_profile ?? 'Perfil',
-      icon: (active) => (
+      icon: (active) => state.googleUser?.id ? (
+        <span
+          data-testid="avatar-nav"
+          style={{
+            display: 'inline-flex', borderRadius: '50%',
+            // The active ring stands in for the magenta stroke the
+            // other icons get; the glow comes from the same filter.
+            border: `2px solid ${active ? 'var(--magenta)' : 'transparent'}`,
+            ...glowStyle(active),
+          }}
+        >
+          <Avatar
+            src={myPicture(state)}
+            name={state.userName || state.googleUser?.givenName || state.googleUser?.name || ''}
+            size={20}
+          />
+        </span>
+      ) : (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
           style={glowStyle(active)}
           stroke={stroke(active)}
