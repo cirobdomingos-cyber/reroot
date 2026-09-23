@@ -144,6 +144,20 @@ def init_db():
                 queued_at  TEXT NOT NULL
             )
         """)
+        # Friend confirmations that arrived during quiet hours, waiting
+        # for the 09:00 job — one row per (who hears, who confirmed,
+        # what). Same reasoning as deferred_digest_events: in SQLite so
+        # an overnight redeploy keeps them.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS deferred_friend_rsvps (
+                recipient_id TEXT NOT NULL,
+                actor_id     TEXT NOT NULL,
+                event_id     TEXT NOT NULL,
+                event_name   TEXT NOT NULL DEFAULT '',
+                queued_at    TEXT NOT NULL,
+                PRIMARY KEY (recipient_id, actor_id, event_id)
+            )
+        """)
         # Instagram accounts suggested by users in Fontes, waiting for a
         # curator. One open ('review') row per handle — enforced by the
         # partial unique index so two people suggesting the same account at
@@ -3410,6 +3424,51 @@ def take_deferred_digest_events() -> list[str]:
         conn.execute("DELETE FROM deferred_digest_events")
         conn.commit()
     return [r["event_id"] for r in rows]
+
+
+def defer_friend_rsvp(recipient_id: str, actor_id: str, event_id: str, event_name: str) -> None:
+    """Park "actor confirmed event" for recipient until 09:00. Re-parking
+    the same triple is a no-op."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO deferred_friend_rsvps"
+            " (recipient_id, actor_id, event_id, event_name, queued_at) VALUES (?, ?, ?, ?, ?)",
+            (recipient_id, actor_id, event_id, event_name or "", now),
+        )
+        conn.commit()
+
+
+def take_deferred_friend_rsvps() -> dict[str, list[dict]]:
+    """Every parked friend confirmation grouped by recipient, oldest
+    first, and the queue cleared in the same transaction so the morning
+    push can only go out once."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT recipient_id, actor_id, event_id, event_name FROM deferred_friend_rsvps"
+            " ORDER BY queued_at, recipient_id"
+        ).fetchall()
+        conn.execute("DELETE FROM deferred_friend_rsvps")
+        conn.commit()
+    out: dict[str, list[dict]] = {}
+    for r in rows:
+        out.setdefault(r["recipient_id"], []).append(dict(r))
+    return out
+
+
+def count_rsvps_by_users_since(google_ids: list[str], since_iso: str) -> int:
+    """How many RSVPs these users created since `since_iso` (UTC ISO).
+    Feeds the "+2 amigos hoje" suffix on a friend-confirmation push."""
+    ids = [g for g in google_ids if g]
+    if not ids:
+        return 0
+    marks = ",".join("?" * len(ids))
+    with get_conn() as conn:
+        row = conn.execute(
+            f"SELECT COUNT(*) AS c FROM rsvps WHERE google_id IN ({marks}) AND created_at >= ?",
+            [*ids, since_iso],
+        ).fetchone()
+    return int((row["c"] if row else 0) or 0)
 
 
 # ── Account suggestions (Fontes → curator queue) ───────────

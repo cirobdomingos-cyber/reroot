@@ -147,6 +147,12 @@ export const T = {
     privacy_show_profile:       'Perfil visível para não-amigos',
     privacy_show_profile_desc:  'Pessoas que não são seus amigos podem ver seu perfil completo',
 
+    // ── Notifications card (per-type toggles) ─────────────
+    notif_daily_digest:         'Resumo diário do auê',
+    notif_daily_digest_desc:    'Toda tarde, depois do scrape — uma push com os novos rolês de Curitiba. Toque pra ver o evento.',
+    notif_friend_rsvps:         'Amigos confirmando',
+    notif_friend_rsvps_desc:    'Quando um amigo confirma um rolê, você fica sabendo na hora. Das 22h às 9h a gente segura e manda de manhã.',
+
     // ── Diagnostic ───────────────────────────────────────
     diag_header:            'Seu ponto de partida',
     diag_hello:             'Prazer,',
