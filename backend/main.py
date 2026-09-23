@@ -3966,6 +3966,7 @@ def _to_frontend(ev, detail: bool = False, venue_coords: Optional[dict] = None) 
         "expectedSize": ev.expected_size,
         "vibeSummary": ev.vibe_summary,
         "genre": getattr(ev, "genre", "") or "",
+        "tipo": getattr(ev, "tipo", "") or "",
         "pitch": ev.pitch,
         # Fall back to a Google Maps search for the venue when we don't have
         # a canonical event URL (e.g. seed events, partner-submitted events
@@ -4441,6 +4442,32 @@ class ChannelCreate(BaseModel):
     requesting_email: str
     name: str
     description: str = ""
+    # The rule the scrape fills this channel by. Either axis may be
+    # empty; both empty is a hand-filled channel. See db.rule_matches.
+    rule_tipos: list[str] = []
+    rule_genres: list[str] = []
+
+
+def _validated_rules(tipos: Optional[list[str]], genres: Optional[list[str]]) -> tuple:
+    """Lower-case, dedupe and check both axes against the closed
+    vocabularies. 400 names the bad value — a rule with a word the
+    enrichment never emits would be a channel that never fills, and
+    nothing else would say why."""
+    from enrichment import GENRES, TIPOS
+    out = []
+    for values, vocab, label in ((tipos, TIPOS, "Tipo"), (genres, GENRES, "Gênero")):
+        if values is None:
+            out.append(None)
+            continue
+        cleaned = list(dict.fromkeys((v or "").strip().lower() for v in values if (v or "").strip()))
+        bad = [v for v in cleaned if v not in vocab]
+        if bad:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} inválido: {', '.join(bad)}. Use de {sorted(vocab)}",
+            )
+        out.append(cleaned)
+    return tuple(out)
 
 
 class ChannelFollow(BaseModel):
@@ -4475,6 +4502,7 @@ def create_channel(req: ChannelCreate):
             status_code=409,
             detail="A conta do auê ainda não entrou no app — entra uma vez e tenta de novo.",
         )
+    tipos, genres = _validated_rules(req.rule_tipos, req.rule_genres)
     channel = db.create_group(
         google_id=founder_id,
         name=name,
@@ -4482,7 +4510,14 @@ def create_channel(req: ChannelCreate):
         visibility="public",   # discovery is the point
         kind="channel",
     )
-    return {"channel": channel}
+    # A channel with a rule opens full, not empty: everything upcoming
+    # that matches is forked in right now, the same way the next scrape
+    # will keep doing. No push for this first fill — nobody follows yet.
+    added = 0
+    if tipos or genres:
+        db.set_channel_rules(channel["id"], tipos, genres)
+        added = db.route_catalog_events_to_channels(group_ids=[channel["id"]]).get(channel["id"], 0)
+    return {"channel": db.get_group(channel["id"]), "added": added}
 
 
 class ChannelNotify(BaseModel):
@@ -4621,6 +4656,9 @@ class ChannelUpdate(BaseModel):
     requesting_email: str
     name: Optional[str] = None
     description: Optional[str] = None
+    # None leaves the axis alone; [] clears it. See ChannelCreate.
+    rule_tipos: Optional[list[str]] = None
+    rule_genres: Optional[list[str]] = None
 
 
 class ChannelCuratorAdd(BaseModel):
@@ -4685,13 +4723,21 @@ def update_channel(group_id: str, req: ChannelUpdate):
     name = (req.name or "").strip()[:80] if req.name is not None else None
     if req.name is not None and not name:
         raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
+    tipos, genres = _validated_rules(req.rule_tipos, req.rule_genres)
     db.update_group(
         group_id,
         name=name,
         description=(req.description or "").strip()[:500] if req.description is not None else None,
         visibility=None,
     )
-    return {"ok": True, "channel": db.get_group(group_id)}
+    # A rule written by hand fills the channel now rather than at the
+    # next scrape: the curator is looking at the screen and expects the
+    # events to be there when it reloads.
+    added = 0
+    if tipos is not None or genres is not None:
+        db.set_channel_rules(group_id, tipos, genres)
+        added = db.route_catalog_events_to_channels(group_ids=[group_id]).get(group_id, 0)
+    return {"ok": True, "channel": db.get_group(group_id), "added": added}
 
 
 @app.get("/channels/{group_id}/curators")
@@ -4918,6 +4964,50 @@ def admin_delete_channel(group_id: str, requesting_email: str):
     if not db.is_public_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     return {"ok": True, **db.delete_group(group_id)}
+
+
+@app.post("/admin/channels/{group_id}/merge-into/{target_id}")
+def admin_merge_channel(group_id: str, target_id: str, requesting_email: str):
+    """Fold one auê channel into another and delete the first. Followers,
+    curators, events and exclusions carry over. Founder-only, public
+    channels only — used by the 23 Sep reshape (Balada → Eletrônica,
+    MPB → MPB & Jazz), and for whatever the catalog says next."""
+    _require_founder(requesting_email)
+    if not (db.is_public_channel(group_id) and db.is_public_channel(target_id)):
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    try:
+        result = db.merge_channel_into(group_id, target_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    log.info(f"Channel {group_id} merged into {target_id} by {requesting_email}: {result}")
+    return {"ok": True, **result, "channel": db.get_group(target_id)}
+
+
+@app.post("/admin/channels/fill")
+def admin_fill_channels(requesting_email: str = ""):
+    """Run the rule fill now, for every rule channel — the same pass the
+    scrape runs, without waiting for it. Founder-only because it writes
+    into public feeds. Returns forks added per channel."""
+    _require_founder(requesting_email)
+    added = db.route_catalog_events_to_channels()
+    names = {c["id"]: c["name"] for c in db.list_channels()}
+    return {"added": {names.get(gid, gid): n for gid, n in added.items()}}
+
+
+@app.post("/admin/channels/rebalance")
+def admin_rebalance_channels(requesting_email: str = ""):
+    """Move misfiled forks between rule channels — see
+    db.rebalance_rule_channels. Founder-only."""
+    _require_founder(requesting_email)
+    moves = db.rebalance_rule_channels()
+    names = {c["id"]: c["name"] for c in db.list_channels()}
+    return {
+        "moved": len(moves),
+        "moves": [
+            {**m, "from": names.get(m["from_group_id"], ""), "to": names.get(m["to_group_id"], "")}
+            for m in moves
+        ],
+    }
 
 
 @app.get("/groups/by-invite/{invite_code}")
@@ -5239,8 +5329,17 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
     event_id = event["id"]
     is_creator = event["created_by"] == google_id
     is_co_host = google_id in (event.get("co_host_ids") or [])
-    if not (is_creator or is_co_host):
+    # Same rule as DELETE /groups/{id}/events/{id}: a public channel's
+    # curators may take out what the fill (owned by auê) put in.
+    public = db.is_public_channel(group_id)
+    curates = public and (
+        _is_curator_google_id(google_id) or db.is_channel_curator(group_id, google_id)
+    )
+    if not (is_creator or is_co_host or curates):
         raise HTTPException(status_code=403, detail="Só criador ou co-organizadores podem desvincular")
+    src_id = (event.get("source_event_id") or "").strip()
+    if public and src_id:
+        db.add_channel_exclusion(group_id, src_id, removed_by=google_id)
     updated = db.unlink_event_from_group(event_id, group_id)
     return {"ok": True, "event": updated}
 
@@ -5693,8 +5792,22 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
     role = db.get_group_member_role(group_id, google_id)
     is_creator = event["created_by"] == google_id
     is_co_host = google_id in (event.get("co_host_ids") or [])
-    if role != "admin" and not is_creator and not is_co_host:
+    # On a public channel, whoever curates it may pull any event —
+    # including one the fill wrote as auê. Without this a curator could
+    # add to the channel but not take back, and every auto-filled fork
+    # is owned by auê, so the channel would only ever grow.
+    public = db.is_public_channel(group_id)
+    curates = public and (
+        _is_curator_google_id(google_id) or db.is_channel_curator(group_id, google_id)
+    )
+    if role != "admin" and not is_creator and not is_co_host and not curates:
         raise HTTPException(status_code=403, detail="Only admins, the creator, or co-organizers can delete")
+    # Pulling a catalog event out of a public channel is a decision the
+    # next scrape must respect — otherwise the fill puts it straight
+    # back and "remover" is a button that does nothing by morning.
+    src_id = (event.get("source_event_id") or "").strip()
+    if public and src_id:
+        db.add_channel_exclusion(group_id, src_id, removed_by=google_id)
     db.delete_group_event(event_id)
     image_store.delete_event_image(event_id)  # cascade: don't leave orphan image files
     return {"ok": True}
@@ -6506,6 +6619,99 @@ def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
     }
 
 
+def backfill_missing_tags(pipeline, limit: int = 200) -> dict:
+    """Tag upcoming events that still lack a genre or a tipo, both axes,
+    one batched Haiku pass each. Returns counts per axis.
+
+    Called at the end of every scrape, so the two passes are cheap in
+    steady state: the enrichment pass already tags new events, and this
+    only sees rows enriched before a field existed (or where the model
+    answered nothing). The first run after `tipo` shipped is the big
+    one — the whole upcoming catalog — and bounded by `limit`.
+
+    Neither pass pins: a machine fill is a guess the next enrichment may
+    improve on, and edited_fields means a human decided (see
+    admin_backfill_genre)."""
+    out = {}
+    for field, lister, classify in (
+        ("genre", db.list_events_needing_genre, pipeline.classify_genres),
+        ("tipo", db.list_events_needing_tipo, pipeline.classify_tipos),
+    ):
+        pending = lister(limit=limit)
+        tagged = 0
+        if pending:
+            for event_id, value in classify(pending).items():
+                if db.update_catalog_event(event_id, {field: value}, pin=False):
+                    tagged += 1
+        out[field] = {"considered": len(pending), "tagged": tagged}
+    return out
+
+
+def fill_channels_from_catalog() -> dict:
+    """The pipeline's last step: fork newly matching catalog events into
+    every rule channel, then one push per channel that gained something.
+
+    One push per channel per run, never per event — a channel that
+    gained twelve nights in one scrape sends "12 novidades", not twelve
+    pushes; someone following three channels gets at most three. That
+    cap is the whole reason the follower push exists as a batch and
+    never existed as a per-publish one (docs/NEXT.md)."""
+    added = db.route_catalog_events_to_channels()
+    report = {}
+    for gid, n in added.items():
+        ch = db.get_group(gid) or {}
+        name = ch.get("name") or "canal"
+        report[name] = n
+        body = f"{n} novidade{'s' if n != 1 else ''} no {name}"
+        for uid in db.get_channel_followers_to_notify(gid):
+            try:
+                _send_push_to_user(
+                    uid, title=f"📡 {name}", body=body,
+                    url=f"/#/channels/{gid}", tag=f"channel-fill-{gid}",
+                )
+            except Exception as exc:
+                log.warning(f"channel fill push to {uid} for {gid} failed: {exc}")
+    return report
+
+
+@app.post("/admin/events/backfill-tipo")
+def admin_backfill_tipo(requesting_email: str = "", limit: int = 200,
+                        dry_run: bool = False):
+    """Tag upcoming events that have no tipo yet — the manual trigger
+    for what every scrape now does at its end (backfill_missing_tags).
+    Founder-only because it spends money; `dry_run` spends nothing."""
+    _require_founder(requesting_email)
+    pending = db.list_events_needing_tipo(limit=limit)
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_tag": len(pending),
+            "sample": [p["name"] for p in pending[:10]],
+        }
+    if not pending:
+        return {"considered": 0, "tagged": 0, "by_tipo": {}}
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY não configurada")
+
+    from enrichment import EnrichmentPipeline
+    pipeline = EnrichmentPipeline(settings.anthropic_api_key)
+    assigned = pipeline.classify_tipos(pending)
+
+    by_tipo: dict[str, int] = {}
+    tagged = 0
+    for event_id, tipo in assigned.items():
+        if db.update_catalog_event(event_id, {"tipo": tipo}, pin=False):
+            tagged += 1
+            by_tipo[tipo] = by_tipo.get(tipo, 0) + 1
+    log.info(f"Tipo backfill by {requesting_email}: {tagged}/{len(pending)} tagged")
+    return {
+        "considered": len(pending),
+        "tagged": tagged,
+        "left_untagged": len(pending) - tagged,
+        "by_tipo": dict(sorted(by_tipo.items(), key=lambda kv: -kv[1])),
+    }
+
+
 @app.delete("/admin/events/{event_id}")
 def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
     """Hard-delete a catalog event by id. Used to fix LLM mis-extractions
@@ -6536,6 +6742,7 @@ class CatalogEventUpdate(BaseModel):
     price_max: Optional[float] = None
     kind: Optional[str] = None             # quiet_social | active | creative | community
     genre: Optional[str] = None            # see GENRES in enrichment.py
+    tipo: Optional[str] = None             # see TIPOS in enrichment.py
 
 
 def _price_tier_for(price_min: float) -> str:
@@ -6649,6 +6856,16 @@ def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate):
             )
         fields["genre"] = genre
 
+    if "tipo" in sent:
+        from enrichment import TIPOS
+        tipo = (sent["tipo"] or "").strip().lower()
+        if tipo and tipo not in TIPOS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Tipo inválido: {tipo}. Use uma de {sorted(TIPOS)} ou vazio",
+            )
+        fields["tipo"] = tipo
+
     if not fields:
         raise HTTPException(status_code=400, detail="Nada pra editar")
 
@@ -6656,6 +6873,14 @@ def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate):
     if not updated:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
     log.info(f"Catalog event {event_id} edited by {email}: {sorted(fields)}")
+    # A re-tag is the curator saying which channel this belongs in, so
+    # the fill runs for this one event now. Additive only: a channel it
+    # no longer matches keeps its fork until someone pulls it.
+    if "tipo" in fields or "genre" in fields:
+        try:
+            db.route_catalog_events_to_channels(event_ids=[event_id])
+        except Exception as exc:
+            log.warning(f"channel fill after re-tag of {event_id} failed: {exc}")
     return {
         "ok": True,
         "event": _to_frontend(updated, detail=True, venue_coords=db.get_venue_coords_map()),

@@ -161,8 +161,40 @@ and the right to notify — then hand-tuned. So:
 - Genre also stops being the thing that replaces source-level follows —
   channels are. `lib/follows.js` and `unfollowedSources` still go away,
   but as part of channels, not as part of a genre filter.
-- Start channels **hand-picked**, with genre as a suggestion tool for the
-  curator. A fully automatic genre channel is only as good as its tags.
+- ~~Start channels **hand-picked**, with genre as a suggestion tool for the
+  curator.~~ **Shipped 23 Sep: channels carry a rule and the scrape fills
+  them.** A rule is a set of event `tipo`s and/or `genre`s (AND across the
+  two axes, OR within one); every scrape ends by backfilling missing tags,
+  forking every matching upcoming catalog event into every rule channel,
+  and sending one push per channel that gained something. The fill only
+  adds — a curator pulling an event writes a `channel_exclusions` row and
+  it stays out. `scripts/reshape_channels.py` applied the 23 Sep plan
+  (Comédia and Livros created, Balada → Eletrônica, MPB + Jazz merged,
+  Cultura narrowed to teatro/cinema/exposição/oficina).
+
+### `tipo` is the axis `kind` never was (23 Sep)
+
+Measured 23 Sep on 167 upcoming events: `kind` put 129 in "community";
+the chips in Eventos group by the *venue's* category (a bar posting a
+book launch is "Bares"); genre covers the music half only. Comedy — 17
+events, the most homogeneous cluster in the catalog — had no axis at
+all. `tipo` (show, festa, comedia, teatro, cinema, literatura, exposicao,
+gastronomia, oficina, esporte, kids, feira, outro) says *what happens*;
+genre says *what sound*; the handle category says *where*. One dimension
+per question.
+
+Still open, in order:
+- **Eventos chips by `tipo`, not by handle category.** "Comédia · 17"
+  is a question people ask; "Bares · 40" isn't. Same `CATEGORY_META`
+  pattern, different source field.
+- **Aggregator handles leak other cities.** @corridasparana, @eventimbrasil,
+  @shotgun.br, @bilheteriadigital post Paranavaí, Cascavel, Vila Velha,
+  Leblon; `neighborhood_guess` then invents a Curitiba bairro and the
+  region rule in the prompt never fires. Hotfix-shaped: guard on the
+  extracted city, not the guessed bairro.
+- **Dedup across posts of one event** (Semana Kids ×4, Piquenique com
+  Livros ×2). Part of why "too many events arrive".
+- `kind` is now dead weight; remove with the `RerootCategory` cleanup.
 
 **Backfill: reversed, on purpose.** The "no genre backfill" call was
 right when genre was a filter — events are perishable, the catalog turns
