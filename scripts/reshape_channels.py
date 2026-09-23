@@ -36,11 +36,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# Windows consoles default to cp1252, which can't print the names above.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Target state, keyed by the channel's display name. `was` lists the
 # names an existing channel may carry that should become this one
 # (rename), `merge` the channels folded into it (deleted afterwards).
 PLAN = [
-    {"name": "auê Rock", "genres": ["rock"],
+    {"name": "auê Rock", "genres": ["rock"], "was": ["auê Rockzera"],
      "description": "Curadoria auê de rock em Curitiba."},
     {"name": "auê Eletrônica", "genres": ["eletronica"], "merge": ["auê Balada"],
      "description": "Curadoria auê de pista e música eletrônica em Curitiba."},
@@ -72,7 +76,10 @@ class Api:
         self.email = email
         self.dry_run = dry_run
 
-    def _call(self, method: str, path: str, body: dict | None = None, query: dict | None = None):
+    def _call(self, method: str, path: str, body: dict | None = None,
+              query: dict | None = None, fatal: bool = True):
+        """One request as the founder. A non-2xx stops the script unless
+        `fatal` is off, in which case it comes back as {"error": ...}."""
         q = dict(query or {})
         if method != "GET":
             q.setdefault("requesting_email", self.email)
@@ -88,7 +95,9 @@ class Api:
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")
-            sys.exit(f"{method} {path} → {exc.code}: {detail}")
+            if not fatal:
+                return {"error": f"{exc.code}: {detail}"}
+            sys.exit(f"{method} {path} -> {exc.code}: {detail}")
 
     def channels(self) -> dict[str, dict]:
         return {_norm(c["name"]): c for c in self._call("GET", "/channels")["channels"]}
@@ -106,7 +115,11 @@ class Api:
         return self._call("POST", f"/admin/channels/{source_id}/merge-into/{target_id}")
 
     def backfill(self, field):
-        return self._call("POST", f"/admin/events/backfill-{field}", query={"limit": 500})
+        # Not fatal: staging runs without an Anthropic key and answers
+        # 503 here. The rules then match only what's already tagged,
+        # which is still a valid (if thinner) reshape.
+        return self._call("POST", f"/admin/events/backfill-{field}",
+                          query={"limit": 500}, fatal=False)
 
     def rebalance(self):
         return self._call("POST", "/admin/channels/rebalance")
@@ -141,7 +154,7 @@ def main():
             for old in spec.get("was", []):
                 ch = existing.pop(_norm(old), None)
                 if ch:
-                    print(f"   rename  {ch['name']} → {spec['name']}")
+                    print(f"   rename  {ch['name']} -> {spec['name']}")
                     api.update(ch["id"], name=spec["name"])
                     break
         rules = {"rule_tipos": spec.get("tipos", []), "rule_genres": spec.get("genres", [])}
@@ -169,7 +182,7 @@ def main():
             src = existing.pop(_norm(old), None)
             if src and target and src["id"] != target["id"]:
                 r = api.merge(src["id"], target["id"])
-                print(f"   merge   {old} → {spec['name']}  {r}")
+                print(f"   merge   {old} -> {spec['name']}  {r}")
             else:
                 print(f"   ok      {old} already gone")
 
