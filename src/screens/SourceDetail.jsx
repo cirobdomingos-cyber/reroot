@@ -85,6 +85,7 @@ export default function SourceDetail() {
               src={source.profile_pic_url}
               name={source.label}
               size={56}
+              expandable={false}
             />
           ) : (
             <div style={{

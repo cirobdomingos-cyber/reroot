@@ -73,7 +73,7 @@ export default function VenueDashboard() {
           ← Voltar
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar src={data.profile_pic_url} name={data.label} size={56} />
+          <Avatar src={data.profile_pic_url} name={data.label} size={56} expandable={false} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{
               fontSize: 18, fontWeight: 700, margin: 0,

@@ -549,7 +549,7 @@ function SourceRow({ source: s, onOpen, following = true, onToggleFollow = null 
       }}
     >
       {isIg ? (
-        <Avatar src={s.profile_pic_url} name={s.label} size={40} />
+        <Avatar src={s.profile_pic_url} name={s.label} size={40} expandable={false} />
       ) : (
         <div style={{
           width: 40, height: 40, borderRadius: 11, flexShrink: 0,

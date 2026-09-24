@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
+import { useAvatarViewer } from './AvatarLightbox'
 
 /**
  * Reusable avatar with a 3-step fallback chain:
@@ -10,8 +11,12 @@ import { API_BASE } from '../lib/apiBase'
  *   3. CSS circle with the first letter of `name`. Pure markup, never fails.
  *
  * Common sizes used in the app: 26 (compact stack), 42 (list rows), 72 (hero).
+ *
+ * Tapping a person's avatar opens their picture big (AvatarLightbox),
+ * anywhere in the app. `expandable={false}` opts out — the Perfil tab
+ * (a tap there navigates) and venue logos (not people).
  */
-export default function Avatar({ src, name, size = 42, bordered = false }) {
+export default function Avatar({ src, name, size = 42, bordered = false, expandable = true }) {
   const initial = (name || '?').trim().charAt(0).toUpperCase() || '?'
   const generatedSrc = name?.trim() ? buildUiAvatarsUrl(name, size * 2) : null
   // Uploaded profile photos come back from the backend as
@@ -25,6 +30,24 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
   // If the source URL changes (e.g., user switches accounts), reset the
   // failure flag so the new URL gets a fresh attempt.
   useEffect(() => { setFailed(false) }, [primarySrc])
+
+  const openViewer = useAvatarViewer()
+  const canExpand = expandable && !!openViewer
+  // Avatars sit inside row buttons that navigate (friends list, "Quem
+  // vai"). The photo tap wins over the row: stop the event here so a
+  // tap on the face opens the picture and a tap on the name still opens
+  // the profile. A span, not a button — a button inside a button is
+  // invalid markup.
+  const expandProps = canExpand ? {
+    onClick: (e) => {
+      e.stopPropagation()
+      e.preventDefault()
+      openViewer({ src: resolvedSrc || '', name: name || '' })
+    },
+    role: 'button',
+    'aria-label': name ? `Ver foto de ${name}` : 'Ver foto',
+  } : {}
+  const cursor = canExpand ? { cursor: 'zoom-in' } : {}
 
   const baseStyle = {
     width: size,
@@ -46,7 +69,8 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
         alt={name || 'avatar'}
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
-        style={baseStyle}
+        style={{ ...baseStyle, ...cursor }}
+        {...expandProps}
       />
     )
   }
@@ -56,6 +80,7 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
     <div
       style={{
         ...baseStyle,
+        ...cursor,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -65,6 +90,7 @@ export default function Avatar({ src, name, size = 42, bordered = false }) {
         letterSpacing: 0,
       }}
       aria-label={name || 'avatar'}
+      {...expandProps}
     >
       {initial}
     </div>
