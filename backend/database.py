@@ -1156,13 +1156,57 @@ def insert_scraped_request(ev) -> Optional[int]:
         return cur.lastrowid
 
 
+def find_same_post_under_other_handle(external_id: str) -> Optional[str]:
+    """The catalog id of this Instagram post filed under ANOTHER tracked
+    handle, or None.
+
+    A collab post shows up on both profiles, and the scraper files a post
+    under the profile it fetched it from — so one post became
+    `ig_torkandroll_<code>` and `ig_entrelike_<code>`, two catalog rows
+    for one night, both forked into auê Rock. The shortcode is unique to
+    the post, so the tail after the handle (`_<code>`, plus any `-MMDD`
+    lineup suffix) identifies it whoever posted it.
+
+    The handle is found by prefix against the tracked accounts rather
+    than by splitting on "_": shortcodes contain underscores."""
+    eid = (external_id or "").strip()
+    if not eid.startswith("ig_"):
+        return None
+    rest = eid[3:]
+    with get_conn() as conn:
+        handles = [r["handle"] for r in conn.execute("SELECT handle FROM tracked_ig_accounts").fetchall()]
+        handle = max((h for h in handles if rest.startswith(h + "_")), key=len, default="")
+        if not handle:
+            return None
+        tail = rest[len(handle):]            # "_<code>" or "_<code>-0926"
+        # Exact candidate ids, one per other tracked handle, rather than a
+        # suffix match: a shortcode can contain "_", so "…_DdZOX_IKAkV"
+        # also ends in "_IKAkV" and a suffix match would call an unrelated
+        # post the same one.
+        candidates = [f"ig_{h}{tail}" for h in handles if h != handle]
+        if not candidates:
+            return None
+        placeholders = ",".join("?" * len(candidates))
+        row = conn.execute(
+            f"""SELECT id FROM events
+                 WHERE source = 'instagram' AND external_id IN ({placeholders})
+                 ORDER BY fetched_at ASC LIMIT 1""",
+            candidates,
+        ).fetchone()
+    return row["id"] if row else None
+
+
 def route_scraped_event(ev) -> str:
     """Save a scraped event and say what happened. 'updated' — a re-scrape
     of an event already in the catalog, refreshed in place; 'published' —
     new: in the catalog now AND in the curation queue as "not curated
-    yet". The catalog never waits on a person (a day of the blocking
-    queue showed that is daily mandatory work, and a trip stops the app);
-    curators confirm, fix or pull events after the fact."""
+    yet"; 'duplicate' — the same post is already in the catalog under
+    another handle (a collab), so nothing is written. The catalog never
+    waits on a person (a day of the blocking queue showed that is daily
+    mandatory work, and a trip stops the app); curators confirm, fix or
+    pull events after the fact."""
+    if ev.source == "instagram" and find_same_post_under_other_handle(ev.external_id):
+        return "duplicate"
     if not upsert_event(ev):
         return "updated"
     insert_scraped_request(ev)
@@ -5161,6 +5205,84 @@ def _ig_handle_from_catalog_id(event_id: str) -> str:
     return rest[:idx].lower() if idx > 0 else ""
 
 
+def _night_key(name: str, date_start: str) -> str:
+    """One night, one row: the same name on the same day is the same
+    event whatever post it came from. Case-, accent- and punctuation-
+    insensitive on the name, day-granular on the date, so "Angra – Holy
+    Land" at 19h (portões) and 21h (show) from five posts collapse."""
+    folded = unicodedata.normalize("NFKD", (name or "").lower())
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    folded = "".join(ch for ch in folded if ch.isalnum())
+    return f"{folded[:40]}|{(date_start or '')[:10]}"
+
+
+def channel_night_keys(group_id: str) -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT name, date_start FROM group_events
+                WHERE group_id = ? OR group_ids LIKE '%"' || ? || '"%'""",
+            (group_id, group_id),
+        ).fetchall()
+    return {_night_key(r["name"], r["date_start"]) for r in rows}
+
+
+def dedupe_channel_forks() -> dict[str, int]:
+    """Remove extra forks that name the same night inside a public
+    channel, keeping the earliest-created one. Returns {channel: removed}.
+
+    The catalog holds the same night several times when several posts
+    announce it (a collab under two handles, the venue and the ticket
+    seller, "faltam 15 dias" reposts), and the fill forked each row. The
+    fill skips a night the channel already names now; this cleans up
+    what it wrote before it did."""
+    removed: dict[str, int] = {}
+    with get_conn() as conn:
+        channels = conn.execute(
+            "SELECT id, name FROM groups WHERE visibility = 'public'"
+        ).fetchall()
+        for ch in channels:
+            rows = conn.execute(
+                """SELECT id, name, date_start FROM group_events
+                    WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
+                      AND source_event_id != ''
+                    ORDER BY created_at ASC""",
+                (ch["id"], ch["id"]),
+            ).fetchall()
+            seen: set[str] = set()
+            for r in rows:
+                key = _night_key(r["name"], r["date_start"])
+                if key in seen:
+                    conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
+                    conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
+                    removed[ch["name"]] = removed.get(ch["name"], 0) + 1
+                else:
+                    seen.add(key)
+        conn.commit()
+    return removed
+
+
+def channel_holds_source(group_id: str, source_event_id: str) -> bool:
+    """Whether this channel already has a fork of exactly this catalog
+    event. Exact match on source_event_id only — no handle+day fallback.
+
+    The fill used find_group_event_by_source, whose legacy fallback
+    matches the same handle on the same day. For a channel that is the
+    normal case, not a collision: Club Vibe's 22h night on a Saturday
+    read as "already in" because its 18h night was, and so did Roberto
+    Carlos's show extra and the second stand-up of the night at Comedy
+    Club. Every fork the fill writes carries the column, so exact is
+    right here."""
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM group_events
+                WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
+                  AND source_event_id = ?
+                LIMIT 1""",
+            (group_id, group_id, source_event_id),
+        ).fetchone()
+    return row is not None
+
+
 def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
                                      group_ids: Optional[list[str]] = None) -> dict[str, int]:
     """Fork every upcoming catalog event into every rule channel it
@@ -5191,11 +5313,19 @@ def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
     added: dict[str, int] = {}
     for ch in channels:
         excluded = excluded_source_ids(ch["id"])
+        # One night, one row per channel: the catalog carries the same
+        # night several times when several posts announce it, and each
+        # row matches the rule. See _night_key.
+        nights = channel_night_keys(ch["id"])
         for ev in events:
             if not rule_matches(ch["rule_tipos"], ch["rule_genres"], ev["tipo"], ev["genre"]):
                 continue
-            if ev["id"] in excluded or find_group_event_by_source(ch["id"], ev["id"]):
+            if ev["id"] in excluded or channel_holds_source(ch["id"], ev["id"]):
                 continue
+            key = _night_key(ev.get("name") or "", ev.get("date_start") or "")
+            if key in nights:
+                continue
+            nights.add(key)
             description = (ev.get("description") or "").strip()
             url = (ev.get("url") or "").strip()
             if url.startswith("https://www.instagram.com/") or url.startswith("https://instagram.com/"):

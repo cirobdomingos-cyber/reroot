@@ -99,6 +99,35 @@ def _downscale_image(raw: bytes) -> Optional[tuple[bytes, str]]:
         return None
 
 
+# How many carousel slides go to the model. Each image is ~2.2k tokens on
+# Haiku; a weekly lineup is rarely more than seven slides, and the eighth
+# is usually the venue's logo.
+_MAX_SLIDES = 6
+
+
+def _slide_urls(post: dict) -> list[str]:
+    """Every image of the post, cover first: the carousel's children when
+    it is one (`childPosts[].displayUrl`, or `images` as plain URLs on some
+    actor versions), else just `displayUrl`.
+
+    A carousel with one flyer per night used to reach the model as its
+    first slide only, so a venue's "semana sensacional" post yielded the
+    agenda slide's nights and none of the others'."""
+    urls: list[str] = []
+    cover = post.get("displayUrl")
+    if cover:
+        urls.append(cover)
+    children = post.get("childPosts")
+    if isinstance(children, list):
+        for child in children:
+            if isinstance(child, dict) and child.get("displayUrl"):
+                urls.append(child["displayUrl"])
+    images = post.get("images")
+    if isinstance(images, list):
+        urls.extend(u for u in images if isinstance(u, str) and u)
+    return list(dict.fromkeys(u for u in urls if isinstance(u, str) and u.startswith("http")))
+
+
 async def _fetch_image_b64(image_url: str) -> Optional[tuple[str, str]]:
     """
     Download an IG image so we can pass it to Claude as base64. Returns
@@ -212,6 +241,10 @@ data fica na arte e a legenda fica solta. Se o flyer anexado mostra a \
 data ("QUINTA 17/09", "SEXTA 18/09"), isso satisfaz (a) — é EVENTO, \
 mesmo que a legenda diga só "quinta tem show". Olhe a imagem ANTES de \
 decidir que não é evento.
+
+⚠️ VÁRIAS IMAGENS = CARROSSEL DO MESMO POST. Cada slide pode ser um \
+evento diferente (um flyer por noite) ou uma agenda da semana. Leia TODOS \
+os slides e devolva um evento por noite anunciada — não só o primeiro.
 
 Exemplo de (A) que parece (C) mas NÃO é:
 - Legenda: "Semana sem tempo ruim! Quinta tem Live Transmission. Sexta \
@@ -912,23 +945,33 @@ async def _extract_events(
     # IG's CDN 403s Anthropic's URL fetcher, so we proxy: fetch ourselves
     # with a browser UA and send as base64. Falls back to text-only when
     # the image fetch fails.
-    had_image = False
-    content_blocks: list = [{"type": "text", "text": prompt}]
-    if image_url:
-        img = await _fetch_image_b64(image_url)
-        if img:
-            had_image = True
-            if debug_out is not None:
-                debug_out["image_sent_to_model"] = True
-            b64, media_type = img
-            content_blocks.insert(0, {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": media_type,
-                    "data": b64,
-                },
-            })
+    # Every slide of a carousel, in order, capped: one flyer per night is
+    # how venues post a week, and the model only extracts what it sees.
+    slide_urls = _slide_urls(post)[:_MAX_SLIDES]
+    fetched = await asyncio.gather(*[_fetch_image_b64(u) for u in slide_urls])
+    slides = [img for img in fetched if img]
+    had_image = bool(slides)
+    content_blocks: list = [
+        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}}
+        for b64, media_type in slides
+    ] + [{"type": "text", "text": prompt}]
+    if debug_out is not None:
+        if had_image:
+            debug_out["image_sent_to_model"] = True
+        debug_out["slides_found"] = len(slide_urls)
+        debug_out["slides_sent"] = len(slides)
+
+    def _not_final() -> None:
+        """A "no event" verdict reached WITHOUT the flyer, for a post that
+        has one, isn't a verdict — the date is usually on the art. Keep
+        the post out of the ledger so the next run asks again with the
+        image; a post that never had an image is judged on its caption
+        and that judgement stands. This is how a venue's weekly carousel
+        went missing in Sep 2026: one CDN hiccup, one caption-only "não
+        é evento", remembered forever."""
+        if slide_urls and not had_image and failed_out is not None and shortcode:
+            failed_out.add(shortcode)
+            log.info(f"IG: @{handle}/{shortcode} judged without its image — will retry")
 
     try:
         response = await client.messages.create(
@@ -973,6 +1016,7 @@ async def _extract_events(
                 "name": "—",
                 "reason": "o modelo classificou o post como NÃO É EVENTO",
             })
+        _not_final()
         return []
 
     # "events": [...] is the current shape; a bare object is what the model
@@ -1009,16 +1053,24 @@ async def _extract_events(
     out.sort(key=lambda e: e.date_start)
     for ev in out[1:]:
         ev.external_id = f"{ev.external_id}-{ev.date_start.strftime('%m%d')}"
-    # A same-day pair would collide — drop the duplicate rather than let one
-    # silently overwrite the other on upsert.
-    seen: set[str] = set()
+    # A same-day pair shares a suffix. The second one used to be dropped —
+    # which is how a venue's Saturday lost its 22h baile to its 18h show
+    # every week. Number them instead, in time order: "-0926", "-0926-2".
+    # An ordinal rather than the hour so a re-scrape that moves a start
+    # time by an hour keeps the same row instead of forking it.
+    seen: dict[str, int] = {}
     deduped = []
     for ev in out:
-        if ev.external_id in seen:
-            log.warning(f"IG: @{handle}/{shortcode} — two events share {ev.external_id}, keeping the first")
-            continue
-        seen.add(ev.external_id)
+        n = seen.get(ev.external_id, 0) + 1
+        seen[ev.external_id] = n
+        if n > 1:
+            ev.external_id = f"{ev.external_id}-{n}"
         deduped.append(ev)
+    if not deduped:
+        # Every candidate fell to a gate (no concrete date, past, …) — the
+        # same "nothing here" as a not-event verdict, and just as suspect
+        # when the flyer never reached the model.
+        _not_final()
     return deduped
 
 
