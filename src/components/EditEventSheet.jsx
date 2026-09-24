@@ -9,7 +9,10 @@ import { updateGroupEvent, extractIgEvent } from '../services/api'
 // accepts: name, venue, date, description, note, and — for an event
 // that has no Instagram link yet — the post it came from. Pasting a
 // post link reads the post (same call as the creation sheet) to fill
-// what's still empty, and saving attaches link + flyer.
+// what's still empty, and saving attaches link + flyer. An event the
+// catalog already has can instead be picked from `catalogEvents` (the
+// list the screen has loaded): the row then reads its facts and cover
+// off that catalog event, keeping whatever was edited by hand.
 //
 // Permission: caller is responsible for only mounting this when the
 // viewer is creator, co-host or the founder. The backend re-checks
@@ -28,7 +31,7 @@ function toLocalInputValue(iso) {
   return iso.slice(0, 16)
 }
 
-export default function EditEventSheet({ open, onClose, event, googleId, onSaved }) {
+export default function EditEventSheet({ open, onClose, event, googleId, onSaved, catalogEvents = [] }) {
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [dateStart, setDateStart] = useState('')
@@ -43,8 +46,18 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
   const [extractMsg, setExtractMsg] = useState('')
   const extractTimer = useRef(null)
   const extractSeq = useRef(0)
+  // Catalog pick: a search over the loaded list, then one chosen row.
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [catalogPick, setCatalogPick] = useState(null)
 
   const hasIgLink = IG_POST_RE.test(event?.url || '')
+  const hasCatalogLink = !!event?.sourceEventId
+  const q = catalogQuery.trim().toLowerCase()
+  const catalogMatches = q.length < 2 ? [] : catalogEvents
+    .filter(e => !e.isGroupEvent && (
+      (e.name || '').toLowerCase().includes(q) || (e.venue || '').toLowerCase().includes(q)
+    ))
+    .slice(0, 6)
 
   // Reset form whenever the sheet opens for a new event. Only repopulate
   // when `open` flips true so we don't clobber in-progress edits if the
@@ -59,6 +72,8 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
     setIgUrl('')
     setPostData(null)
     setExtractMsg('')
+    setCatalogQuery('')
+    setCatalogPick(null)
     setError('')
   }, [open, event?.id])
 
@@ -128,6 +143,7 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
           source_ig_handle: postData?.handle || '',
           post: postData,
         } : {}),
+        ...(catalogPick ? { source_event_id: catalogPick.id } : {}),
       })
       onSaved?.(result.event, result.view)
       onClose()
@@ -224,7 +240,70 @@ export default function EditEventSheet({ open, onClose, event, googleId, onSaved
               />
             </Field>
 
-            {!hasIgLink && (
+            {!hasCatalogLink && (
+              <Field label="É um evento do catálogo? (opcional)">
+                {catalogPick ? (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', borderRadius: 10,
+                    background: 'var(--sage-pale)', border: '1px solid var(--sage)',
+                    fontSize: 13, color: 'var(--charcoal)',
+                  }}>
+                    <span style={{ flex: 1 }}>
+                      🔗 {catalogPick.name}{catalogPick.venue ? ` · ${catalogPick.venue}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogPick(null)}
+                      aria-label="Desfazer"
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 14, color: 'var(--charcoal-mid)' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="search"
+                      value={catalogQuery}
+                      onChange={(e) => setCatalogQuery(e.target.value)}
+                      placeholder="Busca pelo nome ou local"
+                      style={inputStyle}
+                    />
+                    {catalogMatches.length > 0 && (
+                      <div style={{ marginTop: 6, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                        {catalogMatches.map((e, i) => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => { setCatalogPick(e); setCatalogQuery('') }}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left',
+                              padding: '9px 12px', border: 'none', cursor: 'pointer',
+                              background: 'var(--white)',
+                              borderTop: i ? '1px solid var(--border)' : 'none',
+                              fontSize: 13, color: 'var(--charcoal)',
+                            }}
+                          >
+                            <div style={{ fontWeight: 600 }}>{e.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--charcoal-light)' }}>
+                              {[e.venue, e.date, e.time].filter(Boolean).join(' · ')}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {q.length >= 2 && catalogMatches.length === 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 4 }}>
+                        Nada com esse nome nos próximos rolês. Se tem post, cola o link abaixo.
+                      </div>
+                    )}
+                  </>
+                )}
+              </Field>
+            )}
+
+            {!hasIgLink && !catalogPick && (
               <Field label="Link do Instagram (opcional)">
                 <input
                   type="url"

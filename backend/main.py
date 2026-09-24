@@ -5886,6 +5886,9 @@ class UpdateGroupEventRequest(BaseModel):
     image_url: Optional[str] = None
     source_ig_handle: Optional[str] = None
     post: Optional[dict] = None
+    # Or pick the catalog event itself — for a night the catalog already
+    # has (an auê Original has no post to paste). See _link_catalog_event.
+    source_event_id: Optional[str] = None
 
 
 _IG_LINK_RE = re.compile(r"https://(www\.)?instagram\.com/")
@@ -5940,11 +5943,32 @@ def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tas
     updated = db.update_group_event(event_id, fields)
     if new_link and new_link != _source_url_of(event):
         updated = _connect_instagram_post(updated, req, background_tasks)
+    if req.source_event_id is not None:
+        updated = _link_catalog_event(updated, req.source_event_id.strip())
     return {
         "ok": True,
         "event": updated,
         "view": _group_event_to_frontend(updated, viewer_google_id=req.google_id),
     }
+
+
+def _link_catalog_event(event: dict, catalog_id: str) -> dict:
+    """Bind a private event to a catalog event chosen by hand — the same
+    link a catalog fork carries from creation, so from here on the row
+    reads name, time, description and cover off the catalog while any
+    field the person edited stays pinned (_merge_source_event). The
+    catalog event's Instagram link, when it has one, becomes the "Ver no
+    Instagram" button if the event had none; the venue's Painel gets
+    the credit."""
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="Escolhe um evento do catálogo")
+    src = db.get_event_by_id(catalog_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Evento do catálogo não encontrado")
+    db.set_group_event_source(event["id"], catalog_id)
+    if not _source_url_of(event) and _IG_LINK_RE.match(src.url or ""):
+        db.attach_group_event_source_url(event["id"], src.url, _handle_from_event_id(catalog_id))
+    return db.get_group_event(event["id"]) or event
 
 
 def _connect_instagram_post(event: dict, req: UpdateGroupEventRequest,

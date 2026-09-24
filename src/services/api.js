@@ -201,6 +201,10 @@ function normalizeBackendEvent(ev) {
     coHostIds: ev.coHostIds ?? [],
     note: ev.note ?? '',
     sourceIgHandle: ev.sourceIgHandle ?? '',
+    // The catalog event a private event reads its facts from ('' when
+    // it stands on its own). The edit sheet offers the catalog picker
+    // only while this is empty.
+    sourceEventId: ev.sourceEventId ?? '',
     // Pin coordinates — populated when the venue's been geocoded. Map
     // view filters out events where these are null. List view ignores.
     lat: typeof ev.lat === 'number' ? ev.lat : null,
