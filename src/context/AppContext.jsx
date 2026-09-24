@@ -146,6 +146,7 @@ const INITIAL_STATE = {
     showInFriendSuggestions: true,  // appear in "people near you" / friend suggestions
     showProfileToStrangers: false,  // non-friends can see my full profile
     dailyDigest: true,              // receive daily push w/ new events from the scrape
+    friendRsvpAlerts: true,         // push when a friend confirms an event (quiet 22h–9h)
   },
 
   // Accessibility mode — large fonts + enhanced nav labels for older users

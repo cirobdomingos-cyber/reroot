@@ -506,6 +506,11 @@ function NotificationsCard({ t, state, dispatch }) {
   const { subscribed, subscribe, unsubscribe, loading, error } = usePushNotifications()
   const supported = isPushSupported()
   const dailyDigest = state.privacy?.dailyDigest ?? true
+  const friendRsvpAlerts = state.privacy?.friendRsvpAlerts ?? true
+  const toggle = (key, value) => {
+    if (!subscribed) return
+    dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key, value: !value } })
+  }
 
   if (!supported) {
     return (
@@ -586,43 +591,63 @@ function NotificationsCard({ t, state, dispatch }) {
           so users don't think they're armed. Clicking the disabled label
           could prompt to subscribe, but for v1 keep it simple — they
           tap "Ativar push" above first. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 0',
-        opacity: subscribed ? 1 : 0.45,
-      }}>
-        <div style={{ flex: 1, paddingRight: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
-            {t.notif_daily_digest ?? 'Resumo diário do auê'}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>
-            {t.notif_daily_digest_desc
-              ?? 'Toda tarde, depois do scrape — uma push com os novos rolês de Curitiba. Toque pra ver o evento.'}
-          </div>
+      <PushToggle
+        label={t.notif_daily_digest}
+        desc={t.notif_daily_digest_desc}
+        value={dailyDigest}
+        enabled={subscribed}
+        onToggle={() => toggle('dailyDigest', dailyDigest)}
+      />
+      <PushToggle
+        label={t.notif_friend_rsvps}
+        desc={t.notif_friend_rsvps_desc}
+        value={friendRsvpAlerts}
+        enabled={subscribed}
+        onToggle={() => toggle('friendRsvpAlerts', friendRsvpAlerts)}
+        last
+      />
+    </div>
+  )
+}
+
+// One per-type push switch. The backend reads the key off
+// state.privacy (see _user_daily_digest_opted_in and
+// _user_friend_rsvp_alerts_opted_in in main.py), default ON.
+function PushToggle({ label, desc, value, enabled, onToggle, last = false }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '10px 0',
+      borderBottom: last ? 'none' : '1px solid var(--border)',
+      opacity: enabled ? 1 : 0.45,
+    }}>
+      <div style={{ flex: 1, paddingRight: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--charcoal)' }}>
+          {label}
         </div>
-        <button
-          onClick={() => {
-            if (!subscribed) return
-            dispatch({ type: 'SET_PRIVACY_OPTION', payload: { key: 'dailyDigest', value: !dailyDigest } })
-          }}
-          disabled={!subscribed}
-          style={{
-            width: 44, height: 26, borderRadius: 13, border: 'none',
-            background: dailyDigest ? 'var(--sage)' : 'var(--border)',
-            position: 'relative',
-            cursor: subscribed ? 'pointer' : 'not-allowed',
-            flexShrink: 0, transition: 'background 0.2s',
-          }}
-        >
-          <div style={{
-            width: 20, height: 20, borderRadius: '50%',
-            background: 'var(--white)', position: 'absolute', top: 3,
-            left: dailyDigest ? 21 : 3,
-            transition: 'left 0.2s',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-          }} />
-        </button>
+        <div style={{ fontSize: 11, color: 'var(--charcoal-light)', marginTop: 2, lineHeight: 1.4 }}>
+          {desc}
+        </div>
       </div>
+      <button
+        onClick={onToggle}
+        disabled={!enabled}
+        style={{
+          width: 44, height: 26, borderRadius: 13, border: 'none',
+          background: value ? 'var(--sage)' : 'var(--border)',
+          position: 'relative',
+          cursor: enabled ? 'pointer' : 'not-allowed',
+          flexShrink: 0, transition: 'background 0.2s',
+        }}
+      >
+        <div style={{
+          width: 20, height: 20, borderRadius: '50%',
+          background: 'var(--white)', position: 'absolute', top: 3,
+          left: value ? 21 : 3,
+          transition: 'left 0.2s',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }} />
+      </button>
     </div>
   )
 }
