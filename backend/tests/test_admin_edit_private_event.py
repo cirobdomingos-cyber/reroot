@@ -236,3 +236,43 @@ def test_attach_link_by_founder_and_description_edit_in_one_save(api):
     assert shown["url"] == POST_URL
     # The person wrote this description: it is pinned.
     assert "description" in _db.get_group_event(event_id)["edited_fields"]
+
+
+# ── 5. Picking the catalog event ────────────────────────────────────
+
+def test_link_catalog_event_reads_its_facts_and_link(api):
+    _db, _main, client = api
+    catalog_id = _catalog_post(_db)
+    event_id = _plan(_db, description="")
+
+    r = _patch(client, event_id, "u_host", source_event_id=catalog_id)
+    assert r.status_code == 200, r.text
+    ge = _db.get_group_event(event_id)
+    assert ge["source_event_id"] == catalog_id
+    assert ge["source_ig_handle"] == "barfolia"
+    view = r.json()["view"]
+    assert view["name"] == "Samba do Folia"
+    assert view["venue"] == "Bar Folia"
+    assert view["description"] == "Festa de samba"
+    assert view["url"] == POST_URL
+    assert view["sourceEventId"] == catalog_id
+
+
+def test_link_catalog_event_keeps_a_hand_edited_field(api):
+    _db, _main, client = api
+    catalog_id = _catalog_post(_db)
+    event_id = _plan(_db)
+
+    r = _patch(client, event_id, "u_host", name="Samba (a nossa mesa)", source_event_id=catalog_id)
+    assert r.status_code == 200, r.text
+    view = r.json()["view"]
+    assert view["name"] == "Samba (a nossa mesa)"   # pinned by this edit
+    assert view["venue"] == "Bar Folia"             # the catalog's
+
+
+def test_link_catalog_event_refuses_unknown_and_empty(api):
+    _db, _main, client = api
+    event_id = _plan(_db)
+    assert _patch(client, event_id, "u_host", source_event_id="instagram_ig_nope_ZZZ").status_code == 404
+    assert _patch(client, event_id, "u_host", source_event_id="").status_code == 400
+    assert not _db.get_group_event(event_id).get("source_event_id")

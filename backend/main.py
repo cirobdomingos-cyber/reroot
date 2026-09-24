@@ -3072,18 +3072,70 @@ def _event_rsvp_audience(event_id: str, actor_id: str) -> list[str]:
     return sorted(audience)
 
 
+def _short_when(iso: str) -> str:
+    """"26/09 21h" from an ISO date, or "" when there is none."""
+    try:
+        dt = datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    label = dt.strftime("%d/%m")
+    if dt.hour or dt.minute:
+        label += f" {dt.hour}h" + (f"{dt.minute:02d}" if dt.minute else "")
+    return label
+
+
+def _event_is_over(iso: str, grace_hours: int = 6) -> bool:
+    """A confirmation on a night that already happened is bookkeeping,
+    not news. Unknown dates count as upcoming; a naive one is read as
+    Curitiba time, which is how private events store theirs. The grace
+    keeps a 23h "estou aqui" on a 21h show inside the window."""
+    try:
+        dt = datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=quiet_hours.TZ)
+    return dt < datetime.now(timezone.utc) - timedelta(hours=grace_hours)
+
+
+def _rsvp_push_body(req: RsvpUpsertRequest) -> str:
+    """"Show da Terno Rei · Pedreira · 26/09 21h": enough to decide from
+    the lock screen whether to tap."""
+    parts = [req.event_name, req.event_venue, _short_when(req.event_date)]
+    return " · ".join(p for p in parts if p)
+
+
+def _friend_rsvp_count_suffix(recipient_id: str) -> str:
+    """"+2 amigos hoje" when this isn't the recipient's first friend
+    confirmation of the day. The push tag collapses a day's alerts into
+    one slot, so without the count "Bia vai" would silently erase "Ana
+    vai" from the tray."""
+    start_local = datetime.now(quiet_hours.TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    friend_ids = [f["google_id"] for f in db.get_friends(recipient_id) if f.get("status") == "accepted"]
+    others = db.count_rsvps_by_users_since(friend_ids, start_local.astimezone(timezone.utc).isoformat()) - 1
+    if others <= 0:
+        return ""
+    return f" · +{others} amigo{'s' if others > 1 else ''} hoje"
+
+
 def _fanout_rsvp_pushes(req: RsvpUpsertRequest) -> None:
     """Tell the people who care that someone confirmed. Two audiences,
     at most one push each — a friend who is also on the invitee list
     must not get two notifications for the same RSVP:
 
-      1. Friends already invested in this event. Gated by the user's
-         "compartilhar RSVPs com amigos" toggle, and unchanged.
+      1. Every accepted friend. Until Sep 2026 this only reached friends
+         already on the event, which made the push useless for the one
+         thing it's for — "Ana vai" is the reason to look at a night you
+         hadn't considered; a friend already going had the chip on the
+         card. Three brakes replace that gate: the sender's "compartilhar
+         RSVPs" toggle, the recipient's "amigos confirmando" toggle, and
+         quiet hours (22:00–09:00 Curitiba), when the alert is parked for
+         the 09:00 job (send_deferred_friend_rsvps). A day's alerts share
+         one push tag, so a busy Friday is one slot with a count, not a
+         stack. Past nights are skipped.
       2. For a private event, everyone planning or invited to it. NOT
-         gated by that toggle: it is about the friends feed, while
-         these people see the same confirmation on the event's "Quem
-         vai" roster either way — and a host who can't tell who
-         accepted can't plan the thing.
+         gated by any toggle or by quiet hours: it is about the roster,
+         and a host who can't tell who accepted can't plan the thing.
 
     Runs in the background: both lists fan out to serial webpush + APNs
     calls, so on a 20-guest event the RSVP tap would otherwise wait on
@@ -3092,26 +3144,35 @@ def _fanout_rsvp_pushes(req: RsvpUpsertRequest) -> None:
     actor, event_id = req.google_id, req.event_id
     user_name = _user_display_name(actor)
     title = f"🎉 {user_name} vai"
+    body = _rsvp_push_body(req)
     notified: set[str] = set()
+    guest_audience = set(_event_rsvp_audience(event_id, actor))
 
-    if _user_share_rsvps(actor):
+    if _user_share_rsvps(actor) and not _event_is_over(req.event_date):
+        quiet = quiet_hours.is_quiet()
         for friend in db.get_friends(actor):
             fid = friend["google_id"]
             if friend.get("status") != "accepted":
                 continue
-            if not _friend_cares_about_event(fid, event_id):
+            if not _user_friend_rsvp_alerts_opted_in(fid):
+                continue
+            if quiet:
+                # A guest hears now through the roster path below; only
+                # a friend outside the event waits for morning.
+                if fid not in guest_audience:
+                    db.defer_friend_rsvp(fid, actor, event_id, req.event_name)
                 continue
             notified.add(fid)
             try:
                 _send_push_to_user(
-                    fid, title=title, body=req.event_name,
+                    fid, title=title, body=body + _friend_rsvp_count_suffix(fid),
                     url=_event_deep_link(event_id),
-                    tag=f"friend-rsvp-{actor}-{event_id}",
+                    tag=f"friend-rsvp-{datetime.now(quiet_hours.TZ).date().isoformat()}",
                 )
             except Exception as exc:
                 log.warning(f"friend-rsvp push to {fid} failed: {exc}")
 
-    guests = [g for g in _event_rsvp_audience(event_id, actor) if g not in notified]
+    guests = [g for g in sorted(guest_audience) if g not in notified]
     if not guests:
         return
     # One tag per event, so a burst of confirmations collapses into a
@@ -5896,6 +5957,9 @@ class UpdateGroupEventRequest(BaseModel):
     image_url: Optional[str] = None
     source_ig_handle: Optional[str] = None
     post: Optional[dict] = None
+    # Or pick the catalog event itself — for a night the catalog already
+    # has (an auê Original has no post to paste). See _link_catalog_event.
+    source_event_id: Optional[str] = None
 
 
 _IG_LINK_RE = re.compile(r"https://(www\.)?instagram\.com/")
@@ -5950,11 +6014,32 @@ def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tas
     updated = db.update_group_event(event_id, fields)
     if new_link and new_link != _source_url_of(event):
         updated = _connect_instagram_post(updated, req, background_tasks)
+    if req.source_event_id is not None:
+        updated = _link_catalog_event(updated, req.source_event_id.strip())
     return {
         "ok": True,
         "event": updated,
         "view": _group_event_to_frontend(updated, viewer_google_id=req.google_id),
     }
+
+
+def _link_catalog_event(event: dict, catalog_id: str) -> dict:
+    """Bind a private event to a catalog event chosen by hand — the same
+    link a catalog fork carries from creation, so from here on the row
+    reads name, time, description and cover off the catalog while any
+    field the person edited stays pinned (_merge_source_event). The
+    catalog event's Instagram link, when it has one, becomes the "Ver no
+    Instagram" button if the event had none; the venue's Painel gets
+    the credit."""
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="Escolhe um evento do catálogo")
+    src = db.get_event_by_id(catalog_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Evento do catálogo não encontrado")
+    db.set_group_event_source(event["id"], catalog_id)
+    if not _source_url_of(event) and _IG_LINK_RE.match(src.url or ""):
+        db.attach_group_event_source_url(event["id"], src.url, _handle_from_event_id(catalog_id))
+    return db.get_group_event(event["id"]) or event
 
 
 def _connect_instagram_post(event: dict, req: UpdateGroupEventRequest,
@@ -8899,27 +8984,17 @@ def _user_display_name(google_id: str) -> str:
     return name or "Alguém"
 
 
-def _friend_cares_about_event(friend_google_id: str, event_id: str) -> bool:
-    """True iff the friend has skin in the event — they've RSVPed, are
-    on the invitee list of a private event, or are creator/co-host of one.
-
-    Used to gate the friend-RSVP push so it only fires for events the
-    recipient was already considering. Without this, every popular friend
-    spams their whole network on each catalog RSVP.
-    """
-    if not friend_google_id or not event_id:
+def _user_friend_rsvp_alerts_opted_in(google_id: str) -> bool:
+    """Default ON. User toggles off in Profile (privacy.friendRsvpAlerts
+    = false) — the receiver's brake on "🎉 Ana vai" pushes; the sender's
+    is _user_share_rsvps."""
+    if not google_id:
         return False
-    if db.rsvp_exists(friend_google_id, event_id):
-        return True
-    private = db.get_group_event(event_id)
-    if private:
-        if private.get("created_by") == friend_google_id:
-            return True
-        if friend_google_id in (private.get("co_host_ids") or []):
-            return True
-        if friend_google_id in (private.get("extra_invitee_ids") or []):
-            return True
-    return False
+    state = db.get_user_state(google_id) or {}
+    privacy = state.get("privacy") or {}
+    if "friendRsvpAlerts" in privacy:
+        return bool(privacy["friendRsvpAlerts"])
+    return True
 
 
 def _user_daily_digest_opted_in(google_id: str) -> bool:
@@ -9229,8 +9304,35 @@ async def push_send_daily_digest(body: DigestTriggerBody):
 
 async def send_deferred_digest() -> dict:
     """09:00 job: send whatever the night parked. No-op when empty —
-    send_daily_digest_to_all_subscribers takes the parked ids itself."""
-    return await send_daily_digest_to_all_subscribers([])
+    send_daily_digest_to_all_subscribers takes the parked ids itself.
+    The friend confirmations parked by quiet hours ride the same job."""
+    result = await send_daily_digest_to_all_subscribers([])
+    result["friend_rsvps"] = send_deferred_friend_rsvps()
+    return result
+
+
+def send_deferred_friend_rsvps() -> dict:
+    """Friend confirmations that came in during quiet hours, one push
+    per recipient: "Ana vai · Show X; Bia vai · Y". A confirmation the
+    friend withdrew overnight is dropped rather than announced. The tap
+    opens the first event named."""
+    parked = db.take_deferred_friend_rsvps()
+    sent = 0
+    for recipient, rows in parked.items():
+        rows = [r for r in rows if db.rsvp_exists(r["actor_id"], r["event_id"])]
+        if not rows or not _user_friend_rsvp_alerts_opted_in(recipient):
+            continue
+        lines = [f"{_user_display_name(r['actor_id'])} vai · {r['event_name']}" for r in rows[:3]]
+        body = "; ".join(lines) + (f" e +{len(rows) - 3}" if len(rows) > 3 else "")
+        try:
+            sent += _send_push_to_user(
+                recipient, title="🎉 Enquanto você dormia", body=body,
+                url=_event_deep_link(rows[0]["event_id"]),
+                tag=f"friend-rsvp-{datetime.now(quiet_hours.TZ).date().isoformat()}",
+            ) or 0
+        except Exception as exc:
+            log.warning(f"deferred friend-rsvp push to {recipient} failed: {exc}")
+    return {"recipients": len(parked), "sent": sent}
 
 
 # ── Live updates (Capgo self-hosted) ─────────────────────────────────

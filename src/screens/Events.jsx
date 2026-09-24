@@ -1890,6 +1890,7 @@ export default function Events() {
         onClose={() => setEditEvent(null)}
         event={editEvent}
         googleId={state.googleUser?.id}
+        catalogEvents={events}
         onSaved={(updatedRow, view) => {
           // Backend returns the raw DB row (snake_case) and, since the
           // Instagram link came to the sheet, the same shape GET
@@ -1905,12 +1906,18 @@ export default function Events() {
             dateStart: updatedRow.date_start,
             description: updatedRow.description,
             note: updatedRow.note,
+            // Once linked to a catalog event, name/venue/date come from
+            // the catalog unless pinned — the view already merged them.
             ...(view ? {
+              name: view.name,
+              venue: view.venue,
+              dateStart: view.dateStart,
               description: view.description,
               date: view.date, time: view.time,
               url: view.url,
               imageUrl: view.imageUrl,
               sourceIgHandle: view.sourceIgHandle,
+              sourceEventId: view.sourceEventId,
             } : {}),
           } : prev)
           const gid = state.googleUser?.id
