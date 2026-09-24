@@ -5034,6 +5034,16 @@ def admin_fill_channels(requesting_email: str = ""):
     return {"added": {names.get(gid, gid): n for gid, n in added.items()}}
 
 
+@app.post("/admin/channels/dedupe")
+def admin_dedupe_channels(requesting_email: str = ""):
+    """Remove extra forks naming the same night inside each public
+    channel — see db.dedupe_channel_forks. Founder-only. One-off after
+    the fill started skipping nights a channel already names; harmless
+    to run again."""
+    _require_founder(requesting_email)
+    return {"removed": db.dedupe_channel_forks()}
+
+
 @app.post("/admin/channels/rebalance")
 def admin_rebalance_channels(requesting_email: str = ""):
     """Move misfiled forks between rule channels — see
@@ -7218,12 +7228,25 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
     if deleted:
         log.info(f"Manual scrape @{handle}: deleted {deleted} stale event row(s)")
 
+    # The same last step the daily scrape runs, for this handle's nights:
+    # a manual re-scrape is how a missed post gets into the catalog, and
+    # it was landing there with no channel — the rule fill only ran at
+    # the end of run_refresh. Tags come from the enrichment pass already;
+    # this just files the nights where they belong.
+    filled = {}
+    if new_event_ids:
+        try:
+            filled = db.route_catalog_events_to_channels(event_ids=sorted(new_event_ids))
+        except Exception as exc:
+            log.warning(f"Manual scrape @{handle}: channel fill failed: {exc}")
+
     # Re-read the row so the updated profile metadata is in the response
     updated = db.get_ig_account(handle) or {}
     return {
         "handle": handle,
         "events_extracted": len(raw_events),
         "stale_deleted": deleted,
+        "channels_filled": filled,
         "display_name": updated.get("display_name", ""),
         "profile_pic_url": updated.get("profile_pic_url", ""),
     }
