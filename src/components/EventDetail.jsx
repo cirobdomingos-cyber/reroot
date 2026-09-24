@@ -18,6 +18,7 @@
  * call site — see toDetailShape there.
  */
 import { useState, useEffect, useRef } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import PostEventAttendees from './PostEventAttendees'
@@ -203,7 +204,10 @@ function PromoCodeBlock({ ev }) {
  * `children` is the body, so callers can render their own loading /
  * forbidden / offline states in the same chrome instead of rebuilding it.
  */
-export function EventDetailDrawer({ open, onClose, idLabel = '', children }) {
+export function EventDetailDrawer({ open, onClose: onCloseProp, idLabel = '', children }) {
+  // Back (system or browser) closes the drawer instead of leaving the
+  // screen; see lib/navigation.js.
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   useEffect(() => {
     if (!open) return
     function onKey(e) { if (e.key === 'Escape') onClose?.() }

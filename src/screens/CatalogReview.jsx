@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
 import { resolveImageUrl } from '../services/api'
@@ -64,6 +65,7 @@ export default function CatalogReview() {
   const email = state.googleUser?.email || ''
   const { requestId } = useParams()
   const navigate = useNavigate()
+  const goBack = useGoBack('/events')
   // loading | signed_out | not_curator | curator
   const [role, setRole] = useState('loading')
 
@@ -80,7 +82,7 @@ export default function CatalogReview() {
   return (
     <div style={page}>
       <button
-        onClick={() => navigate(requestId ? '/curadoria' : -1)}
+        onClick={() => (requestId ? navigate('/curadoria') : goBack())}
         style={{ background: 'none', border: 'none', color: 'var(--cyan)', fontSize: 14, padding: 0, marginBottom: 12, cursor: 'pointer' }}
       >
         ← {requestId ? 'Todos os pedidos' : 'Voltar'}

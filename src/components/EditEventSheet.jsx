@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { updateGroupEvent, extractIgEvent } from '../services/api'
@@ -31,7 +32,8 @@ function toLocalInputValue(iso) {
   return iso.slice(0, 16)
 }
 
-export default function EditEventSheet({ open, onClose, event, googleId, onSaved, catalogEvents = [] }) {
+export default function EditEventSheet({ open, onClose: onCloseProp, event, googleId, onSaved, catalogEvents = [] }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')
   const [dateStart, setDateStart] = useState('')

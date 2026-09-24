@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import HomeEventRow from '../components/HomeEventRow'
 import Avatar from '../components/Avatar'
@@ -45,6 +46,7 @@ export default function ChannelDetail() {
   const { channelId } = useParams()
   const navigate = useNavigate()
   const { state } = useApp()
+  const goBack = useGoBack('/community')
   const googleId = state.googleUser?.id
 
   const [data, setData] = useState(null)   // null = loading
@@ -180,7 +182,7 @@ export default function ChannelDetail() {
 
   if (failed) {
     return (
-      <Shell onBack={() => navigate('/community')}>
+      <Shell onBack={goBack}>
         <p style={{ fontSize: 13, color: 'var(--text2)', padding: '28px 0', textAlign: 'center' }}>
           Esse canal não está mais no ar.
         </p>
@@ -189,7 +191,7 @@ export default function ChannelDetail() {
   }
   if (!channel) {
     return (
-      <Shell onBack={() => navigate('/community')}>
+      <Shell onBack={goBack}>
         <p className="neon-mono" style={{ fontSize: 11, color: 'var(--text3)' }}>Carregando...</p>
       </Shell>
     )
@@ -218,7 +220,7 @@ export default function ChannelDetail() {
     : 'seguindo'
 
   return (
-    <Shell onBack={() => navigate('/community')}>
+    <Shell onBack={goBack}>
       {/* ── Hero ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h1 className="neon-display" style={{

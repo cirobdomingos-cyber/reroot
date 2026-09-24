@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import { fetchVenueDashboard } from '../services/api'
 import Avatar from '../components/Avatar'
@@ -18,8 +19,8 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '
 
 export default function VenueDashboard() {
   const { handle } = useParams()
-  const navigate = useNavigate()
   const { state } = useApp()
+  const goBack = useGoBack('/events')
   const email = state.googleUser?.email || ''
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -52,7 +53,7 @@ export default function VenueDashboard() {
             ? 'Sem acesso ao painel desse local. Contate o admin pra reivindicar.'
             : error.message || 'Falha ao carregar.'}
         </div>
-        <button onClick={() => navigate(-1)} style={btnPrimary}>Voltar</button>
+        <button onClick={goBack} style={btnPrimary}>Voltar</button>
       </div>
     )
   }
@@ -64,7 +65,7 @@ export default function VenueDashboard() {
     <div style={{ padding: '20px 0 80px' }}>
       <div style={{ padding: '0 16px 14px' }}>
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 10,

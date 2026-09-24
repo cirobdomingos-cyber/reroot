@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
 
@@ -26,8 +26,8 @@ const STATUS_TABS = [
 ]
 
 export default function AdminVenues() {
-  const navigate = useNavigate()
   const { state } = useApp()
+  const goBack = useGoBack('/admin/ig')
   const email = state.googleUser?.email || ''
 
   const [status, setStatus] = useState('pending')
@@ -80,12 +80,12 @@ export default function AdminVenues() {
   }
 
   if (!email) {
-    return <Shell onBack={() => navigate('/admin/ig')}>
+    return <Shell onBack={goBack}>
       <Empty>Entra com a tua conta pra ver esta tela.</Empty>
     </Shell>
   }
   if (allowed === false) {
-    return <Shell onBack={() => navigate('/admin/ig')}>
+    return <Shell onBack={goBack}>
       <Empty>Esta tela é só pra curadores.</Empty>
     </Shell>
   }
@@ -94,7 +94,7 @@ export default function AdminVenues() {
   const noBairro = venues.filter(v => v.lat && !(v.bairro || '').trim()).length
 
   return (
-    <Shell onBack={() => navigate('/admin/ig')}>
+    <Shell onBack={goBack}>
       <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--charcoal)', marginBottom: 4 }}>
         Locais e pins
       </h2>
