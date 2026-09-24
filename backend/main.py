@@ -5034,6 +5034,16 @@ def admin_fill_channels(requesting_email: str = ""):
     return {"added": {names.get(gid, gid): n for gid, n in added.items()}}
 
 
+@app.post("/admin/channels/dedupe")
+def admin_dedupe_channels(requesting_email: str = ""):
+    """Remove extra forks naming the same night inside each public
+    channel — see db.dedupe_channel_forks. Founder-only. One-off after
+    the fill started skipping nights a channel already names; harmless
+    to run again."""
+    _require_founder(requesting_email)
+    return {"removed": db.dedupe_channel_forks()}
+
+
 @app.post("/admin/channels/rebalance")
 def admin_rebalance_channels(requesting_email: str = ""):
     """Move misfiled forks between rule channels — see

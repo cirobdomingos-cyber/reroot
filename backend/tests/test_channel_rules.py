@@ -67,11 +67,14 @@ def api(tmp_path, monkeypatch):
     return _db, _main, TestClient(_main.app)
 
 
-def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name="Noite"):
+def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None):
     from models import EnrichedEvent
+    # Distinct names by default: the fill keeps one row per (name, day)
+    # in a channel, so two fixtures called "Noite" on the same day would
+    # collapse into one — which is the rule working, not the test.
     _db.upsert_event(EnrichedEvent(
         id=ev_id, source="instagram", external_id=ev_id.split("_", 1)[1],
-        name=name, description="desc", venue_name="Bar X", venue_address="",
+        name=name or ev_id, description="desc", venue_name="Bar X", venue_address="",
         neighborhood="Batel", city="Curitiba",
         date_start=when, date_end=None,
         price_min=0.0, price_max=0.0, currency="BRL", capacity=None,
@@ -398,3 +401,40 @@ def test_a_second_event_from_the_same_venue_on_the_same_day_is_filled_too(api):
     cid = _channel(client, "auê Eletrônica", genres=["eletronica"])["channel"]["id"]
     assert _sources_in(_db, cid) == ["instagram_ig_clubvibe_A", "instagram_ig_clubvibe_B"]
     assert _db.route_catalog_events_to_channels() == {}
+
+
+# -- 10. one night, one row per channel -------------------------------
+
+def test_the_same_night_from_several_posts_is_one_row_in_the_channel(api):
+    """Angra on the 25th came from five posts — the venue, the ticket
+    seller, a collab under two handles, a repost — and the fill forked
+    each catalog row. Same name, same day: one row."""
+    _db, _main, client = api
+    day = SOON.replace(hour=19, minute=0)
+    _event(_db, "instagram_ig_entrelike_A", tipo="show", genre="rock",
+           name="Angra - Holy Land 30th Anniversary Tour", when=day)
+    _event(_db, "instagram_ig_torkandroll_B", tipo="show", genre="rock",
+           name="ANGRA – Holy Land 30th anniversary tour!", when=day.replace(hour=21))
+    _event(_db, "instagram_ig_torkandroll_C", tipo="show", genre="rock",
+           name="Angra - Holy Land 30th Anniversary Tour", when=day + timedelta(days=1))
+    cid = _channel(client, "auê Rock", genres=["rock"])["channel"]["id"]
+    # The 25th once, the 26th once — a different day is a different night.
+    assert _sources_in(_db, cid) == ["instagram_ig_entrelike_A", "instagram_ig_torkandroll_C"]
+
+
+def test_dedupe_removes_extra_rows_naming_one_night_and_keeps_the_earliest(api):
+    _db, _main, client = api
+    cid = _channel(client, "auê Rock")["channel"]["id"]
+    day = SOON.replace(hour=19, minute=0).isoformat()
+    first = _db.create_group_event(group_id=cid, google_id="u_founder", name="Angra",
+                                   date_start=day, source_event_id="instagram_a")["id"]
+    _db.create_group_event(group_id=cid, google_id="u_founder", name="ANGRA!",
+                           date_start=day, source_event_id="instagram_b")
+    _db.create_group_event(group_id=cid, google_id="u_founder", name="Angra",
+                           date_start=(SOON + timedelta(days=1)).isoformat(),
+                           source_event_id="instagram_c")
+    r = client.post(f"/admin/channels/dedupe?requesting_email={FOUNDER}")
+    assert r.status_code == 200, r.text
+    assert r.json()["removed"] == {"auê Rock": 1}
+    ids = [e["id"] for e in _db.get_group_events(cid)]
+    assert first in ids and len(ids) == 2
