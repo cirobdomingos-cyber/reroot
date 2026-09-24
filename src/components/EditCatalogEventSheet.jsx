@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { updateCatalogEvent } from '../services/api'
@@ -51,7 +52,8 @@ function parseMoney(value) {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-export default function EditCatalogEventSheet({ open, onClose, event, requestingEmail, onSaved }) {
+export default function EditCatalogEventSheet({ open, onClose: onCloseProp, event, requestingEmail, onSaved }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const [name, setName] = useState('')
   const [venueName, setVenueName] = useState('')
   const [neighborhood, setNeighborhood] = useState('')

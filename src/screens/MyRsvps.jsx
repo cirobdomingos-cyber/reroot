@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import { syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, declineEventInvite, deletePersonalPlan, deleteGroupEvent } from '../services/api'
 import Avatar from '../components/Avatar'
@@ -25,6 +26,7 @@ export default function MyRsvps({ embedded = false }) {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
   const now = Date.now()
+  const goBack = useGoBack('/events')
 
   // Friends' RSVPs + group/plan invitations — fetched on mount + when the
   // tab regains focus. groupEvents covers both classic group events (member
@@ -261,7 +263,7 @@ export default function MyRsvps({ embedded = false }) {
         {!embedded && (
           <>
             <button
-              onClick={() => navigate('/events')}
+              onClick={goBack}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 8,

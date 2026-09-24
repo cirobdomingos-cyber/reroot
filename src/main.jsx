@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { AppProvider } from './context/AppContext'
+import { AvatarViewerProvider } from './components/AvatarLightbox'
 import { reportError } from './services/api'
 import { initPushNavigation } from './lib/pushNavigation'
 import App from './App'
@@ -165,7 +166,9 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
       <AppProvider>
-        <App />
+        <AvatarViewerProvider>
+          <App />
+        </AvatarViewerProvider>
       </AppProvider>
     </HashRouter>
   </StrictMode>

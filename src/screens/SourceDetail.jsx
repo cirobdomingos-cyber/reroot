@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { fetchSourceDetail, trackEvent } from '../services/api'
 import Avatar from '../components/Avatar'
 
@@ -10,6 +11,7 @@ export default function SourceDetail() {
   const { sourceId } = useParams()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
+  const goBack = useGoBack('/sources')
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -47,7 +49,7 @@ export default function SourceDetail() {
           Fonte não encontrada.
         </div>
         <button
-          onClick={() => navigate('/sources')}
+          onClick={goBack}
           style={{
             padding: '10px 22px', borderRadius: 12, border: 'none',
             background: 'var(--sage)', color: '#14081E',
@@ -66,7 +68,7 @@ export default function SourceDetail() {
     <div style={{ padding: '20px 0 80px' }}>
       <div style={{ padding: '0 20px 18px' }}>
         <button
-          onClick={() => navigate('/sources')}
+          onClick={goBack}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 12,
@@ -85,6 +87,7 @@ export default function SourceDetail() {
               src={source.profile_pic_url}
               name={source.label}
               size={56}
+              expandable={false}
             />
           ) : (
             <div style={{

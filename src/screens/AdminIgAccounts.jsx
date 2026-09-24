@@ -1714,6 +1714,7 @@ function AccountRow({ acc, metrics, busy, onToggle, onDelete, onScrape, onOpenSo
         src={pic}
         name={acc.display_name || acc.label || acc.handle}
         size={36}
+        expandable={false}
       />
       <button
         onClick={() => onToggle(acc)}

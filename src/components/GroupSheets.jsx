@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import {
@@ -243,7 +244,8 @@ export function CatalogPickerSheet({ open, onClose, onPick }) {
   )
 }
 
-export function BottomSheet({ open, onClose, title, children }) {
+export function BottomSheet({ open, onClose: onCloseProp, title, children }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   // Hide the Companion FAB while this sheet is up.
   useEffect(() => {
     if (!open) return
