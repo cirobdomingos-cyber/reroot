@@ -537,6 +537,30 @@ test('a channel event keeps both answers', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Não vou', exact: true })).toBeVisible()
 })
 
+// ── The photo button under the drawer's header ──
+//
+// The sticky "← BACK" band spans the top of the drawer at a higher
+// z-index than the hero's own controls, and "📷 Adicionar foto" sits in
+// that exact strip. A tap on it landed on the band: nothing happened,
+// on every platform, for everyone allowed to add a photo. The band now
+// lets taps through; only BACK catches them. Playwright's click checks
+// that nothing intercepts the pointer, so this fails the old way too.
+
+const OWN_PLAN = [{
+  id: 'grp_ev_own', name: 'Churras da laje', sourceEventId: '',
+  isGroupEvent: true, isPersonalPlan: true, createdBy: 'u1',
+  groupId: null, groupIds: [], groupNames: [],
+  dateStart: '2099-10-05T20:00:00', time: '20:00', date: 'Dom, 05 Out',
+  venue: 'Laje do Zé',
+}]
+
+test('the host reaches the photo button under the drawer header', async ({ page }) => {
+  await openDetail(page, { groupEvents: OWN_PLAN, id: 'Churras da laje' })
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Adicionar foto' }).click()
+  await chooser
+})
+
 // ── Who else is here ──
 //
 // The faces used to be tappable only on a private channel, so on an auê

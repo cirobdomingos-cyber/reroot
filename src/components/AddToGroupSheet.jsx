@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,7 +12,8 @@ import { fetchGroups, fetchChannels, createGroupEvent, fetchGroupsWithSource, un
 //
 // The catalog event is mirrored into the group's events table — same
 // flow as the channel screen's "Do catálogo" button.
-export default function AddToGroupSheet({ open, onClose, event, occurrenceDay = null }) {
+export default function AddToGroupSheet({ open, onClose: onCloseProp, event, occurrenceDay = null }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const { state } = useApp()
   const navigate = useNavigate()
   const googleId = state.googleUser?.id

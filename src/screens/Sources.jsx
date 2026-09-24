@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { fetchSources } from '../services/api'
 import { useApp } from '../context/AppContext'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
@@ -20,6 +21,7 @@ function categoryFor(source, isIg) {
 export default function Sources() {
   const navigate = useNavigate()
   const { state, dispatch } = useApp()
+  const goBack = useGoBack('/events')
   // Opt-out follow list (lib/follows.js) — handles the user hid.
   const unfollowed = useMemo(
     () => new Set((state.unfollowedSources || []).map(h => h.toLowerCase())),
@@ -150,7 +152,7 @@ export default function Sources() {
     <div style={{ padding: '20px 0 80px' }}>
       <div style={{ padding: '0 20px 14px' }}>
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 8,
@@ -549,7 +551,7 @@ function SourceRow({ source: s, onOpen, following = true, onToggleFollow = null 
       }}
     >
       {isIg ? (
-        <Avatar src={s.profile_pic_url} name={s.label} size={40} />
+        <Avatar src={s.profile_pic_url} name={s.label} size={40} expandable={false} />
       ) : (
         <div style={{
           width: 40, height: 40, borderRadius: 11, flexShrink: 0,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import HomeEventRow from '../components/HomeEventRow'
 import { fetchEvents, trackEvent, BASE_URL } from '../services/api'
 import { groupByGenre } from '../data/genres'
@@ -54,6 +55,7 @@ export default function Novidades() {
   const { digestId } = useParams()
   const navigate = useNavigate()
 
+  const goBack = useGoBack('/events')
   const [events, setEvents] = useState(null)   // null = still loading
   const [digestDate, setDigestDate] = useState('')
   const [failed, setFailed] = useState(false)
@@ -104,7 +106,7 @@ export default function Novidades() {
     <div style={{ paddingBottom: 90 }}>
       <div style={{ padding: '18px 18px 0' }}>
         <button
-          onClick={() => navigate('/events')}
+          onClick={goBack}
           className="neon-mono"
           style={{
             background: 'none', border: 'none', padding: 0, cursor: 'pointer',

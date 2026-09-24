@@ -169,6 +169,7 @@ export default function BottomNav() {
             src={myPicture(state)}
             name={state.userName || state.googleUser?.givenName || state.googleUser?.name || ''}
             size={20}
+            expandable={false}
           />
         </span>
       ) : (

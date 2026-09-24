@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Avatar from './Avatar'
@@ -29,11 +30,12 @@ import { fetchEventAttendees, addEventCoHost, removeEventCoHost } from '../servi
 //   onChange             (newCoHostIds) => void
 
 export default function CoHostsSheet({
-  open, onClose, eventId, googleId,
+  open, onClose: onCloseProp, eventId, googleId,
   creatorId, creatorName, creatorPicture,
   coHostIds = [], inviteeIds = [],
   onChange,
 }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const [profiles, setProfiles] = useState({})  // google_id → {name, picture}
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState(null)

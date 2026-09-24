@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -26,7 +27,8 @@ import { getFriends, createPersonalPlan, createGroupEvent, fetchGroups, fetchGro
 // that expands the members into the individual picker so you can drop
 // whoever, rather than starting from an empty list.
 
-export default function PersonalPlanSheet({ open, onClose, googleId, onCreated, initialGroupId = null }) {
+export default function PersonalPlanSheet({ open, onClose: onCloseProp, googleId, onCreated, initialGroupId = null }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [venue, setVenue] = useState('')

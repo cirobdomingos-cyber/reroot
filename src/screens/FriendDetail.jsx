@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import {
   fetchFriendsFeed, getFriends, fetchUserProfile, addFriendById,
@@ -19,6 +20,7 @@ export default function FriendDetail() {
   const { state } = useApp()
   const navigate = useNavigate()
   const myGoogleId = state.googleUser?.id
+  const goBack = useGoBack('/community')
 
   const [friend, setFriend] = useState(null)
   // friendStatus is what the BACKEND knows: 'friends', 'self', 'requested'
@@ -122,7 +124,7 @@ export default function FriendDetail() {
     <div style={{ padding: '20px 0 80px' }}>
       <div style={{ padding: '0 20px 14px' }}>
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--charcoal-light)', fontSize: 13, padding: '4px 0', marginBottom: 12,

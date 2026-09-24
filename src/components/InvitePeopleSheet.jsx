@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useBackClosesOverlay } from '../lib/navigation'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Avatar from './Avatar'
@@ -21,8 +22,9 @@ import { getFriends, addEventInvitees } from '../services/api'
 //   onInvited            ({ added, invitee_google_ids }) => void  — fires after success
 
 export default function InvitePeopleSheet({
-  open, onClose, eventId, googleId, eventName, existingInviteeIds = [], onInvited,
+  open, onClose: onCloseProp, eventId, googleId, eventName, existingInviteeIds = [], onInvited,
 }) {
+  const onClose = useBackClosesOverlay(open, onCloseProp)
   const [friends, setFriends] = useState([])
   const [selected, setSelected] = useState(new Set())
   const [search, setSearch] = useState('')
