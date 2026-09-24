@@ -39,10 +39,16 @@ QUI, SEX, SAB = 3, 4, 5  # Python weekday(): Mon=0
 
 
 def _next(weekday, hour=21, weeks=0):
-    """Next future datetime falling on `weekday`."""
+    """A future datetime falling on `weekday`, in the week after next.
+
+    Anchored on one Monday for every weekday, so Qui < Sex < Sab always
+    holds. Computing each from "today" wrapped a weekday equal to today's
+    to +7 (`% 7 or 7`), so on a UTC Thursday `_next(QUI)` landed a week
+    AFTER `_next(SEX)` and the in-date-order assertions failed on CI
+    every Thursday, Friday and Saturday."""
     now = datetime.now(timezone.utc)
-    ahead = (weekday - now.weekday()) % 7 or 7
-    d = now + timedelta(days=ahead + 7 * weeks)
+    monday = now + timedelta(days=(7 - now.weekday()) + 7)   # Monday, 8–14 days out
+    d = monday + timedelta(days=weekday + 7 * weeks)
     return d.replace(hour=hour, minute=0, second=0, microsecond=0)
 
 
