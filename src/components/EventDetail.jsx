@@ -244,11 +244,19 @@ export function EventDetailDrawer({ open, onClose: onCloseProp, idLabel = '', ch
             padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 12px',
             background: 'linear-gradient(180deg, var(--bg) 70%, transparent)',
             backdropFilter: 'blur(6px)',
+            // The band spans the whole top edge, above the hero's own
+            // controls ("📷 Adicionar foto" sits in that exact strip at a
+            // lower z-index). Let taps fall through the gradient to
+            // whatever is under it; only the BACK button catches them.
+            // A tap on the photo button did nothing, on every platform,
+            // since this header arrived.
+            pointerEvents: 'none',
           }}>
             <button
               onClick={onClose}
               aria-label="Fechar"
               style={{
+                pointerEvents: 'auto',
                 background: 'transparent', border: 'none', cursor: 'pointer',
                 fontSize: 10, letterSpacing: '0.16em',
                 color: 'var(--cyan)', textTransform: 'uppercase',
@@ -463,9 +471,10 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
               aria-label={showImage ? 'Trocar foto' : 'Adicionar foto'}
               style={{
                 padding: '6px 12px', borderRadius: 16,
-                background: 'rgba(255,255,255,0.92)', border: 'none',
+                background: 'rgba(10, 4, 18, 0.78)', color: 'var(--cyan)',
+                border: '1px solid var(--cyan)',
                 fontSize: 12, fontWeight: 700, cursor: imageUploading ? 'wait' : 'pointer',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                 opacity: imageUploading ? 0.7 : 1,
               }}
             >
@@ -477,9 +486,9 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
                 aria-label="Remover foto"
                 style={{
                   width: 32, height: 32, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.92)', border: 'none',
+                  background: 'rgba(10, 4, 18, 0.78)', border: '1px solid var(--cyan)',
                   cursor: 'pointer', fontSize: 14,
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                 }}
               >
                 🗑
@@ -536,6 +545,10 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
             display: 'flex', flexDirection: 'column',
             justifyContent: 'flex-end',
             zIndex: 2,
+            // Text only, and it covers the whole hero — including the
+            // "📷 Adicionar foto" button in the corner, which is exactly
+            // the no-photo case. Let taps through.
+            pointerEvents: 'none',
           }}>
             <div className="neon-mono" style={{
               fontSize: 10, letterSpacing: '0.24em',
