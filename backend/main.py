@@ -7194,12 +7194,25 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
     if deleted:
         log.info(f"Manual scrape @{handle}: deleted {deleted} stale event row(s)")
 
+    # The same last step the daily scrape runs, for this handle's nights:
+    # a manual re-scrape is how a missed post gets into the catalog, and
+    # it was landing there with no channel — the rule fill only ran at
+    # the end of run_refresh. Tags come from the enrichment pass already;
+    # this just files the nights where they belong.
+    filled = {}
+    if new_event_ids:
+        try:
+            filled = db.route_catalog_events_to_channels(event_ids=sorted(new_event_ids))
+        except Exception as exc:
+            log.warning(f"Manual scrape @{handle}: channel fill failed: {exc}")
+
     # Re-read the row so the updated profile metadata is in the response
     updated = db.get_ig_account(handle) or {}
     return {
         "handle": handle,
         "events_extracted": len(raw_events),
         "stale_deleted": deleted,
+        "channels_filled": filled,
         "display_name": updated.get("display_name", ""),
         "profile_pic_url": updated.get("profile_pic_url", ""),
     }

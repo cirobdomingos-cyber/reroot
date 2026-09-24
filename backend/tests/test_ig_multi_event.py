@@ -203,10 +203,18 @@ def test_not_an_event_stays_empty(monkeypatch):
 def test_two_events_on_the_same_day_do_not_collide(monkeypatch):
     """Same-day pairs would share a suffix and silently overwrite on upsert."""
     events, _ = _run({"is_event": True, "events": [
-        _event_payload("Primeiro", _next(QUI, hour=20)),
-        _event_payload("Segundo", _next(QUI, hour=23)),
+        _event_payload("Abertura", _next(SEX, hour=20)),
+        _event_payload("Primeiro", _next(SAB, hour=18)),
+        _event_payload("Segundo", _next(SAB, hour=23)),
     ]})
-    assert len(set(e.external_id for e in events)) == len(events)
+    # Both Saturday nights survive — the second used to be dropped, which
+    # is how a venue's 22h baile lost to its 18h show every week — and
+    # they are numbered in time order behind the shared day suffix.
+    assert [e.name for e in events] == ["Abertura", "Primeiro", "Segundo"]
+    assert len(set(e.external_id for e in events)) == 3
+    sab = _next(SAB).strftime("%m%d")
+    assert events[1].external_id.endswith(f"-{sab}")
+    assert events[2].external_id.endswith(f"-{sab}-2")
 
 
 def test_output_budget_fits_a_lineup(monkeypatch):

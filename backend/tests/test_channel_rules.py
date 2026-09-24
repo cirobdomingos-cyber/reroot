@@ -382,3 +382,19 @@ def test_fill_pushes_once_per_channel_to_followers_only(api, monkeypatch):
     sent.clear()
     assert main.fill_channels_from_catalog() == {}
     assert sent == []
+
+
+# -- 9. two nights, one venue, one day -------------------------------
+
+def test_a_second_event_from_the_same_venue_on_the_same_day_is_filled_too(api):
+    """The "already in the channel" check used find_group_event_by_source,
+    whose legacy fallback matches handle + day. For a channel that is the
+    normal case: Club Vibe's 22h night read as already in because its 18h
+    night was. Exact source id now."""
+    _db, _main, client = api
+    day = SOON.replace(hour=18, minute=0)
+    _event(_db, "instagram_ig_clubvibe_A", tipo="festa", genre="eletronica", when=day)
+    _event(_db, "instagram_ig_clubvibe_B", tipo="festa", genre="eletronica", when=day.replace(hour=22))
+    cid = _channel(client, "auê Eletrônica", genres=["eletronica"])["channel"]["id"]
+    assert _sources_in(_db, cid) == ["instagram_ig_clubvibe_A", "instagram_ig_clubvibe_B"]
+    assert _db.route_catalog_events_to_channels() == {}

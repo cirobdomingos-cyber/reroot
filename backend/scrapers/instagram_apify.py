@@ -1053,15 +1053,18 @@ async def _extract_events(
     out.sort(key=lambda e: e.date_start)
     for ev in out[1:]:
         ev.external_id = f"{ev.external_id}-{ev.date_start.strftime('%m%d')}"
-    # A same-day pair would collide — drop the duplicate rather than let one
-    # silently overwrite the other on upsert.
-    seen: set[str] = set()
+    # A same-day pair shares a suffix. The second one used to be dropped —
+    # which is how a venue's Saturday lost its 22h baile to its 18h show
+    # every week. Number them instead, in time order: "-0926", "-0926-2".
+    # An ordinal rather than the hour so a re-scrape that moves a start
+    # time by an hour keeps the same row instead of forking it.
+    seen: dict[str, int] = {}
     deduped = []
     for ev in out:
-        if ev.external_id in seen:
-            log.warning(f"IG: @{handle}/{shortcode} — two events share {ev.external_id}, keeping the first")
-            continue
-        seen.add(ev.external_id)
+        n = seen.get(ev.external_id, 0) + 1
+        seen[ev.external_id] = n
+        if n > 1:
+            ev.external_id = f"{ev.external_id}-{n}"
         deduped.append(ev)
     if not deduped:
         # Every candidate fell to a gate (no concrete date, past, …) — the
