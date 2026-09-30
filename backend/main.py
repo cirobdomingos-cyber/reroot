@@ -21,11 +21,14 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 import httpx
 from anthropic import Anthropic
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, UploadFile, File, Form
+from fastapi import (
+    FastAPI, HTTPException, BackgroundTasks, Request, UploadFile, File, Form,
+    Depends, Header,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -213,6 +216,79 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Sessions: who is calling ──────────────────────────────
+#
+# Until Sep 2026 the client told the API who it was: a google_id in the
+# query or body, an e-mail for the admin routes, nothing to prove either.
+# Now a sign-in (/auth/google, /auth/apple) verifies the provider token on
+# the server and answers with a bearer token; every later call carries it
+# as `Authorization: Bearer <token>`.
+#
+# REQUIRE_SESSION is the rollout switch. While it is off, a request with
+# no token still passes on the client's word (phones running a bundle from
+# before this change send no header yet); with a token, the token wins and
+# a mismatch is refused. Once every phone has the new bundle, set
+# REQUIRE_SESSION=true on Railway and the word alone stops being enough.
+# The founder and curator routes never accepted the word: they read the
+# e-mail from the session from day one.
+
+def _session_required() -> bool:
+    return os.environ.get("REQUIRE_SESSION", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def current_user(authorization: Annotated[str, Header()] = "") -> Optional[str]:
+    """The user id behind the request's bearer token, or None when there
+    is no (valid) token. Never raises: routes decide what a missing
+    session means for them."""
+    scheme, _, token = (authorization or "").strip().partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return db.resolve_session(token.strip())
+
+
+SessionUser = Annotated[Optional[str], Depends(current_user)]
+
+# One warning per route per process: enough to see, in the logs, which
+# routes old bundles still hit without a token, without flooding them.
+_unverified_warned: set[str] = set()
+
+
+def _assert_caller(google_id: str, session_user: Optional[str]) -> None:
+    """The request says it is `google_id`. Hold it to that.
+
+    With a session, the ids must match (403 otherwise). Without one, the
+    request passes while REQUIRE_SESSION is off — and is refused with a
+    401 once it is on. An empty id identifies nobody and is always fine:
+    that is an anonymous request, not an unverified one."""
+    if session_user is not None:
+        if google_id and google_id != session_user:
+            raise HTTPException(status_code=403, detail="Essa conta não é a sua.")
+        return
+    if not google_id:
+        return
+    if _session_required():
+        raise HTTPException(status_code=401, detail="Entra de novo pra continuar.")
+    import inspect
+    route = inspect.currentframe().f_back.f_code.co_name  # the calling route
+    if route not in _unverified_warned:
+        _unverified_warned.add(route)
+        log.warning(f"{route}: caller identified without a session (REQUIRE_SESSION off)")
+
+
+def _session_email(session_user: Optional[str], fallback: str = "") -> str:
+    """The e-mail behind the session, lowercased, for role checks.
+
+    `fallback` is the client-supplied e-mail; it is honored only while
+    REQUIRE_SESSION is off and there is no session, i.e. the transition
+    period. Routes that must never trust it pass nothing."""
+    if session_user is not None:
+        user = db.get_user_profile(session_user) or {}
+        return (user.get("email") or "").strip().lower()
+    if _session_required():
+        return ""
+    return (fallback or "").strip().lower()
 
 
 # ── Endpoints ──
@@ -2045,12 +2121,13 @@ def _group_event_to_frontend(ge: dict, group_name: str = "", viewer_google_id: s
 
 
 @app.get("/events/group")
-def list_user_group_events(google_id: str):
+def list_user_group_events(google_id: str, session_user: SessionUser = None):
     """Return all upcoming private events the user can see — single rule:
     they're the creator or appear in extra_invitee_ids. After the May
     2026 unification this collapses what used to be three separate
     queries (group events / personal plans / hybrid) into one.
     Shaped like catalog events."""
+    _assert_caller(google_id, session_user)
     if not google_id:
         return {"events": []}
     today = date.today().isoformat()
@@ -2167,7 +2244,8 @@ def _can_view_group_event(ge: dict, google_id: str) -> bool:
 
 
 @app.get("/events/{event_id}")
-def get_event(event_id: str, google_id: str = ""):
+def get_event(event_id: str, google_id: str = "", session_user: SessionUser = None):
+    _assert_caller(google_id, session_user)
     # Catalog events first.
     ev = db.get_event_by_id(event_id)
     if ev:
@@ -2935,12 +3013,13 @@ async def extract_ig_event(req: IgExtractRequest):
 
 
 @app.post("/events/submit", status_code=202)
-async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks):
+async def submit_event(req: EventSubmission, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """
     Accept a user- or partner-submitted event.
     The event is recorded immediately; enrichment runs in the background.
     Returns the submission id so the frontend can poll for status.
     """
+    _assert_caller(req.submitted_by or "", session_user)
     # Basic input validation
     if not req.name or len(req.name.strip()) < 3:
         raise HTTPException(status_code=400, detail="Event name too short")
@@ -2986,8 +3065,9 @@ class UserStateSaveRequest(BaseModel):
 
 
 @app.get("/user/state/{google_id}")
-def get_user_state_endpoint(google_id: str):
+def get_user_state_endpoint(google_id: str, session_user: SessionUser = None):
     """Load persisted app state for a Google account."""
+    _assert_caller(google_id, session_user)
     saved = db.get_user_state(google_id)
     if saved is None:
         raise HTTPException(status_code=404, detail="No state found for this user")
@@ -3005,8 +3085,9 @@ MAX_STATE_SIZE_BYTES = 512_000  # 500 KB — generous but prevents abuse
 
 
 @app.post("/user/state")
-def save_user_state_endpoint(req: UserStateSaveRequest):
+def save_user_state_endpoint(req: UserStateSaveRequest, session_user: SessionUser = None):
     """Upsert app state for a Google account with validation."""
+    _assert_caller(req.google_id, session_user)
     if not req.google_id or len(req.google_id) > 200:
         raise HTTPException(status_code=400, detail="Invalid google_id")
 
@@ -3192,11 +3273,12 @@ def _fanout_rsvp_pushes(req: RsvpUpsertRequest) -> None:
 
 
 @app.post("/rsvp")
-def rsvp_upsert(req: RsvpUpsertRequest, background_tasks: BackgroundTasks):
+def rsvp_upsert(req: RsvpUpsertRequest, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Record that a user is going to an event (normalized, queryable).
     Side-effects: evaluates the badge engine + (when this is a NEW RSVP,
     not a re-confirm) notifies friends and, on a private event, the
     people planning or invited to it. See _fanout_rsvp_pushes."""
+    _assert_caller(req.google_id, session_user)
     is_new = not db.rsvp_exists(req.google_id, req.event_id)
     # Changing your mind: confirming an event you had declined puts you
     # back on the invitee list and clears the decline. Done here rather
@@ -3223,16 +3305,18 @@ def rsvp_upsert(req: RsvpUpsertRequest, background_tasks: BackgroundTasks):
 
 
 @app.delete("/rsvp/{event_id}")
-def rsvp_delete(event_id: str, google_id: str):
+def rsvp_delete(event_id: str, google_id: str, session_user: SessionUser = None):
     """Remove an RSVP for the given user/event pair."""
+    _assert_caller(google_id, session_user)
     db.delete_rsvp(google_id=google_id, event_id=event_id)
     return {"ok": True}
 
 
 @app.delete("/user/account")
-def delete_account(google_id: str):
+def delete_account(google_id: str, session_user: SessionUser = None):
     """Permanently delete all data for a user (Apple 5.1.1v / LGPD).
     The client signs out locally immediately after calling this."""
+    _assert_caller(google_id, session_user)
     if not google_id:
         raise HTTPException(status_code=400, detail="google_id required")
     deleted = db.delete_user_account(google_id)
@@ -3256,6 +3340,7 @@ def _avatar_image_id(google_id: str) -> str:
 async def upload_user_avatar(
     file: UploadFile = File(...),
     google_id: str = Form(...),
+    session_user: SessionUser = None,
 ):
     """Profile photo upload. Stored on the same /event-images/ volume as
     event covers; replacing overwrites the same file.
@@ -3265,6 +3350,7 @@ async def upload_user_avatar(
     `customPicture` and every picture reader prefers it
     (db.user_picture). The ?v= stamp busts caches on replace — the file
     name doesn't change."""
+    _assert_caller(google_id, session_user)
     if not google_id or db.get_user_state(google_id) is None:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     content = await file.read()
@@ -3288,6 +3374,8 @@ def badges_catalog():
     return {"badges": badges.catalog()}
 
 
+# The two routes below name a SUBJECT, not the caller: they are what a
+# profile shows about someone, so they stay open (no _assert_caller).
 @app.get("/user/{google_id}/badges")
 def user_badges(google_id: str):
     """Return the badges this user has earned, newest first."""
@@ -3305,12 +3393,13 @@ def user_stats(google_id: str):
 # ── Event attendees ────────────────────────────────────────
 
 @app.get("/events/{event_id}/attendees")
-def event_attendees(event_id: str, google_id: str):
+def event_attendees(event_id: str, google_id: str, session_user: SessionUser = None):
     """Return RSVPed attendees + named invitees still pending, both
     excluding the requester. Each user dict has google_id, name,
     picture, is_friend, friend_code. Pending applies only to private
     events (group_events table); for catalog events `pending` is empty.
     """
+    _assert_caller(google_id, session_user)
     attendees = db.get_event_attendees(event_id, google_id)
     pending = db.get_event_invitees_pending(event_id, google_id)
     # Attach friend_code so the frontend can call addFriend directly
@@ -3335,8 +3424,9 @@ class FriendAddRequest(BaseModel):
 
 
 @app.get("/friends/my-code")
-def friends_my_code(google_id: str):
+def friends_my_code(google_id: str, session_user: SessionUser = None):
     """Return the deterministic invite code for this user."""
+    _assert_caller(google_id, session_user)
     return {"code": db.get_friend_code(google_id)}
 
 
@@ -3359,7 +3449,7 @@ def friends_lookup(code: str):
 
 
 @app.get("/users/{target_google_id}/profile")
-def get_user_profile(target_google_id: str, google_id: str = ""):
+def get_user_profile(target_google_id: str, google_id: str = "", session_user: SessionUser = None):
     """Public-ish profile lookup for any user by google_id. Used by the
     "tap-to-add-friend" flow when the viewer sees someone in the app
     (event creator, attendee, member of a shared group) and wants to
@@ -3372,6 +3462,7 @@ def get_user_profile(target_google_id: str, google_id: str = ""):
     + picture come from the same user_states the friends-feed already
     surfaces. The friend_status check lets the frontend hide the
     "Adicionar" button when the relationship already exists."""
+    _assert_caller(google_id, session_user)  # google_id is the viewer; the target is the subject
     target_state = db.get_user_state(target_google_id) or {}
     if not target_state and not target_google_id:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -3443,7 +3534,7 @@ def _on_friendship_accepted(acceptor_id: str, requester_id: str,
 
 
 @app.post("/friends/add-by-id")
-def friends_add_by_id(req: AddFriendByIdRequest):
+def friends_add_by_id(req: AddFriendByIdRequest, session_user: SessionUser = None):
     """Send a friend request by the target's google_id. Used by the in-app
     tap-to-add surfaces (group member list, someone's profile, post-event
     "people you met"). Unlike invite codes these don't auto-accept: being
@@ -3452,6 +3543,7 @@ def friends_add_by_id(req: AddFriendByIdRequest):
 
     Returns {status}: 'requested' | 'accepted' (they had already asked
     you) | 'already_requested' | 'already_friends' | 'self' | 'not_found'."""
+    _assert_caller(req.google_id, session_user)
     result = db.request_friendship(req.google_id, req.target_google_id)
     status = result["status"]
     if status == "requested":
@@ -3468,9 +3560,10 @@ class FriendRequestAction(BaseModel):
 
 
 @app.get("/friends/requests")
-def friends_requests(google_id: str):
+def friends_requests(google_id: str, session_user: SessionUser = None):
     """Incoming requests to answer, plus the ids the user has asked (so
     member lists can show "Pedido enviado" instead of "+ amigo")."""
+    _assert_caller(google_id, session_user)
     return {
         "incoming": db.get_incoming_friend_requests(google_id),
         "outgoing_ids": db.get_outgoing_friend_request_ids(google_id),
@@ -3478,7 +3571,8 @@ def friends_requests(google_id: str):
 
 
 @app.post("/friends/requests/{from_google_id}/accept")
-def friends_request_accept(from_google_id: str, req: FriendRequestAction):
+def friends_request_accept(from_google_id: str, req: FriendRequestAction, session_user: SessionUser = None):
+    _assert_caller(req.google_id, session_user)
     if not db.accept_friendship(req.google_id, from_google_id):
         # Already accepted counts as success — a double tap or two devices.
         if db.friendship_status(req.google_id, from_google_id) == "friends":
@@ -3512,7 +3606,7 @@ def friends_request_accept(from_google_id: str, req: FriendRequestAction):
 # the count.
 
 @app.get("/notifications")
-def list_notifications(google_id: str = "", email: str = ""):
+def list_notifications(google_id: str = "", email: str = "", session_user: SessionUser = None):
     """The notification inbox: what's waiting on you, plus what's new.
 
     One call for the whole screen AND the badge, so the two can never
@@ -3521,6 +3615,8 @@ def list_notifications(google_id: str = "", email: str = ""):
     Curation items are included only for curators, and a non-curator
     gets silence rather than a 403 — same reasoning as /me/pending:
     "nothing pending" and "not yours to see" should look identical."""
+    _assert_caller(google_id, session_user)
+    email = _session_email(session_user, email)  # curator flag: the session's e-mail when there is one
     items: list[dict] = []
 
     if google_id:
@@ -3590,7 +3686,7 @@ def list_notifications(google_id: str = "", email: str = ""):
 
 
 @app.get("/me/pending")
-def me_pending(google_id: str = "", email: str = ""):
+def me_pending(google_id: str = "", email: str = "", session_user: SessionUser = None):
     """Everything waiting on this user — powers the Pendências block on Home.
 
     One call instead of three: the curation queues are curator-only and
@@ -3603,6 +3699,8 @@ def me_pending(google_id: str = "", email: str = ""):
     from /events/user-groups with the dates and RSVP state it needs to
     split pending from accepted.
     """
+    _assert_caller(google_id, session_user)
+    email = _session_email(session_user, email)  # curator flag: the session's e-mail when there is one
     out = {
         "friend_requests": db.get_incoming_friend_requests(google_id) if google_id else [],
         "curation": {"is_curator": False, "events": 0, "accounts": 0},
@@ -3617,17 +3715,19 @@ def me_pending(google_id: str = "", email: str = ""):
 
 
 @app.post("/friends/requests/{from_google_id}/decline")
-def friends_request_decline(from_google_id: str, req: FriendRequestAction):
+def friends_request_decline(from_google_id: str, req: FriendRequestAction, session_user: SessionUser = None):
+    _assert_caller(req.google_id, session_user)
     return {"ok": db.decline_friend_request(req.google_id, from_google_id)}
 
 
 @app.post("/friends/add")
-def friends_add(req: FriendAddRequest):
+def friends_add(req: FriendAddRequest, session_user: SessionUser = None):
     """
     Attempt to add a friendship using an invite code.
     Returns status 'ok' | 'self' | 'already_friends' | 'not_found'
     and, on success, the friend's display name.
     """
+    _assert_caller(req.google_id, session_user)
     result = db.upsert_friendship(
         requester_google_id=req.google_id,
         code=req.code,
@@ -3655,15 +3755,17 @@ def friends_add(req: FriendAddRequest):
 
 
 @app.get("/friends")
-def friends_list(google_id: str):
+def friends_list(google_id: str, session_user: SessionUser = None):
     """Return all accepted friends with their profile info."""
+    _assert_caller(google_id, session_user)
     friends = db.get_friends(google_id)
     return {"friends": friends}
 
 
 @app.delete("/friends/{friend_google_id}")
-def remove_friend(friend_google_id: str, google_id: str):
+def remove_friend(friend_google_id: str, google_id: str, session_user: SessionUser = None):
     """Remove a friendship. Either side can call this."""
+    _assert_caller(google_id, session_user)
     if not google_id or not friend_google_id:
         raise HTTPException(status_code=400, detail="google_id required")
     ok = db.remove_friendship(google_id, friend_google_id)
@@ -3671,12 +3773,13 @@ def remove_friend(friend_google_id: str, google_id: str):
 
 
 @app.get("/friends/feed")
-def friends_feed(google_id: str):
+def friends_feed(google_id: str, session_user: SessionUser = None):
     """
     Return upcoming events that accepted friends have RSVPed to,
     grouped by event, each with a list of friends going.
     Only includes events with event_date >= today.
     """
+    _assert_caller(google_id, session_user)
     friends = db.get_friends(google_id)
     if not friends:
         return {"events": []}
@@ -4198,9 +4301,10 @@ class ClientErrorRequest(BaseModel):
 
 
 @app.post("/errors/client", status_code=200)
-def report_client_error(req: ClientErrorRequest):
+def report_client_error(req: ClientErrorRequest, session_user: SessionUser = None):
     """Receive frontend error reports. Logged server-side for monitoring.
     Never fails to the client — errors about errors shouldn't cascade."""
+    _assert_caller(req.google_id, session_user)
     try:
         log.warning(
             f"CLIENT ERROR [{req.error_type}] "
@@ -4568,24 +4672,25 @@ class ChannelFollow(BaseModel):
 
 
 @app.get("/channels")
-def list_channels(google_id: str = ""):
+def list_channels(google_id: str = "", session_user: SessionUser = None):
     """Every channel, with follower count and whether the caller follows.
 
     Open to anyone, signed in or not. A group is invisible without an
     invite code; a channel that isn't findable can't be opted into, and
     opt-in is the entire model — nobody is ever enrolled automatically."""
+    _assert_caller(google_id, session_user)
     return {"channels": db.list_channels(google_id)}
 
 
 @app.post("/admin/channels")
-def create_channel(req: ChannelCreate):
+def create_channel(req: ChannelCreate, session_user: SessionUser = None):
     """Create an auê channel. Founder-only.
 
     User-created channels are deferred on purpose (docs/NEXT.md): a
     user's channel would be private, which is what a group already is,
     and an empty channel with an audience is the same stall that groups
     already measure. Curated first, prove it retains, then open it up."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     name = req.name.strip()[:80]
     if not name:
         raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
@@ -4619,7 +4724,7 @@ class ChannelNotify(BaseModel):
 
 
 @app.get("/channels/feed")
-def channel_feed(google_id: str = "", limit: int = 400):
+def channel_feed(google_id: str = "", limit: int = 400, session_user: SessionUser = None):
     """Upcoming events from the channels this person follows. Eventos
     reads it as a lookup — which catalog rows get the "Dos teus canais"
     section and the channel's name — not as a list to render.
@@ -4642,6 +4747,7 @@ def channel_feed(google_id: str = "", limit: int = 400):
     exactly what it was. Following three channels shouldn't bury the
     city under them.
     """
+    _assert_caller(google_id, session_user)
     if not google_id:
         return {"events": []}
     rows = db.get_followed_channel_events(google_id, limit=min(limit, 1000))
@@ -4657,7 +4763,7 @@ def channel_feed(google_id: str = "", limit: int = 400):
 
 
 @app.get("/channels/{group_id}")
-def get_channel(group_id: str, google_id: str = ""):
+def get_channel(group_id: str, google_id: str = "", session_user: SessionUser = None):
     """Everything the channel screen needs, in one call.
 
     Separate from GET /groups/{id} on purpose. That endpoint answers
@@ -4668,6 +4774,7 @@ def get_channel(group_id: str, google_id: str = ""):
 
     Open to anyone, signed in or not: a channel that can't be looked at
     before following makes the follow a blind purchase."""
+    _assert_caller(google_id, session_user)
     channel = db.get_group(group_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
@@ -4767,13 +4874,16 @@ class ChannelCuratorAdd(BaseModel):
     google_id: str
 
 
-def _require_channel_owner(group_id: str, email: str) -> str:
+def _require_channel_owner(group_id: str, session_user: Optional[str]) -> str:
     """Only the owner appoints curators — auê on a public channel, the
     creator on a private one.
 
     Not curators themselves: a curator who can appoint curators makes
     the roster ungovernable, and there is exactly one person who owns
     that decision for any given channel."""
+    email = _session_email(session_user)
+    if not email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado.")
     google_id = db.get_user_id_by_email(email)
     owner = db.channel_owner(group_id)
     if google_id and owner and google_id == owner:
@@ -4815,11 +4925,11 @@ def _can_curate_channel(group_id: str, email: str) -> bool:
 
 
 @app.put("/channels/{group_id}")
-def update_channel(group_id: str, req: ChannelUpdate):
+def update_channel(group_id: str, req: ChannelUpdate, session_user: SessionUser = None):
     """Rename a channel or rewrite its description."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    if not _can_curate_channel(group_id, req.requesting_email):
+    if not _can_curate_channel(group_id, _session_email(session_user)):
         raise HTTPException(status_code=403, detail="Só a curadoria desse canal pode editar")
     name = (req.name or "").strip()[:80] if req.name is not None else None
     if req.name is not None and not name:
@@ -4842,23 +4952,24 @@ def update_channel(group_id: str, req: ChannelUpdate):
 
 
 @app.get("/channels/{group_id}/curators")
-def list_channel_curators(group_id: str, requesting_email: str = ""):
+def list_channel_curators(group_id: str, requesting_email: str = "", session_user: SessionUser = None):
     """Who runs this channel. Founder-only — a follower has no reason to
     see the roster, and it's a list of real people."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_channel_owner(group_id, requesting_email)
+    _require_channel_owner(group_id, session_user)
     return {"curators": db.list_channel_curators(group_id)}
 
 
 @app.post("/channels/{group_id}/curators")
-def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
+def add_channel_curator(group_id: str, req: ChannelCuratorAdd, session_user: SessionUser = None):
     """Hand someone this channel. Founder-only: a curator being able to
     appoint more curators makes the roster ungovernable, and there's one
     person who owns that decision."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_channel_owner(group_id, req.requesting_email)
+    _require_channel_owner(group_id, session_user)
+    # req.google_id is who gets appointed, not the caller — no _assert_caller.
     if not db.get_user_profile(req.google_id):
         raise HTTPException(status_code=404, detail="Pessoa não encontrada")
     db.add_channel_curator(group_id, req.google_id)
@@ -4866,12 +4977,12 @@ def add_channel_curator(group_id: str, req: ChannelCuratorAdd):
 
 
 @app.delete("/channels/{group_id}/curators/{google_id}")
-def remove_channel_curator(group_id: str, google_id: str, requesting_email: str = ""):
+def remove_channel_curator(group_id: str, google_id: str, requesting_email: str = "", session_user: SessionUser = None):
     """Step someone down. Only removes a 'curator' row, so auê's own
     ownership of the channel survives this being called on it."""
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
-    _require_channel_owner(group_id, requesting_email)
+    _require_channel_owner(group_id, session_user)
     db.remove_channel_curator(group_id, google_id)
     return {"ok": True, "curators": db.list_channel_curators(group_id)}
 
@@ -4882,8 +4993,9 @@ class ChannelPrioritize(BaseModel):
 
 
 @app.put("/channels/{group_id}/prioritize")
-def set_channel_prioritize(group_id: str, req: ChannelPrioritize):
+def set_channel_prioritize(group_id: str, req: ChannelPrioritize, session_user: SessionUser = None):
     """Whether this channel's events surface in the band above Eventos."""
+    _assert_caller(req.google_id, session_user)
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
@@ -4894,11 +5006,12 @@ def set_channel_prioritize(group_id: str, req: ChannelPrioritize):
 
 
 @app.put("/channels/{group_id}/notify")
-def set_channel_notify(group_id: str, req: ChannelNotify):
+def set_channel_notify(group_id: str, req: ChannelNotify, session_user: SessionUser = None):
     """Turn a channel's pushes on or off, for one follower.
 
     Only a follower has a preference to set — auê's own admin row on its
     channel is ownership, not a subscription."""
+    _assert_caller(req.google_id, session_user)
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
@@ -4909,8 +5022,9 @@ def set_channel_notify(group_id: str, req: ChannelNotify):
 
 
 @app.post("/channels/{group_id}/follow")
-def follow_channel(group_id: str, req: ChannelFollow):
+def follow_channel(group_id: str, req: ChannelFollow, session_user: SessionUser = None):
     """Follow a channel. Idempotent: the button can be double-tapped."""
+    _assert_caller(req.google_id, session_user)
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
@@ -4920,9 +5034,10 @@ def follow_channel(group_id: str, req: ChannelFollow):
 
 
 @app.delete("/channels/{group_id}/follow")
-def unfollow_channel(group_id: str, google_id: str = ""):
+def unfollow_channel(group_id: str, google_id: str = "", session_user: SessionUser = None):
     """Stop following. Only removes a 'follower' row, so auê's own admin
     membership on its channel can't be deleted by an unfollow."""
+    _assert_caller(google_id, session_user)
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     db.unfollow_channel(group_id, google_id)
@@ -4930,8 +5045,9 @@ def unfollow_channel(group_id: str, google_id: str = ""):
 
 
 @app.post("/groups")
-def create_group(req: GroupCreateRequest):
+def create_group(req: GroupCreateRequest, session_user: SessionUser = None):
     """Create a new group. Creator becomes admin automatically."""
+    _assert_caller(req.google_id, session_user)
     if not req.name.strip():
         raise HTTPException(status_code=400, detail="Group name is required")
     group = db.create_group(
@@ -4945,8 +5061,9 @@ def create_group(req: GroupCreateRequest):
 
 
 @app.get("/groups")
-def list_groups(google_id: str):
+def list_groups(google_id: str, session_user: SessionUser = None):
     """List all groups a user belongs to."""
+    _assert_caller(google_id, session_user)
     groups = db.get_groups_for_user(google_id)
     # Attach next upcoming event for each group — gated by the viewer's
     # invitee status, so a group member who wasn't invited to a specific
@@ -4960,8 +5077,9 @@ def list_groups(google_id: str):
 
 
 @app.get("/groups/{group_id}")
-def get_group(group_id: str, google_id: str):
+def get_group(group_id: str, google_id: str, session_user: SessionUser = None):
     """Get group detail with members and events."""
+    _assert_caller(google_id, session_user)
     group = db.get_group(group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -5022,12 +5140,13 @@ def get_group(group_id: str, google_id: str):
 
 
 @app.put("/groups/{group_id}")
-def update_group(group_id: str, req: GroupUpdateRequest):
+def update_group(group_id: str, req: GroupUpdateRequest, session_user: SessionUser = None):
     """Rename a channel or rewrite its description.
 
     Owner or curator. Curators used to exist only on auê's channels,
     so a private one had exactly one person who could change anything —
     which is the gap the unification closes."""
+    _assert_caller(req.google_id, session_user)
     if not db.is_channel_curator(group_id, req.google_id):
         raise HTTPException(
             status_code=403,
@@ -5038,10 +5157,11 @@ def update_group(group_id: str, req: GroupUpdateRequest):
 
 
 @app.delete("/groups/{group_id}")
-def delete_group(group_id: str, google_id: str):
+def delete_group(group_id: str, google_id: str, session_user: SessionUser = None):
     """Delete a group. Requires admin role on the group — any admin can
     delete, not just the original creator. Promote/demote happens via the
     /members/{id}/role endpoint, so the admin set is intentional."""
+    _assert_caller(google_id, session_user)
     group = db.get_group(group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
@@ -5052,7 +5172,7 @@ def delete_group(group_id: str, google_id: str):
 
 
 @app.delete("/admin/channels/{group_id}")
-def admin_delete_channel(group_id: str, requesting_email: str):
+def admin_delete_channel(group_id: str, requesting_email: str, session_user: SessionUser = None):
     """Delete an auê channel with everything that only exists because of
     it. Founder-only, and only for public channels: a private crew is
     its members' and is deleted by its own admin through /groups/{id}.
@@ -5061,55 +5181,55 @@ def admin_delete_channel(group_id: str, requesting_email: str):
     than corrected in place — every kind of leftover a channel can
     accumulate (orphaned forks, stale invitee lists, curator RSVPs) has
     now shown up once as a production bug."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if not db.is_public_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     return {"ok": True, **db.delete_group(group_id)}
 
 
 @app.post("/admin/channels/{group_id}/merge-into/{target_id}")
-def admin_merge_channel(group_id: str, target_id: str, requesting_email: str):
+def admin_merge_channel(group_id: str, target_id: str, requesting_email: str, session_user: SessionUser = None):
     """Fold one auê channel into another and delete the first. Followers,
     curators, events and exclusions carry over. Founder-only, public
     channels only — used by the 23 Sep reshape (Balada → Eletrônica,
     MPB → MPB & Jazz), and for whatever the catalog says next."""
-    _require_founder(requesting_email)
+    who = _require_founder(session_user)
     if not (db.is_public_channel(group_id) and db.is_public_channel(target_id)):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     try:
         result = db.merge_channel_into(group_id, target_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    log.info(f"Channel {group_id} merged into {target_id} by {requesting_email}: {result}")
+    log.info(f"Channel {group_id} merged into {target_id} by {who}: {result}")
     return {"ok": True, **result, "channel": db.get_group(target_id)}
 
 
 @app.post("/admin/channels/fill")
-def admin_fill_channels(requesting_email: str = ""):
+def admin_fill_channels(requesting_email: str = "", session_user: SessionUser = None):
     """Run the rule fill now, for every rule channel — the same pass the
     scrape runs, without waiting for it. Founder-only because it writes
     into public feeds. Returns forks added per channel."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     added = db.route_catalog_events_to_channels()
     names = {c["id"]: c["name"] for c in db.list_channels()}
     return {"added": {names.get(gid, gid): n for gid, n in added.items()}}
 
 
 @app.post("/admin/channels/dedupe")
-def admin_dedupe_channels(requesting_email: str = ""):
+def admin_dedupe_channels(requesting_email: str = "", session_user: SessionUser = None):
     """Remove extra forks naming the same night inside each public
     channel — see db.dedupe_channel_forks. Founder-only. One-off after
     the fill started skipping nights a channel already names; harmless
     to run again."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return {"removed": db.dedupe_channel_forks()}
 
 
 @app.post("/admin/channels/rebalance")
-def admin_rebalance_channels(requesting_email: str = ""):
+def admin_rebalance_channels(requesting_email: str = "", session_user: SessionUser = None):
     """Move misfiled forks between rule channels — see
     db.rebalance_rule_channels. Founder-only."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     moves = db.rebalance_rule_channels()
     names = {c["id"]: c["name"] for c in db.list_channels()}
     return {
@@ -5142,13 +5262,14 @@ def get_group_by_invite(invite_code: str):
 
 
 @app.post("/groups/join")
-def join_group(req: GroupJoinRequest):
+def join_group(req: GroupJoinRequest, session_user: SessionUser = None):
     """Join a group via invite code.
 
     Channels are excluded even though they carry an invite_code column
     (every row does). You follow a channel from the open list; there is
     no code to pass around, and honouring one here would create a second
     way in that no UI offers and no guard covers."""
+    _assert_caller(req.google_id, session_user)
     group = db.get_group_by_invite_code(req.invite_code)
     if not group:
         return {"status": "not_found"}
@@ -5162,8 +5283,9 @@ def join_group(req: GroupJoinRequest):
 
 
 @app.delete("/groups/{group_id}/members/{member_google_id}")
-def remove_group_member(group_id: str, member_google_id: str, google_id: str):
+def remove_group_member(group_id: str, member_google_id: str, google_id: str, session_user: SessionUser = None):
     """Remove a member from a group (admin) or leave (self)."""
+    _assert_caller(google_id, session_user)
     if google_id != member_google_id:
         role = db.get_group_member_role(group_id, google_id)
         if role != "admin":
@@ -5178,11 +5300,12 @@ class GroupMemberRoleUpdate(BaseModel):
 
 
 @app.put("/groups/{group_id}/members/{member_google_id}/role")
-def update_group_member_role(group_id: str, member_google_id: str, req: GroupMemberRoleUpdate):
+def update_group_member_role(group_id: str, member_google_id: str, req: GroupMemberRoleUpdate, session_user: SessionUser = None):
     """Promote a member to admin or demote an admin back to member.
     Admin-only. Refuses to demote the last remaining admin so the group
     never ends up with zero admins (otherwise no-one could invite, edit
     settings, or eject a bad actor)."""
+    _assert_caller(req.google_id, session_user)
     if req.role not in ("admin", "member"):
         raise HTTPException(status_code=400, detail="role must be 'admin' or 'member'")
     actor_role = db.get_group_member_role(group_id, req.google_id)
@@ -5203,7 +5326,7 @@ def update_group_member_role(group_id: str, member_google_id: str, req: GroupMem
 
 
 @app.delete("/groups/{group_id}/members/{member_google_id}")
-def remove_group_member(group_id: str, member_google_id: str, google_id: str):
+def remove_group_member(group_id: str, member_google_id: str, google_id: str, session_user: SessionUser = None):
     """Kick a member out of a group. Admin-only. Refuses to remove the
     last admin (would leave the group ungovernable). A member kicking
     themselves out should use POST /groups/{id}/leave instead — this
@@ -5215,6 +5338,7 @@ def remove_group_member(group_id: str, member_google_id: str, google_id: str):
     notifications from the group going forward. That's the gentlest
     semantic for "I removed you from my group" — drama-free for already
     confirmed plans, prevents future ones."""
+    _assert_caller(google_id, session_user)
     actor_role = db.get_group_member_role(group_id, google_id)
     if actor_role != "admin":
         raise HTTPException(status_code=403, detail="Apenas admins podem remover membros")
@@ -5231,11 +5355,12 @@ def remove_group_member(group_id: str, member_google_id: str, google_id: str):
 
 
 @app.get("/groups/{group_id}/stats")
-def group_stats(group_id: str, google_id: str):
+def group_stats(group_id: str, google_id: str, session_user: SessionUser = None):
     """Mural stats for a group — event totals, RSVP rollup, top organizer.
     Member-only (private groups never leak counts; public-group stats only
     surface to members so the founder/admins keep some bargaining
     information)."""
+    _assert_caller(google_id, session_user)
     role = db.get_group_member_role(group_id, google_id)
     if role is None:
         raise HTTPException(status_code=403, detail="Apenas membros veem as estatísticas do grupo")
@@ -5252,13 +5377,14 @@ def group_stats(group_id: str, google_id: str):
 # (status='rejected') as a permanent block on re-requests.
 
 @app.post("/events/{event_id}/request-invite")
-def request_event_invite(event_id: str, google_id: str, background_tasks: BackgroundTasks):
+def request_event_invite(event_id: str, google_id: str, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Ask the event's creator + co-hosts to be added as an invitee.
     Rate-limited to 5 per hour per requesting user across all events.
     Idempotent at the (event, user) level — calling again on a pending
     or rejected request returns the existing status. Notifications to
     creator/co-hosts are bundled via a tag so iOS replaces previous
     pushes for the same event with the latest count."""
+    _assert_caller(google_id, session_user)
     if not google_id:
         raise HTTPException(status_code=400, detail="google_id obrigatório")
     event = db.get_group_event(event_id)
@@ -5317,10 +5443,11 @@ def request_event_invite(event_id: str, google_id: str, background_tasks: Backgr
 
 
 @app.get("/events/{event_id}/invite-requests")
-def list_invite_requests(event_id: str, google_id: str):
+def list_invite_requests(event_id: str, google_id: str, session_user: SessionUser = None):
     """List pending invite requests for an event. Creator/co-host only.
     The frontend renders these as "Pedidos pendentes" rows on the hero
     with inline Aceitar/Recusar buttons."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -5335,10 +5462,12 @@ def list_invite_requests(event_id: str, google_id: str):
 def accept_invite_request(
     event_id: str, requester_google_id: str, google_id: str,
     background_tasks: BackgroundTasks,
+    session_user: SessionUser = None,
 ):
     """Approve a pending request. Adds the requester to extra_invitee_ids,
     marks the request accepted, and pushes "Te convidaram pra ..." to the
     requester so they know to RSVP."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -5377,9 +5506,10 @@ def accept_invite_request(
 
 
 @app.delete("/events/{event_id}/invite-requests/{requester_google_id}")
-def reject_invite_request(event_id: str, requester_google_id: str, google_id: str):
+def reject_invite_request(event_id: str, requester_google_id: str, google_id: str, session_user: SessionUser = None):
     """Reject a pending request. The row stays (status='rejected') so
     the same user can't re-request the same event."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -5392,7 +5522,7 @@ def reject_invite_request(event_id: str, requester_google_id: str, google_id: st
 
 
 @app.delete("/events/{event_id}/invitees/{invitee_google_id}")
-def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str):
+def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str, session_user: SessionUser = None):
     """Remove someone from an event's invitee list. Allowed for the
     event's creator OR any co-host (they share the invite privilege).
     Distinct from POST /events/{event_id}/decline (which a user calls
@@ -5403,6 +5533,7 @@ def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str):
     simple: removing from invite list = "you're no longer expected";
     if they had RSVP'd they'd see the event vanish from group fetches
     on next refresh anyway."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -5422,7 +5553,7 @@ def remove_event_invitee(event_id: str, invitee_google_id: str, google_id: str):
 
 
 @app.delete("/events/{event_id}/groups/{group_id}")
-def unlink_event_group(event_id: str, group_id: str, google_id: str):
+def unlink_event_group(event_id: str, group_id: str, google_id: str, session_user: SessionUser = None):
     """Remove a group link from a user-owned event. The event itself
     isn't deleted — only the link to this group. Allowed for the
     event's creator or any co-host. Returns the updated event row.
@@ -5432,6 +5563,7 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
     a dead end that told you to go delete the event inside the group.
 
     No-op if the group wasn't linked."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         event = db.find_group_event_by_source(group_id, event_id)
@@ -5456,7 +5588,7 @@ def unlink_event_group(event_id: str, group_id: str, google_id: str):
 
 
 @app.get("/catalog-events/{source_event_id}/groups")
-def get_groups_with_source(source_event_id: str, google_id: str):
+def get_groups_with_source(source_event_id: str, google_id: str, session_user: SessionUser = None):
     """Which channels already hold a fork of this event. Drives the
     "Adicionado · toque pra remover" state in AddToGroupSheet; without
     it the only way to know is to open each channel and look.
@@ -5479,6 +5611,7 @@ def get_groups_with_source(source_event_id: str, google_id: str):
     deliberate: which events a public channel holds is public — you can
     open it and read them — and the sheet renders rows only for the
     channels it already listed, so extra ids here surface nothing."""
+    _assert_caller(google_id, session_user)
     if not google_id or not source_event_id:
         return {"linked_group_ids": []}
     linked: list[str] = []
@@ -5508,7 +5641,7 @@ def get_groups_with_source(source_event_id: str, google_id: str):
 
 @app.post("/groups/{group_id}/events")
 def create_group_event(group_id: str, req: GroupEventCreateRequest,
-                       background_tasks: BackgroundTasks):
+                       background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Create an event tagged to a group. Any member can create.
 
     Visibility is the unified rule (creator OR in invitee list); the
@@ -5523,6 +5656,7 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
 
     Pushes go to everyone in the resolved invitee list — outsiders
     included — so an invite always surfaces as a notification."""
+    _assert_caller(req.google_id, session_user)
     # A channel is curated: following it must not grant the right to
     # publish into it. Without this, "seguir" would be an open write to
     # a feed every other follower sees.
@@ -5883,10 +6017,11 @@ def create_group_event(group_id: str, req: GroupEventCreateRequest,
 
 
 @app.get("/groups/{group_id}/events")
-def list_group_events(group_id: str, google_id: str = ""):
+def list_group_events(group_id: str, google_id: str = "", session_user: SessionUser = None):
     """List events tagged with this group that the viewer is invited
     to. Non-authenticated callers get an empty list (no public-event
     surface anymore — event publicness was removed in April 2026)."""
+    _assert_caller(google_id, session_user)
     if not google_id:
         return {"events": []}
     events = db.get_group_events(group_id, viewer_google_id=google_id)
@@ -5894,9 +6029,10 @@ def list_group_events(group_id: str, google_id: str = ""):
 
 
 @app.delete("/groups/{group_id}/events/{event_id}")
-def delete_group_event(group_id: str, event_id: str, google_id: str):
+def delete_group_event(group_id: str, event_id: str, google_id: str, session_user: SessionUser = None):
     """Delete a group event. Admins, the creator, or any co-host can
     delete — co-hosts share the creator's destructive privilege."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event or event["group_id"] != group_id:
         raise HTTPException(status_code=404, detail="Event not found in this group")
@@ -5925,7 +6061,7 @@ def delete_group_event(group_id: str, event_id: str, google_id: str):
 
 
 @app.post("/events/{event_id}/decline")
-def decline_event(event_id: str, google_id: str):
+def decline_event(event_id: str, google_id: str, session_user: SessionUser = None):
     """"Não vou" — take the calling user off the invitee list, drop their
     RSVP and record the decline so the host sees it (see
     db.decline_event_invite). Called from the event hero and from the
@@ -5934,6 +6070,7 @@ def decline_event(event_id: str, google_id: str):
     No-op (still 200) if the user wasn't on the invitee list — the
     frontend uses this defensively right after a cancel-RSVP and we
     don't want to surface "already gone" as an error."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -5966,7 +6103,7 @@ _IG_LINK_RE = re.compile(r"https://(www\.)?instagram\.com/")
 
 
 @app.patch("/events/{event_id}")
-def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tasks: BackgroundTasks):
+def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Edit an event's content fields. Allowed for the event's creator,
     any co-host, or the founder on an event they can see
     (_can_edit_group_event). Works for both group-tagged events and
@@ -5980,6 +6117,7 @@ def edit_group_event(event_id: str, req: UpdateGroupEventRequest, background_tas
     Returns the raw row (`event`) and the same shape GET /events/{id}
     serves (`view`), so the screen can mirror the link and the cover
     without a second request."""
+    _assert_caller(req.google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -6067,7 +6205,7 @@ class AddInviteesRequest(BaseModel):
 
 
 @app.post("/events/{event_id}/invitees")
-def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks: BackgroundTasks):
+def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Append google_ids to an event's invitee list post-creation.
     Allowed for the event's creator OR any co-host — co-hosts share
     the invite privilege by design.
@@ -6078,6 +6216,7 @@ def add_event_invitees(event_id: str, req: AddInviteesRequest, background_tasks:
     just-added invitees in a background task — mirrors the create-time
     flow so an invite always feels the same regardless of when it
     happened."""
+    _assert_caller(req.google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -6135,7 +6274,7 @@ class AddCoHostRequest(BaseModel):
 
 
 @app.post("/events/{event_id}/co-hosts")
-def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: BackgroundTasks):
+def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Promote an invitee to co-host. Creator-only — co-hosts share the
     creator's invite + delete privileges, so the privilege of *granting*
     that power stays with the framer of the plan.
@@ -6143,6 +6282,7 @@ def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: Ba
     The promoted user must already be on extra_invitee_ids (you can't
     co-host someone who isn't even invited). After promotion, fires a
     push: 'Ciro te promoveu a co-organizador de…'."""
+    _assert_caller(req.google_id, session_user)
     if not req.co_host_google_id or str(req.co_host_google_id) == req.google_id:
         raise HTTPException(status_code=400, detail="co_host_google_id inválido")
     event = db.get_group_event(event_id)
@@ -6181,9 +6321,10 @@ def add_event_co_host(event_id: str, req: AddCoHostRequest, background_tasks: Ba
 
 
 @app.delete("/events/{event_id}/co-hosts/{co_host_google_id}")
-def remove_event_co_host(event_id: str, co_host_google_id: str, google_id: str):
+def remove_event_co_host(event_id: str, co_host_google_id: str, google_id: str, session_user: SessionUser = None):
     """Remove a co-host. Creator can demote anyone; a co-host can
     self-demote (no creator approval needed for stepping down)."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -6208,6 +6349,7 @@ async def upload_event_image(
     event_id: str,
     file: UploadFile = File(...),
     google_id: str = Form(...),
+    session_user: SessionUser = None,
 ):
     """Upload (or replace) the cover image for a private event. Allowed
     for the creator, any co-host, or the founder — the edit role set
@@ -6217,6 +6359,7 @@ async def upload_event_image(
     filename convention (`<event_id>.<ext>`) so a replace overwrites
     cleanly. Validates content-type (jpg/png/webp/gif) and size (5MB
     via image_store, 8MB hard cap here as defense-in-depth)."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -6233,8 +6376,9 @@ async def upload_event_image(
 
 
 @app.delete("/events/{event_id}/image")
-def delete_event_image(event_id: str, google_id: str):
+def delete_event_image(event_id: str, google_id: str, session_user: SessionUser = None):
     """Clear the cover image. Same auth as upload."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -6246,7 +6390,7 @@ def delete_event_image(event_id: str, google_id: str):
 
 
 @app.post("/events/private")
-def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: BackgroundTasks):
+def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Create a 'personal plan' — an event tied to hand-picked invitees,
     no group attached. Side-effects:
       - Auto-RSVPs the creator (per product decision: making the plan
@@ -6263,6 +6407,7 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
     The 'add a whole group's members' affordance is a frontend
     convenience — backend just receives the expanded invitee list.
     """
+    _assert_caller(req.google_id, session_user)
     if not req.google_id:
         raise HTTPException(status_code=401, detail="Login required")
     name = (req.name or "").strip()
@@ -6350,9 +6495,10 @@ def create_personal_plan(req: PersonalPlanCreateRequest, background_tasks: Backg
 
 
 @app.delete("/events/private/{event_id}")
-def delete_personal_plan(event_id: str, google_id: str):
+def delete_personal_plan(event_id: str, google_id: str, session_user: SessionUser = None):
     """The creator or any co-host can delete the plan. Co-hosts share
     the destructive privilege."""
+    _assert_caller(google_id, session_user)
     event = db.get_group_event(event_id)
     if not event or event.get("group_id"):
         raise HTTPException(status_code=404, detail="Plano não encontrado")
@@ -6471,12 +6617,17 @@ class FeedbackSubmit(BaseModel):
     google_id: str = ""
 
 
-def _require_curator(email: str) -> str:
+# The role helpers take the SESSION user, never an e-mail from the request:
+# the roles are granted by e-mail, but the e-mail comes from the users row
+# the session points at. The `requesting_email` parameters the routes still
+# accept are ignored — they stay only so old clients don't 422.
+
+def _require_curator(session_user: Optional[str]) -> str:
     """
-    Verify the requesting email belongs to a curator. Returns the
-    normalized email on success. Raises 401/403 otherwise.
+    Verify the caller is a curator. Returns the normalized email on
+    success. Raises 401/403 otherwise.
     """
-    email = (email or "").strip().lower()
+    email = _session_email(session_user)
     if not email:
         raise HTTPException(status_code=401, detail="É preciso estar logado para gerenciar contas.")
     if not db.is_curator(email):
@@ -6487,8 +6638,8 @@ def _require_curator(email: str) -> str:
     return email
 
 
-def _require_founder(email: str) -> str:
-    email = (email or "").strip().lower()
+def _require_founder(session_user: Optional[str]) -> str:
+    email = _session_email(session_user)
     if not email:
         raise HTTPException(status_code=401, detail="É preciso estar logado.")
     if not db.is_founder(email):
@@ -6498,8 +6649,8 @@ def _require_founder(email: str) -> str:
     return email
 
 
-def _require_feedbacker(email: str) -> str:
-    email = (email or "").strip().lower()
+def _require_feedbacker(session_user: Optional[str]) -> str:
+    email = _session_email(session_user)
     if not email:
         raise HTTPException(status_code=401, detail="É preciso estar logado.")
     if not db.is_feedbacker(email):
@@ -6551,7 +6702,7 @@ def _seed_default_ig_accounts() -> None:
 
 
 @app.get("/admin/ig-accounts")
-def admin_list_ig_accounts(requesting_email: str = ""):
+def admin_list_ig_accounts(requesting_email: str = "", session_user: SessionUser = None):
     """
     List tracked Instagram accounts. Open to any authenticated user — even
     non-curators can see the catalog (transparency makes the system trusted).
@@ -6581,14 +6732,14 @@ def admin_list_ig_accounts(requesting_email: str = ""):
     ))
     return {
         "accounts": enriched,
-        "is_curator": db.is_curator(requesting_email),
-        "is_founder": db.is_founder(requesting_email),
+        "is_curator": db.is_curator(_session_email(session_user)),
+        "is_founder": db.is_founder(_session_email(session_user)),
     }
 
 
 @app.post("/admin/ig-accounts")
-def admin_upsert_ig_account(req: IgAccountUpsert):
-    email = _require_curator(req.requesting_email)
+def admin_upsert_ig_account(req: IgAccountUpsert, session_user: SessionUser = None):
+    email = _require_curator(session_user)
     handle = req.handle.strip().lstrip("@")
     if not re.match(r"^[A-Za-z0-9._]{1,30}$", handle):
         raise HTTPException(status_code=400, detail="Handle inválido (use letras, números, '.' ou '_')")
@@ -6602,8 +6753,8 @@ def admin_upsert_ig_account(req: IgAccountUpsert):
 
 
 @app.delete("/admin/ig-accounts/{handle}")
-def admin_delete_ig_account(handle: str, requesting_email: str = ""):
-    _require_curator(requesting_email)
+def admin_delete_ig_account(handle: str, requesting_email: str = "", session_user: SessionUser = None):
+    _require_curator(session_user)
     ok = db.delete_ig_account(handle)
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
@@ -6628,9 +6779,10 @@ class AccountSuggestion(BaseModel):
 
 
 @app.post("/accounts/requests")
-def suggest_account(req: AccountSuggestion):
+def suggest_account(req: AccountSuggestion, session_user: SessionUser = None):
     """Returns {status, handle}: 'requested' | 'already_requested' (someone
     already suggested it — counted, not re-queued) | 'already_tracked'."""
+    _assert_caller(req.google_id, session_user)
     handle = req.handle.strip().lstrip("@").lower()
     if not _IG_HANDLE_RE.match(handle):
         raise HTTPException(status_code=400, detail="Handle inválido (use letras, números, '.' ou '_')")
@@ -6689,19 +6841,19 @@ def _already_resolved(request_id: int) -> dict:
 
 
 @app.get("/admin/account-requests")
-def admin_list_account_requests(requesting_email: str = "", status: str = "review"):
-    _require_curator(requesting_email)
+def admin_list_account_requests(requesting_email: str = "", status: str = "review", session_user: SessionUser = None):
+    _require_curator(session_user)
     if status not in ("review", "approved", "rejected", "all"):
         raise HTTPException(status_code=400, detail="status inválido")
     return {"requests": [_account_request_out(r) for r in db.list_account_requests(status)]}
 
 
 @app.post("/admin/account-requests/{request_id}/approve")
-def admin_approve_account_request(request_id: int, req: AccountRequestDecision):
+def admin_approve_account_request(request_id: int, req: AccountRequestDecision, session_user: SessionUser = None):
     """Claim the request, then start tracking the account. If adding the
     account fails the claim is undone, so the request doesn't end up
     'approved' with nothing tracked."""
-    email = _require_curator(req.requesting_email)
+    email = _require_curator(session_user)
     request = db.get_account_request(request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Sugestão não encontrada")
@@ -6738,10 +6890,10 @@ def admin_approve_account_request(request_id: int, req: AccountRequestDecision):
 
 
 @app.post("/admin/account-requests/{request_id}/reject")
-def admin_reject_account_request(request_id: int, req: AccountRequestDecision):
+def admin_reject_account_request(request_id: int, req: AccountRequestDecision, session_user: SessionUser = None):
     """Silent for the person who suggested it — same as declining a
     friend request."""
-    email = _require_curator(req.requesting_email)
+    email = _require_curator(session_user)
     if not db.get_account_request(request_id):
         raise HTTPException(status_code=404, detail="Sugestão não encontrada")
     if not db.resolve_account_request(request_id, "rejected", email):
@@ -6751,7 +6903,7 @@ def admin_reject_account_request(request_id: int, req: AccountRequestDecision):
 
 @app.post("/admin/events/backfill-genre")
 def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
-                         dry_run: bool = False):
+                         dry_run: bool = False, session_user: SessionUser = None):
     """Tag upcoming events that have no genre yet.
 
     Genre ships per event from the enrichment pass, but events scraped
@@ -6774,7 +6926,7 @@ def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
     machine fill shouldn't be frozen against a future enrichment pass
     that might do better. A genre a curator set by hand is skipped
     entirely — see list_events_needing_genre."""
-    _require_founder(requesting_email)
+    who = _require_founder(session_user)
     pending = db.list_events_needing_genre(limit=limit)
     if dry_run:
         return {
@@ -6797,7 +6949,7 @@ def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
         if db.update_catalog_event(event_id, {"genre": genre}, pin=False):
             tagged += 1
             by_genre[genre] = by_genre.get(genre, 0) + 1
-    log.info(f"Genre backfill by {requesting_email}: {tagged}/{len(pending)} tagged")
+    log.info(f"Genre backfill by {who}: {tagged}/{len(pending)} tagged")
     return {
         "considered": len(pending),
         "tagged": tagged,
@@ -6865,11 +7017,11 @@ def fill_channels_from_catalog() -> dict:
 
 @app.post("/admin/events/backfill-tipo")
 def admin_backfill_tipo(requesting_email: str = "", limit: int = 200,
-                        dry_run: bool = False):
+                        dry_run: bool = False, session_user: SessionUser = None):
     """Tag upcoming events that have no tipo yet — the manual trigger
     for what every scrape now does at its end (backfill_missing_tags).
     Founder-only because it spends money; `dry_run` spends nothing."""
-    _require_founder(requesting_email)
+    who = _require_founder(session_user)
     pending = db.list_events_needing_tipo(limit=limit)
     if dry_run:
         return {
@@ -6892,7 +7044,7 @@ def admin_backfill_tipo(requesting_email: str = "", limit: int = 200,
         if db.update_catalog_event(event_id, {"tipo": tipo}, pin=False):
             tagged += 1
             by_tipo[tipo] = by_tipo.get(tipo, 0) + 1
-    log.info(f"Tipo backfill by {requesting_email}: {tagged}/{len(pending)} tagged")
+    log.info(f"Tipo backfill by {who}: {tagged}/{len(pending)} tagged")
     return {
         "considered": len(pending),
         "tagged": tagged,
@@ -6902,14 +7054,14 @@ def admin_backfill_tipo(requesting_email: str = "", limit: int = 200,
 
 
 @app.delete("/admin/events/{event_id}")
-def admin_delete_catalog_event(event_id: str, requesting_email: str = ""):
+def admin_delete_catalog_event(event_id: str, requesting_email: str = "", session_user: SessionUser = None):
     """Hard-delete a catalog event by id. Used to fix LLM mis-extractions
     that produced wrong dates / wrong recurrence / duplicated venues etc.
     Founder-only — this directly mutates the catalog seen by every user.
     User RSVPs that pointed at this event become orphan rows; the
     frontend's "evento não está mais no catálogo" fallback handles them
     cleanly on the next open."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     ok = db.delete_catalog_event(event_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -6947,7 +7099,7 @@ def _price_tier_for(price_min: float) -> str:
 
 
 @app.patch("/admin/events/{event_id}")
-def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate):
+def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate, session_user: SessionUser = None):
     """Correct a catalog event's facts by hand.
 
     Until now the only lever over a bad extraction was DELETE, which
@@ -6975,7 +7127,7 @@ def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate):
     # Anthropic client, which shouldn't load just to serve an edit.
     from enrichment import CATEGORY_GRADIENTS, CATEGORY_META, GENRES
 
-    email = _require_curator(req.requesting_email)
+    email = _require_curator(session_user)
     existing = db.get_event_by_id(event_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Evento não encontrado")
@@ -7083,12 +7235,12 @@ class IgClaimUpdate(BaseModel):
 
 
 @app.put("/admin/ig-accounts/{handle}/claim")
-def admin_set_ig_claim(handle: str, req: IgClaimUpdate):
+def admin_set_ig_claim(handle: str, req: IgClaimUpdate, session_user: SessionUser = None):
     """Assign (or clear) the venue dashboard claim for a handle.
     Founder-only — claims map a venue to a Google-login email; the
     dashboard endpoint /venue/{handle}/stats checks that the
     requesting user matches the claim before returning data."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     ok = db.set_ig_claim(handle, req.email)
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
@@ -7096,17 +7248,17 @@ def admin_set_ig_claim(handle: str, req: IgClaimUpdate):
 
 
 @app.get("/admin/venues/leaderboard")
-def admin_venue_leaderboard(requesting_email: str = "", window_days: int = 30):
+def admin_venue_leaderboard(requesting_email: str = "", window_days: int = 30, session_user: SessionUser = None):
     """Founder-only: every active IG handle ranked by aggregate views
     + RSVPs over the last `window_days`. The sales tool — venues at
     the top are the strongest candidates for paid placement (Destaque)
     deals because they already have audience pull on the catalog."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return {"venues": db.get_venue_leaderboard(window_days=max(1, min(window_days, 90)))}
 
 
 @app.get("/venue/{handle}/stats")
-def venue_dashboard_stats(handle: str, requesting_email: str = ""):
+def venue_dashboard_stats(handle: str, requesting_email: str = "", session_user: SessionUser = None):
     """Per-venue dashboard data. Two access tiers:
        1. The founder always has read access (admin oversight).
        2. The email matching the venue's claim has read access
@@ -7114,8 +7266,11 @@ def venue_dashboard_stats(handle: str, requesting_email: str = ""):
     Anyone else gets 403, even when authenticated — these are paid-
     placement metrics, not catalog data."""
     handle = handle.strip().lstrip("@").lower()
-    cleaned_email = (requesting_email or "").strip().lower()
-    is_founder = bool(cleaned_email and db.is_founder(cleaned_email))
+    # Paid metrics: the e-mail comes from the session only, never the query.
+    cleaned_email = _session_email(session_user)
+    if not cleaned_email:
+        raise HTTPException(status_code=401, detail="É preciso estar logado.")
+    is_founder = db.is_founder(cleaned_email)
     if not is_founder:
         # Non-founder: must match the venue's claim. db.get_ig_account
         # returns the row (or None) for the handle.
@@ -7151,12 +7306,12 @@ class IgPromoUpdate(BaseModel):
 
 
 @app.put("/admin/ig-accounts/{handle}/promo")
-def admin_set_ig_promo(handle: str, req: IgPromoUpdate):
+def admin_set_ig_promo(handle: str, req: IgPromoUpdate, session_user: SessionUser = None):
     """Set/clear the static promo code for a venue. Founder-only.
     The code only renders on event cards when the venue is also
     featured (paid Seleção auê) — promo is part of the paid bundle,
     not a free perk."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     ok = db.set_ig_promo(handle, req.code or "", req.perk or "")
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
@@ -7165,12 +7320,12 @@ def admin_set_ig_promo(handle: str, req: IgPromoUpdate):
 
 
 @app.put("/admin/ig-accounts/{handle}/featured")
-def admin_set_ig_featured(handle: str, req: IgFeaturedToggle):
+def admin_set_ig_featured(handle: str, req: IgFeaturedToggle, session_user: SessionUser = None):
     """Flip the Destaque flag on a tracked IG account. Founder-only:
     Destaque is the paid-placement surface (R$/mo per venue), so the
     set of featured handles is a business decision the founder owns —
     curators can add/remove handles but can't grant placement."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     ok = db.set_ig_featured(handle, req.featured)
     if not ok:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
@@ -7179,7 +7334,7 @@ def admin_set_ig_featured(handle: str, req: IgFeaturedToggle):
 
 
 @app.get("/admin/ig-extract-debug")
-async def admin_ig_extract_debug(url: str, requesting_email: str = ""):
+async def admin_ig_extract_debug(url: str, requesting_email: str = "", session_user: SessionUser = None):
     """Run the extractor on ONE Instagram post and report what happened.
 
     "That post didn't become an event" has been answerable only by reading
@@ -7191,7 +7346,7 @@ async def admin_ig_extract_debug(url: str, requesting_email: str = ""):
 
     Costs one Apify fetch + one Claude call per call. Curator-only.
     """
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     if not re.match(r"https?://(www\.)?instagram\.com/(p|reel)/", url.strip()):
         raise HTTPException(status_code=400, detail="Cole o link de um post do Instagram")
     if not (settings.apify_api_token and settings.anthropic_api_key):
@@ -7234,14 +7389,14 @@ async def admin_ig_extract_debug(url: str, requesting_email: str = ""):
 
 
 @app.post("/admin/ig-accounts/{handle}/scrape")
-async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
+async def admin_scrape_ig_account(handle: str, requesting_email: str = "", session_user: SessionUser = None):
     """
     Scrape a single IG handle on demand — useful right after adding/editing
     a handle so the curator gets immediate feedback (avatar, sample event)
     without waiting for the next 24h scheduler tick. Forces a full fetch
     even if the probe says nothing's new.
     """
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     handle = handle.strip().lstrip("@").lower()
     acc = db.get_ig_account(handle)
     if not acc:
@@ -7314,21 +7469,21 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = ""):
 
 
 @app.get("/admin/apify-debug")
-def admin_apify_debug(requesting_email: str = ""):
+def admin_apify_debug(requesting_email: str = "", session_user: SessionUser = None):
     """
     Founder-only debug surface — returns the redacted top-level shape of
     the most recent Apify post payload. Used to introspect actor schema
     drift when profile enrichment isn't finding fields. Temporary.
     """
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from scrapers.instagram_apify import LAST_POST_DEBUG
     return LAST_POST_DEBUG or {"empty": True, "hint": "Run /events/refresh first"}
 
 
 @app.post("/admin/test-extraction")
-async def admin_test_extraction(requesting_email: str = "", caption: str = "", handle: str = "test", post_date: str = ""):
+async def admin_test_extraction(requesting_email: str = "", caption: str = "", handle: str = "test", post_date: str = "", session_user: SessionUser = None):
     """Founder-only: run Claude extraction on a raw caption and return the full response for debugging."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if not caption:
         raise HTTPException(status_code=400, detail="caption required")
     from anthropic import AsyncAnthropic
@@ -7362,7 +7517,7 @@ async def admin_test_extraction(requesting_email: str = "", caption: str = "", h
 
 
 @app.post("/admin/ig-accounts/reset-shortcodes")
-def admin_reset_ig_shortcodes(requesting_email: str = ""):
+def admin_reset_ig_shortcodes(requesting_email: str = "", session_user: SessionUser = None):
     """
     Founder-only. Clears last_post_shortcode for all enabled accounts so
     the next scheduled probe treats every handle as "new content" and
@@ -7371,14 +7526,14 @@ def admin_reset_ig_shortcodes(requesting_email: str = ""):
     Apify rate-limiting or IG bot-detection). Safe to call anytime —
     worst case is one extra Apify run.
     """
-    _require_founder(requesting_email)
+    who = _require_founder(session_user)
     count = db.reset_ig_shortcodes()
-    log.info(f"admin reset_ig_shortcodes: cleared {count} shortcodes by {requesting_email}")
+    log.info(f"admin reset_ig_shortcodes: cleared {count} shortcodes by {who}")
     return {"reset": count, "message": f"{count} shortcodes resetados — próximo refresh fará full scrape de todos os handles."}
 
 
 @app.post("/admin/ig-accounts/reset-extraction-ledger")
-def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = ""):
+def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = "", session_user: SessionUser = None):
     """
     Founder-only. Forgets which IG posts have already been through Claude
     extraction, so the next scrape re-evaluates them.
@@ -7392,10 +7547,10 @@ def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = ""):
     Usually paired with /admin/ig-accounts/reset-shortcodes, which is what
     makes the probe re-fetch the posts in the first place.
     """
-    _require_founder(requesting_email)
+    who = _require_founder(session_user)
     handles = [handle] if handle.strip() else None
     removed = db.reset_processed_ig_posts(handles)
-    log.info(f"admin reset_extraction_ledger: {removed} rows by {requesting_email}")
+    log.info(f"admin reset_extraction_ledger: {removed} rows by {who}")
     return {
         "removed": removed,
         "scope": handle.strip().lower() or "all",
@@ -7407,7 +7562,7 @@ def admin_reset_extraction_ledger(requesting_email: str = "", handle: str = ""):
 
 
 @app.get("/admin/token-usage")
-def admin_token_usage(requesting_email: str = ""):
+def admin_token_usage(requesting_email: str = "", session_user: SessionUser = None):
     """
     Claude token spend for the most recent refresh in this process.
 
@@ -7418,7 +7573,7 @@ def admin_token_usage(requesting_email: str = ""):
     "Claude token usage", and the only signal that spend is wrong is the
     balance reaching zero.
     """
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     try:
         import token_meter
         return token_meter.snapshot()
@@ -7427,13 +7582,13 @@ def admin_token_usage(requesting_email: str = ""):
 
 
 @app.get("/admin/extraction-ledger")
-def admin_extraction_ledger(requesting_email: str = ""):
+def admin_extraction_ledger(requesting_email: str = "", session_user: SessionUser = None):
     """Ledger size + how many of those posts turned out to be events.
 
     A low was_event ratio is normal and is exactly why the ledger pays:
     the non-events are the bulk of what Apify returns, and without this
     table every one of them would be re-sent to Claude on every run."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     stats = db.count_processed_ig_posts()
     total = stats["total"] or 0
     return {
@@ -7443,9 +7598,9 @@ def admin_extraction_ledger(requesting_email: str = ""):
 
 
 @app.post("/admin/ig-accounts/seed-defaults")
-def admin_seed_default_ig_accounts(requesting_email: str = ""):
+def admin_seed_default_ig_accounts(requesting_email: str = "", session_user: SessionUser = None):
     """Force-seed the starter list (only inserts missing handles)."""
-    email = _require_curator(requesting_email)
+    email = _require_curator(session_user)
     inserted = 0
     for acc in _DEFAULT_IG_ACCOUNTS:
         try:
@@ -7557,7 +7712,7 @@ def social_export(token: str = ""):
 
 
 @app.post("/admin/sync-social")
-def admin_sync_social(requesting_email: str = ""):
+def admin_sync_social(requesting_email: str = "", session_user: SessionUser = None):
     """Staging side. Replaces this environment's social graph with
     production's anonymised one.
 
@@ -7578,7 +7733,7 @@ def admin_sync_social(requesting_email: str = ""):
     There is no staging-to-production path, and adding one would mean
     writing an endpoint that doesn't exist.
     """
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if settings.env_name == "production":
         raise HTTPException(
             status_code=400,
@@ -7623,14 +7778,14 @@ def admin_sync_social(requesting_email: str = ""):
 
 
 @app.post("/admin/sync-catalog")
-def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
+def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000, session_user: SessionUser = None):
     """Staging side. Pulls production's catalog and upserts it here.
 
     Blocked in production — env_name defaults to "production" when the
     var is missing, so an unconfigured service refuses rather than
     importing something over the real catalog.
     """
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     if settings.env_name == "production":
         raise HTTPException(
             status_code=400,
@@ -7702,36 +7857,36 @@ def admin_sync_catalog(requesting_email: str = "", event_limit: int = 5000):
 
 
 @app.post("/admin/venues/seed")
-def admin_seed_venues(requesting_email: str = ""):
+def admin_seed_venues(requesting_email: str = "", session_user: SessionUser = None):
     """Walk every event in the catalog and ensure a venue row exists for
     each distinct venue_name. Idempotent — safe to re-run after every
     scrape. Curators can run it: it's append-only (INSERT OR IGNORE), no
     rows are modified, and the only side-effect is queueing more rows
     for the geocode backfill."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     new_count = db.seed_venues_from_events()
     return {"new_venues": new_count}
 
 
 @app.post("/admin/venues/geocode")
-def admin_geocode_venues(requesting_email: str = "", limit: int = 25):
+def admin_geocode_venues(requesting_email: str = "", limit: int = 25, session_user: SessionUser = None):
     """Run the Nominatim backfill for up to `limit` pending venues.
     Bounded by `limit` so a single HTTP call doesn't run for minutes —
     Nominatim's ToS asks for ≤1 req/sec, so 25 venues ≈ 30s of wall time.
     Curators can trigger this: the only external touch is Nominatim
     (free, public, no API key), and a curator-driven fix to a missing
     pin shouldn't have to wait for the founder."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     from geocoding import geocode_pending_venues
     return geocode_pending_venues(limit=limit)
 
 
 @app.get("/admin/venues")
-def admin_list_venues(requesting_email: str = "", status: str = "all"):
+def admin_list_venues(requesting_email: str = "", status: str = "all", session_user: SessionUser = None):
     """List venues for the curator UI — typically filtered to status='pending'
     so the curator can hand-fix what Nominatim couldn't resolve. Each row
     includes the catalog event count so the high-impact gaps surface first."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     if status not in ("pending", "ok", "all"):
         raise HTTPException(status_code=400, detail="status must be 'pending', 'ok', or 'all'")
     return {"venues": db.list_venues(status=status)}
@@ -7800,7 +7955,7 @@ class VenueUpdateRequest(BaseModel):
 
 
 @app.put("/admin/venues/{name_normalized}")
-def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
+def admin_update_venue(name_normalized: str, req: VenueUpdateRequest, session_user: SessionUser = None):
     """Manual curator override. Two modes:
       - lat + lng provided → mark 'ok', source='manual'. Pin appears
         on the map immediately; Nominatim won't overwrite it.
@@ -7811,7 +7966,7 @@ def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
     Address is optional in both modes: when provided we persist it (so
     the next geocode retry has cleaner input); when omitted the existing
     address is left untouched."""
-    _require_curator(req.requesting_email)
+    _require_curator(session_user)
     lat, lng = req.lat, req.lng
     # A pasted URL/pair wins over the numeric fields — see coords_text.
     if (req.coords_text or "").strip():
@@ -7844,11 +7999,11 @@ def admin_update_venue(name_normalized: str, req: VenueUpdateRequest):
 
 
 @app.post("/admin/venues/{name_normalized}/geocode")
-def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
+def admin_geocode_one_venue(name_normalized: str, requesting_email: str = "", session_user: SessionUser = None):
     """Re-run Nominatim against a single venue immediately — useful right
     after the curator updated the address and wants the pin to fill in
     without waiting for the next /admin/venues/geocode batch."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     from geocoding import geocode_one
     with db.get_conn() as conn:
         row = conn.execute(
@@ -7867,24 +8022,24 @@ def admin_geocode_one_venue(name_normalized: str, requesting_email: str = ""):
 
 
 @app.post("/admin/avatars/rehost")
-def admin_rehost_avatars(requesting_email: str = "", limit: int = 50):
+def admin_rehost_avatars(requesting_email: str = "", limit: int = 50, session_user: SessionUser = None):
     """Backfill: rehost IG profile pictures whose stored URL is still
     pointing at IG's CDN (signed → expires in weeks). New scrapes do
     this automatically — this endpoint is for the existing rows. Re-run
     until `remaining` returns 0. Founder-only."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from image_store import rehost_pending_avatars
     return rehost_pending_avatars(limit=limit)
 
 
 @app.post("/admin/diag/rsvp-prune-orphans")
-def admin_rsvp_prune_orphans(requesting_email: str = "", dry_run: bool = True):
+def admin_rsvp_prune_orphans(requesting_email: str = "", dry_run: bool = True, session_user: SessionUser = None):
     """Delete rsvps rows whose event_id no longer matches any row in the
     events table OR group_events table — left over from sources we
     dropped (Sympla, Catraca Livre, etc. in the April 2026 cleanup) or
     catalog events that aged out. Default dry_run=true so callers can
     inspect counts before committing."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     with db.get_conn() as conn:
         rsvp_ids = [r["event_id"] for r in conn.execute(
             "SELECT DISTINCT event_id FROM rsvps"
@@ -7928,7 +8083,7 @@ def admin_rsvp_prune_orphans(requesting_email: str = "", dry_run: bool = True):
 
 
 @app.post("/admin/diag/rsvp-backfill")
-def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False):
+def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False, session_user: SessionUser = None):
     """Founder-only one-shot: walk every user_states row, parse
     state_json.rsvps, and INSERT OR IGNORE missing entries into the
     rsvps table. Catches every catalog RSVP made before today's
@@ -7939,7 +8094,7 @@ def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False):
     Idempotent: INSERT OR IGNORE skips rows already keyed by
     (google_id, event_id). Pass dry_run=true to count without
     inserting."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     inserted = 0
     skipped_no_data = 0
     users_scanned = 0
@@ -8009,11 +8164,11 @@ def admin_rsvp_backfill(requesting_email: str = "", dry_run: bool = False):
 
 
 @app.get("/admin/diag/rsvps")
-def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = ""):
+def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = "", session_user: SessionUser = None):
     """Founder-only: dump the rsvps table rows for a target user and
     their friends list. One-off diagnostic — deletes the mystery of
     'why doesn't X see Y in /friends/feed' without needing DB shell."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if not target_google_id:
         raise HTTPException(status_code=400, detail="target_google_id required")
     today = date.today().isoformat()
@@ -8044,12 +8199,12 @@ def admin_diag_rsvps(requesting_email: str = "", target_google_id: str = ""):
 
 
 @app.post("/admin/sympla/enrich")
-def admin_sympla_enrich(requesting_email: str = "", max_pages: int = 60):
+def admin_sympla_enrich(requesting_email: str = "", max_pages: int = 60, session_user: SessionUser = None):
     """Founder-only: walk Sympla's CWB discovery feed, parse each event
     page, and attach matching catalog events with a `sympla_url` for the
     "🎟️ Comprar ingresso" CTA. Idempotent — already-matched events stay
     as-is unless the Sympla URL changes. Cap `max_pages` to bound runtime."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from scrapers.sympla import fetch_curitiba_events
     from sympla_match import match_and_enrich
     sympla_events = fetch_curitiba_events(max_pages=max_pages)
@@ -8057,7 +8212,7 @@ def admin_sympla_enrich(requesting_email: str = "", max_pages: int = 60):
 
 
 @app.post("/admin/avatars/clear-bot-blocked")
-def admin_clear_bot_blocked_avatars(requesting_email: str = ""):
+def admin_clear_bot_blocked_avatars(requesting_email: str = "", session_user: SessionUser = None):
     """Cleanup: when IG's bot detection fires on a profile-page fetch,
     the og:image we cached is the generic Instagram brand logo (a
     .png from static.cdninstagram.com) instead of the real avatar.
@@ -8065,7 +8220,7 @@ def admin_clear_bot_blocked_avatars(requesting_email: str = ""):
     pass re-fetches them. Real avatars are stored as .jpg from
     scontent.cdninstagram.com — only `.png` files in the avatars dir
     are candidates for cleanup. Founder-only."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from image_store import clear_bot_blocked_avatars
     return clear_bot_blocked_avatars()
 
@@ -8077,7 +8232,7 @@ class AvatarRehostFromUrl(BaseModel):
 
 
 @app.post("/admin/avatars/rehost-url")
-def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
+def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl, session_user: SessionUser = None):
     """Rehost a single avatar from a caller-provided IG CDN URL.
 
     Why this exists: Railway IPs get bot-blocked when scraping
@@ -8085,7 +8240,7 @@ def admin_rehost_avatar_from_url(req: AvatarRehostFromUrl):
     from their local machine (which works) and POSTs the URL here.
     Server downloads the image bytes, stores under /event-images/avatars,
     updates the DB row. Founder-only."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     from image_store import rehost_avatar
     handle = (req.handle or "").strip().lstrip("@").lower()
     if not handle:
@@ -8187,17 +8342,17 @@ def _catalog_request_out(row: dict) -> dict:
 
 
 @app.get("/admin/catalog-requests")
-def admin_list_catalog_requests(requesting_email: str = "", status: str = "review"):
+def admin_list_catalog_requests(requesting_email: str = "", status: str = "review", session_user: SessionUser = None):
     """Catalog suggestions waiting for (or past) curator review."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     if status not in ("review", "approved", "rejected"):
         raise HTTPException(status_code=400, detail="status inválido")
     return {"requests": [_catalog_request_out(r) for r in db.list_catalog_requests(status)]}
 
 
 @app.get("/admin/catalog-requests/{request_id}")
-def admin_get_catalog_request(request_id: int, requesting_email: str = ""):
-    _require_curator(requesting_email)
+def admin_get_catalog_request(request_id: int, requesting_email: str = "", session_user: SessionUser = None):
+    _require_curator(session_user)
     row = db.get_catalog_request(request_id)
     if not row:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
@@ -8206,10 +8361,10 @@ def admin_get_catalog_request(request_id: int, requesting_email: str = ""):
 
 @app.post("/admin/catalog-requests/{request_id}/approve")
 def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
-                                  background_tasks: BackgroundTasks):
+                                  background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Publish a suggested post to the catalog, with the curator's edits,
     and optionally start tracking its account."""
-    curator = _require_curator(req.requesting_email)
+    curator = _require_curator(session_user)
     row = db.get_catalog_request(request_id)
     if not row:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
@@ -8317,13 +8472,13 @@ def admin_approve_catalog_request(request_id: int, req: CatalogRequestDecision,
 
 
 @app.post("/admin/catalog-requests/{request_id}/reject")
-def admin_reject_catalog_request(request_id: int, req: CatalogRequestDecision):
+def admin_reject_catalog_request(request_id: int, req: CatalogRequestDecision, session_user: SessionUser = None):
     """Turn a request down. For a scraped one the event is already public,
     so rejecting means pulling it from the catalog (a past date, a wrong
     city, not an event). For a human suggestion the private event is
     untouched and the same post can be suggested again later; no push to
     the person — auê doesn't tell people their plans weren't good enough."""
-    curator = _require_curator(req.requesting_email)
+    curator = _require_curator(session_user)
     row = db.get_catalog_request(request_id)
     if not row:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
@@ -8345,19 +8500,19 @@ class CatalogRequestBulk(BaseModel):
 
 @app.post("/admin/catalog-requests/approve-many")
 def admin_approve_catalog_requests_many(req: CatalogRequestBulk,
-                                        background_tasks: BackgroundTasks):
+                                        background_tasks: BackgroundTasks, session_user: SessionUser = None):
     """Mark several requests as fine as they are — no edits. The daily
     scrape queues twenty-odd on a normal day, and one tap each is how a
     queue stops getting cleared. Each one goes through the single-approve
     path, guard included, so two curators clearing the same list at once
     each get told which ones the other took."""
-    _require_curator(req.requesting_email)
+    _require_curator(session_user)
     results = []
     for rid in req.ids[:200]:
         try:
             out = admin_approve_catalog_request(
                 rid, CatalogRequestDecision(requesting_email=req.requesting_email),
-                background_tasks,
+                background_tasks, session_user,
             )
             results.append({"id": rid, "ok": True, "catalog_event_id": out.get("catalog_event_id")})
         except HTTPException as exc:
@@ -8368,7 +8523,7 @@ def admin_approve_catalog_requests_many(req: CatalogRequestBulk,
 
 
 @app.post("/admin/submissions/backfill-images")
-async def admin_backfill_submission_images(requesting_email: str = "", dry_run: bool = True):
+async def admin_backfill_submission_images(requesting_email: str = "", dry_run: bool = True, session_user: SessionUser = None):
     """Give already-saved submitted events the post image they should have
     had. Submissions never carried an image until the form started sending
     one, so existing rows only have the Instagram post link.
@@ -8379,7 +8534,7 @@ async def admin_backfill_submission_images(requesting_email: str = "", dry_run: 
     only: it spends Apify credit and rewrites payloads. dry_run (default)
     reports candidates without scraping or writing.
     """
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     candidates: dict[str, list[tuple[str, dict]]] = {}
     with db.get_conn() as conn:
         rows = conn.execute("SELECT id, payload FROM events WHERE source = 'submitted'").fetchall()
@@ -8423,7 +8578,7 @@ async def admin_backfill_submission_images(requesting_email: str = "", dry_run: 
 
 
 @app.post("/admin/images/rehost")
-def admin_rehost_images(requesting_email: str = "", limit: int = 50):
+def admin_rehost_images(requesting_email: str = "", limit: int = 50, session_user: SessionUser = None):
     """One-shot backfill: rehost IG-CDN-served event images that haven't
     been saved locally yet. Bounded by `limit` so a single call doesn't
     sit for minutes. Re-run until `remaining` returns 0.
@@ -8432,13 +8587,13 @@ def admin_rehost_images(requesting_email: str = "", limit: int = 50):
     transition period where existing rows still point at expiring
     IG URLs. Founder-only because it touches a write path that mutates
     every event payload."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from image_store import rehost_pending_events
     return rehost_pending_events(limit=limit)
 
 
 @app.post("/admin/venues/backfill-bairros")
-def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
+def admin_backfill_bairros(requesting_email: str = "", limit: int = 30, session_user: SessionUser = None):
     """One-shot backfill: for venues that already have lat/lng but no
     bairro, reverse-geocode the coords through Nominatim to fill the
     bairro column. Doesn't touch lat/lng — just populates the missing
@@ -8447,7 +8602,7 @@ def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
 
     Bounded by `limit` (≥1s/req per Nominatim ToS, so 30 venues ≈ 35s).
     Re-run until 'remaining' returns 0."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     headers = {
         "User-Agent": f"aue-curitiba-events/1.0 ({settings.public_origin})",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
@@ -8505,14 +8660,14 @@ def admin_backfill_bairros(requesting_email: str = "", limit: int = 30):
 
 
 @app.post("/admin/venues/{name_normalized}/ai-lookup")
-def admin_ai_lookup_venue(name_normalized: str, requesting_email: str = ""):
+def admin_ai_lookup_venue(name_normalized: str, requesting_email: str = "", session_user: SessionUser = None):
     """Ask Claude for the venue's address + coords. Doesn't write to the
     venues table — returns the suggestion so the curator reviews it in
     the editor sheet and clicks Save when satisfied. Cheaper than guessing
     via Nominatim + addressed dictation; falls back to null when Claude
     is uncertain (its training data covers most established Curitiba
     venues but not every random handle a curator might add)."""
-    _require_curator(requesting_email)
+    _require_curator(session_user)
     from geocoding import ai_lookup_venue
     with db.get_conn() as conn:
         row = conn.execute(
@@ -8541,14 +8696,14 @@ def admin_ai_lookup_venue(name_normalized: str, requesting_email: str = ""):
 
 
 @app.delete("/admin/cleanup/dead-sources")
-def admin_cleanup_dead_sources(requesting_email: str = ""):
+def admin_cleanup_dead_sources(requesting_email: str = "", session_user: SessionUser = None):
     """Purge events (and their RSVPs) from scrapers we no longer run.
     Mayra-style RSVPs to ghost eventbrite events get cleaned in one pass.
 
     Founder-only because the delete is irreversible. Returns counts so the
     caller sees what hit. Group events / personal plans are untouched —
     those live in `group_events`, not `events`."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if not _DROPPED_SCRAPER_SOURCES:
         return {"events_deleted": 0, "rsvps_deleted": 0}
     placeholders = ",".join("?" * len(_DROPPED_SCRAPER_SOURCES))
@@ -8583,7 +8738,7 @@ def admin_cleanup_dead_sources(requesting_email: str = ""):
 
 
 @app.get("/admin/curators")
-def admin_list_curators(requesting_email: str = ""):
+def admin_list_curators(requesting_email: str = "", session_user: SessionUser = None):
     """
     Anyone authenticated can see the permissioned-users list (transparency).
     Only the founder can add or remove or change roles — enforced on the
@@ -8591,15 +8746,15 @@ def admin_list_curators(requesting_email: str = ""):
     """
     return {
         "curators": db.list_curators(),
-        "is_founder": db.is_founder(requesting_email),
-        "is_curator": db.is_curator(requesting_email),
-        "is_feedbacker": db.is_feedbacker(requesting_email),
+        "is_founder": db.is_founder(_session_email(session_user)),
+        "is_curator": db.is_curator(_session_email(session_user)),
+        "is_feedbacker": db.is_feedbacker(_session_email(session_user)),
     }
 
 
 @app.post("/admin/curators")
-def admin_add_curator(req: CuratorAdd):
-    founder_email = _require_founder(req.requesting_email)
+def admin_add_curator(req: CuratorAdd, session_user: SessionUser = None):
+    founder_email = _require_founder(session_user)
     email = req.email.strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Email inválido")
@@ -8614,8 +8769,8 @@ def admin_add_curator(req: CuratorAdd):
 
 
 @app.patch("/admin/curators/{email}")
-def admin_update_curator_roles(email: str, req: CuratorRoleUpdate):
-    _require_founder(req.requesting_email)
+def admin_update_curator_roles(email: str, req: CuratorRoleUpdate, session_user: SessionUser = None):
+    _require_founder(session_user)
     if not (req.is_curator or req.is_feedbacker):
         # Both off ⇒ remove the row. update_curator_roles handles the cleanup.
         pass
@@ -8628,9 +8783,9 @@ def admin_update_curator_roles(email: str, req: CuratorRoleUpdate):
 
 
 @app.delete("/admin/curators/{email}")
-def admin_remove_curator(email: str, requesting_email: str = ""):
-    _require_founder(requesting_email)
-    if email.strip().lower() == requesting_email.strip().lower():
+def admin_remove_curator(email: str, requesting_email: str = "", session_user: SessionUser = None):
+    founder_email = _require_founder(session_user)
+    if email.strip().lower() == founder_email:
         raise HTTPException(status_code=400, detail="Você não pode remover a si mesmo.")
     ok = db.remove_curator(email)
     if not ok:
@@ -8642,12 +8797,15 @@ def admin_remove_curator(email: str, requesting_email: str = ""):
 
 
 @app.post("/feedback")
-def submit_feedback(req: FeedbackSubmit):
+def submit_feedback(req: FeedbackSubmit, session_user: SessionUser = None):
+    _assert_caller(req.google_id, session_user)
     # Feedback is open to anyone signed in — we just need an email to
     # attribute the message. Earlier versions gated this on a feedbacker
     # role; that role is now vestigial (kept in DB for backward compat
     # but no longer required).
-    email = (req.requesting_email or "").strip().lower()
+    # Attribution: the session's e-mail; the client's only while old
+    # bundles are still out there (see _session_email).
+    email = _session_email(session_user, req.requesting_email)
     if not email:
         raise HTTPException(status_code=401, detail="É preciso estar logado pra mandar feedback.")
     text = (req.text or "").strip()
@@ -8661,78 +8819,78 @@ def submit_feedback(req: FeedbackSubmit):
 
 
 @app.get("/admin/feedback")
-def admin_list_feedback(requesting_email: str = "", limit: int = 200):
+def admin_list_feedback(requesting_email: str = "", limit: int = 200, session_user: SessionUser = None):
     """Founder-only: read submitted feedback, newest first."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return {"feedback": db.list_feedback(limit=limit)}
 
 
 @app.get("/admin/usage-stats")
-def admin_usage_stats(requesting_email: str = "", window_days: int = 30):
+def admin_usage_stats(requesting_email: str = "", window_days: int = 30, session_user: SessionUser = None):
     """
     Founder-only: aggregated usage metrics — DAU/WAU/MAU, funnel,
     daily series, recent logins. Used by the dashboard section in
     the Curar tab.
     """
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return db.get_usage_stats(window_days=window_days)
 
 
 @app.get("/admin/users")
 def admin_users(requesting_email: str = "", limit: int = 200, offset: int = 0,
-                sort: str = "last_seen", q: str = ""):
+                sort: str = "last_seen", q: str = "", session_user: SessionUser = None):
     """Founder-only: every user with their activity counts. The dashboard
     could only show the last ten logins, which answered "who showed up
     recently" but never "who are these people and what do they do"."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return db.get_user_directory(limit=min(limit, 500), offset=max(offset, 0), sort=sort, query=q)
 
 
 @app.get("/admin/group-stats")
-def admin_group_stats(requesting_email: str = ""):
+def admin_group_stats(requesting_email: str = "", session_user: SessionUser = None):
     """Founder-only: whether the groups that exist have members and
     events, or were created and abandoned. See db.get_group_composition."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return db.get_group_composition()
 
 
 @app.get("/admin/client-errors")
-def admin_client_errors(requesting_email: str = "", limit: int = 50):
+def admin_client_errors(requesting_email: str = "", limit: int = 50, session_user: SessionUser = None):
     """Founder-only: client_error:* rows grouped by (type, message), with
     count/first-seen/last-seen/a sample url+user per group. See
     db.get_client_error_summary."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return {"errors": db.get_client_error_summary(limit=min(limit, 200))}
 
 
 @app.get("/admin/weekly-summary")
-def admin_weekly_summary(requesting_email: str = ""):
+def admin_weekly_summary(requesting_email: str = "", session_user: SessionUser = None):
     """Founder-only: return the past-7-days vs prior-7-days activity
     snapshot. Same payload the Monday 10am scheduler emails. Founders
     can call this any time to peek at the current numbers."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     return db.get_weekly_summary()
 
 
 @app.post("/admin/weekly-summary/send")
-async def admin_weekly_summary_send(requesting_email: str = ""):
+async def admin_weekly_summary_send(requesting_email: str = "", session_user: SessionUser = None):
     """Founder-only: trigger the weekly summary email immediately
     instead of waiting for the Monday 10am cron. Useful for proofing
     template changes or sending an out-of-band digest."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     from scheduler import run_weekly_summary
     await run_weekly_summary(settings)
     return {"ok": True, "to": settings.founder_email}
 
 
 @app.post("/admin/test-email")
-async def admin_test_email(requesting_email: str = ""):
+async def admin_test_email(requesting_email: str = "", session_user: SessionUser = None):
     """Founder-only: smoke test the email transport. Routes through
     notifications.send_email() which prefers Resend (HTTPS) when
     RESEND_API_KEY is set, else falls back to SMTP. Returns the
     transport used + verdict so misconfig surfaces in seconds."""
     import asyncio as _asyncio
-    _require_founder(requesting_email)
+    _require_founder(session_user)
 
     transport = (
         "resend" if settings.resend_api_key
@@ -8786,9 +8944,9 @@ class FeedbackStatusUpdate(BaseModel):
 
 
 @app.patch("/admin/feedback/{feedback_id}")
-def admin_update_feedback_status(feedback_id: int, req: FeedbackStatusUpdate):
+def admin_update_feedback_status(feedback_id: int, req: FeedbackStatusUpdate, session_user: SessionUser = None):
     """Founder-only: mark a feedback as concluded, canceled, or reopen."""
-    _require_founder(req.requesting_email)
+    _require_founder(session_user)
     try:
         updated = db.update_feedback_status(feedback_id, req.status)
     except ValueError as e:
@@ -8821,10 +8979,11 @@ class PushSubscriptionBody(BaseModel):
 
 
 @app.post("/push/subscribe")
-def push_subscribe(body: PushSubscriptionBody):
+def push_subscribe(body: PushSubscriptionBody, session_user: SessionUser = None):
     """Store or update a Web Push subscription from the browser. The
     google_id, when present, lets us send per-user pushes (group events,
     friend RSVPs) — anonymous subs only receive the daily digest."""
+    _assert_caller(body.google_id, session_user)
     db.upsert_push_subscription(body.endpoint, json.dumps(body.keys), body.google_id)
     log.info(f"Push subscription saved (user={body.google_id or 'anon'}): {body.endpoint[:60]}…")
     return {"status": "subscribed"}
@@ -8852,7 +9011,7 @@ class ApnsRegisterBody(BaseModel):
 
 
 @app.post("/push/register-device-token")
-def push_register_device_token(body: ApnsRegisterBody):
+def push_register_device_token(body: ApnsRegisterBody, session_user: SessionUser = None):
     """Store an iOS APNs device token. The Capacitor PushNotifications
     plugin emits the hex token via its `registration` event after the
     user grants permission; the JS hook POSTs it here.
@@ -8861,6 +9020,7 @@ def push_register_device_token(body: ApnsRegisterBody):
     yields a new token, so the upsert key is the token itself, not
     google_id (a single user can also have multiple devices: iPhone +
     iPad)."""
+    _assert_caller(body.google_id, session_user)
     db.upsert_apns_token(body.token, body.google_id, body.bundle_id, body.env)
     log.info(f"APNs token saved (user={body.google_id or 'anon'}, env={body.env}): {body.token[:16]}…")
     return {"status": "registered"}
@@ -9291,12 +9451,12 @@ class DigestTriggerBody(BaseModel):
 
 
 @app.post("/push/send-daily-digest")
-async def push_send_daily_digest(body: DigestTriggerBody):
+async def push_send_daily_digest(body: DigestTriggerBody, session_user: SessionUser = None):
     """Manual digest trigger — admin/test helper. The scheduler calls
     send_daily_digest_to_all_subscribers() automatically after each
     refresh; this endpoint exists for backfills, dev testing, or
     re-firing on a scrape where the cron didn't catch the event ids."""
-    _require_founder(body.requesting_email)
+    _require_founder(session_user)
     return await send_daily_digest_to_all_subscribers(
         body.new_event_ids, ignore_quiet_hours=body.ignore_quiet_hours,
     )
@@ -9479,9 +9639,9 @@ def ota_bundle(version: str):
 
 
 @app.get("/updates/status")
-def ota_status(requesting_email: str = ""):
+def ota_status(requesting_email: str = "", session_user: SessionUser = None):
     """Is OTA on, and what would be served? Founder-only."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     published, canary, canary_devices = _ota_env()
     data = _ota_bundle_zip(canary or published)
     return {
@@ -9505,7 +9665,7 @@ def ota_status(requesting_email: str = ""):
 
 
 @app.post("/push/send-reminders")
-async def push_send_reminders(requesting_email: str = "", dry_run: bool = True):
+async def push_send_reminders(requesting_email: str = "", dry_run: bool = True, session_user: SessionUser = None):
     """Manual trigger for the day-before reminders — the scheduler runs
     this at 18:00 America/Sao_Paulo daily. Exists so the job can be
     verified without waiting for the cron, and re-fired if a deploy
@@ -9513,7 +9673,7 @@ async def push_send_reminders(requesting_email: str = "", dry_run: bool = True):
 
     Defaults to dry_run: reports who WOULD be reminded and why, without
     sending or marking anything. Safe to hit in production."""
-    _require_founder(requesting_email)
+    _require_founder(session_user)
     if not dry_run:
         return await send_event_reminders_for_tomorrow()
 
@@ -9612,6 +9772,7 @@ class AppleSignInBody(BaseModel):
     # overwrites a non-empty field).
     given_name: str = ""
     family_name: str = ""
+    device: str = ""
 
 
 @app.post("/auth/apple")
@@ -9670,7 +9831,96 @@ def auth_apple_sign_in(body: AppleSignInBody):
         "email": profile.get("email") or "",
         "picture": profile.get("picture") or "",
         "is_new_user": is_new_user,
+        "token": db.create_session(user_id, body.device),
     }
+
+
+# ── Google Sign-In (server side) ──
+#
+# The device still runs Google's OAuth flow (GSI on the web, PKCE in the
+# iOS wrapper) and ends up holding an access token. It used to call
+# Google's userinfo endpoint itself and tell us the answer; now it hands
+# us the token and we ask Google, so the `sub` we key everything on is
+# one Google vouched for. The user id stays the Google sub — google_id
+# is the key of every table, and a sign-in must land on the same row.
+
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+def fetch_google_userinfo(access_token: str) -> Optional[dict]:
+    """Google's profile for an access token, or None when Google refuses
+    it. Module-level (not inlined in the route) so tests can replace it."""
+    try:
+        resp = httpx.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=5.0,
+        )
+    except httpx.HTTPError as exc:
+        log.warning(f"Google userinfo unreachable: {exc}")
+        raise HTTPException(status_code=502, detail="Não consegui falar com o Google agora.")
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    return data if isinstance(data, dict) else None
+
+
+class GoogleSignInBody(BaseModel):
+    access_token: str
+    device: str = ""
+
+
+@app.post("/auth/google")
+def auth_google_sign_in(body: GoogleSignInBody):
+    """Verify a Google access token with Google and return the profile
+    plus a session token. Same shape as /auth/apple, plus `given_name`
+    (the app greets people by first name)."""
+    token = (body.access_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    info = fetch_google_userinfo(token)
+    if not info or not info.get("sub"):
+        raise HTTPException(status_code=401, detail="Token inválido")
+    if not info.get("email_verified"):
+        raise HTTPException(status_code=401, detail="E-mail do Google não verificado")
+
+    google_sub = str(info["sub"])
+    # New = never signed in by either path: no provider row and no state
+    # blob (Google users predating /auth/google only have the blob).
+    is_new_user = (
+        db.get_user_id_for_provider("google", google_sub) is None
+        and db.get_user_state(google_sub) is None
+    )
+    db.register_provider_user(
+        provider="google",
+        provider_id=google_sub,
+        user_id=google_sub,
+        display_name=(info.get("name") or "").strip(),
+        email=(info.get("email") or "").strip(),
+        picture=(info.get("picture") or "").strip(),
+    )
+    return {
+        "user_id": google_sub,
+        # Google's fresh values, which is what the client used to read
+        # from userinfo itself; the name the person chose in the app
+        # comes back with their state, as before.
+        "display_name": (info.get("name") or "").strip(),
+        "given_name": (info.get("given_name") or "").strip(),
+        "email": (info.get("email") or "").strip(),
+        "picture": (info.get("picture") or "").strip(),
+        "is_new_user": is_new_user,
+        "token": db.create_session(google_sub, body.device),
+    }
+
+
+@app.post("/auth/logout")
+def auth_logout(authorization: Annotated[str, Header()] = ""):
+    """Revoke this device's session. Idempotent; an unknown token is
+    already signed out."""
+    scheme, _, token = (authorization or "").strip().partition(" ")
+    if scheme.lower() == "bearer" and token.strip():
+        db.delete_session(token.strip())
+    return {"ok": True}
 
 
 # ── Static files + SPA fallback ──

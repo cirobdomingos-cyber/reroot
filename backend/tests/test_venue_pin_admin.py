@@ -51,7 +51,8 @@ def api(tmp_path, monkeypatch):
     _db.add_curator(email=CURATOR, added_by_email="system", notes="test")
     _db.upsert_venue_seed(name_original="Bar Folia", address="Curitiba")
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app)
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db)
 
 
 # -- 1. the formats a curator actually has ---------------------------

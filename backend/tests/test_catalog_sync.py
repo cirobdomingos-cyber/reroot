@@ -236,7 +236,8 @@ def api(tmp_path, monkeypatch):
         import main as _main
         _db.init_db()
         from fastapi.testclient import TestClient
-        return _db, _main, TestClient(_main.app)
+        from _session import SessionClient
+        return _db, _main, SessionClient(_main.app, _db)
 
     return _boot
 

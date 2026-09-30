@@ -82,7 +82,8 @@ def prod(tmp_path, monkeypatch):
     )
     _db.upsert_rsvp("u_bia", "ev1", "Show", "Pedreira", "2099-01-01", "")
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app), g["id"]
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db), g["id"]
 
 
 def _dump(payload):
