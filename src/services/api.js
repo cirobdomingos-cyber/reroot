@@ -399,6 +399,9 @@ export async function loadUserState(googleId) {
       return { state: data.state }
     }
     if (res.status === 404) return { notFound: true }
+    // No valid session for this account (REQUIRE_SESSION is on and the person signed in
+    // before sessions existed): the caller signs them out so the sign-in card comes back.
+    if (res.status === 401) return { unauthorized: true }
     reportError('sync_load_failed', `HTTP ${res.status}`, { googleId: googleId.slice(0, 20) }, googleId)
   } catch (err) {
     reportError('sync_load_failed', err.message, { googleId: googleId.slice(0, 20) }, googleId)

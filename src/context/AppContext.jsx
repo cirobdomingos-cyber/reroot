@@ -582,6 +582,8 @@ export function AppProvider({ children }) {
         dispatch({ type: 'RESTORE_STATE', payload: result.state })
       } else if (result?.notFound) {
         safeToSaveFor.current = googleId        // new account: nothing to protect
+      } else if (result?.unauthorized) {
+        dispatch({ type: 'SET_GOOGLE_USER', payload: null })  // sign in again for a session
       } else {
         loadAttemptedFor.current = null         // failed: retry on the next change
       }
