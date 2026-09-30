@@ -26,6 +26,7 @@
 import { Capacitor } from '@capacitor/core'
 
 import { API_BASE } from './apiBase'
+import { setSessionToken } from './session'
 const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 
 // Bundle id (native) and Service ID (web) match what the backend's
@@ -194,6 +195,7 @@ export async function signInWithApple() {
       identity_token: appleResult.identityToken,
       given_name: appleResult.givenName,
       family_name: appleResult.familyName,
+      device: Capacitor.getPlatform?.() || 'web',
     }),
   })
   if (!res.ok) {
@@ -202,6 +204,8 @@ export async function signInWithApple() {
     throw new Error(detail || `Erro do servidor (${res.status})`)
   }
   const data = await res.json()
+  // The session for every call from now on (see lib/session.js).
+  setSessionToken(data.token || '')
 
   // Normalize into the same shape the rest of the app expects from a
   // "googleUser" — the field is legacy, the contract isn't.

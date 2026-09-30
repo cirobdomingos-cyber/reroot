@@ -25,6 +25,7 @@ import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 // the role.
 
 import { API_BASE } from '../lib/apiBase'
+import { apiFetch } from '../lib/session'
 
 function withEmail(url, email) {
   const sep = url.includes('?') ? '&' : '?'
@@ -88,7 +89,7 @@ export default function AdminIgAccounts() {
   const loadUsers = useCallback(async () => {
     if (!email) return
     try {
-      const usersRes = await fetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
+      const usersRes = await apiFetch(withEmail(`${API_BASE}/admin/users?limit=500`, email))
       if (!usersRes.ok) throw new Error(`Erro ${usersRes.status}`)
       setUsers(await usersRes.json())
       setUsersError(null)
@@ -102,8 +103,8 @@ export default function AdminIgAccounts() {
     setLoading(true)
     try {
       const [accRes, curRes] = await Promise.all([
-        fetch(withEmail(`${API_BASE}/admin/ig-accounts`, email)),
-        fetch(withEmail(`${API_BASE}/admin/curators`, email)),
+        apiFetch(withEmail(`${API_BASE}/admin/ig-accounts`, email)),
+        apiFetch(withEmail(`${API_BASE}/admin/curators`, email)),
       ])
       const accData = await accRes.json()
       const curData = await curRes.json()
@@ -115,8 +116,8 @@ export default function AdminIgAccounts() {
         // Best-effort: a missing count shows as "—", never blocks the page.
         try {
           const [cq, aq] = await Promise.all([
-            fetch(withEmail(`${API_BASE}/admin/catalog-requests`, email)),
-            fetch(withEmail(`${API_BASE}/admin/account-requests`, email)),
+            apiFetch(withEmail(`${API_BASE}/admin/catalog-requests`, email)),
+            apiFetch(withEmail(`${API_BASE}/admin/account-requests`, email)),
           ])
           setPendingCatalog(cq.ok ? ((await cq.json()).requests || []).length : null)
           setPendingAccounts(aq.ok ? ((await aq.json()).requests || []).length : null)
@@ -136,17 +137,17 @@ export default function AdminIgAccounts() {
       // calls already confirmed founder status.
       if (accData.is_founder) {
         try {
-          const fbRes = await fetch(withEmail(`${API_BASE}/admin/feedback`, email))
+          const fbRes = await apiFetch(withEmail(`${API_BASE}/admin/feedback`, email))
           const fbData = await fbRes.json()
           setFeedback(fbData.feedback || [])
         } catch { /* feedback fetch is best-effort */ }
         try {
-          const usageRes = await fetch(withEmail(`${API_BASE}/admin/usage-stats`, email))
+          const usageRes = await apiFetch(withEmail(`${API_BASE}/admin/usage-stats`, email))
           if (usageRes.ok) setUsage(await usageRes.json())
         } catch { /* usage fetch is best-effort */ }
         await loadUsers()
         try {
-          const errRes = await fetch(withEmail(`${API_BASE}/admin/client-errors`, email))
+          const errRes = await apiFetch(withEmail(`${API_BASE}/admin/client-errors`, email))
           if (errRes.ok) setClientErrors(await errRes.json())
         } catch { /* client-errors panel is best-effort */ }
       }
@@ -166,7 +167,7 @@ export default function AdminIgAccounts() {
   async function toggleEnabled(acc) {
     setBusy(true)
     try {
-      await fetch(`${API_BASE}/admin/ig-accounts`, {
+      await apiFetch(`${API_BASE}/admin/ig-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -188,7 +189,7 @@ export default function AdminIgAccounts() {
   async function saveAccount(acc, fields) {
     setBusy(true)
     try {
-      const res = await fetch(`${API_BASE}/admin/ig-accounts`, {
+      const res = await apiFetch(`${API_BASE}/admin/ig-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,7 +216,7 @@ export default function AdminIgAccounts() {
   async function scrapeOne(handle) {
     setBusy(true)
     try {
-      const r = await fetch(`${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/scrape?requesting_email=${encodeURIComponent(email)}`, {
+      const r = await apiFetch(`${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/scrape?requesting_email=${encodeURIComponent(email)}`, {
         method: 'POST',
       })
       if (!r.ok) {
@@ -235,7 +236,7 @@ export default function AdminIgAccounts() {
     if (!confirm(`Remover @${handle}?`)) return
     setBusy(true)
     try {
-      await fetch(withEmail(
+      await apiFetch(withEmail(
         `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}`, email,
       ), { method: 'DELETE' })
       await load()
@@ -248,7 +249,7 @@ export default function AdminIgAccounts() {
   async function triggerRefresh() {
     setBusy(true)
     try {
-      const r = await fetch(`${API_BASE}/events/refresh`, { method: 'POST' })
+      const r = await apiFetch(`${API_BASE}/events/refresh`, { method: 'POST' })
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       alert('Refresh iniciado em background. Próximo scrape de Instagram em ~1-2 min.')
     } catch (e) {
@@ -271,7 +272,7 @@ export default function AdminIgAccounts() {
     const timeout = new AbortController()
     const timer = setTimeout(() => timeout.abort(), 120_000)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         withEmail(`${API_BASE}/admin/sync-social`, email),
         { method: 'POST', signal: timeout.signal },
       )
@@ -315,7 +316,7 @@ export default function AdminIgAccounts() {
     const timeout = new AbortController()
     const timer = setTimeout(() => timeout.abort(), 90_000)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         withEmail(`${API_BASE}/admin/sync-catalog`, email),
         { method: 'POST', signal: timeout.signal },
       )
@@ -347,7 +348,7 @@ export default function AdminIgAccounts() {
   async function toggleFeatured(acc) {
     setBusy(true)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `${API_BASE}/admin/ig-accounts/${encodeURIComponent(acc.handle)}/featured`,
         {
           method: 'PUT',
@@ -380,7 +381,7 @@ export default function AdminIgAccounts() {
     if (!target) return
     setBusy(true)
     try {
-      const r = await fetch(`${API_BASE}/admin/curators`, {
+      const r = await apiFetch(`${API_BASE}/admin/curators`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -404,7 +405,7 @@ export default function AdminIgAccounts() {
   async function setPromo(handle, code, perk) {
     setBusy(true)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `${API_BASE}/admin/ig-accounts/${encodeURIComponent(handle)}/promo`,
         {
           method: 'PUT',
@@ -427,7 +428,7 @@ export default function AdminIgAccounts() {
     if (!confirm(`Remover ${target} de todos os papéis?`)) return
     setBusy(true)
     try {
-      const r = await fetch(withEmail(
+      const r = await apiFetch(withEmail(
         `${API_BASE}/admin/curators/${encodeURIComponent(target)}`, email,
       ), { method: 'DELETE' })
       if (!r.ok) {
@@ -702,7 +703,7 @@ function FeedbackSection({ feedback, email, onReload, busy, setBusy }) {
   async function setStatus(fbId, status) {
     setBusy(true)
     try {
-      const r = await fetch(`${API_BASE}/admin/feedback/${fbId}`, {
+      const r = await apiFetch(`${API_BASE}/admin/feedback/${fbId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, requesting_email: email }),
@@ -1399,7 +1400,7 @@ function PostDebugSection({ email }) {
     if (!link) return
     setRunning(true); setError(null); setResult(null)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `${API_BASE}/admin/ig-extract-debug?url=${encodeURIComponent(link)}`
         + `&requesting_email=${encodeURIComponent(email)}`
       )

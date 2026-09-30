@@ -4,6 +4,7 @@ import { useGoBack } from '../lib/navigation'
 import HomeEventRow from '../components/HomeEventRow'
 import { fetchEvents, trackEvent, BASE_URL } from '../services/api'
 import { groupByGenre } from '../data/genres'
+import { apiFetch } from '../lib/session'
 
 // "Novidades" — the daily digest as its own curated page, not the Eventos
 // list wearing a filter.
@@ -67,7 +68,7 @@ export default function Novidades() {
 
     async function load() {
       try {
-        const res = await fetch(`${BASE_URL}/digests/${encodeURIComponent(digestId)}`)
+        const res = await apiFetch(`${BASE_URL}/digests/${encodeURIComponent(digestId)}`)
         if (!res.ok) throw new Error(`Erro ${res.status}`)
         const digest = await res.json()
         const ids = digest?.event_ids || []

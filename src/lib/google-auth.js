@@ -12,8 +12,11 @@
 //            We can't use community Google-Auth plugins because they all
 //            require CocoaPods, and this project is Capacitor 8 SPM-only.
 //
-// Both branches end up calling onSuccess({id, name, givenName, email, picture})
-// with the same shape, so callers never need to know which platform is active.
+// Both branches end with a Google access token and hand it to
+// profileFromAccessToken, which asks OUR backend (/auth/google) to verify
+// it with Google and open a session. Both end up calling
+// onSuccess({id, name, givenName, email, picture}) with the same shape, so
+// callers never need to know which platform is active.
 //
 // Build-time env vars:
 //   VITE_GOOGLE_CLIENT_ID — web OAuth client ID (used by GSI on web)
@@ -22,6 +25,8 @@
 // below — they're non-secret (the URL scheme is already in Info.plist).
 
 import { Capacitor } from '@capacitor/core'
+import { API_BASE } from './apiBase'
+import { setSessionToken, clearSessionToken } from './session'
 
 // iOS OAuth client ID + reversed-client-ID redirect URI. The URL scheme
 // suffix `:/oauth2redirect/google` is what Google's iOS OAuth flow expects.
@@ -70,6 +75,69 @@ export function parseGoogleCredential(credential) {
 }
 
 /**
+ * Turn a Google access token into the app's user shape.
+ *
+ * The backend goes first: it asks Google who the token belongs to and
+ * answers with the profile and a session token, so from here on the API
+ * can hold this device to that account. When the backend cannot be
+ * reached (the app is offline-first; the catalog still works without
+ * it) we fall back to what the client always did — ask Google directly —
+ * and sign in without a session. A backend that answers and REFUSES the
+ * token is not "unreachable": that is a failed sign-in.
+ */
+export async function profileFromAccessToken(accessToken) {
+  let res = null
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+    res = await fetch(`${API_BASE}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        access_token: accessToken,
+        device: Capacitor.getPlatform?.() || 'web',
+      }),
+    })
+    clearTimeout(timer)
+  } catch {
+    res = null
+  }
+  if (res && res.ok) {
+    const data = await res.json()
+    setSessionToken(data.token || '')
+    return {
+      id: data.user_id,
+      name: data.display_name,
+      givenName: data.given_name,
+      email: data.email,
+      picture: data.picture,
+      isNewUser: !!data.is_new_user,
+    }
+  }
+  if (res && res.status < 500) {
+    let detail = ''
+    try { detail = (await res.json())?.detail || '' } catch { /* not JSON */ }
+    throw new Error(detail || `Login recusado (${res.status})`)
+  }
+
+  // Backend unreachable: the pre-session path, no token.
+  clearSessionToken()
+  const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!userRes.ok) throw new Error(`userinfo ${userRes.status}`)
+  const data = await userRes.json()
+  return {
+    id: data.sub,
+    name: data.name,
+    givenName: data.given_name,
+    email: data.email,
+    picture: data.picture,
+  }
+}
+
+/**
  * Mount a "Continue with Google" button that signs in via the right path
  * for the current platform. Returns a cleanup function (clears any pending
  * polls; safe to call even on native where there's nothing to clean up).
@@ -84,8 +152,8 @@ export function mountGoogleButton(containerRef, onSuccess) {
 // ── Native (iOS) ──────────────────────────────────────────
 // PKCE flow: generate verifier + challenge, open SFSafariViewController to
 // Google's auth URL, listen for the deep-link redirect, exchange the code
-// for an access token, fetch userinfo. iOS public OAuth clients don't need
-// a client secret.
+// for an access token, hand it to the backend. iOS public OAuth clients
+// don't need a client secret.
 function mountNativeGoogleButton(containerRef, onSuccess) {
   if (!containerRef.current) return () => {}
 
@@ -181,19 +249,7 @@ async function signInWithGoogleNative() {
   }
   const tokens = await tokenRes.json()
 
-  const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  })
-  if (!userRes.ok) throw new Error(`userinfo ${userRes.status}`)
-  const data = await userRes.json()
-
-  return {
-    id: data.sub,
-    name: data.name,
-    givenName: data.given_name,
-    email: data.email,
-    picture: data.picture,
-  }
+  return profileFromAccessToken(tokens.access_token)
 }
 
 // ── PKCE helpers ──────────────────────────────────────────
@@ -241,21 +297,10 @@ function mountWebGoogleButton(containerRef, onSuccess) {
       callback: async (response) => {
         if (!response?.access_token) return
         try {
-          const r = await fetch(
-            'https://www.googleapis.com/oauth2/v3/userinfo',
-            { headers: { Authorization: `Bearer ${response.access_token}` } },
-          )
-          if (!r.ok) return
-          const data = await r.json()
-          onSuccess({
-            id: data.sub,
-            name: data.name,
-            givenName: data.given_name,
-            email: data.email,
-            picture: data.picture,
-          })
+          onSuccess(await profileFromAccessToken(response.access_token))
         } catch (err) {
-          console.warn('Google sign-in: userinfo fetch failed', err)
+          console.warn('Google sign-in failed', err)
+          alert(`Login com Google falhou: ${err?.message || err}`)
         }
       },
     })

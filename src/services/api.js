@@ -14,6 +14,7 @@ import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
 // call sites keep working. The resolution lives in lib/apiBase.js — see
 // there for why it must be `||` and why there must be only one of it.
 import { API_BASE as BASE_URL } from '../lib/apiBase'
+import { apiFetch, clearSessionToken, getSessionToken } from '../lib/session'
 export { BASE_URL }
 const TIMEOUT_MS = 5000
 
@@ -31,7 +32,7 @@ function getSessionId() {
 
 export function reportError(errorType, message = '', context = {}, googleId = '') {
   try {
-    fetch(`${BASE_URL}/errors/client`, {
+    apiFetch(`${BASE_URL}/errors/client`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -67,7 +68,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal })
+    const res = await apiFetch(url, { ...options, signal: controller.signal })
     clearTimeout(id)
     return res
   } catch (err) {
@@ -455,7 +456,7 @@ export async function saveUserState(googleId, state) {
 export async function syncRsvp(googleId, event, isRsvped) {
   try {
     const res = isRsvped
-      ? await fetch(`${BASE_URL}/rsvp`, {
+      ? await apiFetch(`${BASE_URL}/rsvp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -472,7 +473,7 @@ export async function syncRsvp(googleId, event, isRsvped) {
             event_url: event.url || '',
           }),
         })
-      : await fetch(
+      : await apiFetch(
           `${BASE_URL}/rsvp/${encodeURIComponent(event.id)}?google_id=${encodeURIComponent(googleId)}`,
           { method: 'DELETE' },
         )
@@ -577,14 +578,14 @@ export async function fetchFriendsFeed(googleId) {
 }
 
 export async function triggerRefresh() {
-  const res = await fetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
+  const res = await apiFetch(`${BASE_URL}/events/refresh`, { method: 'POST' })
   if (!res.ok) throw new Error('Refresh falhou')
   return res.json()
 }
 
 export async function trackEvent(eventName, properties = {}) {
   try {
-    await fetch(`${BASE_URL}/analytics/event`, {
+    await apiFetch(`${BASE_URL}/analytics/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1508,7 +1509,7 @@ export async function uploadEventImage(eventId, googleId, file) {
   form.append('file', file)
   form.append('google_id', googleId)
   const url = `${BASE_URL}/events/${encodeURIComponent(eventId)}/image`
-  const res = await fetch(url, { method: 'POST', body: form })
+  const res = await apiFetch(url, { method: 'POST', body: form })
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
     throw new Error(detail)
@@ -1533,7 +1534,7 @@ export async function uploadAvatar(googleId, file) {
   const form = new FormData()
   form.append('file', file)
   form.append('google_id', googleId)
-  const res = await fetch(`${BASE_URL}/user/avatar`, { method: 'POST', body: form })
+  const res = await apiFetch(`${BASE_URL}/user/avatar`, { method: 'POST', body: form })
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`
     throw new Error(detail)
@@ -1661,7 +1662,7 @@ export async function askCompanion({ message, situation, goal, week, language, h
   }))
 
   try {
-    const res = await fetch(`${BASE_URL}/companion`, {
+    const res = await apiFetch(`${BASE_URL}/companion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
@@ -1680,11 +1681,33 @@ export async function askCompanion({ message, situation, goal, week, language, h
 }
 
 export async function deleteUserAccount(googleId) {
-  const res = await fetchWithTimeout(
-    `${BASE_URL}/user/account?google_id=${encodeURIComponent(googleId)}`,
-    { method: 'DELETE' },
-    10_000,
-  )
-  if (!res.ok) throw new Error(`Delete account error: ${res.status}`)
-  return await res.json()
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/user/account?google_id=${encodeURIComponent(googleId)}`,
+      { method: 'DELETE' },
+      10_000,
+    )
+    if (!res.ok) throw new Error(`Delete account error: ${res.status}`)
+    return await res.json()
+  } finally {
+    // The server dropped every session of the account; the token on this
+    // device is dead either way.
+    clearSessionToken()
+  }
+}
+
+/**
+ * Sign out of this device: revoke the session on the server, forget the
+ * token here. Best effort — offline, the token is forgotten all the same
+ * and expires on its own server-side.
+ */
+export async function signOutSession() {
+  const token = getSessionToken()
+  clearSessionToken()
+  if (!token) return
+  try {
+    await fetchWithTimeout(`${BASE_URL}/auth/logout`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    }, 5_000)
+  } catch { /* offline: the server forgets it at expiry */ }
 }
