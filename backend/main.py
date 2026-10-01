@@ -6990,28 +6990,22 @@ def backfill_missing_tags(pipeline, limit: int = 200) -> dict:
 
 def fill_channels_from_catalog() -> dict:
     """The pipeline's last step: fork newly matching catalog events into
-    every rule channel, then one push per channel that gained something.
+    every rule channel. Returns forks added per channel name.
 
-    One push per channel per run, never per event — a channel that
-    gained twelve nights in one scrape sends "12 novidades", not twelve
-    pushes; someone following three channels gets at most three. That
-    cap is the whole reason the follower push exists as a batch and
-    never existed as a per-publish one (docs/NEXT.md)."""
+    No push from here. This used to send one push per channel that
+    gained something, and the daily digest that follows it in the same
+    run already headlines the channels you follow ("✨ 3 novos no
+    Rockzão · +23 novos em CWB hoje", see send_daily_digest_to_all_
+    subscribers). Someone following four channels was getting four
+    "📡 canal" pushes and then the digest saying the same thing — five
+    notifications for one scrape, which is how push gets turned off.
+    One push a day carries all of it; the fill only has to run before
+    the digest so channel_picks_by_follower sees the new forks."""
     added = db.route_catalog_events_to_channels()
     report = {}
     for gid, n in added.items():
         ch = db.get_group(gid) or {}
-        name = ch.get("name") or "canal"
-        report[name] = n
-        body = f"{n} novidade{'s' if n != 1 else ''} no {name}"
-        for uid in db.get_channel_followers_to_notify(gid):
-            try:
-                _send_push_to_user(
-                    uid, title=f"📡 {name}", body=body,
-                    url=f"/#/channels/{gid}", tag=f"channel-fill-{gid}",
-                )
-            except Exception as exc:
-                log.warning(f"channel fill push to {uid} for {gid} failed: {exc}")
+        report[ch.get("name") or "canal"] = n
     return report
 
 

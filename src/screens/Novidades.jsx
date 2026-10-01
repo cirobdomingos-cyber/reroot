@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useApp } from '../context/AppContext'
 import { useGoBack } from '../lib/navigation'
 import HomeEventRow from '../components/HomeEventRow'
-import { fetchEvents, trackEvent, BASE_URL } from '../services/api'
+import { fetchEvents, fetchChannelFeed, trackEvent, BASE_URL } from '../services/api'
 import { groupByGenre } from '../data/genres'
 import { apiFetch } from '../lib/session'
 
@@ -56,10 +57,38 @@ export default function Novidades() {
   const { digestId } = useParams()
   const navigate = useNavigate()
 
+  const { state } = useApp()
   const goBack = useGoBack('/events')
   const [events, setEvents] = useState(null)   // null = still loading
   const [digestDate, setDigestDate] = useState('')
   const [failed, setFailed] = useState(false)
+
+  // Which of your channels picked each night. The digest push already
+  // headlines this ("✨ 3 novos no Rockzão"); the screen it opens has to
+  // show the same thing or the push promised something the page doesn't
+  // deliver. Same lookup Eventos uses: the channel feed is a list of
+  // forks carrying sourceEventId, read as a map and never rendered as
+  // rows. The sections stay by genre — the channel is a mark on the
+  // row, not a way of grouping (docs/NEXT.md, "Genre is the ingredient").
+  const [channelEvents, setChannelEvents] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetchChannelFeed(state.googleUser?.id).then(list => {
+      if (!cancelled) setChannelEvents(list || [])
+    })
+    return () => { cancelled = true }
+  }, [state.googleUser?.id])
+  const channelsBySourceId = useMemo(() => {
+    const map = new Map()
+    for (const ev of channelEvents) {
+      if (!ev.sourceEventId) continue
+      const list = map.get(ev.sourceEventId) || []
+      const name = ev.groupName || 'um canal'
+      if (!list.includes(name)) list.push(name)
+      map.set(ev.sourceEventId, list)
+    }
+    return map
+  }, [channelEvents])
 
   useEffect(() => {
     if (!digestId) return
@@ -182,10 +211,14 @@ export default function Novidades() {
                   {section.emoji ? `${section.emoji} ` : ''}{section.label}
                   <span style={{ color: 'var(--text3)' }}> · {section.events.length}</span>
                 </div>
-                {section.events.map(ev => <DigestRow key={ev.id} ev={ev} navigate={navigate} />)}
+                {section.events.map(ev => (
+                  <DigestRow key={ev.id} ev={ev} navigate={navigate} channels={channelsBySourceId.get(ev.id)} />
+                ))}
               </div>
             ))
-          : (events || []).map(ev => <DigestRow key={ev.id} ev={ev} navigate={navigate} />)}
+          : (events || []).map(ev => (
+              <DigestRow key={ev.id} ev={ev} navigate={navigate} channels={channelsBySourceId.get(ev.id)} />
+            ))}
       </div>
     </div>
   )
@@ -198,9 +231,25 @@ export default function Novidades() {
 // `venue` already carries the bairro, and since Sep 2026 it's the
 // GEOCODED one rather than the enrichment guess (_venue_label in
 // backend/main.py) — appending ev.bairro here printed it twice.
-function DigestRow({ ev, navigate }) {
+//
+// `channels`: names of the viewer's channels that picked this night, or
+// undefined. One chip naming the first; a second channel is a count, the
+// names are on the channel screens.
+function DigestRow({ ev, navigate, channels }) {
+  const chip = channels?.length
+    ? (
+      <span className="neon-mono" style={{
+        fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase',
+        color: 'var(--cyan)', border: '1px solid var(--cyan)', borderRadius: 999,
+        padding: '3px 7px', whiteSpace: 'nowrap',
+      }}>
+        📡 {channels[0]}{channels.length > 1 ? ` +${channels.length - 1}` : ''}
+      </span>
+    )
+    : null
   return (
     <HomeEventRow
+      trailing={chip}
       name={ev.name}
       dateStart={ev.dateStart}
       dateEnd={ev.dateEnd}

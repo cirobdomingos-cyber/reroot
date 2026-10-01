@@ -126,9 +126,12 @@ One caution still stands as written:
   MembersSheet, and the primeiros-passos nudge would fire on an empty
   channel telling auê to invite people to its own channel. Share the
   event-attach + notify plumbing, not the group row.
-- Batch channel pushes (one per channel per day). Someone in three
-  channels could triple their notification volume, which is how push gets
-  turned off.
+- ~~Batch channel pushes (one per channel per day).~~ **Done 1 Oct: one
+  push a day, period.** The fill no longer pushes per channel; the daily
+  digest headlines the channels you follow ("✨ 3 novos no Rockzão · +23
+  novos em CWB hoje") and the Novidades screen marks each row with the
+  channel that picked it. Someone in three channels used to get three
+  "📡" pushes plus the digest.
 
 ### Genre is the ingredient, the channel is the dish
 
@@ -157,8 +160,9 @@ and the right to notify — then hand-tuned. So:
   curator.~~ **Shipped 23 Sep: channels carry a rule and the scrape fills
   them.** A rule is a set of event `tipo`s and/or `genre`s (AND across the
   two axes, OR within one); every scrape ends by backfilling missing tags,
-  forking every matching upcoming catalog event into every rule channel,
-  and sending one push per channel that gained something. The fill only
+  forking every matching upcoming catalog event into every rule channel;
+  the daily digest then tells each follower what their channels gained
+  (one push, since 1 Oct — the fill itself no longer pushes). The fill only
   adds — a curator pulling an event writes a `channel_exclusions` row and
   it stays out. `scripts/reshape_channels.py` applied the 23 Sep plan
   (Comédia and Livros created, Balada → Eletrônica, MPB + Jazz merged,
