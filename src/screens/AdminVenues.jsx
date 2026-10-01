@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useGoBack } from '../lib/navigation'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
+import { apiFetch } from '../lib/session'
 
 // Curator surface for venue pins.
 //
@@ -42,7 +43,7 @@ export default function AdminVenues() {
     if (!email) return
     setLoading(true)
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `${API_BASE}/admin/venues?requesting_email=${encodeURIComponent(email)}&status=${status}`,
       )
       if (r.status === 401 || r.status === 403) { setAllowed(false); return }
@@ -65,7 +66,7 @@ export default function AdminVenues() {
   async function runBatch(path, label) {
     setBusy(true); setError(''); setNotice('')
     try {
-      const r = await fetch(
+      const r = await apiFetch(
         `${API_BASE}${path}${path.includes('?') ? '&' : '?'}requesting_email=${encodeURIComponent(email)}`,
         { method: 'POST' },
       )
@@ -176,7 +177,7 @@ function VenueRow({ venue: v, email, onChanged }) {
   async function call(path, options, label) {
     setBusy(true); setErr('')
     try {
-      const r = await fetch(`${API_BASE}${path}`, options)
+      const r = await apiFetch(`${API_BASE}${path}`, options)
       const body = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`)
       return body

@@ -51,7 +51,8 @@ def api(tmp_path, monkeypatch):
         )
         conn.commit()
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app)
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db)
 
 
 def _event(_db, ev_id, *, name="Show", genre="", when=SOON, description="rock a noite toda"):

@@ -47,7 +47,8 @@ def api(tmp_path, monkeypatch):
     _db.init_db()
     _db.add_curator(email=CURATOR, added_by_email="system", notes="test")
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app)
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db)
 
 
 def _make_event(_db, **overrides):

@@ -21,6 +21,7 @@ import { Capacitor } from '@capacitor/core'
 import { useApp } from '../context/AppContext'
 
 import { API_BASE } from './apiBase'
+import { apiFetch } from './session'
 const IS_NATIVE = typeof window !== 'undefined' && Capacitor.isNativePlatform()
 
 // VAPID public key arrives URL-safe base64 from the backend; pushManager.subscribe()
@@ -157,7 +158,7 @@ export function usePushNotifications() {
         // appId — backend uses it for cross-app safety on multi-tenant
         // sends (currently we only have one app, but the field future-
         // proofs the schema).
-        const res = await fetch(`${API_BASE}/push/register-device-token`, {
+        const res = await apiFetch(`${API_BASE}/push/register-device-token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -208,7 +209,7 @@ export function usePushNotifications() {
         return permission === 'denied' ? 'denied' : false
       }
 
-      const keyRes = await fetch(`${API_BASE}/push/vapid-public-key`)
+      const keyRes = await apiFetch(`${API_BASE}/push/vapid-public-key`)
       if (!keyRes.ok) throw new Error('Falha ao obter chave VAPID do servidor.')
       const { publicKey } = await keyRes.json()
       if (!publicKey) {
@@ -243,7 +244,7 @@ export function usePushNotifications() {
       })
 
       const subJson = subscription.toJSON()
-      const res = await fetch(`${API_BASE}/push/subscribe`, {
+      const res = await apiFetch(`${API_BASE}/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -275,7 +276,7 @@ export function usePushNotifications() {
       if (IS_NATIVE) {
         if (apnsToken) {
           try {
-            await fetch(`${API_BASE}/push/register-device-token`, {
+            await apiFetch(`${API_BASE}/push/register-device-token`, {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ token: apnsToken }),
@@ -296,7 +297,7 @@ export function usePushNotifications() {
         // Best-effort backend cleanup — backend also self-prunes on
         // 410 Gone the next time it tries to send.
         try {
-          await fetch(`${API_BASE}/push/subscribe`, {
+          await apiFetch(`${API_BASE}/push/subscribe`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ endpoint: subscription.endpoint }),

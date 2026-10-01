@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
 import { resolveImageUrl } from '../services/api'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
+import { apiFetch } from '../lib/session'
 
 // Curator review queue for the public catalog.
 //
@@ -72,7 +73,7 @@ export default function CatalogReview() {
   useEffect(() => {
     if (!email) { setRole('signed_out'); return }
     let cancelled = false
-    fetch(withEmail(`${API_BASE}/admin/curators`, email))
+    apiFetch(withEmail(`${API_BASE}/admin/curators`, email))
       .then(readJson)
       .then(d => { if (!cancelled) setRole(d.is_curator ? 'curator' : 'not_curator') })
       .catch(() => { if (!cancelled) setRole('not_curator') })
@@ -135,7 +136,7 @@ function AccountRequestList({ email }) {
 
   useEffect(() => {
     let cancelled = false
-    fetch(withEmail(`${API_BASE}/admin/account-requests?status=review`, email))
+    apiFetch(withEmail(`${API_BASE}/admin/account-requests?status=review`, email))
       .then(readJson)
       .then(d => { if (!cancelled) setItems(d.requests || []) })
       .catch(e => { if (!cancelled) setError(e.message) })
@@ -170,7 +171,7 @@ function AccountRequestCard({ request: r, email }) {
     setBusy(true)
     setOutcome(null)
     try {
-      const res = await fetch(`${API_BASE}/admin/account-requests/${r.id}/${action}`, {
+      const res = await apiFetch(`${API_BASE}/admin/account-requests/${r.id}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ requesting_email: email, category, label: labelText.trim() }),
@@ -282,7 +283,7 @@ function RequestList({ email }) {
 
   useEffect(() => {
     let cancelled = false
-    fetch(withEmail(`${API_BASE}/admin/catalog-requests?status=review`, email))
+    apiFetch(withEmail(`${API_BASE}/admin/catalog-requests?status=review`, email))
       .then(readJson)
       .then(d => { if (!cancelled) setItems(d.requests || []) })
       .catch(e => { if (!cancelled) setError(e.message) })
@@ -294,7 +295,7 @@ function RequestList({ email }) {
     setBulk('working')
     setError('')
     try {
-      const data = await fetch(`${API_BASE}/admin/catalog-requests/approve-many`, {
+      const data = await apiFetch(`${API_BASE}/admin/catalog-requests/approve-many`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requesting_email: email, ids: [...picked] }),
@@ -400,7 +401,7 @@ function RequestDetail({ id, email }) {
 
   const load = useCallback(() => {
     setError('')
-    return fetch(withEmail(`${API_BASE}/admin/catalog-requests/${encodeURIComponent(id)}`, email))
+    return apiFetch(withEmail(`${API_BASE}/admin/catalog-requests/${encodeURIComponent(id)}`, email))
       .then(readJson)
       .then(d => {
         setReq(d)
@@ -428,7 +429,7 @@ function RequestDetail({ id, email }) {
       const body = kind === 'approve'
         ? { requesting_email: email, ...form, track_handle: track, note }
         : { requesting_email: email, note }
-      const data = await fetch(`${API_BASE}/admin/catalog-requests/${encodeURIComponent(id)}/${kind}`, {
+      const data = await apiFetch(`${API_BASE}/admin/catalog-requests/${encodeURIComponent(id)}/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

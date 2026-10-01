@@ -50,7 +50,8 @@ def api(tmp_path, monkeypatch):
             )
         conn.commit()
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app)
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db)
 
 
 def test_the_feed_is_not_truncated_at_the_old_cap(api):

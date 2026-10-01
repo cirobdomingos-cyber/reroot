@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { CATEGORY_ORDER } from '../data/categories'
+import { apiFetch } from '../lib/session'
 
 // "+ Adicionar nova fonte do Instagram" — the curator's way to grow the
 // catalog. Lived on the Fontes screen, which is now for looking; it
@@ -36,7 +37,7 @@ export default function AddHandleForm({ email, onAdded, flush = false }) {
     setSubmitting(true)
     setFeedback(null)
     try {
-      const r = await fetch(`${API_BASE}/admin/ig-accounts`, {
+      const r = await apiFetch(`${API_BASE}/admin/ig-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({

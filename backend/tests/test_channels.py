@@ -63,7 +63,8 @@ def api(tmp_path, monkeypatch):
             )
         conn.commit()
     from fastapi.testclient import TestClient
-    return _db, _main, TestClient(_main.app)
+    from _session import SessionClient
+    return _db, _main, SessionClient(_main.app, _db)
 
 
 def _channel(client, name="Rockzão"):
@@ -255,16 +256,19 @@ def test_a_channel_needs_a_name(api):
 
 def test_creating_a_channel_before_the_founder_has_ever_signed_in_explains_itself(api):
     """Fresh environment: curators is seeded from settings at boot, but
-    `users` only gets a row on first login. A 500 here would look like a
-    bug; it's a setup step."""
+    `users` only gets a row on first login — and, since sessions, a
+    founder who never signed in has no session either. The answer is a
+    401 that says to sign in, not a 500 that looks like a bug. Sent
+    with a plain client: the e-mail alone must not open a session."""
     _db, _main, client = api
+    from fastapi.testclient import TestClient
     with _db.get_conn() as conn:
         conn.execute("DELETE FROM users WHERE email = ?", (FOUNDER_EMAIL,))
         conn.commit()
-    r = client.post("/admin/channels",
-                    json={"requesting_email": FOUNDER_EMAIL, "name": "Rockzão"})
-    assert r.status_code == 409
-    assert "entra" in r.json()["detail"].lower()
+    r = TestClient(_main.app).post("/admin/channels",
+                                   json={"requesting_email": FOUNDER_EMAIL, "name": "Rockzão"})
+    assert r.status_code == 401
+    assert "logado" in r.json()["detail"].lower()
 
 
 # -- 7. the frontend needs `kind` to gate the crew machinery ---------

@@ -26,6 +26,7 @@ import CoHostsSheet from '../components/CoHostsSheet'
 import EventsMap from '../components/EventsMap'
 import { shareLink, appLink, shortEventLink } from '../lib/share'
 import { VENUE_CATEGORIES, SOURCE_CONFIG } from '../data/eventSources'
+import { apiFetch } from '../lib/session'
 
 // VENUE_CATEGORIES + SOURCE_CONFIG moved to data/eventSources.js so
 // EventDetail can import them without a cycle back through this file.
@@ -315,7 +316,7 @@ export default function Events() {
     const email = state.googleUser?.email
     if (!email) { setIsCurator(false); return }
     let cancelled = false
-    fetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+    apiFetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (cancelled) return
@@ -399,7 +400,7 @@ export default function Events() {
     // push payload to avoid the APNs / web push size limits that forced
     // the old ?new=id,id,... approach to cap at 12).
     if (queryDigest) {
-      fetch(`${BASE_URL}/digests/${encodeURIComponent(queryDigest)}`)
+      apiFetch(`${BASE_URL}/digests/${encodeURIComponent(queryDigest)}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (d?.event_ids?.length) setDigestIds(d.event_ids)

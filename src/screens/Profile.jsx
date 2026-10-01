@@ -8,10 +8,11 @@ import { signInWithApple, isAppleSignInAvailable } from '../lib/apple-auth'
 import { Capacitor } from '@capacitor/core'
 import { API_BASE } from '../lib/apiBase'
 import { getPublicOrigin } from '../lib/share'
-import { fetchUserStats, deleteUserAccount, uploadAvatar } from '../services/api'
+import { fetchUserStats, deleteUserAccount, uploadAvatar, signOutSession } from '../services/api'
 import { usePushNotifications, isPushSupported } from '../lib/usePushNotifications'
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
+import { apiFetch } from '../lib/session'
 
 const heroPillStyle = {
   padding: '7px 14px', borderRadius: 999,
@@ -227,6 +228,7 @@ export default function Profile() {
             <button
               onClick={() => {
                 if (confirm('Sair da conta Google? Você pode voltar a entrar quando quiser.')) {
+                  signOutSession()
                   dispatch({ type: 'SET_GOOGLE_USER', payload: null })
                 }
               }}
@@ -668,7 +670,7 @@ function FeedbackSection({ state }) {
     setSubmitting(true)
     setStatus(null)
     try {
-      const r = await fetch(`${API_BASE}/feedback`, {
+      const r = await apiFetch(`${API_BASE}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

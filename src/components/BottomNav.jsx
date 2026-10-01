@@ -7,6 +7,7 @@ import Avatar from './Avatar'
 import { API_BASE } from '../lib/apiBase'
 import { fetchNotifications } from '../services/api'
 import { useIsDesktop } from '../lib/useIsDesktop'
+import { apiFetch } from '../lib/session'
 
 // Bottom tab bar on phones; on a PC the same component renders as the left
 // sidebar (layout in globals.css), with the auê wordmark on top and Perfil
@@ -32,7 +33,7 @@ export default function BottomNav() {
   useEffect(() => {
     if (!email) { setRole(null); return }
     let cancelled = false
-    fetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+    apiFetch(`${API_BASE}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
       // Curators reach the admin shell too. It was founder-only, which
       // left curators with backend rights to the approval queues and no

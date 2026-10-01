@@ -160,7 +160,23 @@ ANTHROPIC_API_KEY=your_key       # obrigatório pro enrichment + extração Inst
 APIFY_API_TOKEN=apify_api_xxx    # obrigatório pra pipeline Instagram
 TWA_SHA256_FINGERPRINT=AB:CD:... # opcional — preenche /.well-known/assetlinks.json (só prod)
 ENV_NAME=production              # production (default) | staging — gates comportamento per-environment
+REQUIRE_SESSION=false            # true = toda chamada que identifica um usuário exige o token de sessão (ver abaixo)
 ```
+
+### Sessões (`REQUIRE_SESSION`)
+
+Login com Google ou Apple é verificado no servidor (`POST /auth/google`, `POST /auth/apple`)
+e devolve um token de sessão que o app manda em toda chamada (`Authorization: Bearer`).
+Rota que identifica quem chama (`google_id` na query, no path ou no body) confere o token:
+com sessão, o id tem que ser o da sessão (403 se não for). Rotas de fundador e curadoria
+(`/admin/*`, `requesting_email`) leem o e-mail **só** da sessão, sempre — o parâmetro
+`requesting_email` continua aceito mas é ignorado.
+
+`REQUIRE_SESSION` é a chave do rollout. Desligada (default), uma chamada **sem** token ainda
+passa na palavra do cliente — é o que os bundles antigos no iPhone mandam — e o servidor
+loga um aviso por rota. Ligada (`REQUIRE_SESSION=true`), chamada sem token que nomeia um
+usuário leva 401. Ordem: deploy → o OTA chega nos celulares → ligar a flag na Railway.
+Detalhes em [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md#sessões-require_session).
 
 Sem `ANTHROPIC_API_KEY` o app cai pro fallback de seed embutido (12 auê Originals). Sem `APIFY_API_TOKEN` a pipeline Instagram silenciosamente vira no-op.
 

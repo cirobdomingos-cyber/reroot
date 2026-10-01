@@ -71,6 +71,25 @@ immutable on the device, so never set a version before step 5 passes.
 4. **Promote:** set `OTA_BUNDLE_VERSION=<same version>` and delete
    `OTA_CANARY_VERSION`. **Abort:** just delete `OTA_CANARY_VERSION`.
 
+## Sessões (`REQUIRE_SESSION`)
+
+Desde set/2026 o login abre uma sessão no servidor e o app manda o token em
+toda chamada. Quem está no bundle antigo não manda token nenhum — e um
+token só aparece num login novo, não existe re-login silencioso. Por isso a
+exigência é uma flag, não código:
+
+1. Deploy normal (staging → produção → OTA canary → todo mundo), com
+   `REQUIRE_SESSION` ausente ou `false`. Chamada sem token ainda passa;
+   o log mostra `caller identified without a session` uma vez por rota.
+2. Espere o OTA chegar (`/updates/status`) e as pessoas **entrarem de novo**
+   — o token nasce no login. Quem já estava logado antes da atualização
+   continua sem token até sair e entrar.
+3. Na Railway (produção) defina `REQUIRE_SESSION=true`. A partir daí toda
+   chamada que nomeia um usuário sem token leva 401, e o app pede login.
+   Rotas de fundador/curadoria nunca dependeram da flag: só a sessão vale.
+
+Voltar atrás: apagar a variável. Nada muda no banco.
+
 ## Urgent fixes (hotfix)
 Production is broken and can't wait for the staging cycle:
 - Branch from `main`: `git switch -c fix/<name> origin/main`
