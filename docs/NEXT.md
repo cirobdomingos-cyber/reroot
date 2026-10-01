@@ -33,6 +33,17 @@ that day and backfilled with one day per user). It means something from
 
 ## Open right now
 
+**Sessões: o release `dev → main` ainda não foi aberto (1 out).** PR #136 entrou em
+`dev`: o backend verifica o login (`POST /auth/google`, `/auth/apple`) e
+emite um token de sessão; 64 rotas por usuário checam quem chama e todo
+`/admin/*` deriva o e-mail da sessão. Ordem: testar no staging (ver "How
+to test" do #136) → PR de release `dev → main` → esperar o OTA chegar
+(`/updates/status`) e as pessoas entrarem de novo → `REQUIRE_SESSION=true`
+na Railway de produção. Passo a passo em `docs/RELEASE_PROCESS.md`
+("Sessões"). Enquanto a flag estiver fora, chamada sem token ainda passa;
+`/admin/*` e curadoria já exigem sessão (o fundador e os curadores
+precisam do build novo).
+
 Both of these are Railway env vars, read per request — no deploy, no
 code. There is no Railway CLI on this machine; they're set by hand in
 the dashboard.
