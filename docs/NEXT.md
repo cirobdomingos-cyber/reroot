@@ -44,16 +44,9 @@ na Railway de produção. Passo a passo em `docs/RELEASE_PROCESS.md`
 `/admin/*` e curadoria já exigem sessão (o fundador e os curadores
 precisam do build novo).
 
-Both of these are Railway env vars, read per request — no deploy, no
-code. There is no Railway CLI on this machine; they're set by hand in
-the dashboard.
-
-**`TESTFLIGHT_INVITE_URL` is still set in production**, left over from a
-beta window. `/install` reads `settings.testflight_invite_url or
-APP_STORE_URL`, so the override is silent: every iOS visitor sent to
-`/install` lands on a TestFlight invite instead of the public App Store
-listing. Verified 19 Sep — `GET /install` with an iPhone UA returns
-`302 → testflight.apple.com/join/…`. Clear the var.
+`DIGEST_URL_NOVIDADES` below is a Railway env var, read per request — no
+deploy, no code. There is no Railway CLI on this machine; it's set by
+hand in the dashboard.
 
 **`DIGEST_URL_NOVIDADES` is still unset in production.** The Novidades
 screen shipped (`prod-2026-09-16-9`), but the daily digest push keeps
