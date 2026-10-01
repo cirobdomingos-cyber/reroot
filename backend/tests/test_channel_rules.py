@@ -369,23 +369,26 @@ def test_backfill_tags_then_fill(api):
     assert _sources_in(_db, cid) == ["instagram_a"]
 
 
-def test_fill_pushes_once_per_channel_to_followers_only(api, monkeypatch):
+def test_fill_sends_no_push_of_its_own(api, monkeypatch):
+    """The fill used to push "📡 canal · 2 novidades" per channel, and the
+    daily digest right after it headlines the same channels for the same
+    person — one scrape, N+1 notifications. The digest is the one push;
+    the fill only routes."""
     _db, main, client = api
     cid = _channel(client, "auê Comédia", tipos=["comedia"])["channel"]["id"]
     client.post(f"/channels/{cid}/follow", json={"google_id": "u_ana"})
-    client.post(f"/channels/{cid}/follow", json={"google_id": "u_bia"})
-    client.put(f"/channels/{cid}/notify", json={"google_id": "u_bia", "notify": False})
     sent = []
     monkeypatch.setattr(main, "_send_push_to_user",
                         lambda uid, **kw: sent.append((uid, kw["body"])))
     _event(_db, "instagram_a", tipo="comedia")
     _event(_db, "instagram_b", tipo="comedia")
     assert main.fill_channels_from_catalog() == {"auê Comédia": 2}
-    assert sent == [("u_ana", "2 novidades no auê Comédia")]
-    # Nothing new, nothing sent.
-    sent.clear()
-    assert main.fill_channels_from_catalog() == {}
     assert sent == []
+    # The digest is where the follower hears about it, once.
+    assert _db.channel_picks_by_follower(["instagram_a", "instagram_b"]) == {
+        "u_ana": {"auê Comédia": 2},
+    }
+    assert main.fill_channels_from_catalog() == {}
 
 
 # -- 9. two nights, one venue, one day -------------------------------
