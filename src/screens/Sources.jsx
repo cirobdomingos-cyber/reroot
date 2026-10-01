@@ -7,6 +7,7 @@ import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories
 import Avatar from '../components/Avatar'
 
 import { API_BASE } from '../lib/apiBase'
+import { apiFetch } from '../lib/session'
 
 // Unified browser for every catalog source — institutional + Instagram
 // handles, grouped by category. Same taxonomy as the Events tab filter
@@ -371,7 +372,7 @@ function SuggestAccountForm({ googleId }) {
     setSubmitting(true)
     setFeedback(null)
     try {
-      const r = await fetch(`${API_BASE}/accounts/requests`, {
+      const r = await apiFetch(`${API_BASE}/accounts/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({ google_id: googleId, handle: clean, note: note.trim() }),

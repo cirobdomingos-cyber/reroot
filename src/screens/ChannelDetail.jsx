@@ -11,6 +11,7 @@ import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
 import { GENRE_META, GENRE_ORDER } from '../data/genres'
 import { TIPO_META, TIPO_ORDER } from '../data/tipos'
+import { apiFetch } from '../lib/session'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
@@ -609,7 +610,7 @@ function ChannelCuration({ channel, email, onChanged }) {
     fetchChannelCurators(channel.id, email).then(setCurators)
     // Founder-only endpoint; a non-founder curator gets nothing back
     // and never sees the appoint control.
-    fetch(`${BASE_URL}/admin/users?requesting_email=${encodeURIComponent(email || '')}&limit=200`)
+    apiFetch(`${BASE_URL}/admin/users?requesting_email=${encodeURIComponent(email || '')}&limit=200`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setPeople(d?.users || []))
       .catch(() => setPeople([]))

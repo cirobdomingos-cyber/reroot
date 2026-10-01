@@ -24,6 +24,7 @@ The repo and Railway subdomain still say `reroot` — that's the old product nam
 - iPhone updates go to `OTA_CANARY_DEVICES` first, then everyone. Full steps: [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 - [.github/workflows/sync-staging.yml](.github/workflows/sync-staging.yml) auto-merges `main → dev` on every push to main, so hotfixes reach staging.
 - Behavior differences between envs come from env vars (`ENV_NAME`), **never** from divergent code branches.
+- Identity: the backend verifies sign-ins and issues session tokens; `REQUIRE_SESSION` gates the cut-over for old bundles. See the "Sessões" section in [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 
 ## What to work on next
 

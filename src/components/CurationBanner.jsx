@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { API_BASE } from '../lib/apiBase'
+import { apiFetch } from '../lib/session'
 
 // One strip, for curators, saying how many scraped events are in the
 // catalog without a curator's pass yet. Informative, not a gate: the
@@ -18,11 +19,11 @@ export default function CurationBanner() {
     if (!email) { setCount(0); return }
     let cancelled = false
     const q = `requesting_email=${encodeURIComponent(email)}`
-    fetch(`${API_BASE}/admin/curators?${q}`)
+    apiFetch(`${API_BASE}/admin/curators?${q}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (cancelled || !(d?.is_curator || d?.is_founder)) return null
-        return fetch(`${API_BASE}/admin/catalog-requests?status=review&${q}`)
+        return apiFetch(`${API_BASE}/admin/catalog-requests?status=review&${q}`)
           .then(r => (r.ok ? r.json() : null))
       })
       .then(d => { if (!cancelled && d) setCount((d.requests || []).length) })

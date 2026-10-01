@@ -33,24 +33,16 @@ that day and backfilled with one day per user). It means something from
 
 ## Open right now
 
-Both of these are Railway env vars, read per request — no deploy, no
-code. There is no Railway CLI on this machine; they're set by hand in
-the dashboard.
-
-**`TESTFLIGHT_INVITE_URL` is still set in production**, left over from a
-beta window. `/install` reads `settings.testflight_invite_url or
-APP_STORE_URL`, so the override is silent: every iOS visitor sent to
-`/install` lands on a TestFlight invite instead of the public App Store
-listing. Verified 19 Sep — `GET /install` with an iPhone UA returns
-`302 → testflight.apple.com/join/…`. Clear the var.
-
-**`DIGEST_URL_NOVIDADES` is still unset in production.** The Novidades
-screen shipped (`prod-2026-09-16-9`), but the daily digest push keeps
-sending the legacy `/#/events?digest=<id>` until that var is set to
-`true` on the production Railway service. It's read per call in
-`_digest_deep_link`, so it takes effect on the next digest — no deploy.
-Bundles older than `prod-2026-09-16-5` have no `/novidades` route and
-would land on the default screen, so the OTA needs to have rolled first.
+**Sessões: release `dev → main` aberto como draft, PR #139 (1 out), esperando os
+testes manuais no staging.** PR #136 entrou em `dev`: o backend verifica o login (`POST /auth/google`, `/auth/apple`) e
+emite um token de sessão; 64 rotas por usuário checam quem chama e todo
+`/admin/*` deriva o e-mail da sessão. Ordem: testar no staging (checklist no
+corpo da #139) → marcar ready e mergear → esperar o OTA chegar
+(`/updates/status`) e as pessoas entrarem de novo → `REQUIRE_SESSION=true`
+na Railway de produção. Passo a passo em `docs/RELEASE_PROCESS.md`
+("Sessões"). Enquanto a flag estiver fora, chamada sem token ainda passa;
+`/admin/*` e curadoria já exigem sessão (o fundador e os curadores
+precisam do build novo).
 
 ---
 

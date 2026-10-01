@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { BASE_URL, createAueChannel, fetchChannels, fetchGroups, setChannelFollow, trackEvent } from '../services/api'
 import ChannelsIntro from './ChannelsIntro'
+import { apiFetch } from '../lib/session'
 
 // Canais do auê — curated collections you follow.
 //
@@ -40,7 +41,7 @@ export default function ChannelList() {
   useEffect(() => {
     if (!email) { setIsFounder(false); return }
     let cancelled = false
-    fetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
+    apiFetch(`${BASE_URL}/admin/curators?requesting_email=${encodeURIComponent(email)}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled) setIsFounder(!!d?.is_founder) })
       .catch(() => { if (!cancelled) setIsFounder(false) })

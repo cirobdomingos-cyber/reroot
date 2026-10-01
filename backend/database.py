@@ -220,6 +220,23 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_auth_providers_user_id "
             "ON auth_providers (user_id)"
         )
+        # Sign-in sessions. The token itself is never stored — only its
+        # sha256 — so a copy of the database file is not a copy of every
+        # phone's login. One row per device sign-in; `device` is a free
+        # label for the admin view, not a key.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash   TEXT PRIMARY KEY,
+                user_id      TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                expires_at   TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                device       TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id)"
+        )
         # Backfill: for every legacy user_state row, ensure there's a
         # matching users + auth_providers row (provider='google').
         # Idempotent — INSERT OR IGNORE so re-running on each boot is
@@ -3429,6 +3446,75 @@ def get_user_profile(user_id: str) -> Optional[dict]:
     if not row:
         return None
     return dict(row)
+
+
+# ── Sessions ──────────────────────────────────────────────
+
+SESSION_TTL_DAYS = 90
+
+
+def _session_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_session(user_id: str, device: str = "") -> str:
+    """Open a session for a verified sign-in and return the bearer token.
+    The token is shown to the client once; the row keeps only its hash."""
+    if not user_id:
+        raise ValueError("user_id required")
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_used_at, device) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (_session_hash(token), user_id, now.isoformat(),
+             (now + timedelta(days=SESSION_TTL_DAYS)).isoformat(),
+             now.isoformat(), (device or "")[:120]),
+        )
+        conn.commit()
+    return token
+
+
+def resolve_session(token: str) -> Optional[str]:
+    """The user id behind a bearer token, or None when the token is unknown
+    or expired. Touches last_used_at; an expired row is deleted on sight so
+    the table does not keep every login ever made."""
+    if not token:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    h = _session_hash(token)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, expires_at FROM sessions WHERE token_hash = ?", (h,)
+        ).fetchone()
+        if not row:
+            return None
+        if row["expires_at"] <= now:
+            conn.execute("DELETE FROM sessions WHERE token_hash = ?", (h,))
+            conn.commit()
+            return None
+        conn.execute("UPDATE sessions SET last_used_at = ? WHERE token_hash = ?", (now, h))
+        conn.commit()
+    return row["user_id"]
+
+
+def delete_session(token: str) -> None:
+    """Sign out one device."""
+    if not token:
+        return
+    with get_conn() as conn:
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_session_hash(token),))
+        conn.commit()
+
+
+def delete_user_sessions(user_id: str) -> None:
+    """Sign out every device — account deletion, or a lost phone."""
+    if not user_id:
+        return
+    with get_conn() as conn:
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        conn.commit()
 
 
 # ── Daily digest snapshots ──────────────────────────────
@@ -6824,6 +6910,8 @@ def delete_user_account(google_id: str) -> bool:
         conn.execute(
             "DELETE FROM auth_providers WHERE user_id = ?", (google_id,)
         )
+        # Every signed-in device stops working with the account.
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (google_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (google_id,))
         conn.commit()
     return True
