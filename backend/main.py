@@ -8,7 +8,11 @@ Deploy: Railway runs this via Dockerfile (PORT injected by Railway)
 (O nome do diretório/repo ainda é "reroot" — produto anterior; a voz e o
 branding já migraram pra auê.)
 """
+import contextlib
 import functools
+import hmac
+import shutil
+import tempfile
 import json
 import logging
 import asyncio
@@ -33,6 +37,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import database as db
@@ -131,6 +136,11 @@ class Settings(BaseSettings):
     catalog_sync_token: str = ""
     # Where staging pulls from. Only read when env_name != "production".
     catalog_sync_origin: str = "https://reroot-production.up.railway.app"
+    # Nightly off-site backup (GET /admin/backup). Read-only shared secret
+    # held by the backup job, nobody else. Empty: the route 404s, same
+    # fail-closed rule as catalog_sync_token. Never reuse that token here:
+    # this one returns every user's data, not the anonymised catalog.
+    backup_token: str = ""
 
 
 settings = Settings()
@@ -7702,6 +7712,56 @@ def social_export(token: str = ""):
     return db.export_social(
         salt=settings.catalog_sync_token,
         keep_real=(settings.founder_email,),
+    )
+
+
+# ── Backup: a consistent snapshot of the whole database ───────────────
+#
+# The volume is the only copy of every user, RSVP and friendship. A bad
+# deploy or a deleted volume would lose them, so a scheduled job outside
+# Railway pulls this nightly. Copying the file bytes while the app writes
+# can produce a corrupt copy; sqlite's online backup API reads a
+# consistent page set instead. Event images on the same volume are not
+# included: they are rehosted copies of public Instagram media.
+
+
+def _backup_token_ok(authorization: str) -> bool:
+    scheme, _, token = (authorization or "").strip().partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return False
+    return hmac.compare_digest(token.strip().encode(), settings.backup_token.encode())
+
+
+def snapshot_database(dst: Path) -> None:
+    """Write a consistent copy of DB_PATH to `dst` (sqlite online backup)."""
+    with contextlib.closing(sqlite3.connect(db.DB_PATH)) as src,             contextlib.closing(sqlite3.connect(dst)) as out:
+        src.backup(out)
+
+
+@app.get("/admin/backup")
+def admin_backup(authorization: Annotated[str, Header()] = ""):
+    """The whole database as one SQLite file, for the nightly backup job.
+
+    Gated by BACKUP_TOKEN as a bearer token, not by a founder session: the
+    caller is a scheduled job, and sessions expire. 404 when the variable
+    is unset, so an environment without it doesn't admit the route exists.
+    """
+    if not settings.backup_token:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not _backup_token_ok(authorization):
+        raise HTTPException(status_code=401, detail="Invalid backup token")
+    tmp = Path(tempfile.mkdtemp(prefix="aue-backup-"))
+    try:
+        snapshot_database(tmp / "aue.db")
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return FileResponse(
+        tmp / "aue.db",
+        filename=f"aue-{stamp}.db",
+        media_type="application/vnd.sqlite3",
+        background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True),
     )
 
 

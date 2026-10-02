@@ -197,6 +197,8 @@ Sync automático: `.github/workflows/sync-staging.yml` faz `merge main → dev` 
 
 Comportamento per-environment via env var (`ENV_NAME`), nunca via branch divergente — padrão [12-factor app](https://12factor.net/config) — código unificado, promoção é só flipar a flag em prod.
 
+Backups: `GET /admin/backup` with `Authorization: Bearer $BACKUP_TOKEN` returns a consistent snapshot of the whole SQLite database (sqlite online backup API, safe while the app writes). The workspace job `scripts/backup_dbs.py` pulls it nightly and verifies it. `BACKUP_TOKEN` unset: the route 404s. Set it on production only; it is not the catalog sync token.
+
 ---
 
 ## What's Next
