@@ -6941,7 +6941,9 @@ def admin_backfill_genre(requesting_email: str = "", limit: int = 200,
 
     from enrichment import EnrichmentPipeline
     pipeline = EnrichmentPipeline(settings.anthropic_api_key)
-    assigned = pipeline.classify_genres(pending)
+    answered: set[str] = set()
+    assigned = pipeline.classify_genres(pending, answered=answered)
+    db.record_tag_attempts("genre", answered)
 
     by_genre: dict[str, int] = {}
     tagged = 0
@@ -6972,7 +6974,11 @@ def backfill_missing_tags(pipeline, limit: int = 200) -> dict:
 
     Neither pass pins: a machine fill is a guess the next enrichment may
     improve on, and edited_fields means a human decided (see
-    admin_backfill_genre)."""
+    admin_backfill_genre).
+
+    Every id the model answered for, "nenhum" included, is recorded in
+    tag_attempts so the next scrape moves on to newer events instead of
+    re-asking the same ones (list_events_needing_genre)."""
     out = {}
     for field, lister, classify in (
         ("genre", db.list_events_needing_genre, pipeline.classify_genres),
@@ -6981,9 +6987,11 @@ def backfill_missing_tags(pipeline, limit: int = 200) -> dict:
         pending = lister(limit=limit)
         tagged = 0
         if pending:
-            for event_id, value in classify(pending).items():
+            answered: set[str] = set()
+            for event_id, value in classify(pending, answered=answered).items():
                 if db.update_catalog_event(event_id, {field: value}, pin=False):
                     tagged += 1
+            db.record_tag_attempts(field, answered)
         out[field] = {"considered": len(pending), "tagged": tagged}
     return out
 
@@ -7030,7 +7038,9 @@ def admin_backfill_tipo(requesting_email: str = "", limit: int = 200,
 
     from enrichment import EnrichmentPipeline
     pipeline = EnrichmentPipeline(settings.anthropic_api_key)
-    assigned = pipeline.classify_tipos(pending)
+    answered: set[str] = set()
+    assigned = pipeline.classify_tipos(pending, answered=answered)
+    db.record_tag_attempts("tipo", answered)
 
     by_tipo: dict[str, int] = {}
     tagged = 0

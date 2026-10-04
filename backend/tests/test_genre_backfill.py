@@ -79,9 +79,11 @@ def _stub_classifier(main, mapping, calls=None):
         def __init__(self, *a, **kw):
             pass
 
-        def classify_genres(self, events, batch_size=25):
+        def classify_genres(self, events, batch_size=25, answered=None):
             if calls is not None:
                 calls.append([e["id"] for e in events])
+            if answered is not None:
+                answered.update(i for i in mapping if i in {e["id"] for e in events})
             return {e["id"]: mapping[e["id"]] for e in events if e["id"] in mapping}
 
     enrichment.EnrichmentPipeline = _Fake
@@ -285,3 +287,26 @@ def test_classify_makes_no_call_for_an_empty_list(api):
     pipeline, sent = _pipeline_returning()
     assert pipeline.classify_genres([]) == {}
     assert sent == []
+
+
+def test_classify_reports_every_answered_id_nenhum_included(api):
+    """`answered` is what lets the queue move on: "nenhum" is an answer
+    (recorded, never re-asked), an intruder id is not, and an id the
+    model left out is not either."""
+    pipeline, _ = _pipeline_returning(
+        '[{"id": "a", "genre": "nenhum"}, {"id": "b", "genre": "rock"},'
+        ' {"id": "intruso", "genre": "pop"}]'
+    )
+    answered = set()
+    out = pipeline.classify_genres(_events("a", "b", "c"), answered=answered)
+    assert out == {"b": "rock"}
+    assert answered == {"a", "b"}
+
+
+def test_an_attempted_event_is_not_offered_to_the_admin_backfill(api):
+    _db, main, client = api
+    _event(_db, "instagram_a", name="Feira de livros")
+    _db.record_tag_attempts("genre", ["instagram_a"])
+    assert _db.list_events_needing_genre() == []
+    r = client.post(f"/admin/events/backfill-genre?requesting_email={FOUNDER}&dry_run=true")
+    assert r.json()["would_tag"] == 0

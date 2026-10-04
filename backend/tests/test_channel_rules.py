@@ -20,8 +20,10 @@ What must hold:
   6. Merging channels carries followers and events over, and drops a
      fork the target already holds rather than duplicating it.
   7. Rebalance moves a misfiled fork to the one rule channel it fits.
-  8. The scrape's tag backfill feeds the fill, and followers get one
-     push per channel per run, never one per event.
+  8. The scrape's tag backfill feeds the fill, and the fill sends no
+     push of its own (the daily digest is the one push). An event the
+     model answered "nenhum" for is never re-asked, so a backlog of
+     non-music nights can't keep new events from being tagged.
 """
 import sys
 from datetime import datetime, timedelta, timezone
@@ -68,7 +70,8 @@ def api(tmp_path, monkeypatch):
     return _db, _main, SessionClient(_main.app, _db)
 
 
-def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None):
+def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None,
+           fetched=None, recurring=False):
     from models import EnrichedEvent
     # Distinct names by default: the fill keeps one row per (name, day)
     # in a channel, so two fixtures called "Noite" on the same day would
@@ -84,7 +87,8 @@ def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None)
         price_tier="free", vibe_summary="", expected_size="medium",
         header_gradient="g", url="https://www.instagram.com/p/abc/",
         image_url="/event-images/x.jpg",
-        fetched_at=datetime.now(timezone.utc), genre=genre, tipo=tipo,
+        fetched_at=fetched or datetime.now(timezone.utc), genre=genre, tipo=tipo,
+        is_recurring=recurring,
     ))
 
 
@@ -339,17 +343,27 @@ def test_rebalance_leaves_a_hand_pick_that_fits_nowhere_else(api):
 # -- 8. the pipeline step --------------------------------------------
 
 class _FakePipeline:
-    def __init__(self, tipos=None, genres=None):
+    """Answers every event it is asked about, like the real model: an id
+    missing from `tipos`/`genres` is a "nenhum". Ids in `silent` get no
+    answer at all, the way a failed batch behaves."""
+
+    def __init__(self, tipos=None, genres=None, silent=()):
         self.tipos, self.genres = tipos or {}, genres or {}
+        self.silent = set(silent)
         self.asked = []
 
-    def classify_tipos(self, events, batch_size=25):
-        self.asked.append(("tipo", [e["id"] for e in events]))
-        return {e["id"]: self.tipos[e["id"]] for e in events if e["id"] in self.tipos}
+    def _classify(self, field, mapping, events, answered):
+        self.asked.append((field, [e["id"] for e in events]))
+        if answered is not None:
+            answered.update(e["id"] for e in events if e["id"] not in self.silent)
+        return {e["id"]: mapping[e["id"]] for e in events
+                if e["id"] in mapping and e["id"] not in self.silent}
 
-    def classify_genres(self, events, batch_size=25):
-        self.asked.append(("genre", [e["id"] for e in events]))
-        return {e["id"]: self.genres[e["id"]] for e in events if e["id"] in self.genres}
+    def classify_tipos(self, events, batch_size=25, answered=None):
+        return self._classify("tipo", self.tipos, events, answered)
+
+    def classify_genres(self, events, batch_size=25, answered=None):
+        return self._classify("genre", self.genres, events, answered)
 
 
 def test_backfill_tags_then_fill(api):
@@ -442,3 +456,53 @@ def test_dedupe_removes_extra_rows_naming_one_night_and_keeps_the_earliest(api):
     assert r.json()["removed"] == {"auê Rock": 1}
     ids = [e["id"] for e in _db.get_group_events(cid)]
     assert first in ids and len(ids) == 2
+
+
+def test_nenhum_answers_never_starve_new_events(api):
+    """The production failure of late Sep 2026: every scrape logged
+    "genre: considered 200, tagged 0". Non-music nights the model
+    answers "nenhum" for kept no genre, so they stayed in the queue, and
+    recurring ones (old date_start) sorted first. With the batch full of
+    them, a new rock night was never asked about and never reached
+    auê Rock. Here the batch limit is 2 and three such nights exist."""
+    _db, main, client = api
+    old = datetime.now(timezone.utc) - timedelta(days=3)
+    for i in range(3):
+        _event(_db, f"instagram_feira{i}", tipo="feira", when=PAST,
+               recurring=True, fetched=old)
+    _event(_db, "instagram_rock", tipo="show")
+    rid = _channel(client, "auê Rock", genres=["rock"])["channel"]["id"]
+    fake = _FakePipeline(genres={"instagram_rock": "rock"})
+
+    out = main.backfill_missing_tags(fake, limit=2)
+    assert out["genre"] == {"considered": 2, "tagged": 1},         "the newest event goes first, ahead of the recurring backlog"
+    assert main.fill_channels_from_catalog() == {"auê Rock": 1}
+    assert _sources_in(_db, rid) == ["instagram_rock"]
+
+    # The backlog drains: each "nenhum" is asked once, then never again.
+    main.backfill_missing_tags(fake, limit=2)
+    main.backfill_missing_tags(fake, limit=2)
+    genre_asks = [ids for field, ids in fake.asked if field == "genre"]
+    flat = [i for ids in genre_asks for i in ids]
+    assert sorted(flat) == sorted(set(flat)), "no event is asked twice"
+    assert _db.list_events_needing_genre() == []
+
+
+def test_an_unanswered_event_is_asked_again(api):
+    """A failed batch is not an answer: those events stay in the queue
+    for the next scrape rather than being marked done."""
+    _db, main, _client = api
+    _event(_db, "instagram_a", tipo="show")
+    main.backfill_missing_tags(_FakePipeline(silent={"instagram_a"}))
+    assert [e["id"] for e in _db.list_events_needing_genre()] == ["instagram_a"]
+    main.backfill_missing_tags(_FakePipeline())
+    assert _db.list_events_needing_genre() == []
+
+
+def test_the_queue_takes_the_most_recently_scraped_first(api):
+    _db, _main, _client = api
+    now = datetime.now(timezone.utc)
+    _event(_db, "instagram_old", fetched=now - timedelta(days=2))
+    _event(_db, "instagram_new", fetched=now)
+    assert [e["id"] for e in _db.list_events_needing_genre(limit=1)] == ["instagram_new"]
+    assert [e["id"] for e in _db.list_events_needing_tipo(limit=1)] == ["instagram_new"]

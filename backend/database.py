@@ -578,6 +578,19 @@ def init_db():
                 PRIMARY KEY (group_id, source_event_id)
             )
         """)
+        # The tag backfill asked the model about this event on this axis
+        # and got an answer, even if the answer was "nenhum". Without
+        # this, a non-music night stays "needing a genre" forever and is
+        # re-sent on every scrape; enough of them fill the batch limit
+        # and no new event is ever reached (see list_events_needing_genre).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tag_attempts (
+                event_id      TEXT NOT NULL,
+                field         TEXT NOT NULL,
+                attempted_at  TEXT NOT NULL,
+                PRIMARY KEY (event_id, field)
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS group_members (
                 group_id    TEXT NOT NULL,
@@ -3184,6 +3197,13 @@ def list_events_needing_genre(limit: int = 200) -> list[dict]:
     Skips events whose genre a curator already set — edited_fields is
     the record of a human decision, and a batch classifier shouldn't
     overrule one.
+
+    Skips events the model already answered for (tag_attempts), and
+    takes the most recently scraped first. Before both, an answer of
+    "nenhum" left the row in the queue, and recurring rows (old
+    date_start) sorted to the front, so from late Sep 2026 every scrape
+    re-asked the same 200 non-music events ("considered 200, tagged 0")
+    and new nights never got a genre or a genre channel.
     """
     today = datetime.now(timezone.utc).date().isoformat()
     with get_conn() as conn:
@@ -3195,6 +3215,8 @@ def list_events_needing_genre(limit: int = 200) -> list[dict]:
                FROM events
                WHERE COALESCE(json_extract(payload, '$.genre'), '') = ''
                  AND edited_fields NOT LIKE '%"genre"%'
+                 AND NOT EXISTS (SELECT 1 FROM tag_attempts t
+                                  WHERE t.event_id = events.id AND t.field = 'genre')
                  AND (
                    (json_extract(payload, '$.date_end') IS NULL
                     AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
@@ -3202,7 +3224,7 @@ def list_events_needing_genre(limit: int = 200) -> list[dict]:
                        AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
                    OR json_extract(payload, '$.is_recurring') = 1
                  )
-               ORDER BY json_extract(payload, '$.date_start') ASC
+               ORDER BY fetched_at DESC
                LIMIT ?""",
             (today, today, limit),
         ).fetchall()
@@ -3223,6 +3245,8 @@ def list_events_needing_tipo(limit: int = 200) -> list[dict]:
                FROM events
                WHERE COALESCE(json_extract(payload, '$.tipo'), '') = ''
                  AND edited_fields NOT LIKE '%"tipo"%'
+                 AND NOT EXISTS (SELECT 1 FROM tag_attempts t
+                                  WHERE t.event_id = events.id AND t.field = 'tipo')
                  AND (
                    (json_extract(payload, '$.date_end') IS NULL
                     AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
@@ -3230,11 +3254,28 @@ def list_events_needing_tipo(limit: int = 200) -> list[dict]:
                        AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
                    OR json_extract(payload, '$.is_recurring') = 1
                  )
-               ORDER BY json_extract(payload, '$.date_start') ASC
+               ORDER BY fetched_at DESC
                LIMIT ?""",
             (today, today, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def record_tag_attempts(field: str, event_ids) -> None:
+    """Mark these events as answered on this tag axis, so the backfill
+    queue moves past them. Only ids the model actually answered for:
+    a failed batch records nothing and is retried next scrape."""
+    ids = [i for i in dict.fromkeys(event_ids or []) if i]
+    if not ids:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            """INSERT OR IGNORE INTO tag_attempts (event_id, field, attempted_at)
+               VALUES (?, ?, ?)""",
+            [(i, field, now) for i in ids],
+        )
+        conn.commit()
 
 
 def get_catalog_edited_fields(event_id: str) -> list[str]:
