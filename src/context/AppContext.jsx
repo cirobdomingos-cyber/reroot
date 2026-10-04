@@ -145,7 +145,7 @@ const INITIAL_STATE = {
     shareRsvps: true,              // show my RSVPs in friend feed
     showInFriendSuggestions: true,  // appear in "people near you" / friend suggestions
     showProfileToStrangers: false,  // non-friends can see my full profile
-    dailyDigest: true,              // receive daily push w/ new events from the scrape
+    dailyDigest: true,              // receive the weekly (Thu) push w/ the week's new events
     friendRsvpAlerts: true,         // push when a friend confirms an event (quiet 22h–9h)
   },
 
