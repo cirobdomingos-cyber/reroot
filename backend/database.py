@@ -3734,13 +3734,37 @@ def get_daily_digest(digest_id: str) -> Optional[dict]:
     }
 
 
+def digest_event_ids_since(since_iso: str) -> list[str]:
+    """Every event id the daily digests created at or after `since_iso`
+    announced, deduplicated, oldest digest first. The weekly push is
+    built from this; weekly rows themselves are left out."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT event_ids FROM daily_digests
+                WHERE created_at >= ? AND substr(id, 1, 2) != 'w_'
+                ORDER BY created_at ASC""",
+            (since_iso,),
+        ).fetchall()
+    ids: list[str] = []
+    for r in rows:
+        try:
+            ids.extend(json.loads(r["event_ids"]) or [])
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return list(dict.fromkeys(ids))
+
+
 def get_latest_daily_digest() -> Optional[dict]:
     """Most recent digest snapshot, or None if none exist yet. Powers the
     Home entry point ("see what's new today") — the id isn't known there
     otherwise, since it's normally only learned from a push payload."""
     with get_conn() as conn:
+        # Weekly rows ("w_…", send_weekly_digest) are the push's own list;
+        # Home's "o que rolou hoje" stays on the latest daily snapshot.
         row = conn.execute(
-            "SELECT id, event_ids, created_at FROM daily_digests ORDER BY created_at DESC LIMIT 1",
+            """SELECT id, event_ids, created_at FROM daily_digests
+                WHERE substr(id, 1, 2) != 'w_'
+                ORDER BY created_at DESC LIMIT 1""",
         ).fetchone()
     if not row:
         return None
