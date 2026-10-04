@@ -207,8 +207,8 @@ async def run_refresh(settings):
     # ── Tags the enrichment didn't set, then the channels ──
     # Two batched Haiku passes over upcoming events still missing a genre
     # or a tipo (cheap in steady state — new events arrive tagged), then
-    # every rule channel is filled from the catalog and its followers get
-    # one push per channel. Off the loop, same reason as enrich_batch.
+    # every rule channel is filled from the catalog (no push here; the
+    # daily digest carries it). Off the loop, same reason as enrich_batch.
     # Imported lazily: main imports scheduler at module load.
     try:
         from main import backfill_missing_tags, fill_channels_from_catalog

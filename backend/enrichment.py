@@ -17,6 +17,7 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Optional
 from anthropic import Anthropic
 from models import RawEvent, EnrichedEvent
 
@@ -385,7 +386,8 @@ class EnrichmentPipeline:
         log.info(f"Enriquecimento: {len(results)} ok, {skipped} falhas (de {min(len(raws), max_events)} tentativas)")
         return results
 
-    def classify_genres(self, events: list[dict], batch_size: int = 25) -> dict:
+    def classify_genres(self, events: list[dict], batch_size: int = 25,
+                        answered: Optional[set] = None) -> dict:
         """Genre for each event, as {event_id: genre}.
 
         `events` are dicts with id / name / description / venue_name. Only
@@ -394,6 +396,10 @@ class EnrichmentPipeline:
         answer", which the caller treats as "leave it alone" rather than
         writing an empty string over it.
 
+        `answered`, when given, collects every id the model replied for,
+        "nenhum" included, so the caller can record the attempt and stop
+        re-asking (database.record_tag_attempts).
+
         A failed batch is logged and skipped rather than raised: this
         runs over a hundred events at a time, and one bad response
         shouldn't cost the other ninety.
@@ -401,20 +407,22 @@ class EnrichmentPipeline:
         return self._classify_batch(
             events, batch_size,
             prompt=GENRE_BACKFILL_PROMPT, field="genre",
-            clean=_clean_genre, meter_key="genre_backfill",
+            clean=_clean_genre, meter_key="genre_backfill", answered=answered,
         )
 
-    def classify_tipos(self, events: list[dict], batch_size: int = 25) -> dict:
+    def classify_tipos(self, events: list[dict], batch_size: int = 25,
+                       answered: Optional[set] = None) -> dict:
         """Tipo for each event, as {event_id: tipo}. Same contract as
         classify_genres: only answered ids, only vocabulary values."""
         return self._classify_batch(
             events, batch_size,
             prompt=TIPO_BACKFILL_PROMPT, field="tipo",
-            clean=_clean_tipo, meter_key="tipo_backfill",
+            clean=_clean_tipo, meter_key="tipo_backfill", answered=answered,
         )
 
     def _classify_batch(self, events: list[dict], batch_size: int, *,
-                        prompt: str, field: str, clean, meter_key: str) -> dict:
+                        prompt: str, field: str, clean, meter_key: str,
+                        answered: Optional[set] = None) -> dict:
         """One tag per event from a closed vocabulary, in batches.
 
         `prompt` lists the events and asks for `field`; `clean` is the
@@ -461,6 +469,8 @@ class EnrichmentPipeline:
                 # another batch — we'd otherwise tag an unrelated event.
                 if ev_id not in valid_ids:
                     continue
+                if answered is not None:
+                    answered.add(ev_id)
                 value = clean(item.get(field))
                 if value:
                     out[ev_id] = value
