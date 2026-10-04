@@ -1243,15 +1243,6 @@ def route_scraped_event(ev) -> str:
     return "published"
 
 
-def count_catalog_requests(status: str = "review") -> int:
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS n FROM submitted_events WHERE status = ? AND shortcode != ''",
-            (status,),
-        ).fetchone()
-    return int(row["n"] or 0)
-
-
 def find_catalog_request_by_shortcode(shortcode: str) -> Optional[dict]:
     """Open or approved request for the same post, if any. Rejected ones
     don't count, so a post turned down once can be suggested again."""
@@ -1882,21 +1873,6 @@ def set_ig_claim(handle: str, email: str) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
-
-
-def get_ig_claim_handle_for_email(email: str) -> Optional[str]:
-    """Reverse lookup — which handle (if any) belongs to this email's
-    venue claim. Used by the bottom nav to show a "Painel" entry only
-    for claimed venues."""
-    cleaned = (email or "").strip().lower()
-    if not cleaned:
-        return None
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT handle FROM tracked_ig_accounts WHERE claimed_by_email = ? LIMIT 1",
-            (cleaned,),
-        ).fetchone()
-    return row["handle"] if row else None
 
 
 def set_ig_featured(handle: str, featured: bool) -> bool:
@@ -3099,16 +3075,6 @@ def get_events_by_ids(ids: list[str]) -> list[dict]:
     return [by_id[i] for i in ids if i in by_id]
 
 
-# Fields a curator is allowed to correct on a catalog event, plus the
-# ones we recompute from them. Anything outside this set is the
-# extraction's business, not a human's.
-CATALOG_EDITABLE_FIELDS = {
-    "name", "description", "venue_name", "neighborhood",
-    "date_start", "date_end", "price_min", "price_max",
-    "kind", "genre",
-}
-
-
 def _replay_edited_fields(ev: EnrichedEvent, stored_payload: str,
                           edited_fields: str) -> EnrichedEvent:
     """Overlay hand-edited fields from the stored row onto a freshly
@@ -3809,30 +3775,6 @@ def count_events() -> int:
     """Total events in the catalog. Used by /health as a liveness signal."""
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-
-
-def count_future_events_by_source() -> dict:
-    """
-    Returns {source: count} for events whose start (or end, for multi-day)
-    is today or later. Used by the Sources page to show "X eventos próximos"
-    per scraper. Single query; cheap.
-    """
-    today = datetime.now(timezone.utc).date().isoformat()
-    query = """
-        SELECT source, COUNT(*) as n
-        FROM events
-        WHERE (
-            (json_extract(payload, '$.date_end') IS NULL
-                AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
-            OR
-            (json_extract(payload, '$.date_end') IS NOT NULL
-                AND substr(json_extract(payload, '$.date_end'), 1, 10) >= ?)
-        )
-        GROUP BY source
-    """
-    with get_conn() as conn:
-        rows = conn.execute(query, (today, today)).fetchall()
-    return {row["source"]: row["n"] for row in rows}
 
 
 def count_future_events_by_ig_handle() -> dict:
@@ -6409,26 +6351,6 @@ def mark_reminder_sent(google_id: str, event_id: str) -> None:
         conn.commit()
 
 
-def is_event_co_host(event_id: str, google_id: str) -> bool:
-    """Check whether a user is a co-host of an event. Used by auth
-    paths that should accept either creator or co-host. Doesn't return
-    creator status — call sites compare against created_by separately
-    so the privilege source stays explicit in the calling code."""
-    if not event_id or not google_id:
-        return False
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT co_host_ids FROM group_events WHERE id = ?", (event_id,),
-        ).fetchone()
-    if not row:
-        return False
-    try:
-        ids = json.loads(row["co_host_ids"] or "[]")
-    except (json.JSONDecodeError, TypeError):
-        return False
-    return google_id in ids
-
-
 def add_co_host(event_id: str, google_id: str) -> tuple[list[str], bool]:
     """Append google_id to the event's co_host_ids if not already
     present. Returns (full_co_host_list, was_newly_added). Endpoint
@@ -6491,16 +6413,6 @@ def set_event_image_url(event_id: str, image_url: str) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
-
-
-def get_event_image_url(event_id: str) -> str:
-    """Read the current image_url for an event. Empty string if unset
-    or row doesn't exist."""
-    with get_conn() as conn:
-        row = conn.execute(
-            "SELECT image_url FROM group_events WHERE id = ?", (event_id,),
-        ).fetchone()
-    return (row["image_url"] if row else "") or ""
 
 
 def add_invitees_to_event(event_id: str, new_invitee_ids: list[str]) -> tuple[list[str], list[str]]:

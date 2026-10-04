@@ -83,15 +83,6 @@ def avatar_public_url(filename: str) -> str:
     return f"{_AVATAR_PUBLIC_PREFIX}/{filename}"
 
 
-def existing_avatar_path(handle: str) -> Optional[Path]:
-    handle = handle.strip().lstrip("@").lower()
-    for ext in _EXTS:
-        candidate = AVATARS_DIR / f"{handle}.{ext}"
-        if candidate.exists() and candidate.stat().st_size > 0:
-            return candidate
-    return None
-
-
 def rehost_avatar(handle: str, source_url: str) -> Optional[str]:
     """Download the IG profile picture for `handle` and store it locally.
     Returns our public path on success; None on failure (caller keeps
