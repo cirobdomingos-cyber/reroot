@@ -190,7 +190,7 @@ Still open, in order:
   extracted city, not the guessed bairro.
 - **Dedup across posts of one event** (Semana Kids ×4, Piquenique com
   Livros ×2). Part of why "too many events arrive".
-- `kind` is now dead weight; remove with the `RerootCategory` cleanup.
+- `kind` is now dead weight; remove it.
 
 **Backfill: reversed, on purpose.** The "no genre backfill" call was
 right when genre was a filter — events are perishable, the catalog turns

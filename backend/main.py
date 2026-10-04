@@ -60,8 +60,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     anthropic_api_key: str = ""
-    instagram_user: str = ""
-    instagram_pass: str = ""
     apify_api_token: str = ""
     city: str = "Curitiba"
     # AI gap-fill: when the catalog is thin, ask Claude to invent plausible
@@ -6645,18 +6643,6 @@ def _require_founder(session_user: Optional[str]) -> str:
     if not db.is_founder(email):
         raise HTTPException(
             status_code=403, detail="Apenas o fundador pode gerenciar curadores.",
-        )
-    return email
-
-
-def _require_feedbacker(session_user: Optional[str]) -> str:
-    email = _session_email(session_user)
-    if not email:
-        raise HTTPException(status_code=401, detail="É preciso estar logado.")
-    if not db.is_feedbacker(email):
-        raise HTTPException(
-            status_code=403,
-            detail="Sua conta não tem permissão de feedback. Peça pro fundador te liberar.",
         )
     return email
 
