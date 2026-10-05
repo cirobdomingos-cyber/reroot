@@ -60,8 +60,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     anthropic_api_key: str = ""
-    instagram_user: str = ""
-    instagram_pass: str = ""
     apify_api_token: str = ""
     city: str = "Curitiba"
     # AI gap-fill: when the catalog is thin, ask Claude to invent plausible
@@ -6649,18 +6647,6 @@ def _require_founder(session_user: Optional[str]) -> str:
     return email
 
 
-def _require_feedbacker(session_user: Optional[str]) -> str:
-    email = _session_email(session_user)
-    if not email:
-        raise HTTPException(status_code=401, detail="É preciso estar logado.")
-    if not db.is_feedbacker(email):
-        raise HTTPException(
-            status_code=403,
-            detail="Sua conta não tem permissão de feedback. Peça pro fundador te liberar.",
-        )
-    return email
-
-
 # Curated starter handles. These are GUESSES based on common Curitiba culture
 # accounts; many will be wrong (the test scrape revealed @mon_oficial is a
 # Chevette page, not the museum). Use the admin UI to fix them quickly.
@@ -9262,56 +9248,22 @@ def _digest_deep_link(digest_id: str) -> str:
     return f"/#/events?digest={digest_id}"
 
 
-async def send_daily_digest_to_all_subscribers(
-    new_event_ids: list[str] | None,
-    *,
-    ignore_quiet_hours: bool = False,
-) -> dict:
-    """Fanout the daily "novidades hoje" push after the catalog refresh,
-    across both push channels:
-      - Web Push subscribers (browser PWA / iOS Safari standalone)
-      - APNs device tokens (iOS native via Capacitor / TestFlight)
+def _digest_rows(event_ids: list[str], *, upcoming_only: bool = False) -> list[dict]:
+    """Catalog events for a digest as {id, name, date_start}, soonest first.
 
-    Replaces the old weekly broadcast — that one was generic ("vai junto?")
-    and risked broadcast-fatigue. This version pulls the events from
-    today's scrape and tells each subscriber "X novos — Tributo Bowie ·
-    Pedreira · +2 mais", with the tap routed to the top event hero.
+    ev["id"] is the internal SQLite id — the same key /events/{id} uses
+    to look events up. ev["external_id"] is the source-scoped key (like
+    "ig_terno_rei_post123") and would 404 the deep link, surfacing the
+    frontend's "não está mais no catálogo" fallback instead of opening
+    the hero. Past bug — left this comment so it doesn't come back.
 
-    Quiet hours (22:00–09:00 Curitiba, quiet_hours.py): the ids are parked
-    and the 09:00 job sends them. Outside quiet hours anything still parked
-    rides along — covers a 09:00 run missed because the container was down.
-
-    Skipped silently when:
-      - No new events from this scrape (would be a noise push)
-      - No subscribers on either channel
-      - User toggled off via privacy.dailyDigest = false
-    """
-    if not ignore_quiet_hours and quiet_hours.is_quiet():
-        if new_event_ids:
-            db.defer_digest_events(list(new_event_ids))
-        return {"sent": 0, "skipped": 0, "reason": "quiet hours",
-                "deferred": len(new_event_ids or [])}
-    parked = db.take_deferred_digest_events()
-    if parked:
-        new_event_ids = list(dict.fromkeys(parked + list(new_event_ids or [])))
-    if not new_event_ids:
-        return {"sent": 0, "skipped": 0, "reason": "no new events"}
-
-    new_events_raw = db.get_events_by_ids(list(new_event_ids))
-    if not new_events_raw:
-        return {"sent": 0, "skipped": 0, "reason": "events not in DB"}
-
-    # Parse + filter to events with names. Sort by date_start ASC so the
-    # soonest-happening events lead the body — that's the hook ("Tributo
-    # Bowie HOJE 21h" beats "show genérico daqui 3 semanas").
-    #
-    # ev["id"] is the internal SQLite id — the same key /events/{id} uses
-    # to look events up. ev["external_id"] is the source-scoped key (like
-    # "ig_terno_rei_post123") and would 404 the deep link, surfacing the
-    # frontend's "não está mais no catálogo" fallback instead of opening
-    # the hero. Past bug — left this comment so it doesn't come back.
+    `upcoming_only` drops what already happened: a week-old daily digest
+    holds Tuesday's show, and a Thursday push must not announce it."""
+    if not event_ids:
+        return []
+    today = datetime.now(timezone.utc).date().isoformat()
     parsed = []
-    for ev in new_events_raw:
+    for ev in db.get_events_by_ids(list(event_ids)):
         try:
             payload = json.loads(ev["payload"])
         except (json.JSONDecodeError, TypeError):
@@ -9319,30 +9271,65 @@ async def send_daily_digest_to_all_subscribers(
         name = (payload.get("name") or "").strip()
         if not name:
             continue
-        parsed.append({
-            "id": ev["id"],
-            "name": name,
-            "date_start": payload.get("date_start") or "",
-        })
-    if not parsed:
-        return {"sent": 0, "skipped": 0, "reason": "no parseable events"}
+        start = payload.get("date_start") or ""
+        last_day = (payload.get("date_end") or start)[:10]
+        if upcoming_only and not payload.get("is_recurring") and last_day < today:
+            continue
+        parsed.append({"id": ev["id"], "name": name, "date_start": start})
     parsed.sort(key=lambda e: e.get("date_start") or "9999")
+    return parsed
+
+
+def record_daily_digest(new_event_ids: list[str] | None) -> dict:
+    """Snapshot the scrape's new events as today's digest. No push.
+
+    The digest row powers Novidades and the Home "o que rolou hoje"
+    entry, which stay daily. The push moved to once a week (Oct 2026,
+    send_weekly_digest): a "✨ 25 novos em CWB" every afternoon was the
+    most frequent notification the app sent, and frequency is what gets
+    push turned off. Ids parked by the curation path
+    (defer_digest_events) ride along here."""
+    parked = db.take_deferred_digest_events()
+    ids = list(dict.fromkeys(parked + list(new_event_ids or [])))
+    parsed = _digest_rows(ids)
+    if not parsed:
+        return {"recorded": 0, "reason": "no new events"}
+    digest_id = f"d_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    db.insert_daily_digest(digest_id, [e["id"] for e in parsed])
+    return {"recorded": len(parsed), "digest_id": digest_id}
+
+
+async def send_weekly_digest() -> dict:
+    """The one "new events" push: Thursdays 17:00, ahead of the weekend.
+
+    Collects every event the past seven daily digests announced, keeps
+    the ones still to come, and fans out across both push channels:
+      - Web Push subscribers (browser PWA / iOS Safari standalone)
+      - APNs device tokens (iOS native via Capacitor / TestFlight)
+
+    The full set is stored as its own digest row ("w_…", which
+    get_latest_daily_digest skips so Home keeps showing today) and only
+    the small id goes in the payload: the app fetches the list via
+    /digests/{id}, which keeps us under the APNs 4KB / web push 3KB cap
+    whatever the week's count.
+
+    Skipped silently when nothing upcoming was announced this week, when
+    nobody is subscribed, or for a user with privacy.dailyDigest = false
+    (the toggle still reads "notificações de novidades")."""
+    since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    parsed = _digest_rows(db.digest_event_ids_since(since), upcoming_only=True)
+    if not parsed:
+        return {"sent": 0, "skipped": 0, "reason": "no new events this week"}
 
     n = len(parsed)
     preview = " · ".join(e["name"][:38] for e in parsed[:3])
     if n > 3:
         preview += f" · +{n - 3} mais"
-    title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB"
-    # Persist the full digest set in the daily_digests table and put
-    # only the small digest_id in the push payload. The app fetches
-    # the full list of event_ids on tap via /digests/{id}. This avoids
-    # the APNs 4KB / web push 3KB payload cap that would otherwise
-    # force a hard limit on N (was capped at 12 — too restrictive when
-    # a scrape lands 30+ events).
-    digest_id = f"d_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+    title = f"✨ {n} novo{'s' if n != 1 else ''} em CWB esta semana"
+    digest_id = f"w_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
     db.insert_daily_digest(digest_id, [e["id"] for e in parsed])
     url = _digest_deep_link(digest_id)
-    tag = "daily-digest"
+    tag = "weekly-digest"
 
     web_subs = db.get_all_push_subscriptions()
     apns_tokens = db.get_all_apns_tokens()
@@ -9358,16 +9345,20 @@ async def send_daily_digest_to_all_subscribers(
         by_user_apns.setdefault(tok.get("google_id") or "", []).append(tok)
     all_users = set(by_user_web) | set(by_user_apns)
 
+    # #91 (20 Sep) dropped this line and kept its use below, so every
+    # digest since raised NameError at the first web-push subscriber and
+    # stopped there. test_weekly_digest covers it now.
+    has_vapid = bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY)
+
     # Lazy imports — keeps endpoint usable even without optional deps.
     # Per-person copy, because the interesting part of this push is not
     # how many events the city got — it's how many came from a channel
     # you chose. That number is different for everyone, so the payload
     # can't be built once and reused.
     #
-    # This replaces the separate 20:00 channel digest. Two daily pushes
-    # about the same events, one saying "23 novos em CWB" and the other
-    # "3 rolês novos no Rockzão", is the app telling you the same news
-    # twice and making you reconcile it.
+    # One push carries both: the channels you follow headline it, the
+    # city count stays in the body. Two pushes about the same events is
+    # the app telling you the same news twice.
     picks_by_user = db.channel_picks_by_follower([e["id"] for e in parsed])
 
     def _copy_for(google_id: str) -> tuple[str, str]:
@@ -9383,7 +9374,7 @@ async def send_daily_digest_to_all_subscribers(
             # Three channel names in a notification is a list, not a
             # headline — the names are on the screen it opens.
             head = f"✨ {mine} dos teus {len(picks)} canais"
-        return head, f"+{n} novos em CWB hoje · {preview}"
+        return head, f"+{n} novos em CWB esta semana · {preview}"
 
     try:
         from pywebpush import webpush, WebPushException
@@ -9443,34 +9434,32 @@ async def send_daily_digest_to_all_subscribers(
                     elif reason:
                         log.warning(f"digest apns failed: {reason}")
 
-    log.info(f"Daily digest: {sent} sent, {skipped} opted-out, {failed} failed (events={n})")
+    log.info(f"Weekly digest: {sent} sent, {skipped} opted-out, {failed} failed (events={n})")
     return {"sent": sent, "skipped": skipped, "failed": failed, "events": n}
-
 
 class DigestTriggerBody(BaseModel):
     requesting_email: str
     new_event_ids: list[str] = []
-    # Founder testing at night: send now instead of parking until 09:00.
-    ignore_quiet_hours: bool = False
 
 
 @app.post("/push/send-daily-digest")
 async def push_send_daily_digest(body: DigestTriggerBody, session_user: SessionUser = None):
-    """Manual digest trigger — admin/test helper. The scheduler calls
-    send_daily_digest_to_all_subscribers() automatically after each
-    refresh; this endpoint exists for backfills, dev testing, or
-    re-firing on a scrape where the cron didn't catch the event ids."""
+    """Manual digest trigger — admin/test helper. Records `new_event_ids`
+    (if any) as today's digest, then sends the weekly push now instead of
+    waiting for Thursday. The path keeps its old name so existing admin
+    scripts still work."""
     _require_founder(session_user)
-    return await send_daily_digest_to_all_subscribers(
-        body.new_event_ids, ignore_quiet_hours=body.ignore_quiet_hours,
-    )
+    recorded = record_daily_digest(body.new_event_ids) if body.new_event_ids else {}
+    result = await send_weekly_digest()
+    result["recorded"] = recorded.get("recorded", 0)
+    return result
 
 
 async def send_deferred_digest() -> dict:
-    """09:00 job: send whatever the night parked. No-op when empty —
-    send_daily_digest_to_all_subscribers takes the parked ids itself.
-    The friend confirmations parked by quiet hours ride the same job."""
-    result = await send_daily_digest_to_all_subscribers([])
+    """09:00 job: record whatever the night parked as a digest (no push;
+    see send_weekly_digest), and send the friend confirmations quiet
+    hours held back."""
+    result = record_daily_digest([])
     result["friend_rsvps"] = send_deferred_friend_rsvps()
     return result
 

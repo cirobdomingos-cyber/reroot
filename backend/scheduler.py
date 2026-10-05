@@ -19,6 +19,8 @@ DAILY_REFRESH_MINUTE = 0
 BOOT_REFRESH_SKIP_HOURS = 24
 # Hora do lembrete "amanhã tem" (America/Sao_Paulo).
 REMINDER_HOUR = 18
+WEEKLY_DIGEST_DAY = "thu"
+WEEKLY_DIGEST_HOUR = 17
 
 log = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone=SCHEDULER_TZ)
@@ -311,19 +313,29 @@ async def run_refresh(settings):
     except Exception as e:
         log.warning(f"Scrape summary email failed: {e}")
 
-    # Daily push digest — replaces the old weekly broadcast. Same
-    # new_event_ids the email used. Imported lazily to avoid a circular
-    # import (main imports scheduler; scheduler can't import main at
-    # module load). Silent when no subscribers / VAPID unset.
+    # Today's digest snapshot (Novidades, Home) — no push; the push is
+    # weekly, see run_weekly_digest. Same new_event_ids the email used.
+    # Imported lazily to avoid a circular import (main imports
+    # scheduler; scheduler can't import main at module load).
     try:
-        from main import send_daily_digest_to_all_subscribers
-        await send_daily_digest_to_all_subscribers(new_event_ids)
+        from main import record_daily_digest
+        await asyncio.to_thread(record_daily_digest, new_event_ids)
     except Exception as e:
-        log.warning(f"Daily digest push failed: {e}")
+        log.warning(f"Daily digest snapshot failed: {e}")
+
+
+async def run_weekly_digest():
+    """The one "new events" push of the week. Never raises."""
+    try:
+        from main import send_weekly_digest
+        result = await send_weekly_digest()
+        log.info(f"Digest semanal: {result}")
+    except Exception as exc:
+        log.error(f"Falha ao enviar digest semanal: {exc}")
 
 
 async def run_deferred_digest():
-    """Send the digest parked during quiet hours. Never raises."""
+    """Record the digest parked during quiet hours. Never raises."""
     try:
         from main import send_deferred_digest
         result = await send_deferred_digest()
@@ -544,7 +556,20 @@ def start_scheduler(settings, run_immediately: bool = True):
         id="event_reminders",
         replace_existing=True,
     )
-    # Digest parked during quiet hours goes out when they end (09:00).
+    # "Novos em CWB" push: once a week, Thursday 17:00 — ahead of the
+    # weekend, clear of the 14:00 scrape and the 18:00 reminders. It was
+    # daily after every scrape until Oct 2026; that was the app's most
+    # frequent push.
+    scheduler.add_job(
+        run_weekly_digest,
+        trigger="cron",
+        day_of_week=WEEKLY_DIGEST_DAY,
+        hour=WEEKLY_DIGEST_HOUR,
+        minute=0,
+        id="weekly_digest",
+        replace_existing=True,
+    )
+    # Digest parked during quiet hours is recorded when they end (09:00).
     from quiet_hours import QUIET_END_HOUR
     scheduler.add_job(
         run_deferred_digest,
@@ -559,7 +584,8 @@ def start_scheduler(settings, run_immediately: bool = True):
         f"Scheduler iniciado — refresh diário às "
         f"{DAILY_REFRESH_HOUR:02d}:{DAILY_REFRESH_MINUTE:02d} ({SCHEDULER_TZ}); "
         f"resumo semanal às segundas 10:00 ({SCHEDULER_TZ}); "
-        f"lembretes diários às {REMINDER_HOUR:02d}:00 ({SCHEDULER_TZ})"
+        f"lembretes diários às {REMINDER_HOUR:02d}:00 ({SCHEDULER_TZ}); "
+        f"digest semanal {WEEKLY_DIGEST_DAY} {WEEKLY_DIGEST_HOUR:02d}:00"
     )
 
     if not run_immediately:

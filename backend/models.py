@@ -31,13 +31,6 @@ class RawEvent(BaseModel):
     recurrence_days: list[int] = []          # ISO weekdays, 1=Mon … 7=Sun
 
 
-class RerootCategory(str):
-    QUIET_SOCIAL = "quiet_social"
-    ACTIVE       = "active"
-    CREATIVE     = "creative"
-    COMMUNITY    = "community"
-
-
 class EnrichedEvent(BaseModel):
     """Evento após análise pelo Claude — pronto para o frontend."""
     id: str                         # f"{source}_{external_id}"

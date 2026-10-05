@@ -132,6 +132,13 @@ One caution still stands as written:
   novos em CWB hoje") and the Novidades screen marks each row with the
   channel that picked it. Someone in three channels used to get three
   "📡" pushes plus the digest.
+- **4 Oct: one push a week.** Daily was still too frequent (Ciro). The
+  scrape records the day's digest without pushing (Novidades and Home
+  stay daily); `send_weekly_digest` pushes Thursdays 17:00 with the
+  week's still-upcoming events, channel headline kept ("✨ 5 novos no
+  Rockzão · +40 novos em CWB esta semana"). The curator push after each
+  scrape stays. Also fixed: since #91 (20 Sep) the digest raised
+  NameError (`has_vapid`) at the first web-push subscriber.
 
 ### Genre is the ingredient, the channel is the dish
 
@@ -190,7 +197,7 @@ Still open, in order:
   extracted city, not the guessed bairro.
 - **Dedup across posts of one event** (Semana Kids ×4, Piquenique com
   Livros ×2). Part of why "too many events arrive".
-- `kind` is now dead weight; remove with the `RerootCategory` cleanup.
+- `kind` is now dead weight; remove it.
 
 **Backfill: reversed, on purpose.** The "no genre backfill" call was
 right when genre was a filter — events are perishable, the catalog turns
