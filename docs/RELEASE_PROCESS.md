@@ -89,7 +89,7 @@ exigência é uma flag, não código:
    Rotas de fundador/curadoria nunca dependeram da flag: só a sessão vale.
 
    Variável na Railway: pelo dashboard, ou pela API GraphQL com o token de
-   projeto em `C:\repo\.env` (`RAILWAY_TOKEN`, só produção) — `variableUpsert`
+   projeto em `<workspace>\.env` (`RAILWAY_TOKEN`, só produção) — `variableUpsert`
    e em seguida `serviceInstanceRedeploy`. A variável só chega ao container
    num redeploy; mudar o valor sem redeploy não altera nada em produção.
 
