@@ -59,4 +59,19 @@ export default [
       'preserve-caught-error': 'off',
     },
   },
+  {
+    // Node scripts that render the Instagram carousels (docs/SOCIAL.md).
+    // Same bug-detector rules as the app, with Node globals instead of the browser's.
+    files: ['scripts/social/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-undef': 'error',
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
+    },
+  },
 ]
