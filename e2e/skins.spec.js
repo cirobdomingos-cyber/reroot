@@ -39,6 +39,7 @@ test('picking Garoa repaints the app and survives a reload', async ({ page }) =>
   expect(await page.evaluate(() => document.documentElement.dataset.skin)).toBe('garoa')
   expect(await bg(page)).toBe('#0A0E13')
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#0A0E13')
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml,.*FFD400/)
 
   await page.reload()
   expect(await page.evaluate(() => document.documentElement.dataset.skin)).toBe('garoa')

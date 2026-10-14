@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { SKINS, DEFAULT_SKIN, getSkin, setSkin, applySkin, isSkin } from './skins'
+import { SKINS, DEFAULT_SKIN, getSkin, setSkin, applySkin, isSkin, faviconSvg, faviconHref } from './skins'
 
 // WCAG 2.x relative luminance and contrast ratio.
 function lum(hex) {
@@ -104,18 +104,31 @@ describe('skin persistence', () => {
   it('sets data-skin and theme-color, and clears the attribute for the default', () => {
     const attrs = {}
     const meta = { content: '', setAttribute: (_k, v) => { meta.content = v } }
+    const icon = { href: '', setAttribute: (_k, v) => { icon.href = v } }
     const doc = {
       documentElement: {
         setAttribute: (k, v) => { attrs[k] = v },
         removeAttribute: (k) => { delete attrs[k] },
       },
-      querySelector: () => meta,
+      querySelector: (sel) => (sel.startsWith('link') ? icon : meta),
     }
     applySkin('garoa-clara', doc)
     expect(attrs['data-skin']).toBe('garoa-clara')
     expect(meta.content).toBe('#EEF2F5')
+    expect(icon.href).toBe(faviconHref('garoa-clara'))
     applySkin('neon', doc)
     expect(attrs['data-skin']).toBeUndefined()
     expect(meta.content).toBe('#0A0510')
+    expect(icon.href).toBe(faviconHref('neon'))
+  })
+
+  it('draws the favicon in each skin\'s colours, and Neon matches public/favicon.svg', () => {
+    for (const skin of SKINS) {
+      expect(faviconSvg(skin.id)).toContain(`fill="${skin.swatch.bg}"`)
+      expect(faviconSvg(skin.id)).toContain(`stroke="${skin.swatch.primary}"`)
+    }
+    const file = readFileSync(new URL('../../public/favicon.svg', import.meta.url), 'utf8')
+    expect(file).toContain('fill="#0A0510"')
+    expect(file).toContain('stroke="#FF2BD6"')
   })
 })

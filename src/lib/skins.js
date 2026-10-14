@@ -62,8 +62,26 @@ export function applySkin(id, doc = globalThis.document) {
   else root.setAttribute('data-skin', skin.id)
   const meta = doc.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', skin.swatch.bg)
+  const icon = doc.querySelector('link[rel="icon"]')
+  if (icon) icon.setAttribute('href', faviconHref(skin.id))
   syncNativeStatusBar(skin)
   return skin.id
+}
+
+// Browser-tab icon: the auê circumflex in the skin's primary on its page
+// colour, the same drawing as public/favicon.svg (which is Neon, for the
+// first paint). Inline data URI: no extra file per skin. The installed
+// app icon is native and stays as is (alternate icons need a store build).
+export function faviconSvg(id) {
+  const { bg, primary } = (SKINS.find((s) => s.id === id) || SKINS[0]).swatch
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    + `<rect width="64" height="64" rx="14" fill="${bg}"/>`
+    + `<path d="M18 40 L32 22 L46 40" fill="none" stroke="${primary}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>`
+    + '</svg>'
+}
+
+export function faviconHref(id) {
+  return `data:image/svg+xml,${encodeURIComponent(faviconSvg(id))}`
 }
 
 // iOS draws the clock and battery in the system's colour, not ours: on a
