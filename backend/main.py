@@ -39,6 +39,7 @@ import database as db
 import badges
 import image_store
 import ota
+import google_id_token
 import quiet_hours
 from urllib.parse import quote
 from scheduler import start_scheduler, stop_scheduler, run_refresh
@@ -9713,6 +9714,12 @@ def _ota_env() -> tuple[str, str, frozenset[str]]:
     )
 
 
+def _ota_android_published() -> str:
+    """Android's published version, separate from iOS's (ota.py says why).
+    Empty, the default, offers Android nothing."""
+    return (os.environ.get("OTA_ANDROID_BUNDLE_VERSION") or "").strip()
+
+
 def _ota_bundle_zip(version: str) -> Optional[bytes]:
     """Zip of the static dir, built once per process and memoized.
 
@@ -9763,14 +9770,20 @@ async def ota_check(request: Request):
     so nothing about our users reaches a third party.
     """
     published, canary, canary_devices = _ota_env()
-    if not published and not canary:
+    android_published = _ota_android_published()
+    if not published and not canary and not android_published:
         return {"message": "Live updates disabled", "error": "disabled"}
     try:
         body = await request.json()
     except Exception:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
     current = str(body.get("version_name") or body.get("version") or "").strip()
-    offer = ota.decide(current, str(body.get("device_id") or ""), published, canary, canary_devices)
+    offer = ota.decide(
+        current, str(body.get("device_id") or ""), published, canary, canary_devices,
+        platform=str(body.get("platform") or ""), android_published=android_published,
+    )
     if offer.version is None:
         return {"message": offer.reason}
     version = offer.version
@@ -9800,7 +9813,7 @@ def ota_bundle(version: str):
     than whatever happens to be on disk now."""
     from fastapi.responses import Response
     published, canary, _ = _ota_env()
-    if version not in ota.servable_versions(published, canary):
+    if version not in ota.servable_versions(published, canary, _ota_android_published()):
         raise HTTPException(status_code=404, detail="Unknown bundle version")
     data = _ota_bundle_zip(version)
     if data is None:
@@ -9817,10 +9830,13 @@ def ota_status(requesting_email: str = "", session_user: SessionUser = None):
     """Is OTA on, and what would be served? Founder-only."""
     _require_founder(session_user)
     published, canary, canary_devices = _ota_env()
-    data = _ota_bundle_zip(canary or published)
+    android_published = _ota_android_published()
+    data = _ota_bundle_zip(canary or published or android_published)
     return {
-        "enabled": bool(published or canary),
+        "enabled": bool(published or canary or android_published),
         "published_version": published or None,
+        # Empty = Android is offered nothing (ota.py explains why).
+        "android_published_version": android_published or None,
         # While set, only canary_devices are offered anything (ota.py).
         "canary_version": canary or None,
         "canary_devices": len(canary_devices),
@@ -10040,22 +10056,44 @@ def fetch_google_userinfo(access_token: str) -> Optional[dict]:
 
 
 class GoogleSignInBody(BaseModel):
-    access_token: str
+    # Exactly one of the two. access_token: web (GSI) and iOS (PKCE).
+    # id_token: Android, from Credential Manager (google_id_token.py).
+    access_token: str = ""
+    id_token: str = ""
     device: str = ""
+
+
+def verify_google_id_token(id_token: str) -> Optional[dict]:
+    """Claims of a verified Google ID token, or None when it fails any
+    check. Module-level so tests can replace it, like fetch_google_userinfo."""
+    try:
+        return google_id_token.verify(id_token)
+    except ValueError as exc:
+        log.info(f"Google ID token refused: {exc}")
+        return None
 
 
 @app.post("/auth/google")
 def auth_google_sign_in(body: GoogleSignInBody):
-    """Verify a Google access token with Google and return the profile
-    plus a session token. Same shape as /auth/apple, plus `given_name`
-    (the app greets people by first name)."""
-    token = (body.access_token or "").strip()
-    if not token:
+    """Verify a Google access token (with Google's userinfo) or ID token
+    (signature + aud = our web client) and return the profile plus a
+    session token. Same shape as /auth/apple, plus `given_name` (the app
+    greets people by first name). Both paths key the account on Google's
+    `sub`, so a person who signed in on the web lands on the same row
+    when they sign in on Android."""
+    access_token = (body.access_token or "").strip()
+    id_token = (body.id_token or "").strip()
+    if id_token:
+        info = verify_google_id_token(id_token)
+        verified = bool(info) and google_id_token.email_verified(info)
+    elif access_token:
+        info = fetch_google_userinfo(access_token)
+        verified = bool(info) and bool(info.get("email_verified"))
+    else:
         raise HTTPException(status_code=401, detail="Token inválido")
-    info = fetch_google_userinfo(token)
     if not info or not info.get("sub"):
         raise HTTPException(status_code=401, detail="Token inválido")
-    if not info.get("email_verified"):
+    if not verified:
         raise HTTPException(status_code=401, detail="E-mail do Google não verificado")
 
     google_sub = str(info["sub"])

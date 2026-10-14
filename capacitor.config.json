@@ -5,13 +5,24 @@
   "server": {
     "androidScheme": "https"
   },
+  "ios": {
+    "includePlugins": [
+      "@capacitor-community/apple-sign-in",
+      "@capacitor/app",
+      "@capacitor/browser",
+      "@capacitor/local-notifications",
+      "@capacitor/push-notifications",
+      "@capacitor/status-bar",
+      "@capgo/capacitor-updater"
+    ]
+  },
   "plugins": {
     "SplashScreen": {
       "launchAutoHide": true,
-      "backgroundColor": "#FAF9F6",
+      "backgroundColor": "#14081E",
       "showSpinner": false,
       "androidSpinnerStyle": "small",
-      "spinnerColor": "#7A9E7E"
+      "spinnerColor": "#FF2BD6"
     },
     "CapacitorUpdater": {
       "autoUpdate": true,
@@ -23,6 +34,15 @@
       "autoDeleteFailed": true,
       "autoDeletePrevious": true,
       "resetWhenUpdate": true
+    },
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "facebook": false,
+        "apple": false,
+        "twitter": false
+      },
+      "logLevel": 1
     }
   }
 }

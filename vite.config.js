@@ -26,6 +26,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered by hand in src/main.jsx, on the web only: inside the
+      // Android wrapper the worker served a stale index.html after updates.
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'icon.svg'],
       manifest: {
         id: 'app.aue',
