@@ -27,6 +27,7 @@ export const FEATURES = [
   { shot: 'events', kicker: 'todo dia', title: 'Tudo que rola na cidade, por dia', sub: 'Shows, expos, bares, comédia e teatro de mais de 80 perfis de Curitiba.' },
   { shot: 'map', kicker: 'no mapa', title: 'Vê o que tá perto de você', sub: 'Abre o mapa e escolhe o rolê pelo bairro.' },
   { shot: 'event', kicker: 'num toque', title: 'Lugar, horário e o post original', sub: 'Cada evento leva direto pro perfil de quem organiza.' },
+  { shot: 'channels', kicker: 'canais', title: 'Segue os canais que são a tua cara', sub: 'Rock, samba, eletrônica, comédia, livros: a gente separa por gênero e vibe.' },
 ]
 
 export function buildTourCaption() {
@@ -37,7 +38,8 @@ export function buildTourCaption() {
     '📅 O que rola hoje, amanhã e no fim de semana',
     '🗺️ No mapa, perto de você',
     '📸 O post original do lugar, a um toque',
-    '🙌 Marca "Vou" e vê quem da galera vai junto',
+    '📢 Canais por vibe: rock, samba, eletrônica, comédia, livros',
+    '🔒 Cria o teu canal com os amigos e combina o rolê ali',
     '',
     CTA_DOWNLOAD,
     `${CTA_IPHONE} · ${CTA_ANDROID}`,
@@ -118,14 +120,14 @@ export function tourSocial({ fontCss, index, total }) {
   .step .n { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: ${t.magenta}; color: ${t.bg};
     font-weight: 700; font-size: 34px; box-shadow: 0 0 22px rgba(255, 43, 214, 0.5); }
   `
-  const steps = ['Marca "Vou" no rolê', 'Vê quem da galera vai junto', 'Cria um grupo e combina tudo no app']
+  const steps = ['Toca em "+ Criar canal"', 'Chama os amigos pelo link do canal', 'Cada um põe rolê e todo mundo vê quem vai']
     .map((s, i) => `<div class="step"><span class="n">${i + 1}</span><span>${esc(s)}</span></div>`).join('')
   return page(fontCss, `<div class="slide">
     ${top(`${index} / ${total}`)}
     <div class="hero">
-      <div class="kicker">com a galera</div>
-      <h1 data-fit>Rolê bom é rolê <em>junto</em></h1>
-      <div class="sub">Sem rede social nova pra cuidar: só primeiro nome, só quem você chamar.</div>
+      <div class="kicker">canal privado</div>
+      <h1 data-fit>Cria o teu canal com a <em>galera</em></h1>
+      <div class="sub">Só entra quem você convidar. Sem rede social nova pra cuidar: só primeiro nome.</div>
       <div class="steps">${steps}</div>
     </div>
     <div class="foot"><b>📲 baixa o auê · link na bio</b><span class="swipe">arrasta →</span></div>
@@ -178,6 +180,18 @@ async function captureShots(browser, { app, day, event, dir }) {
       }
     })
     await snap('event')
+    // Channels: Comunidade -> Canais (the default tab). Follower counts are
+    // still tiny, so they stay out of the post.
+    await p.goBack()
+    await p.waitForTimeout(2000)
+    await p.getByText(/comunidade/i).last().click()
+    await p.waitForTimeout(3500)
+    await p.evaluate(() => {
+      for (const el of document.querySelectorAll('body *')) {
+        if (el.children.length === 0 && /^\s*\d+\s+seguindo\s*$/i.test(el.textContent || '')) el.style.visibility = 'hidden'
+      }
+    })
+    await snap('channels')
   } finally {
     await ctx.close()
   }
@@ -221,7 +235,7 @@ async function main() {
         label: `${i + 1}/${total} ${feature.shot}`,
         html: tourFeature({ fontCss, feature, index: i + 1, total, shot: await dataUrl(shots[feature.shot]) }),
       })))),
-      { name: `${String(FEATURES.length + 2).padStart(2, '0')}-galera.png`, label: `${total}/${total} galera`, html: tourSocial({ fontCss, index: total, total }) },
+      { name: `${String(FEATURES.length + 2).padStart(2, '0')}-canal-privado.png`, label: `${total}/${total} canal privado`, html: tourSocial({ fontCss, index: total, total }) },
       { name: `${String(FEATURES.length + 3).padStart(2, '0')}-baixa.png`, label: 'fechamento', html: closingSlide({ fontCss, icon, footRight: 'Curitiba que acontece' }) },
     ]
     for (const s of slides) {
