@@ -111,6 +111,9 @@ export const TIPO_EMOJI = {
 export function buildCaption(picks, from, to) {
   const lines = [
     `Rola esse fim de semana em Curitiba (${windowLabel(from, to)}) 👇`,
+    // Most people never reach the last slide or the end of the caption, so the
+    // app is named up front too, not only in the closing CTA.
+    'Esses e mais centenas de rolês no app auê, de graça. Link na bio 📲',
     '',
     ...picks.map(({ event }) => {
       const emoji = TIPO_EMOJI[(event.tipo || '').toLowerCase()] || event.categoryEmoji || '📍'

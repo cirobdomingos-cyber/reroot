@@ -101,7 +101,7 @@ export function coverSlide({ fontCss, from, to, picks }) {
       <div class="when"><span class="pill lime">${esc(windowLabel(from, to))}</span></div>
       <div class="list">${rows}</div>
     </div>
-    <div class="foot"><b>Curitiba que acontece</b><span class="swipe">arrasta →</span></div>
+    <div class="foot"><b style="color:${t.lime}">📲 tudo isso no app auê · link na bio</b><span class="swipe">arrasta →</span></div>
   </div>`, css)
 }
 
@@ -150,7 +150,7 @@ export function eventSlide({ fontCss, pick, index, total, from, to, image }) {
       </div>
       <div class="credit">${thumb}<div class="txt"><div class="handle">@${esc(e.igHandle)}</div><div class="hint">${hint}</div></div></div>
     </div>
-    <div class="foot"><b>${esc(windowLabel(from, to))}</b><span class="swipe">${index < total ? 'arrasta →' : 'tem mais →'}</span></div>
+    <div class="foot"><b style="color:${t.lime}">+ rolês no app auê · link na bio</b><span class="swipe">${index < total ? 'arrasta →' : 'tem mais →'}</span></div>
   </div>`, css)
 }
 
