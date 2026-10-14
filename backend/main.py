@@ -39,6 +39,7 @@ import database as db
 import badges
 import image_store
 import ota
+import google_id_token
 import quiet_hours
 from urllib.parse import quote
 from scheduler import start_scheduler, stop_scheduler, run_refresh
@@ -10055,22 +10056,44 @@ def fetch_google_userinfo(access_token: str) -> Optional[dict]:
 
 
 class GoogleSignInBody(BaseModel):
-    access_token: str
+    # Exactly one of the two. access_token: web (GSI) and iOS (PKCE).
+    # id_token: Android, from Credential Manager (google_id_token.py).
+    access_token: str = ""
+    id_token: str = ""
     device: str = ""
+
+
+def verify_google_id_token(id_token: str) -> Optional[dict]:
+    """Claims of a verified Google ID token, or None when it fails any
+    check. Module-level so tests can replace it, like fetch_google_userinfo."""
+    try:
+        return google_id_token.verify(id_token)
+    except ValueError as exc:
+        log.info(f"Google ID token refused: {exc}")
+        return None
 
 
 @app.post("/auth/google")
 def auth_google_sign_in(body: GoogleSignInBody):
-    """Verify a Google access token with Google and return the profile
-    plus a session token. Same shape as /auth/apple, plus `given_name`
-    (the app greets people by first name)."""
-    token = (body.access_token or "").strip()
-    if not token:
+    """Verify a Google access token (with Google's userinfo) or ID token
+    (signature + aud = our web client) and return the profile plus a
+    session token. Same shape as /auth/apple, plus `given_name` (the app
+    greets people by first name). Both paths key the account on Google's
+    `sub`, so a person who signed in on the web lands on the same row
+    when they sign in on Android."""
+    access_token = (body.access_token or "").strip()
+    id_token = (body.id_token or "").strip()
+    if id_token:
+        info = verify_google_id_token(id_token)
+        verified = bool(info) and google_id_token.email_verified(info)
+    elif access_token:
+        info = fetch_google_userinfo(access_token)
+        verified = bool(info) and bool(info.get("email_verified"))
+    else:
         raise HTTPException(status_code=401, detail="Token inválido")
-    info = fetch_google_userinfo(token)
     if not info or not info.get("sub"):
         raise HTTPException(status_code=401, detail="Token inválido")
-    if not info.get("email_verified"):
+    if not verified:
         raise HTTPException(status_code=401, detail="E-mail do Google não verificado")
 
     google_sub = str(info["sub"])

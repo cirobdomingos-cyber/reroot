@@ -70,6 +70,10 @@ jobs:
           VITE_PUBLIC_ORIGIN: https://auecuritiba.com
           VITE_APPLE_WEB_SERVICE_ID: app.aue.web
           VITE_APPLE_WEB_REDIRECT_URI: https://auecuritiba.com/
+          # Google sign-in on Android (Credential Manager) asks for an ID
+          # token for this WEB client; the backend checks aud against the
+          # same id (GOOGLE_WEB_CLIENT_ID). google-auth.js falls back to it.
+          VITE_GOOGLE_CLIENT_ID: 511485926685-9a6hihg5dn4g4qtdgs4c6i2tjscih2m6.apps.googleusercontent.com
         run: npm run build
 
       - name: Capacitor sync (copies dist/ into the Android project)
