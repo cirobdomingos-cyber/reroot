@@ -71,6 +71,10 @@ immutable on the device, so never set a version before step 5 passes.
 4. **Promote:** set `OTA_BUNDLE_VERSION=<same version>` and delete
    `OTA_CANARY_VERSION`. **Abort:** just delete `OTA_CANARY_VERSION`.
 
+These variables reach **iPhones only**: Android is offered just
+`OTA_ANDROID_BUNDLE_VERSION` (empty by default, so nothing), see
+[ANDROID_RELEASE.md](ANDROID_RELEASE.md) section 7.
+
 Android store builds (Google Play, `android-v*` tags): see [ANDROID_RELEASE.md](ANDROID_RELEASE.md).
 
 ## Sessões (`REQUIRE_SESSION`)

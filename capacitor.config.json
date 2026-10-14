@@ -19,10 +19,10 @@
   "plugins": {
     "SplashScreen": {
       "launchAutoHide": true,
-      "backgroundColor": "#FAF9F6",
+      "backgroundColor": "#14081E",
       "showSpinner": false,
       "androidSpinnerStyle": "small",
-      "spinnerColor": "#7A9E7E"
+      "spinnerColor": "#FF2BD6"
     },
     "CapacitorUpdater": {
       "autoUpdate": true,

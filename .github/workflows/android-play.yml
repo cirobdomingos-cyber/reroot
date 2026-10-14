@@ -57,9 +57,19 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      # No icon render step: scripts/render-icons.js writes only the PWA PNGs
-      # in public/ and the iOS asset catalog. Android launcher icons are the
-      # committed mipmaps under android/app/src/main/res/.
+      # Launcher icons (legacy, round, adaptive foreground) and the splash
+      # drawables from public/icon.svg, so the Play build always carries the
+      # current mark (it shipped the old Reroot leaf until Oct 2026). The
+      # committed PNGs are the same render; this keeps them from drifting.
+      # icon.svg draws the wordmark as <text> ('Space Grotesk', Manrope,
+      # Inter, ...). The runner has none of them and would fall back to
+      # DejaVu; Inter is what the committed PNGs were rendered with.
+      - name: Render icons from SVG
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-inter >/dev/null
+          fc-match "Inter:bold"
+          node scripts/render-icons.js
 
       # Capacitor serves web assets from https://localhost on Android
       # (androidScheme), so the default same-origin BASE_URL='' breaks every
