@@ -98,6 +98,15 @@ export const T = {
     events_venue_frequent:  'membros do cohort frequentam',
     events_venue_no_members:'Nenhum membro do cohort ainda',
     events_venue_save_first:'Seja o primeiro do cohort a salvar este local.',
+
+    // ── Founder: delete a catalog event (event detail → Mais) ──
+    event_admin_delete_btn:       '🗑 Excluir evento do auê',
+    event_admin_delete_confirm:   'Excluir este evento do catálogo? Some pra todo mundo, e não dá pra desfazer.',
+    event_admin_delete_done:      'Evento excluído do auê',
+    event_admin_delete_forbidden: 'Só o fundador pode excluir eventos do catálogo.',
+    event_admin_delete_gone:      'Esse evento já tinha saído do catálogo.',
+    event_admin_delete_offline:   'Sem conexão agora. Tenta de novo daqui a pouco.',
+    event_admin_delete_failed:    'Não deu pra excluir o evento',
     events_venue_save:      'Salvar este local',
     events_venue_remove:    'Remover dos salvos',
     events_you:             'Você',
