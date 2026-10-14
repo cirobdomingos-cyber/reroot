@@ -33,6 +33,7 @@ import httpx
 from anthropic import AsyncAnthropic
 from models import RawEvent
 
+import cancellations
 import database as db
 
 
@@ -932,7 +933,11 @@ async def _extract_events(
     likes = post.get("likesCount") or 0
     shortcode = _extract_shortcode(post_url) or post.get("id", "")
 
-    prompt = EXTRACTION_PROMPT.format(
+    # Cancellation pre-filter: only a caption with cancellation words gets
+    # the extra prompt section (and the `cancels` answer field), so an
+    # ordinary announcement costs exactly what it did before.
+    maybe_cancel = cancellations.looks_like_cancellation(caption)
+    prompt = (EXTRACTION_PROMPT + (cancellations.PROMPT_ADDENDUM if maybe_cancel else "")).format(
         today=today_str,
         handle=handle,
         post_date=post_date,
@@ -1010,7 +1015,25 @@ async def _extract_events(
             log.warning(f"IG Claude error for @{handle}/{shortcode}: {e}")
         return []
 
-    if not data.get("is_event", False):
+    # A later post calling off a night this venue announced earlier: mark
+    # that catalog row cancelled (or move its date). Runs before the
+    # is_event gate — a cancellation notice is usually "not an event".
+    cancelled_rows: list[dict] = []
+    if maybe_cancel and isinstance(data, dict):
+        try:
+            cancelled_rows = cancellations.apply(
+                handle, caption=caption, post_url=post_url, post_date=post_date,
+                shortcode=shortcode, llm_cancels=data.get("cancels"),
+                llm_answered="cancels" in data,
+                # The admin debugger reads a post; it must not change the catalog.
+                dry_run=debug_out is not None, db=db,
+            )
+        except Exception as e:
+            log.warning(f"IG: cancellation check failed for @{handle}/{shortcode}: {e}")
+        if debug_out is not None:
+            debug_out["cancellations"] = cancelled_rows
+
+    if not isinstance(data, dict) or not data.get("is_event", False):
         if debug_out is not None:
             debug_out.setdefault("drops", []).append({
                 "name": "—",
@@ -1038,6 +1061,13 @@ async def _extract_events(
             drops=None if debug_out is None else debug_out.setdefault("drops", []),
         )
         if ev is not None:
+            # The night this post just cancelled or moved must not come
+            # back as a fresh row under the cancellation post's own id.
+            if cancelled_rows and any(
+                cancellations._name_similarity(r.get("name") or "", ev.name) >= 0.5
+                for r in cancelled_rows
+            ):
+                continue
             out.append(ev)
 
     # Stable ids across runs: the earliest event keeps the post's own id,
