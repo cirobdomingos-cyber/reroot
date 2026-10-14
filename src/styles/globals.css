@@ -42,6 +42,10 @@
   --text2:        #B8A8D8;   /* secondary text */
   --text3:        #6E5C8E;   /* tertiary text, muted metadata */
   --catalog-rgb:  126 87 194;
+  /* Tint toward the text colour: hairlines, hover washes, subtle
+     surfaces. White on dark skins, ink on light ones. */
+  --fg-rgb:       255 255 255;
+  --hero-bg:      var(--bg2);  /* base under the gradient hero cards */
 
   --magenta-soft: rgb(var(--magenta-rgb) / 0.08);
   --cyan-soft:    rgb(var(--cyan-rgb) / 0.08);
@@ -111,7 +115,7 @@
   --on-lime:    var(--bg);
   --on-cyan:    var(--bg);
   --on-light:   var(--bg);   /* --text / --charcoal used AS a surface */
-  --on-magenta: #FFFFFF;
+  --on-magenta: var(--bg);   /* 6.3:1 on #FF2BD6; white was 3.2:1 */
 
   /* Glow */
   --glow-magenta: 0 0 14px rgb(var(--magenta-rgb) / 0.6);
@@ -126,26 +130,10 @@
    neon for the same reason the legacy names stay legacy: call sites
    read roles, not hues. Rules a new skin must follow, checked by
    src/lib/skins.test.js: text on bg >= 7:1, text3 on bg >= 3:1, lime
-   and cyan carry --on-lime/--on-cyan (dark ink) at >= 4.5:1, and the
-   primary carries --on-magenta at >= 4.5:1. All skins are dark: the app
-   lives at night and its accents are glows. Set by src/lib/skins.js on
+   and cyan carry --on-lime/--on-cyan at >= 4.5:1, and the
+   primary carries --on-magenta at >= 4.5:1. Dark is the house style (the
+   app lives at night); Garoa Clara is the one light skin. Set by src/lib/skins.js on
    <html data-skin="...">; no attribute = Neon Boteco. */
-:root[data-skin="pinhao"] {
-  /* Pinhão: Araucária at night. Pine-black, quentão gold, ipê pink. */
-  --bg:           #0B110D;  --bg-rgb:  11 17 13;
-  --bg2:          #131D17;  --bg2-rgb: 19 29 23;
-  --bg3:          #1A281F;
-  --line:         #27402F;
-  --magenta:      #F5B700;  --magenta-rgb: 245 183 0;  --magenta-hover: #FFC93D;
-  --cyan:         #FF8FC8;  --cyan-rgb:    255 143 200;
-  --lime:         #9BEA5A;  --lime-rgb:    155 234 90;  --lime-hover: #B4F27F;
-  --hot:          #FF7A45;
-  --text:         #F3EEDC;
-  --text2:        #BDB79C;
-  --text3:        #7E7A63;
-  --catalog-rgb:  140 120 80;
-  --on-magenta:   #0B110D;
-}
 :root[data-skin="garoa"] {
   /* Garoa: Curitiba drizzle. Cold slate, headlight yellow, tube glass. */
   --bg:           #0A0E13;  --bg-rgb:  10 14 19;
@@ -162,21 +150,52 @@
   --catalog-rgb:  110 130 160;
   --on-magenta:   #0A0E13;
 }
-:root[data-skin="pedreira"] {
-  /* Pedreira: open-air show. Warm stone, violet laser, amber spotlight. */
-  --bg:           #0E0C0A;  --bg-rgb:  14 12 10;
-  --bg2:          #1A1714;  --bg2-rgb: 26 23 20;
-  --bg3:          #231F1B;
-  --line:         #3A332C;
-  --magenta:      #A86BFF;  --magenta-rgb: 168 107 255;  --magenta-hover: #BC8CFF;
-  --cyan:         #FFB547;  --cyan-rgb:    255 181 71;
-  --lime:         #7CF29A;  --lime-rgb:    124 242 154;  --lime-hover: #A1F6B6;
-  --hot:          #FF5E7A;
-  --text:         #F2EDE6;
-  --text2:        #B8AEA2;
-  --text3:        #7A7064;
-  --catalog-rgb:  150 120 90;
-  --on-magenta:   #0E0C0A;
+
+/* Garoa Clara: Garoa by day. Fog-grey page, white cards, tube-glass teal
+   as the primary, headlight amber and a deep green for "yes". The only
+   light skin: accents are dark enough to be text, so filled accents carry
+   white ink, and the gradient hero cards keep a dark base (--hero-bg) so
+   the photo-style white text on them still reads. */
+:root[data-skin="garoa-clara"] {
+  color-scheme: light;
+  --bg:           #EEF2F5;  --bg-rgb:  238 242 245;
+  --bg2:          #FFFFFF;  --bg2-rgb: 255 255 255;
+  --bg3:          #F6F8FA;
+  --line:         #D3DBE2;
+  --magenta:      #00758F;  --magenta-rgb: 0 117 143;  --magenta-hover: #00869F;
+  --cyan:         #8A6100;  --cyan-rgb:    138 97 0;
+  --lime:         #0E7A3E;  --lime-rgb:    14 122 62;  --lime-hover: #12904A;
+  --hot:          #C2410C;
+  --text:         #121A22;
+  --text2:        #46525E;
+  --text3:        #6B7783;
+  --catalog-rgb:  110 120 140;
+  --fg-rgb:       18 26 34;
+  --hero-bg:      #17212D;
+  --on-magenta:   #FFFFFF;
+  --on-lime:      #FFFFFF;
+  --on-cyan:      #FFFFFF;
+  --on-light:     #FFFFFF;
+  --shadow-sm: 0 1px 4px rgba(16, 24, 32, 0.08);
+  --shadow:    0 2px 10px rgba(16, 24, 32, 0.10);
+  --shadow-md: 0 4px 18px rgba(16, 24, 32, 0.14);
+  --glow-magenta: none;
+  --glow-cyan:    none;
+  --glow-lime:    none;
+}
+
+/* Dark cards inside a light skin (the friend-code card, gradient CTAs)
+   take Garoa's dark accents, so a "yes" button on them stays bright
+   instead of dark green on dark slate. */
+:root[data-skin="garoa-clara"] .hero-dark {
+  --magenta: #FFD400;  --magenta-rgb: 255 212 0;
+  --cyan:    #4CC9F0;  --cyan-rgb:    76 201 240;
+  --lime:    #3DF5A0;  --lime-rgb:    61 245 160;
+  /* Aliases resolve where they are declared, so redeclare them here. */
+  --sage:    var(--lime);   --terra: var(--magenta);   --honey: var(--cyan);
+  --text:    #E6EDF3;       --charcoal: var(--text);
+  --text2:   #93A4B5;       --charcoal-mid: var(--text2);
+  --on-lime: #0A0E13;  --on-cyan: #0A0E13;  --on-magenta: #0A0E13;
 }
 
 /* ── Reset ── */
@@ -276,7 +295,7 @@ input  { font-family: inherit; }
   z-index: 60;
   background: repeating-linear-gradient(
     0deg,
-    rgba(255, 255, 255, 0.025) 0 1px,
+    rgb(var(--fg-rgb) / 0.025) 0 1px,
     transparent 1px 3px
   );
 }
@@ -444,8 +463,9 @@ input  { font-family: inherit; }
    after lightening the band the chrome still felt like a 90s OS button
    instead of a brand CTA). Brand magenta reads as "the auê action" —
    same color as the 84px wordmark on Home, the active bottom-nav state,
-   and the active filter chip. White text + glow keeps the Neon Boteco
-   energy without competing with the surrounding chrome. */
+   and the active filter chip. Dark ink, not white: white on #FF2BD6 is
+   3.2:1, under AA for body-size text; ink is 6.3:1. The magenta glow
+   around the button carries the Neon Boteco energy instead. */
 .btn--primary {
   background: var(--magenta);
   color: var(--on-magenta);
@@ -453,7 +473,6 @@ input  { font-family: inherit; }
   box-shadow:
     0 0 0 1px rgb(var(--magenta-rgb) / 0.3),
     0 8px 24px rgb(var(--magenta-rgb) / 0.45);
-  text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 }
 .btn--primary:hover {
   background: var(--magenta-hover);
@@ -500,7 +519,7 @@ input  { font-family: inherit; }
 }
 .tag--terra { color: var(--magenta); background: var(--magenta-soft); }
 .tag--sage  { color: var(--lime);    background: var(--lime-soft); }
-.tag--dark  { color: var(--text);    background: rgba(255, 255, 255, 0.05); border-color: var(--line); }
+.tag--dark  { color: var(--text);    background: rgb(var(--fg-rgb) / 0.05); border-color: var(--line); }
 
 /* ── Avatars ── */
 .avatar {
@@ -512,7 +531,7 @@ input  { font-family: inherit; }
   border: 2px solid var(--bg2);
   color: white;
 }
-.avatar--lg { width: 72px; height: 72px; font-size: 26px; border: 3px solid rgba(255,255,255,0.2); }
+.avatar--lg { width: 72px; height: 72px; font-size: 26px; border: 3px solid rgb(var(--fg-rgb) / 0.2); }
 .avatar-stack { display: flex; }
 .avatar-stack .avatar { margin-left: -10px; }
 .avatar-stack .avatar:first-child { margin-left: 0; }

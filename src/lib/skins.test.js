@@ -45,6 +45,16 @@ describe('skins', () => {
         expect(cssVar(block, 'text3')).toBe(s.text3.toUpperCase())
       })
 
+      it('declares the ink it promises on its fills', () => {
+        if (skin.id === DEFAULT_SKIN) return // neon inherits --on-* from :root
+        const ink = (name) => block.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`))?.[1]?.toUpperCase()
+        expect(ink('on-magenta')).toBe(s.ink.toUpperCase())
+        if (skin.light) {
+          expect(ink('on-lime')).toBe(s.accentInk.toUpperCase())
+          expect(ink('on-cyan')).toBe(s.accentInk.toUpperCase())
+        }
+      })
+
       it('every hex token has a matching rgb twin', () => {
         for (const [hex, rgb] of [['bg', 'bg-rgb'], ['magenta', 'magenta-rgb'], ['cyan', 'cyan-rgb'], ['lime', 'lime-rgb']]) {
           const h = cssVar(block, hex)
@@ -58,17 +68,13 @@ describe('skins', () => {
       it('is readable', () => {
         expect(contrast(s.text, s.bg)).toBeGreaterThanOrEqual(7)
         expect(contrast(s.text3, s.bg)).toBeGreaterThanOrEqual(3)
-        // Accents as text on the page, and dark ink on filled accents.
+        // Accents as text on the page, and the ink on filled accents.
         for (const accent of [s.primary, s.secondary, s.yes]) {
           expect(contrast(accent, s.bg)).toBeGreaterThanOrEqual(4.5)
         }
-        expect(contrast(s.bg, s.yes)).toBeGreaterThanOrEqual(4.5)
-        expect(contrast(s.bg, s.secondary)).toBeGreaterThanOrEqual(4.5)
-        // Neon's white on #FF2BD6 is 3.2:1: AA only for large/bold text,
-        // which is how its filled buttons use it. Kept as shipped; every
-        // newer skin meets 4.5:1.
-        const inkMin = skin.id === DEFAULT_SKIN ? 3 : 4.5
-        expect(contrast(s.ink, s.primary)).toBeGreaterThanOrEqual(inkMin)
+        expect(contrast(s.accentInk, s.yes)).toBeGreaterThanOrEqual(4.5)
+        expect(contrast(s.accentInk, s.secondary)).toBeGreaterThanOrEqual(4.5)
+        expect(contrast(s.ink, s.primary)).toBeGreaterThanOrEqual(4.5)
       })
     })
   }
@@ -105,9 +111,9 @@ describe('skin persistence', () => {
       },
       querySelector: () => meta,
     }
-    applySkin('pedreira', doc)
-    expect(attrs['data-skin']).toBe('pedreira')
-    expect(meta.content).toBe('#0E0C0A')
+    applySkin('garoa-clara', doc)
+    expect(attrs['data-skin']).toBe('garoa-clara')
+    expect(meta.content).toBe('#EEF2F5')
     applySkin('neon', doc)
     expect(attrs['data-skin']).toBeUndefined()
     expect(meta.content).toBe('#0A0510')

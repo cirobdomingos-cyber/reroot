@@ -248,8 +248,9 @@ export default function Friends({ embedded = false }) {
         <motion.div
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
+          className="hero-dark"
           style={{
-            background: 'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%), var(--bg2)',
+            background: 'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%), var(--hero-bg)',
             borderRadius: 20, padding: '18px 20px', color: 'white',
             boxShadow: '0 6px 18px rgb(var(--magenta-rgb) / 0.35)',
           }}

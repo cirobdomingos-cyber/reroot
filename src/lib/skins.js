@@ -13,32 +13,28 @@ export const SKIN_STORAGE_KEY = 'aue_skin'
 export const DEFAULT_SKIN = 'neon'
 
 // `swatch` mirrors the CSS values (bg, primary, secondary, yes) for the
-// picker and for the contrast test; `ink` is the text colour on primary.
+// picker and for the contrast test; `ink` is the text colour on primary,
+// `accentInk` on the secondary and yes fills (--on-cyan / --on-lime).
 // Keep them in sync with globals.css: skins.test.js reads both.
 export const SKINS = [
   {
     id: 'neon',
     name: 'Neon Boteco',
     blurb: { pt: 'O original: néon de boteco às duas da manhã.', en: 'The original: dive-bar neon at 2am.' },
-    swatch: { bg: '#0A0510', text: '#F4ECFF', text3: '#6E5C8E', primary: '#FF2BD6', secondary: '#00E5FF', yes: '#C6FF00', ink: '#FFFFFF' },
-  },
-  {
-    id: 'pinhao',
-    name: 'Pinhão',
-    blurb: { pt: 'Araucária à noite: dourado de quentão e rosa de ipê.', en: 'Araucaria at night: mulled-wine gold and ipê pink.' },
-    swatch: { bg: '#0B110D', text: '#F3EEDC', text3: '#7E7A63', primary: '#F5B700', secondary: '#FF8FC8', yes: '#9BEA5A', ink: '#0B110D' },
+    swatch: { bg: '#0A0510', text: '#F4ECFF', text3: '#6E5C8E', primary: '#FF2BD6', secondary: '#00E5FF', yes: '#C6FF00', ink: '#0A0510', accentInk: '#0A0510' },
   },
   {
     id: 'garoa',
     name: 'Garoa',
     blurb: { pt: 'Frio de Curitiba: farol amarelo na garoa, vidro de tubo.', en: 'Curitiba cold: headlights in the drizzle, tube-station glass.' },
-    swatch: { bg: '#0A0E13', text: '#E6EDF3', text3: '#61717F', primary: '#FFD400', secondary: '#4CC9F0', yes: '#3DF5A0', ink: '#0A0E13' },
+    swatch: { bg: '#0A0E13', text: '#E6EDF3', text3: '#61717F', primary: '#FFD400', secondary: '#4CC9F0', yes: '#3DF5A0', ink: '#0A0E13', accentInk: '#0A0E13' },
   },
   {
-    id: 'pedreira',
-    name: 'Pedreira',
-    blurb: { pt: 'Show a céu aberto: pedra, laser violeta, spot âmbar.', en: 'Open-air show: stone, violet laser, amber spotlight.' },
-    swatch: { bg: '#0E0C0A', text: '#F2EDE6', text3: '#7A7064', primary: '#A86BFF', secondary: '#FFB547', yes: '#7CF29A', ink: '#0E0C0A' },
+    id: 'garoa-clara',
+    name: 'Garoa Clara',
+    light: true,
+    blurb: { pt: 'Garoa de dia: cinza de neblina, vidro de tubo, para ler no sol.', en: 'Garoa by day: fog grey and tube glass, readable in the sun.' },
+    swatch: { bg: '#EEF2F5', text: '#121A22', text3: '#6B7783', primary: '#00758F', secondary: '#8A6100', yes: '#0E7A3E', ink: '#FFFFFF', accentInk: '#FFFFFF' },
   },
 ]
 
@@ -66,7 +62,21 @@ export function applySkin(id, doc = globalThis.document) {
   else root.setAttribute('data-skin', skin.id)
   const meta = doc.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', skin.swatch.bg)
+  syncNativeStatusBar(skin)
   return skin.id
+}
+
+// iOS draws the clock and battery in the system's colour, not ours: on a
+// phone in dark mode a light skin got white status text on a light page.
+// @capacitor/status-bar sets it per skin. It is native, so it only works
+// from the first store build that bundles it; on older binaries (reached
+// by an OTA bundle) the call rejects and is ignored, which leaves today's
+// behaviour.
+function syncNativeStatusBar(skin) {
+  if (!globalThis.Capacitor?.isNativePlatform?.()) return
+  import('@capacitor/status-bar')
+    .then(({ StatusBar, Style }) => StatusBar.setStyle({ style: skin.light ? Style.Light : Style.Dark }))
+    .catch(() => {})
 }
 
 export function setSkin(id, storage = globalThis.localStorage, doc = globalThis.document) {
