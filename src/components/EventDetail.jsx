@@ -87,7 +87,7 @@ function SymplaBuyButton({ ev }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: 8, marginTop: 12, padding: '12px 16px',
         borderRadius: 12, textDecoration: 'none',
-        background: 'var(--terra)', color: 'white',
+        background: 'var(--terra)', color: 'var(--on-magenta)',
         fontSize: 14, fontWeight: 700, letterSpacing: 0.3,
       }}
     >
@@ -413,8 +413,8 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
           // legacy callers still render their custom background under
           // the photo overlay.
           background: showImage ? ev.headerBg :
-            'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.4) 0%, transparent 50%),' +
-            ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.4) 0%, transparent 50%),' +
+            'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.4) 0%, transparent 50%),' +
+            ' radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.4) 0%, transparent 50%),' +
             ' var(--bg2)',
           borderBottom: showImage ? 'none' : '1px solid var(--line)',
           position: 'relative',

@@ -13,6 +13,7 @@ import { usePushNotifications, isPushSupported } from '../lib/usePushNotificatio
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 import { apiFetch } from '../lib/session'
+import SkinPicker from '../components/SkinPicker'
 
 const heroPillStyle = {
   padding: '7px 14px', borderRadius: 999,
@@ -102,8 +103,8 @@ export default function Profile() {
           card on Home, the event hero in Detail). */}
       <div style={{
         background:
-          'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%),' +
-          ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%),' +
+          'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%),' +
+          ' radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%),' +
           ' var(--bg2)',
         borderBottom: '1px solid var(--line)',
         padding: '20px 24px 28px', textAlign: 'center', color: 'var(--text)',
@@ -136,7 +137,7 @@ export default function Profile() {
               style={{
                 position: 'absolute', right: -2, bottom: -2,
                 width: 30, height: 30, borderRadius: '50%',
-                background: 'var(--cyan)', color: '#14081E',
+                background: 'var(--cyan)', color: 'var(--on-lime)',
                 border: '2px solid var(--bg2)', fontSize: 14,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', padding: 0,
@@ -177,7 +178,7 @@ export default function Profile() {
               onClick={saveName}
               style={{
                 padding: '8px 12px', borderRadius: 10, border: 'none',
-                background: 'var(--cyan)', color: '#14081E',
+                background: 'var(--cyan)', color: 'var(--on-lime)',
                 fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}
             >Salvar</button>
@@ -308,6 +309,9 @@ export default function Profile() {
           ))}
         </div>
       </div>
+
+      {/* Skin picker */}
+      <SkinPicker t={t} lang={state.language ?? 'pt'} />
 
       {/* Accessibility mode toggle */}
       <div style={{ margin: '0 16px 12px' }} className="card">
@@ -580,7 +584,7 @@ function NotificationsCard({ t, state, dispatch }) {
             style={{
               fontSize: 12, fontWeight: 700,
               padding: '10px 14px', borderRadius: 10, border: 'none',
-              background: 'var(--sage)', color: '#14081E',
+              background: 'var(--sage)', color: 'var(--on-lime)',
               cursor: 'pointer', opacity: loading ? 0.6 : 1, flexShrink: 0,
             }}
           >
@@ -745,7 +749,7 @@ function FeedbackSection({ state }) {
               disabled={text.trim().length < 5 || submitting}
               style={{
                 padding: '8px 16px', borderRadius: 10, border: 'none',
-                background: 'var(--sage)', color: '#14081E',
+                background: 'var(--sage)', color: 'var(--on-lime)',
                 fontSize: 12, fontWeight: 700,
                 cursor: text.trim().length < 5 || submitting ? 'not-allowed' : 'pointer',
                 opacity: text.trim().length < 5 || submitting ? 0.5 : 1,
@@ -918,10 +922,10 @@ function ShareInstallSection() {
           style={{
             width: '100%', padding: '11px 14px',
             border: 'none', borderRadius: 12,
-            background: 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)',
+            background: 'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%), var(--bg2)',
             color: 'white', fontWeight: 700, fontSize: 13,
             cursor: 'pointer', fontFamily: 'inherit',
-            boxShadow: '0 4px 14px rgba(255, 43, 214, 0.25)',
+            boxShadow: '0 4px 14px rgb(var(--magenta-rgb) / 0.25)',
           }}
         >
           Compartilhar com amigos

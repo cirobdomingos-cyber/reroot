@@ -96,7 +96,7 @@ export default function InviteRequestsPanel({ eventId, googleId, canManage }) {
               disabled={busyId === r.google_id}
               style={{
                 padding: '6px 10px', borderRadius: 8,
-                border: 'none', background: 'var(--sage)', color: '#14081E',
+                border: 'none', background: 'var(--sage)', color: 'var(--on-lime)',
                 fontSize: 11, fontWeight: 700,
                 cursor: busyId === r.google_id ? 'wait' : 'pointer',
               }}

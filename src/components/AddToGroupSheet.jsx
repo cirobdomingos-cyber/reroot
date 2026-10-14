@@ -302,7 +302,7 @@ export default function AddToGroupSheet({ open, onClose: onCloseProp, event, occ
                             <span style={{
                               flexShrink: 0, fontSize: 9, fontWeight: 800,
                               padding: '2px 6px', borderRadius: 6,
-                              background: 'var(--magenta)', color: 'white',
+                              background: 'var(--magenta)', color: 'var(--on-magenta)',
                               letterSpacing: '0.06em',
                             }}>
                               auê

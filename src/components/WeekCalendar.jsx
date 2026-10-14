@@ -290,7 +290,7 @@ export default function WeekCalendar({
                             style={{
                               padding: '5px 10px', borderRadius: 8, fontSize: 10,
                               fontWeight: 700, cursor: 'pointer', border: 'none',
-                              background: 'var(--terra)', color: 'white', flexShrink: 0,
+                              background: 'var(--terra)', color: 'var(--on-magenta)', flexShrink: 0,
                             }}
                           >
                             {language === 'pt' ? 'Aceitar' : 'Accept'}

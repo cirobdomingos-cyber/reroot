@@ -123,9 +123,9 @@ export default function Groups({ embedded = false, actionsOnly = false }) {
           </button>
           <button onClick={() => setShowCreate(true)} style={{
             ...actionBtnStyle,
-            background: 'var(--lime)', color: '#14081E',
+            background: 'var(--lime)', color: 'var(--on-lime)',
             border: 'none',
-            boxShadow: '0 0 18px rgba(198, 255, 0, 0.35)',
+            boxShadow: '0 0 18px rgb(var(--lime-rgb) / 0.35)',
           }}>
             + {t.groups_create}
           </button>
@@ -402,5 +402,5 @@ const cancelBtnStyle = {
 
 const submitBtnStyle = {
   flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
-  background: 'var(--sage)', color: '#14081E', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  background: 'var(--sage)', color: 'var(--on-lime)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
 }

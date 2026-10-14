@@ -398,7 +398,7 @@ function RowBtn({ children, busy, onClick, primary }) {
         flex: 1, padding: '9px 10px', borderRadius: 10, fontSize: 12, fontWeight: 700,
         border: primary ? 'none' : '1.5px solid var(--border)',
         background: primary ? 'var(--terra)' : 'transparent',
-        color: primary ? 'white' : 'var(--charcoal-mid)',
+        color: primary ? 'var(--on-magenta)' : 'var(--charcoal-mid)',
         cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1,
       }}
     >

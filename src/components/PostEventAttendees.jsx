@@ -169,7 +169,7 @@ export default function PostEventAttendees({ eventId, eventDate }) {
                   flexShrink: 0, transition: 'all 0.15s',
                   border: 'none',
                   background: cState === 'sending' ? 'rgba(44,44,44,0.07)' : 'var(--terra)',
-                  color: cState === 'sending' ? 'var(--charcoal-mid)' : 'white',
+                  color: cState === 'sending' ? 'var(--charcoal-mid)' : 'var(--on-magenta)',
                   opacity: cState === 'sending' ? 0.7 : 1,
                 }}
               >

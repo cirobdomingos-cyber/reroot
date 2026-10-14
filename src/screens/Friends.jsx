@@ -218,7 +218,7 @@ export default function Friends({ embedded = false }) {
                   disabled={answeringId === r.google_id}
                   style={{
                     padding: '8px 12px', borderRadius: 10, border: 'none', flexShrink: 0,
-                    background: 'var(--sage)', color: '#14081E',
+                    background: 'var(--sage)', color: 'var(--on-lime)',
                     fontSize: 12, fontWeight: 700, cursor: 'pointer',
                     opacity: answeringId === r.google_id ? 0.5 : 1,
                   }}
@@ -249,9 +249,9 @@ export default function Friends({ embedded = false }) {
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           style={{
-            background: 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)',
+            background: 'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%), var(--bg2)',
             borderRadius: 20, padding: '18px 20px', color: 'white',
-            boxShadow: '0 6px 18px rgba(255, 43, 214,0.35)',
+            boxShadow: '0 6px 18px rgb(var(--magenta-rgb) / 0.35)',
           }}
         >
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, opacity: 0.85, marginBottom: 4 }}>
@@ -290,11 +290,11 @@ export default function Friends({ embedded = false }) {
               width: '100%', marginTop: 12,
               padding: '11px 16px', borderRadius: 12,
               border: '1px solid var(--lime)',
-              background: 'rgba(198, 255, 0, 0.10)', color: 'var(--lime)',
+              background: 'rgb(var(--lime-rgb) / 0.10)', color: 'var(--lime)',
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
               opacity: myCode ? 1 : 0.5,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: myCode ? '0 0 12px rgba(198, 255, 0, 0.20)' : 'none',
+              boxShadow: myCode ? '0 0 12px rgb(var(--lime-rgb) / 0.20)' : 'none',
             }}
           >
             🔗 Compartilhar link de convite
@@ -334,7 +334,7 @@ export default function Friends({ embedded = false }) {
             disabled={!codeInput.trim() || addState === 'sending'}
             style={{
               padding: '10px 16px', borderRadius: 10, border: 'none',
-              background: 'var(--sage)', color: '#14081E',
+              background: 'var(--sage)', color: 'var(--on-lime)',
               fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0,
               opacity: (!codeInput.trim() || addState === 'sending') ? 0.45 : 1,
               transition: 'opacity 0.15s',

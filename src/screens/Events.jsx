@@ -1042,7 +1042,7 @@ export default function Events() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
                 color: searchOpen ? 'var(--bg)' : 'var(--text2)',
-                boxShadow: searchOpen ? '0 0 12px rgba(255, 43, 214, 0.4)' : 'none',
+                boxShadow: searchOpen ? '0 0 12px rgb(var(--magenta-rgb) / 0.4)' : 'none',
               }}
             >🔍</button>
           </div>
@@ -1097,15 +1097,15 @@ export default function Events() {
           <div style={{
             margin: '0 16px 8px',
             padding: '10px 12px',
-            background: 'rgba(198, 255, 0, 0.06)',
-            border: '1px solid rgba(198, 255, 0, 0.35)',
+            background: 'rgb(var(--lime-rgb) / 0.06)',
+            border: '1px solid rgb(var(--lime-rgb) / 0.35)',
             borderRadius: 12,
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <span style={{
               fontSize: 14, lineHeight: 1, flexShrink: 0,
               color: 'var(--lime)',
-              filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+              filter: 'drop-shadow(0 0 4px rgb(var(--lime-rgb) / 0.5))',
             }}>✨</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="neon-mono" style={{
@@ -1206,7 +1206,7 @@ export default function Events() {
                       transition: 'all 0.15s',
                       border: active ? 'none' : '1px solid var(--border)',
                       background: active ? 'var(--magenta)' : 'transparent',
-                      color: active ? '#14081E' : 'var(--text2)',
+                      color: active ? 'var(--on-lime)' : 'var(--text2)',
                     }}
                   >
                     {chip.emoji} {chip.label}{chip.count > 0 ? ` · ${chip.count}` : ''}
@@ -1258,7 +1258,7 @@ export default function Events() {
                     border: 'none', cursor: 'pointer',
                     fontSize: 12, fontWeight: 600,
                     background: active ? 'var(--terra)' : 'transparent',
-                    color: active ? '#14081E' : 'var(--text2)',
+                    color: active ? 'var(--on-lime)' : 'var(--text2)',
                     transition: 'all 0.15s',
                   }}
                 >
@@ -1294,7 +1294,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
                 background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
-                color: venueSubFilter === sub.id ? '#14081E' : 'var(--text2)',
+                color: venueSubFilter === sub.id ? 'var(--on-lime)' : 'var(--text2)',
               }}
             >
               {sub.label}
@@ -1372,7 +1372,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: isAllActive ? 'none' : '1px solid var(--border)',
                 background: isAllActive ? 'var(--sage)' : 'transparent',
-                color: isAllActive ? '#14081E' : 'var(--text2)',
+                color: isAllActive ? 'var(--on-lime)' : 'var(--text2)',
               }}
             >
               {t.filter_all_prices}
@@ -1391,7 +1391,7 @@ export default function Events() {
             fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
             transition: 'all 0.15s',
             border: oneOffOnly ? 'none' : '1px solid var(--border)',
-            background: oneOffOnly ? '#7E57C2' : 'transparent',
+            background: oneOffOnly ? 'var(--from-catalog)' : 'transparent',
             color: oneOffOnly ? '#FFFFFF' : 'var(--text2)',
           }}
         >
@@ -1409,7 +1409,7 @@ export default function Events() {
             // terra orange.
             border: kidsFilter ? 'none' : '1px solid var(--border)',
             background: kidsFilter ? '#EC407A' : 'transparent',
-            color: kidsFilter ? '#14081E' : 'var(--text2)',
+            color: kidsFilter ? 'var(--on-lime)' : 'var(--text2)',
           }}
         >
           👶 {t.filter_kids_welcome}
@@ -1454,7 +1454,7 @@ export default function Events() {
                   transition: 'all 0.15s',
                   border: active ? 'none' : '1px solid var(--border)',
                   background: active ? 'var(--terra)' : 'transparent',
-                  color: active ? '#14081E' : 'var(--text2)',
+                  color: active ? 'var(--on-lime)' : 'var(--text2)',
                 }}
               >
                 {label}
@@ -1532,7 +1532,7 @@ export default function Events() {
                   onClick={() => { setSearchQuery(''); setSearchOpen(false) }}
                   style={{
                     marginTop: 18, padding: '8px 20px', borderRadius: 12,
-                    background: 'var(--terra)', color: 'white',
+                    background: 'var(--terra)', color: 'var(--on-magenta)',
                     fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
                   }}
                 >
@@ -1590,7 +1590,7 @@ export default function Events() {
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>✓ Confirmado</div>
-              <div style={{ fontSize: 11, color: 'rgba(10, 5, 16, 0.65)', marginTop: 1 }}>{notifToast}</div>
+              <div style={{ fontSize: 11, color: 'rgb(var(--bg-rgb) / 0.65)', marginTop: 1 }}>{notifToast}</div>
             </div>
           </motion.div>
         )}
@@ -1637,7 +1637,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: '#14081E',
+                    background: 'var(--sage)', color: 'var(--on-lime)',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     marginTop: 12,
                   }}
@@ -1664,7 +1664,7 @@ export default function Events() {
                     onClick={() => openDetail(detailEvent.id)}
                     style={{
                       padding: '10px 22px', borderRadius: 12, border: 'none',
-                      background: 'var(--terra)', color: 'white',
+                      background: 'var(--terra)', color: 'var(--on-magenta)',
                       fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}
                   >
@@ -1696,7 +1696,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: '#14081E',
+                    background: 'var(--sage)', color: 'var(--on-lime)',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   }}
                 >
@@ -2407,7 +2407,7 @@ function RequestInviteButton({ eventId, googleId, canRequest, initialStatus }) {
         disabled={submitting}
         style={{
           padding: '10px 22px', borderRadius: 12, border: 'none',
-          background: 'var(--terra)', color: 'white',
+          background: 'var(--terra)', color: 'var(--on-magenta)',
           fontSize: 13, fontWeight: 700,
           cursor: submitting ? 'wait' : 'pointer',
           opacity: submitting ? 0.7 : 1,

@@ -19,33 +19,46 @@
      --border                                   → line      (violet-black border)
 */
 :root {
-  /* Neon Boteco core tokens */
+  /* Neon Boteco core tokens. Each accent also has a bare "R G B" twin
+     (--magenta-rgb) so translucent tints follow the active skin:
+     `rgb(var(--magenta-rgb) / 0.35)` instead of a hardcoded rgba().
+     Skins (below, [data-skin=...]) override only this block. */
   --bg:           #0A0510;   /* page bg, near-black with violet undertone */
+  --bg-rgb:       10 5 16;
   --bg2:          #14081E;   /* hero gradient base, card surface */
+  --bg2-rgb:      20 8 30;
+  --bg3:          #1a0a26;   /* hero gradient top */
   --line:         #2A1640;   /* borders, dividers, card outlines */
   --magenta:      #FF2BD6;   /* primary accent, logo, active nav */
-  --magenta-soft: rgba(255, 43, 214, 0.08);
+  --magenta-rgb:  255 43 214;
+  --magenta-hover: #FF4DDC;
   --cyan:         #00E5FF;   /* secondary accent, links, browse emphasis */
-  --cyan-soft:    rgba(0, 229, 255, 0.08);
+  --cyan-rgb:     0 229 255;
   --lime:         #C6FF00;   /* success, going, free, confirmados */
-  --lime-soft:    rgba(198, 255, 0, 0.08);
+  --lime-rgb:     198 255 0;
+  --lime-hover:   #DCFF55;
   --hot:          #FF5A1F;   /* reserved tertiary */
   --text:         #F4ECFF;   /* primary text, off-white with violet tint */
   --text2:        #B8A8D8;   /* secondary text */
   --text3:        #6E5C8E;   /* tertiary text, muted metadata */
+  --catalog-rgb:  126 87 194;
+
+  --magenta-soft: rgb(var(--magenta-rgb) / 0.08);
+  --cyan-soft:    rgb(var(--cyan-rgb) / 0.08);
+  --lime-soft:    rgb(var(--lime-rgb) / 0.08);
 
   /* Legacy semantic vars — remapped to neon. Existing components keep
      working without touching every call site. */
   --terra:        var(--magenta);
-  --terra-light:  #FF6BE3;
-  --terra-pale:   rgba(255, 43, 214, 0.10);
+  --terra-light:  var(--magenta-hover);
+  --terra-pale:   rgb(var(--magenta-rgb) / 0.10);
 
   --sage:         var(--lime);
-  --sage-light:   #DCFF55;
-  --sage-pale:    rgba(198, 255, 0, 0.10);
+  --sage-light:   var(--lime-hover);
+  --sage-pale:    rgb(var(--lime-rgb) / 0.10);
 
   --honey:        var(--cyan);
-  --honey-pale:   rgba(0, 229, 255, 0.10);
+  --honey-pale:   rgb(var(--cyan-rgb) / 0.10);
 
   /* Provenance — where an event came from. One scale, used by the
      Eventos list and the Canais tab, which have to agree: a row in the
@@ -64,12 +77,12 @@
      spending it on provenance is what made a channel row and an RSVP
      look like the same claim. */
   --from-private:      var(--cyan);
-  --from-private-glow: rgba(0, 229, 255, 0.55);
-  --from-private-soft: rgba(0, 229, 255, 0.10);
+  --from-private-glow: rgb(var(--cyan-rgb) / 0.55);
+  --from-private-soft: rgb(var(--cyan-rgb) / 0.10);
   --from-aue:          var(--magenta);
-  --from-aue-glow:     rgba(255, 43, 214, 0.30);
-  --from-aue-soft:     rgba(255, 43, 214, 0.10);
-  --from-catalog:      #7E57C2;
+  --from-aue-glow:     rgb(var(--magenta-rgb) / 0.30);
+  --from-aue-soft:     rgb(var(--magenta-rgb) / 0.10);
+  --from-catalog:      rgb(var(--catalog-rgb));
 
   --cream:        var(--bg);
   --charcoal:     var(--text);
@@ -79,8 +92,8 @@
   --border:       var(--line);
 
   --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.6);
-  --shadow:    0 2px 12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 43, 214, 0.06);
-  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 229, 255, 0.10);
+  --shadow:    0 2px 12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgb(var(--magenta-rgb) / 0.06);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgb(var(--cyan-rgb) / 0.10);
   --radius-sm: 10px;
   --radius:    14px;
   --radius-lg: 16px;
@@ -101,9 +114,69 @@
   --on-magenta: #FFFFFF;
 
   /* Glow */
-  --glow-magenta: 0 0 14px rgba(255, 43, 214, 0.6);
-  --glow-cyan:    0 0 14px rgba(0, 229, 255, 0.6);
-  --glow-lime:    0 0 14px rgba(198, 255, 0, 0.5);
+  --glow-magenta: 0 0 14px rgb(var(--magenta-rgb) / 0.6);
+  --glow-cyan:    0 0 14px rgb(var(--cyan-rgb) / 0.6);
+  --glow-lime:    0 0 14px rgb(var(--lime-rgb) / 0.5);
+}
+
+/* ── Skins ──
+   A skin swaps the palette, never the meaning: every skin keeps the
+   roles above (magenta slot = brand/primary, cyan slot = secondary and
+   private channels, lime slot = "you said yes"). The slot names stay
+   neon for the same reason the legacy names stay legacy: call sites
+   read roles, not hues. Rules a new skin must follow, checked by
+   src/lib/skins.test.js: text on bg >= 7:1, text3 on bg >= 3:1, lime
+   and cyan carry --on-lime/--on-cyan (dark ink) at >= 4.5:1, and the
+   primary carries --on-magenta at >= 4.5:1. All skins are dark: the app
+   lives at night and its accents are glows. Set by src/lib/skins.js on
+   <html data-skin="...">; no attribute = Neon Boteco. */
+:root[data-skin="pinhao"] {
+  /* Pinhão: Araucária at night. Pine-black, quentão gold, ipê pink. */
+  --bg:           #0B110D;  --bg-rgb:  11 17 13;
+  --bg2:          #131D17;  --bg2-rgb: 19 29 23;
+  --bg3:          #1A281F;
+  --line:         #27402F;
+  --magenta:      #F5B700;  --magenta-rgb: 245 183 0;  --magenta-hover: #FFC93D;
+  --cyan:         #FF8FC8;  --cyan-rgb:    255 143 200;
+  --lime:         #9BEA5A;  --lime-rgb:    155 234 90;  --lime-hover: #B4F27F;
+  --hot:          #FF7A45;
+  --text:         #F3EEDC;
+  --text2:        #BDB79C;
+  --text3:        #7E7A63;
+  --catalog-rgb:  140 120 80;
+  --on-magenta:   #0B110D;
+}
+:root[data-skin="garoa"] {
+  /* Garoa: Curitiba drizzle. Cold slate, headlight yellow, tube glass. */
+  --bg:           #0A0E13;  --bg-rgb:  10 14 19;
+  --bg2:          #111821;  --bg2-rgb: 17 24 33;
+  --bg3:          #17212D;
+  --line:         #233142;
+  --magenta:      #FFD400;  --magenta-rgb: 255 212 0;  --magenta-hover: #FFE04D;
+  --cyan:         #4CC9F0;  --cyan-rgb:    76 201 240;
+  --lime:         #3DF5A0;  --lime-rgb:    61 245 160;  --lime-hover: #78F8BC;
+  --hot:          #FF6B57;
+  --text:         #E6EDF3;
+  --text2:        #93A4B5;
+  --text3:        #61717F;
+  --catalog-rgb:  110 130 160;
+  --on-magenta:   #0A0E13;
+}
+:root[data-skin="pedreira"] {
+  /* Pedreira: open-air show. Warm stone, violet laser, amber spotlight. */
+  --bg:           #0E0C0A;  --bg-rgb:  14 12 10;
+  --bg2:          #1A1714;  --bg2-rgb: 26 23 20;
+  --bg3:          #231F1B;
+  --line:         #3A332C;
+  --magenta:      #A86BFF;  --magenta-rgb: 168 107 255;  --magenta-hover: #BC8CFF;
+  --cyan:         #FFB547;  --cyan-rgb:    255 181 71;
+  --lime:         #7CF29A;  --lime-rgb:    124 242 154;  --lime-hover: #A1F6B6;
+  --hot:          #FF5E7A;
+  --text:         #F2EDE6;
+  --text2:        #B8AEA2;
+  --text3:        #7A7064;
+  --catalog-rgb:  150 120 90;
+  --on-magenta:   #0E0C0A;
 }
 
 /* ── Reset ── */
@@ -140,8 +213,8 @@ input  { font-family: inherit; }
    Replaces the old white card surface globally via --white remap. */
 .neon-card {
   background: linear-gradient(180deg,
-    rgba(255, 43, 214, 0.04) 0%,
-    rgba(0, 229, 255, 0.04) 100%),
+    rgb(var(--magenta-rgb) / 0.04) 0%,
+    rgb(var(--cyan-rgb) / 0.04) 100%),
     var(--bg2);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -172,7 +245,7 @@ input  { font-family: inherit; }
     0 0 0 10px #1c1c1c,
     0 0 0 12px #2e2e2e,
     0 50px 100px rgba(0,0,0,0.7),
-    0 0 80px rgba(255, 43, 214, 0.15);
+    0 0 80px rgb(var(--magenta-rgb) / 0.15);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -225,7 +298,7 @@ input  { font-family: inherit; }
   font-size: 11px;
   letter-spacing: 0.16em;
   color: var(--cyan);
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+  text-shadow: 0 0 8px rgb(var(--cyan-rgb) / 0.4);
 }
 .status-icons { display: flex; gap: 5px; align-items: center; }
 
@@ -246,7 +319,7 @@ input  { font-family: inherit; }
 /* ── Bottom nav ── */
 .bottom-nav {
   height: 80px;
-  background: rgba(10, 5, 16, 0.92);
+  background: rgb(var(--bg-rgb) / 0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
@@ -278,7 +351,7 @@ input  { font-family: inherit; }
   cursor: pointer;
   color: var(--text3);
 }
-.nav-item:hover { background: rgba(255, 43, 214, 0.06); }
+.nav-item:hover { background: rgb(var(--magenta-rgb) / 0.06); }
 .nav-item__label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 9px;
@@ -320,8 +393,8 @@ input  { font-family: inherit; }
    per-accent washes instead of the previous solid pales. */
 .card {
   background: linear-gradient(180deg,
-    rgba(255, 43, 214, 0.04) 0%,
-    rgba(0, 229, 255, 0.04) 100%),
+    rgb(var(--magenta-rgb) / 0.04) 0%,
+    rgb(var(--cyan-rgb) / 0.04) 100%),
     var(--bg2);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
@@ -331,22 +404,22 @@ input  { font-family: inherit; }
 }
 .card--terra {
   background: linear-gradient(180deg,
-    rgba(255, 43, 214, 0.10) 0%,
-    rgba(255, 43, 214, 0.04) 100%),
+    rgb(var(--magenta-rgb) / 0.10) 0%,
+    rgb(var(--magenta-rgb) / 0.04) 100%),
     var(--bg2);
-  border: 1px solid rgba(255, 43, 214, 0.25);
+  border: 1px solid rgb(var(--magenta-rgb) / 0.25);
   box-shadow: none;
 }
 .card--sage {
   background: linear-gradient(180deg,
-    rgba(198, 255, 0, 0.10) 0%,
-    rgba(198, 255, 0, 0.04) 100%),
+    rgb(var(--lime-rgb) / 0.10) 0%,
+    rgb(var(--lime-rgb) / 0.04) 100%),
     var(--bg2);
-  border: 1px solid rgba(198, 255, 0, 0.25);
+  border: 1px solid rgb(var(--lime-rgb) / 0.25);
   box-shadow: none;
 }
 .card--dark {
-  background: linear-gradient(135deg, #1a0a26 0%, #14081E 100%);
+  background: linear-gradient(135deg, var(--bg3) 0%, var(--bg2) 100%);
   color: var(--text);
   border: 1px solid var(--line);
 }
@@ -375,31 +448,31 @@ input  { font-family: inherit; }
    energy without competing with the surrounding chrome. */
 .btn--primary {
   background: var(--magenta);
-  color: #ffffff;
-  border: 1px solid rgba(255, 43, 214, 0.6);
+  color: var(--on-magenta);
+  border: 1px solid rgb(var(--magenta-rgb) / 0.6);
   box-shadow:
-    0 0 0 1px rgba(255, 43, 214, 0.3),
-    0 8px 24px rgba(255, 43, 214, 0.45);
+    0 0 0 1px rgb(var(--magenta-rgb) / 0.3),
+    0 8px 24px rgb(var(--magenta-rgb) / 0.45);
   text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
 }
 .btn--primary:hover {
-  background: #FF4DDC;
+  background: var(--magenta-hover);
   box-shadow:
-    0 0 0 1px rgba(255, 43, 214, 0.4),
-    0 8px 28px rgba(255, 43, 214, 0.65);
+    0 0 0 1px rgb(var(--magenta-rgb) / 0.4),
+    0 8px 28px rgb(var(--magenta-rgb) / 0.65);
 }
 .btn--sage {
   background: var(--lime);
-  color: #14081E;
-  box-shadow: 0 0 18px rgba(198, 255, 0, 0.35);
+  color: var(--on-lime);
+  box-shadow: 0 0 18px rgb(var(--lime-rgb) / 0.35);
 }
-.btn--sage:hover { background: #DCFF55; }
+.btn--sage:hover { background: var(--sage-light); }
 .btn--outline {
   background: transparent;
   color: var(--cyan);
   border: 1px solid var(--cyan);
 }
-.btn--outline:hover { background: rgba(0, 229, 255, 0.08); }
+.btn--outline:hover { background: rgb(var(--cyan-rgb) / 0.08); }
 .btn--ghost {
   background: transparent;
   color: var(--text2);
@@ -509,7 +582,7 @@ summary::-webkit-details-marker { display: none; }
   gap: 6px;
 }
 [data-accessibility="on"] .nav-item--active {
-  background: rgba(255, 43, 214, 0.10);
+  background: rgb(var(--magenta-rgb) / 0.10);
 }
 [data-accessibility="on"] .screen-header__title {
   font-size: 26px;
@@ -627,7 +700,7 @@ summary::-webkit-details-marker { display: none; }
     padding: 11px 14px;
     border-radius: 12px;
   }
-  .nav-item--active { background: rgba(255, 43, 214, 0.08); }
+  .nav-item--active { background: rgb(var(--magenta-rgb) / 0.08); }
   .nav-item__label { font-size: 11px; }
 
   /* Content column. Screens were designed as a phone column, so they get

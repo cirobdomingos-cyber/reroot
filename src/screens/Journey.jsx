@@ -162,7 +162,7 @@ export default function Journey() {
         }}>
           <div style={{
             width: 26, height: 26, borderRadius: '50%',
-            background: 'var(--terra)', color: 'white',
+            background: 'var(--terra)', color: 'var(--on-magenta)',
             fontSize: 12, fontWeight: 700, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{a.step}</div>

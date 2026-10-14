@@ -156,7 +156,7 @@ export default function Novidades() {
           </h1>
           <span style={{
             fontSize: 14, lineHeight: 1, flexShrink: 0, color: 'var(--lime)',
-            filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+            filter: 'drop-shadow(0 0 4px rgb(var(--lime-rgb) / 0.5))',
           }}>✨</span>
         </div>
 
