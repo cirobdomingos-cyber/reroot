@@ -624,11 +624,14 @@ async def fetch_events(
     # concurrent manual scrape can't clobber it.
     failed_shortcodes: set[str] = set()
 
+    # cancel_out only when a caller collects cancellations, so the
+    # extractor's long-standing call shape is unchanged otherwise.
+    extra = {"cancel_out": cancel_out} if cancel_out is not None else {}
+
     async def _bounded_extract(post):
         async with sem:
             return await _extract_events(
-                client, post, today_str, failed_out=failed_shortcodes,
-                cancel_out=cancel_out,
+                client, post, today_str, failed_out=failed_shortcodes, **extra
             )
 
     results = await asyncio.gather(
