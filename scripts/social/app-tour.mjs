@@ -136,7 +136,7 @@ export function tourSocial({ fontCss, index, total }) {
 
 /* global document -- the hide-price step runs inside the page */
 /** Screenshots of the live web app at phone size (1170x2532, iPhone-like). */
-async function captureShots(browser, { app, day, event, dir }) {
+async function captureShots(browser, { app, day, event, eventDay, filter, dir }) {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true,
     locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
@@ -144,53 +144,67 @@ async function captureShots(browser, { app, day, event, dir }) {
   const p = await ctx.newPage()
   const shots = {}
   const snap = async (name) => { const file = path.join(dir, `${name}.png`); await p.screenshot({ path: file }); shots[name] = file }
-  try {
+  // Every shot starts from a fresh load of the events screen, so one shot's
+  // day or filter never leaks into the next.
+  const openEvents = async () => {
     await p.goto(`${app}/`, { waitUntil: 'networkidle', timeout: 60000 })
-    await p.getByText('Bora ver').click()
-    await p.waitForTimeout(2500)
+    await p.waitForTimeout(1500)
+    const enter = p.getByText('Bora ver')
+    if (await enter.count()) { await enter.click(); await p.waitForTimeout(2500) }
     const skip = p.getByText(/agora não/i).last()
     if (await skip.count()) { await skip.click(); await p.waitForTimeout(3000) }
-    // Open on the day the post talks about, not whatever the strip picked.
-    if (day) {
-      const btn = p.getByText(day, { exact: true }).first()
-      if (await btn.count()) { await btn.click(); await p.waitForTimeout(2000) }
+  }
+  // The day the post talks about, not whatever the strip picked.
+  const pickDay = async (d) => {
+    if (!d) return
+    const btn = p.getByText(d, { exact: true }).first()
+    if (await btn.count()) { await btn.click(); await p.waitForTimeout(2000) }
+  }
+  const hideLeaves = (pattern, how) => p.evaluate(({ src, mode }) => {
+    const re = new RegExp(src, 'i')
+    for (const el of document.querySelectorAll('body *')) {
+      if (el.children.length !== 0 || !re.test(el.textContent || '')) continue
+      if (mode === 'row') {
+        let row = el
+        while (row.parentElement && row.parentElement.children.length < 2) row = row.parentElement
+        ;(row.parentElement || row).style.display = 'none'
+      } else {
+        el.style.visibility = 'hidden'
+      }
+    }
+  }, { src: pattern, mode: how })
+  try {
+    // 1-2. The list on `day`, narrowed to a category chip ("🎵 Música · 41")
+    // so it leads with shows instead of long-running exhibitions; then the map.
+    await openEvents()
+    await pickDay(day)
+    if (filter) {
+      const chip = p.getByText(new RegExp(`${filter}\\s*·`, 'i')).first()
+      if (await chip.count()) { await chip.click(); await p.waitForTimeout(2500) }
     }
     await snap('events')
     await p.getByText(/Mapa/).first().click()
     await p.waitForTimeout(5000)
     await snap('map')
-    await p.getByText(/Lista/).first().click()
-    await p.waitForTimeout(2000)
-    // First card on the list: the event detail screen.
-    // A named card when given (--event), else the first one; the venue line
-    // ("📍 Lugar · Bairro") is on every list card.
+
+    // 3. One event's detail, from the unfiltered list on `eventDay`. A named
+    // card when given (--event), else the first one (the venue line
+    // "📍 Lugar · Bairro" is on every card).
+    await openEvents()
+    await pickDay(eventDay)
     const named = event ? p.getByText(event).first() : null
     await (named && (await named.count()) ? named : p.getByText(/📍/).first()).click({ timeout: 8000 })
-    await p.waitForTimeout(3000)
-    await p.waitForTimeout(4000) // the cover image fades in
-    // No prices on @auecuritiba posts (the feed's price is a guess): hide the
-    // "Custo" row of the detail screen before the screenshot.
-    await p.evaluate(() => {
-      for (const el of document.querySelectorAll('body *')) {
-        if (el.children.length === 0 && /^\s*custo\s*$/i.test(el.textContent || '')) {
-          let row = el
-          while (row.parentElement && row.parentElement.children.length < 2) row = row.parentElement
-          row.parentElement ? (row.parentElement.style.display = 'none') : (row.style.display = 'none')
-        }
-      }
-    })
+    await p.waitForTimeout(7000) // the cover image fades in
+    // No prices on @auecuritiba posts (the feed's price is a guess).
+    await hideLeaves('^\\s*custo\\s*$', 'row')
     await snap('event')
-    // Channels: Comunidade -> Canais (the default tab). Follower counts are
-    // still tiny, so they stay out of the post.
-    await p.goBack()
-    await p.waitForTimeout(2000)
+
+    // 4. Comunidade -> Canais (the default tab). Follower counts are still
+    // tiny, so they stay out of the post.
+    await openEvents()
     await p.getByText(/comunidade/i).last().click()
     await p.waitForTimeout(3500)
-    await p.evaluate(() => {
-      for (const el of document.querySelectorAll('body *')) {
-        if (el.children.length === 0 && /^\s*\d+\s+seguindo\s*$/i.test(el.textContent || '')) el.style.visibility = 'hidden'
-      }
-    })
+    await hideLeaves('^\\s*\\d+\\s+seguindo\\s*$', 'hide')
     await snap('channels')
   } finally {
     await ctx.close()
@@ -203,14 +217,16 @@ async function main() {
     args: process.argv.slice(2),
     options: {
       app: { type: 'string', default: 'https://auecuritiba.com' },
-      day: { type: 'string', default: 'Sex' },
+      day: { type: 'string', default: 'Sáb' },
       event: { type: 'string', default: 'Renato Russo' },
+      'event-day': { type: 'string', default: 'Dom' },
+      filter: { type: 'string', default: 'Música' },
       out: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
   if (values.help) {
-    console.log('Usage: app-tour.mjs [--app URL] [--day Sex] [--event "name on the card"] [--out dir]')
+    console.log('Usage: app-tour.mjs [--app URL] [--day Sáb] [--event "name on the card"] [--out dir]')
     return
   }
   const out = path.resolve(values.out || path.join(ROOT, 'social', 'out', 'app-tour'))
@@ -225,7 +241,7 @@ async function main() {
   const browser = await launchChromium()
   const problems = []
   try {
-    const shots = await captureShots(browser, { app: values.app.replace(/\/+$/, ''), day: values.day, event: values.event, dir: shotsDir })
+    const shots = await captureShots(browser, { app: values.app.replace(/\/+$/, ''), day: values.day, event: values.event, eventDay: values['event-day'], filter: values.filter, dir: shotsDir })
     const total = FEATURES.length + 1
     const dataUrl = async (file) => (file ? `data:image/png;base64,${(await readFile(file)).toString('base64')}` : null)
     const slides = [
