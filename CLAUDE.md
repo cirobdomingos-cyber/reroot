@@ -54,7 +54,7 @@ Don't add per-user LLM calls without a strong reason — it doesn't scale.
 
 ## TWA / PWA distribution
 
-- **Android**: TWA via PWABuilder.com → Play Store Internal Testing (no App Review for ≤100 testers). Backend serves `/.well-known/assetlinks.json` reading `TWA_SHA256_FINGERPRINT` env var.
+- **Android**: Capacitor app `app.aue` (same wrapper as iOS) → Google Play via [.github/workflows/android-play.yml](.github/workflows/android-play.yml) (`android-v*` tag → internal track). New personal Play accounts run a closed test with 12 testers for 14 days before production. Setup: [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md). `/.well-known/assetlinks.json` (env `TWA_SHA256_FINGERPRINT`) is only for verified app links.
 - **iOS**: public on the App Store (id `6765535013`, `APP_STORE_URL` in [backend/main.py](backend/main.py)). `/install` 302s iOS UAs there; Safari also shows Apple's own Smart App Banner via the `apple-itunes-app` meta tag in [index.html](index.html) — no custom JS banner needed anymore (the old `InstallBanner.jsx` DIY version is gone). `settings.testflight_invite_url`, when set, overrides `/install`'s iOS redirect to TestFlight instead — used during occasional version-bump beta windows, otherwise left empty.
 - Privacy policy at `/privacy` (LGPD-compliant, pt-BR).
 
