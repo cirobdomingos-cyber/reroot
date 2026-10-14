@@ -42,11 +42,12 @@ function parseCli(argv) {
       out: { type: 'string' },
       'no-images': { type: 'boolean', default: false },
       exclude: { type: 'string', default: '' },
+      pick: { type: 'string', default: '' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
   if (values.help) {
-    console.log('Usage: weekend-list.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL | --input file.json] [--count 7] [--out dir] [--no-images] [--exclude id,id]')
+    console.log('Usage: weekend-list.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL | --input file.json] [--count 7] [--out dir] [--no-images] [--exclude id,id] [--pick id,id]')
     process.exit(0)
   }
   const week = comingWeekend(todayInCuritiba())
@@ -64,6 +65,7 @@ function parseCli(argv) {
     out: path.resolve(values.out || path.join(ROOT, 'social', 'out', from)),
     images: !values['no-images'],
     excludeIds: values.exclude.split(',').map((s) => s.trim()).filter(Boolean),
+    pinIds: values.pick.split(',').map((s) => s.trim()).filter(Boolean),
   }
 }
 
@@ -186,7 +188,7 @@ async function main() {
     throw new Error(`could not load the feed (${err.message}); pass --input <file.json> to run offline`)
   }
   const events = Array.isArray(loaded.feed) ? loaded.feed : loaded.feed.events || []
-  const { picks, considered, rejected } = selectWeekend(events, { from: opts.from, to: opts.to, count: opts.count, excludeIds: opts.excludeIds })
+  const { picks, considered, rejected } = selectWeekend(events, { from: opts.from, to: opts.to, count: opts.count, excludeIds: opts.excludeIds, pinIds: opts.pinIds })
   if (!picks.length) throw new Error(`no events for ${opts.from}..${opts.to} in ${loaded.source}`)
   if (picks.length < opts.count) console.warn(`! only ${picks.length} of ${opts.count} picks after the caps`)
 

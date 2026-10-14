@@ -169,3 +169,28 @@ test('caption tags every handle, ends with the CTA and at most 5 hashtags', () =
   assert.ok((caption.match(/#\w+/g) || []).length <= 5)
   assert.doesNotMatch(caption, /recomendado|baixa press|introvertid|acolhedor/i)
 })
+
+test('a show outranks a workshop at the same slot', () => {
+  const workshop = ev({ tipo: 'oficina', day: '2026-10-16', time: '20:00' })
+  const show = ev({ tipo: 'show', day: '2026-10-16', time: '21:00' })
+  const { picks } = selectWeekend([workshop, show], { ...W, count: 1 })
+  assert.equal(picks[0].event.id, show.id)
+})
+
+test('hand picks come first, skip the caps, and unknown ids fail loudly', () => {
+  const a = ev({ tipo: 'show', igHandle: 'same', day: '2026-10-17' })
+  const b = ev({ tipo: 'show', igHandle: 'same', day: '2026-10-17', time: '22:00' })
+  const c = ev({ tipo: 'teatro', day: '2026-10-18' })
+  const { picks } = selectWeekend([a, b, c], { ...W, count: 3, pinIds: [a.id, b.id] })
+  assert.deepEqual(picks.map((p) => p.event.id), [a.id, b.id, c.id]) // two from one venue: the human chose it
+  assert.equal(picks[0].reasons[0], 'picked by hand')
+  assert.throws(() => selectWeekend([a], { ...W, pinIds: ['nope'] }), /--pick nope/)
+})
+
+test('drops rows whose own pitch says they are outside Curitiba', () => {
+  const bh = ev({ pitch: 'Show do Amorphis em Belo Horizonte — fora de Curitiba', venue: 'Mister Rock · Água Verde' })
+  const ok = ev({ pitch: 'Bora pro som pesado na noite de Curitiba' })
+  const { picks, rejected } = selectWeekend([bh, ok], { ...W, count: 2 })
+  assert.deepEqual(picks.map((p) => p.event.id), [ok.id])
+  assert.equal(rejected['outside Curitiba'], 1)
+})

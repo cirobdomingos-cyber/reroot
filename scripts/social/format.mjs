@@ -98,12 +98,19 @@ export const CTA_IPHONE = 'No iPhone: auê na App Store'
 export const HASHTAGS = ['#curitiba', '#agendacuritiba', '#oquefazeremcuritiba', '#curitibacultural', '#fimdesemanacuritiba']
 
 /** Instagram caption. One line per pick so every venue handle is tagged. */
+// The feed's categoryEmoji is the coarse mood (nearly everything is 🤝
+// "community"), so the caption reads the finer `tipo` first.
+export const TIPO_EMOJI = {
+  show: '🎸', festa: '🪩', comedia: '😂', teatro: '🎭', literatura: '📚', oficina: '🎨',
+  exposicao: '🖼️', esporte: '🏃', feira: '🛍️', gastronomia: '🍽️', kids: '🧸', cinema: '🎬',
+}
+
 export function buildCaption(picks, from, to) {
   const lines = [
     `Rola esse fim de semana em Curitiba (${windowLabel(from, to)}) 👇`,
     '',
     ...picks.map(({ event }) => {
-      const emoji = event.categoryEmoji || '📍'
+      const emoji = TIPO_EMOJI[(event.tipo || '').toLowerCase()] || event.categoryEmoji || '📍'
       const when = whenLabel(event, from, to)
       return `${emoji} ${when} — ${event.name.trim()} @${event.igHandle}`
     }),
