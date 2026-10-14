@@ -1,8 +1,8 @@
-// Words for the weekend carousel: day and time labels, price, the one-line
+// Words for the weekend carousel: day and time labels, the one-line
 // pitch and the caption. Pure functions; nothing here invents copy. The
 // pitch line is the feed's own pitch (or vibeSummary), only trimmed.
 
-import { spanOf, timeOf, isFree, addDays } from './select.mjs'
+import { spanOf, timeOf, addDays } from './select.mjs'
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -49,15 +49,11 @@ export function whenLabel(event, from, to) {
   return [dayLabel(event, from, to), timeLabel(event)].filter(Boolean).join(' · ')
 }
 
-/** Price as the feed has it; "de graça" when free; a pointer when the feed has no number. */
-export function priceLabel(event) {
-  const price = (event.price || '').trim()
-  if (isFree(event) && (!price || /^R\$\s*0$/.test(price))) return 'de graça'
-  const zeroTo = price.match(/^R\$\s*0\s*[–-]\s*(\d+)/)
-  if (zeroTo) return `de graça a R$ ${zeroTo[1]}`
-  if (price) return price.replace(/\s*[–-]\s*/, ' a ')
-  return isFree(event) ? 'de graça' : 'ingresso no perfil'
-}
+// No price and no "free" on the posts (Ciro, 2026-10-14): the feed's price is
+// often a guess from a flyer, it changes, and a wrong "de graça" costs trust.
+// The caption sends people to the venue's profile for the ticket.
+const SALES_OPENER = /^(bora|vai|bom|vale)\b[^.]*\bporque\b|^bora\b/i
+const MENTIONS_PRICE = /R\$\s*\d|\d+\s*reais|gr[aá]tis|gratuit|de gra[cç]a|\bfree\b|ingresso|entrada franca/i
 
 /**
  * The feed's pitch, trimmed to fit one or two lines on the slide.
@@ -65,7 +61,14 @@ export function priceLabel(event) {
  * `min` characters, otherwise at a word with an ellipsis. Never adds words.
  */
 export function pitchLine(event, max = 110, min = 40) {
-  const raw = ((event.pitch || '').trim() || (event.vibeSummary || '').trim()).replace(/\s+/g, ' ')
+  // The descriptive vibeSummary first ("Show de rock no Changes"); the pitch
+  // only when it is not the old "Bora porque..." line, which the app no
+  // longer shows. Neither usable (or both name a price) -> no line.
+  const pick = [event.vibeSummary, event.pitch].map((t) => (t || '').trim())
+    .find((t) => t && !MENTIONS_PRICE.test(t) && !SALES_OPENER.test(t))
+  // Attendance is the app's live counter, not a description ("auditório de
+  // 648 lugares confirmados"): drop any clause that talks about it.
+  const raw = (pick || '').replace(/\s+/g, ' ').split(/,\s+/).filter((c, i) => i === 0 || !/confirmad/i.test(c)).join(', ')
   if (!raw) return ''
   const clean = (s) => s.replace(/[\s,;:—–-]+$/, '')
   if (raw.length <= max) return clean(raw)
@@ -111,6 +114,9 @@ export const TIPO_EMOJI = {
 export function buildCaption(picks, from, to) {
   const lines = [
     `Rola esse fim de semana em Curitiba (${windowLabel(from, to)}) 👇`,
+    // Most people never reach the last slide or the end of the caption, so the
+    // app is named up front too, not only in the closing CTA.
+    'Esses e mais centenas de rolês no app auê, de graça. Link na bio 📲',
     '',
     ...picks.map(({ event }) => {
       const emoji = TIPO_EMOJI[(event.tipo || '').toLowerCase()] || event.categoryEmoji || '📍'

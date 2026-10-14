@@ -1,14 +1,14 @@
 // HTML for each carousel slide (1080x1350, Instagram portrait).
 //
 // The look is the app's own "Neon Boteco" tokens (src/styles/globals.css):
-// violet-black ground, magenta brand glow, cyan for "when", lime for "free"
+// violet-black ground, magenta brand glow, cyan for "when", lime for the call to action
 // and the app icon's lime spark. Fonts are the ones index.html loads from
 // Google Fonts (Space Grotesk, Inter, JetBrains Mono), embedded by the caller.
 //
 // Flyer rights: every slide is our own layout. A venue's flyer appears only
 // as a small thumbnail next to its "@handle" credit, never as the slide.
 
-import { pitchLine, priceLabel, venueLine, whenLabel, windowLabel, shortDay, timeLabel } from './format.mjs'
+import { pitchLine, venueLine, whenLabel, windowLabel, shortDay, timeLabel } from './format.mjs'
 
 export const WIDTH = 1080
 export const HEIGHT = 1350
@@ -101,15 +101,13 @@ export function coverSlide({ fontCss, from, to, picks }) {
       <div class="when"><span class="pill lime">${esc(windowLabel(from, to))}</span></div>
       <div class="list">${rows}</div>
     </div>
-    <div class="foot"><b>Curitiba que acontece</b><span class="swipe">arrasta →</span></div>
+    <div class="foot"><b style="color:${t.lime}">📲 tudo isso no app auê · link na bio</b><span class="swipe">arrasta →</span></div>
   </div>`, css)
 }
 
 export function eventSlide({ fontCss, pick, index, total, from, to, image }) {
   const t = TOKENS
   const e = pick.event
-  const price = priceLabel(e)
-  const free = price.startsWith('de graça')
   const line = pitchLine(e)
   const nameLen = e.name.trim().length
   const nameSize = nameLen <= 18 ? 120 : nameLen <= 32 ? 104 : nameLen <= 50 ? 88 : 74
@@ -124,7 +122,6 @@ export function eventSlide({ fontCss, pick, index, total, from, to, image }) {
     display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .venue { margin-top: 30px; font-size: 38px; line-height: 1.22; color: ${t.text2}; max-height: ${Math.round(38 * 1.22 * 2) + 4}px;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-  .price { margin-top: 34px; }
   .pitch { margin-top: 56px; padding: 4px 0 4px 32px; border-left: 6px solid ${t.magenta}; font-size: 40px; line-height: 1.3; color: ${t.text};
     max-height: ${Math.round(40 * 1.3 * 3) + 10}px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
   .credit { margin-top: 32px; display: flex; align-items: center; gap: 28px; padding: 22px; border: 2px solid ${t.line};
@@ -145,12 +142,11 @@ export function eventSlide({ fontCss, pick, index, total, from, to, image }) {
       <div class="main">
       <h2 data-fit data-shrink>${esc(keepDashWithWord(e.name.trim()))}</h2>
       <div class="venue" data-fit>${esc(venueLine(e))}</div>
-      <div class="price"><span class="pill ${free ? 'lime' : 'outline'}">${esc(price)}</span></div>
       ${line ? `<div class="pitch" data-fit>${esc(line)}</div>` : ''}
       </div>
       <div class="credit">${thumb}<div class="txt"><div class="handle">@${esc(e.igHandle)}</div><div class="hint">${hint}</div></div></div>
     </div>
-    <div class="foot"><b>${esc(windowLabel(from, to))}</b><span class="swipe">${index < total ? 'arrasta →' : 'tem mais →'}</span></div>
+    <div class="foot"><b style="color:${t.lime}">+ rolês no app auê · link na bio</b><span class="swipe">${index < total ? 'arrasta →' : 'tem mais →'}</span></div>
   </div>`, css)
 }
 
