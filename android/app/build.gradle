@@ -6,25 +6,58 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// Release signing: CI passes the upload key through env vars
+// (.github/workflows/android-play.yml); a local build can use
+// android/keystore.properties instead. With neither, the release build
+// type has no signingConfig, so Gradle still configures (debug builds,
+// or an unsigned bundle) instead of failing on a missing release.jks.
+def envKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+def releaseSigning = null
+if (envKeystorePath) {
+    releaseSigning = [
+        storeFile    : envKeystorePath,
+        storePassword: System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "",
+        keyAlias     : System.getenv("ANDROID_KEY_ALIAS") ?: "",
+        keyPassword  : System.getenv("ANDROID_KEY_PASSWORD") ?: "",
+    ]
+} else if (keystoreProperties['storeFile']) {
+    releaseSigning = [
+        storeFile    : keystoreProperties['storeFile'],
+        storePassword: keystoreProperties['storePassword'] ?: "",
+        keyAlias     : keystoreProperties['keyAlias'] ?: "",
+        keyPassword  : keystoreProperties['keyPassword'] ?: "",
+    ]
+}
+
+// Play needs a strictly increasing versionCode per upload; CI passes
+// -PversionCode=<run_number*10+run_attempt> and -PversionName=<tag>.
+def appVersionCode = (project.findProperty("versionCode") ?: "2").toString().toInteger()
+def appVersionName = (project.findProperty("versionName") ?: "1.1").toString()
+
 android {
     namespace = "com.reroot.app"
     compileSdk = rootProject.ext.compileSdkVersion
 
     signingConfigs {
-        release {
-            storeFile file(keystoreProperties['storeFile'] ?: 'release.jks')
-            storePassword keystoreProperties['storePassword'] ?: ''
-            keyAlias keystoreProperties['keyAlias'] ?: ''
-            keyPassword keystoreProperties['keyPassword'] ?: ''
+        if (releaseSigning) {
+            release {
+                storeFile file(releaseSigning.storeFile)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.keyAlias
+                keyPassword releaseSigning.keyPassword
+            }
         }
     }
 
     defaultConfig {
-        applicationId "com.reroot.app"
+        // Store identity, same as the iOS bundle id and capacitor.config.json.
+        // `namespace` above stays com.reroot.app: it is only the Java/R
+        // package, and moving it would rename MainActivity's package for nothing.
+        applicationId "app.aue"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -34,7 +67,9 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (releaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
