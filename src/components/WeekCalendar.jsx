@@ -10,7 +10,7 @@ const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago',
 const MONTH_LABELS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function getWeekDays(offset = 0) {
-  // Rolling 7-day window starting from the 6am-anchored "today"
+  // Rolling 7-day window starting on today in Curitiba
   // (see getAnchorToday). offset=0 → today + 6 upcoming days;
   // offset=1 → 7 days after that; offset=-1 → 7 days before today
   // (handy for re-checking past plans).
@@ -28,8 +28,7 @@ function dateKey(d) {
 }
 
 function isToday(d) {
-  // Compare against the 6am-anchored "today" so the highlighted column
-  // matches the strip's rolling logic.
+  // Today in Curitiba (lib/dateAnchor), whatever the device timezone.
   const t = getAnchorToday()
   return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear()
 }

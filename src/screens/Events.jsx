@@ -10,7 +10,7 @@ import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, 
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
-import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
+import { getAnchorTodayIso, cityNowWallTs, cityTodayStartWallTs, wallTs, eventEndWallTs, eventCoversDay, isOngoing } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
 import { createPortal } from 'react-dom'
 import { compressImageForUpload } from '../lib/image-compress'
@@ -86,36 +86,6 @@ function getPersonalChip(ev, rsvps) {
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
-// True when `dayIso` (YYYY-MM-DD) falls within an event's coverage:
-//   - One-off: strict equality on dateStart's day.
-//   - Range:   dateStart ≤ dayIso ≤ dateEnd (inclusive both ends).
-//   - Recurring: dayIso's weekday matches one of recurrenceDays
-//     (ISO 1=Mon..7=Sun) AND dayIso isn't before the next occurrence.
-//
-// Used by both the per-day pick filter and the week-strip count so a
-// "Quinta, sexta e sábado" residency shows up on each Thu/Fri/Sat in
-// view, not just the next single occurrence the backend computed.
-function eventCoversDay(ev, dayIso) {
-  if (!dayIso) return false
-  // Recurring branch — week-strip should highlight every covered weekday
-  // from today onward, not just the rolled-forward "next occurrence".
-  if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
-    const d = new Date(`${dayIso}T00:00:00Z`)
-    if (Number.isNaN(d.getTime())) return false
-    // JS getUTCDay: 0=Sun..6=Sat. Convert to ISO 1=Mon..7=Sun.
-    const isoDow = ((d.getUTCDay() + 6) % 7) + 1
-    if (!ev.recurrenceDays.includes(isoDow)) return false
-    // Hide past days even for recurring — we don't want Saturday to
-    // light up before the user's "today" gets there. 6am-anchored so
-    // late-night sessions stay surfaced until morning.
-    return dayIso >= getAnchorTodayIso()
-  }
-  const start = (ev.dateStart || '').slice(0, 10)
-  if (!start) return false
-  const end = (ev.dateEnd || '').slice(0, 10) || start
-  return dayIso >= start && dayIso <= end
-}
-
 // True when the event's [dateStart..dateEnd] interval overlaps with the
 // time window [startTs, endTs). Used by the date-range pills (Hoje, Fim
 // de semana, Próx 7d) so a multi-day festival surfaces in every range
@@ -124,9 +94,13 @@ function eventCoversDay(ev, dayIso) {
 function eventOverlapsRange(ev, startTs, endTs) {
   if (ev.isRecurring) return true
   if (!ev.dateStart) return false
-  const evStart = Date.parse(ev.dateStart)
+  const evStart = wallTs(ev.dateStart)
   if (Number.isNaN(evStart)) return false
-  const evEnd = ev.dateEnd ? Date.parse(ev.dateEnd) : evStart
+  // Still running right now and the range holds "now": last night's
+  // show is part of "Hoje" until it ends.
+  const nowTs = cityNowWallTs()
+  if (startTs <= nowTs && nowTs < endTs && isOngoing(ev)) return true
+  const evEnd = ev.dateEnd ? eventEndWallTs(ev) : evStart
   const evEndSafe = Number.isNaN(evEnd) || evEnd < evStart ? evStart : evEnd
   return evStart < endTs && evEndSafe >= startTs
 }
@@ -575,7 +549,9 @@ export default function Events() {
   // "Tributo Bowie SEX" recurring event with dateStart pinned to the
   // next Friday would render as "DOM 03" today but sort by Friday,
   // landing in the middle of the Friday block.
-  const sortFloor = getAnchorToday().getTime()
+  // Wall-clock ms on both sides (lib/dateAnchor): Date.parse would
+  // shift the feed's "+00:00" wall-clock strings by the device offset.
+  const sortFloor = cityTodayStartWallTs()
   const todayIsoForSort = getAnchorTodayIso()
 
   // Which day of a run the reader is looking at.
@@ -598,7 +574,7 @@ export default function Events() {
     return eventCoversDay(ev, todayIso) ? todayIso : null
   }
   function effectiveStartTs(ev) {
-    const raw = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+    const raw = wallTs(ev.dateStart)
     if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
     const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
     if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIsoForSort)) {
@@ -684,31 +660,27 @@ export default function Events() {
   // range filter — they're evergreen by definition and the next
   // occurrence is always rolled forward upstream.
   if (dateRange !== 'all') {
-    const startOfToday = getAnchorToday()
-    let rangeEnd  // Date — events strictly before this survive
+    // Day arithmetic in wall-clock ms (lib/dateAnchor), so the range
+    // lines up with the feed's Curitiba wall-clock strings.
+    const DAY = 86_400_000
+    const startTs = cityTodayStartWallTs()
+    let endTs = null  // events strictly before this survive
     if (dateRange === 'today') {
-      rangeEnd = new Date(startOfToday)
-      rangeEnd.setDate(rangeEnd.getDate() + 1)
+      endTs = startTs + DAY
     } else if (dateRange === 'weekend') {
       // Sat 00:00 → Mon 00:00 of the upcoming weekend (or this one if
       // today is already Sat/Sun).
-      const dow = startOfToday.getDay()  // 0=Sun … 6=Sat
+      const dow = new Date(startTs).getUTCDay()  // 0=Sun … 6=Sat
       const daysUntilSat = (6 - dow + 7) % 7
-      const sat = new Date(startOfToday)
-      sat.setDate(sat.getDate() + daysUntilSat)
-      const monAfter = new Date(sat)
-      monAfter.setDate(monAfter.getDate() + 2)
+      const sat = startTs + daysUntilSat * DAY
+      const monAfter = sat + 2 * DAY
       filteredEvents = filteredEvents.filter(ev =>
-        eventOverlapsRange(ev, sat.getTime(), monAfter.getTime())
+        eventOverlapsRange(ev, sat, monAfter)
       )
-      rangeEnd = null  // already filtered above
     } else if (dateRange === 'week') {
-      rangeEnd = new Date(startOfToday)
-      rangeEnd.setDate(rangeEnd.getDate() + 7)
+      endTs = startTs + 7 * DAY
     }
-    if (rangeEnd) {
-      const endTs = rangeEnd.getTime()
-      const startTs = startOfToday.getTime()
+    if (endTs) {
       filteredEvents = filteredEvents.filter(ev =>
         eventOverlapsRange(ev, startTs, endTs)
       )
