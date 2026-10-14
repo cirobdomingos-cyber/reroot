@@ -325,7 +325,7 @@ function mountWebGoogleButton(containerRef, onSuccess) {
  * invisibly on it. That exact problem on the Apple button is what
  * Apple Review flagged under Guideline 4, and this button previously
  * had a worse version of it: background was `var(--white)`, which the
- * Neon Boteco theme remaps to #14081E, under #3C4043 text.
+ * Neon Boteco theme remaps to var(--bg2), under #3C4043 text.
  *
  * Replaces the container's children.
  */

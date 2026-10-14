@@ -147,7 +147,7 @@ export default function AddHandleForm({ email, onAdded, flush = false }) {
         disabled={submitting || !handle.trim()}
         style={{
           width: '100%', marginTop: 10, padding: '11px',
-          background: 'var(--terra)', color: 'white',
+          background: 'var(--terra)', color: 'var(--on-magenta)',
           border: 'none', borderRadius: 12,
           fontSize: 13, fontWeight: 700,
           cursor: submitting ? 'wait' : 'pointer',

@@ -89,7 +89,7 @@ function SuggestionCard({ suggestion, onCreateEvent, lang }) {
           style={{
             width: '100%', padding: '9px 0', borderRadius: 10,
             border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
-            background: 'var(--terra)', color: 'white',
+            background: 'var(--terra)', color: 'var(--on-magenta)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             transition: 'all 0.15s',
           }}

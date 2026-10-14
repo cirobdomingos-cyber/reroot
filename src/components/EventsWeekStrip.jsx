@@ -124,7 +124,7 @@ export default function EventsWeekStrip({
                 // makes today readable without competing with the
                 // selected (solid magenta) state.
                 background: selected ? 'var(--magenta)'
-                          : today ? 'rgba(255, 43, 214, 0.10)'
+                          : today ? 'rgb(var(--magenta-rgb) / 0.10)'
                           : 'transparent',
                 border: today && !selected ? '1.5px solid var(--magenta)'
                       : selected ? '1.5px solid var(--magenta)'
@@ -136,7 +136,7 @@ export default function EventsWeekStrip({
                 fontSize: 10, fontWeight: 600,
                 // Selected = dark text on magenta, today = magenta text
                 // on faint wash, neutral = text2 (visible muted on dark).
-                color: selected ? '#14081E'
+                color: selected ? 'var(--on-lime)'
                      : today ? 'var(--magenta)'
                      : 'var(--text2)',
                 marginBottom: 1,
@@ -145,11 +145,11 @@ export default function EventsWeekStrip({
               </div>
               <div style={{
                 fontSize: 16, fontWeight: 700,
-                color: selected ? '#14081E'
+                color: selected ? 'var(--on-lime)'
                      : today ? 'var(--magenta)'
                      : 'var(--text)',
                 lineHeight: 1.1,
-                textShadow: today && !selected ? '0 0 8px rgba(255, 43, 214, 0.5)' : 'none',
+                textShadow: today && !selected ? '0 0 8px rgb(var(--magenta-rgb) / 0.5)' : 'none',
               }}>
                 {day.getDate()}
               </div>
@@ -164,13 +164,13 @@ export default function EventsWeekStrip({
                 // reads as "0, no events today" rather than competing
                 // with the populated days. Other days hide the badge
                 // when count=0 to keep the strip tight.
-                color: selected ? '#14081E'
-                     : hasEvents ? '#14081E'
+                color: selected ? 'var(--on-lime)'
+                     : hasEvents ? 'var(--on-lime)'
                      : today ? 'var(--text3)'
                      : 'transparent',
-                background: selected ? 'rgba(20, 8, 30, 0.25)'
+                background: selected ? 'rgb(var(--bg2-rgb) / 0.25)'
                           : hasEvents ? 'var(--magenta)'
-                          : today ? 'var(--bg2)'
+                          : today ? 'var(--on-lime)'
                           : 'transparent',
                 border: today && !hasEvents && !selected ? '1px solid var(--line)' : 'none',
                 padding: (hasEvents || today) ? '1px 6px' : 0,
@@ -193,7 +193,7 @@ export default function EventsWeekStrip({
                     style={{
                       width: 7, height: 7, borderRadius: '50%',
                       background: 'var(--lime)',
-                      boxShadow: selected ? 'none' : '0 0 6px rgba(198, 255, 0, 0.6)',
+                      boxShadow: selected ? 'none' : '0 0 6px rgb(var(--lime-rgb) / 0.6)',
                     }}
                   />
                 )}
@@ -203,7 +203,7 @@ export default function EventsWeekStrip({
                     style={{
                       width: 7, height: 7, borderRadius: '50%',
                       background: 'var(--cyan)',
-                      boxShadow: selected ? 'none' : '0 0 6px rgba(0, 229, 255, 0.6)',
+                      boxShadow: selected ? 'none' : '0 0 6px rgb(var(--cyan-rgb) / 0.6)',
                     }}
                   />
                 )}

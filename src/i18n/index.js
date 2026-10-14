@@ -137,6 +137,8 @@ export const T = {
     profile_referral_applied:'🎉 Primeiro mês grátis aplicado!',
     profile_reset:          '↺ Resetar demo',
     profile_language_label: 'Idioma · Language',
+    profile_skin_label: 'Visual',
+    profile_skin_hint: 'Muda as cores do app neste aparelho.',
 
     // ── Privacy settings ──────────────────────────────────
     privacy_title:              'Privacidade',
@@ -594,6 +596,10 @@ T.en.already_friends = 'Friends'
 T.en.no_attendees = 'No attendees found'
 T.en.connecting = 'Connecting...'
 T.en.connect_sent = 'Sent!'
+
+// EN overrides for skins
+T.en.profile_skin_label = 'Look'
+T.en.profile_skin_hint = 'Changes the app colours on this device.'
 
 // EN overrides for accessibility
 T.en.accessibility_mode = 'Accessibility Mode'

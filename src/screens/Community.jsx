@@ -55,7 +55,7 @@ export default function Community() {
                   fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase',
                   background: active ? 'var(--magenta)' : 'transparent',
                   color: active ? 'var(--bg)' : 'var(--text2)',
-                  boxShadow: active ? '0 0 18px rgba(255, 43, 214, 0.35)' : 'none',
+                  boxShadow: active ? '0 0 18px rgb(var(--magenta-rgb) / 0.35)' : 'none',
                   transition: 'all 0.2s',
                 }}
               >

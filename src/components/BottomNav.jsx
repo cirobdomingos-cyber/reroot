@@ -77,7 +77,7 @@ export default function BottomNav() {
 
   const stroke = (active) => active ? 'var(--magenta)' : 'var(--text3)'
   const glowStyle = (active) => active
-    ? { filter: 'drop-shadow(0 0 6px rgba(255, 43, 214, 0.7))' }
+    ? { filter: 'drop-shadow(0 0 6px rgb(var(--magenta-rgb) / 0.7))' }
     : undefined
 
   // Home dissolved in Sep 2026. People opened the app wanting the
@@ -225,7 +225,7 @@ export default function BottomNav() {
                   borderRadius: 8, background: 'var(--magenta)',
                   color: 'var(--bg)', fontSize: 10, fontWeight: 800,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: '0 0 8px rgba(255, 43, 214, 0.6)',
+                  boxShadow: '0 0 8px rgb(var(--magenta-rgb) / 0.6)',
                 }}>
                   {badge > 9 ? '9+' : badge}
                 </span>

@@ -7,7 +7,11 @@ import { AvatarViewerProvider } from './components/AvatarLightbox'
 import { reportError } from './services/api'
 import { initPushNavigation } from './lib/pushNavigation'
 import App from './App'
+import { initSkin } from './lib/skins'
 import './styles/globals.css'
+
+// Before anything renders, so the first frame is in the chosen skin.
+initSkin()
 
 // ── iOS / Android Universal Link handler ──────────────────
 // When iOS hands a tapped auecuritiba.com/... URL to the installed app

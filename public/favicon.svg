@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  auê — favicon (32×32 / browser tab).
-  Just the circumflex on coral — readable at 16px.
+  auê — favicon (browser tab), Neon Boteco: the circumflex in magenta on
+  the page's near-black. Other skins swap it at runtime with the same
+  drawing in their colours (faviconSvg in src/lib/skins.js).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect x="0" y="0" width="64" height="64" rx="14" fill="#E8623F"/>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#0A0510"/>
   <path
     d="M 18 40 L 32 22 L 46 40"
     fill="none"
-    stroke="#FCF5EB"
+    stroke="#FF2BD6"
     stroke-width="7"
     stroke-linecap="round"
     stroke-linejoin="round"/>

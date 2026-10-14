@@ -106,7 +106,7 @@ function AvatarLightbox({ person, onClose }) {
           </motion.div>
           {person.name && (
             <div style={{
-              marginTop: 18, fontSize: 18, fontWeight: 700, color: '#F4ECFF',
+              marginTop: 18, fontSize: 18, fontWeight: 700, color: 'var(--text)',
               textAlign: 'center', maxWidth: '86vw',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>

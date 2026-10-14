@@ -280,7 +280,7 @@ function OrganizerRow({ gid, profile, roleLabel, action }) {
 function promoteBtnStyle(busy) {
   return {
     padding: '6px 12px', borderRadius: 8,
-    background: 'var(--sage)', color: '#14081E',
+    background: 'var(--sage)', color: 'var(--on-lime)',
     border: 'none', fontSize: 12, fontWeight: 700,
     cursor: busy ? 'wait' : 'pointer',
     opacity: busy ? 0.7 : 1,
