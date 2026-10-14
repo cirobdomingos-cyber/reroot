@@ -1440,6 +1440,24 @@ export async function updateCatalogEvent(eventId, requestingEmail, fields) {
   return res.json()
 }
 
+// Founder hard-delete of a CATALOG event (DELETE /admin/events/:id).
+// The backend reads the founder from the session token, so no e-mail is
+// sent. Errors carry `status` (403 not founder, 404 already gone) so the
+// caller can word the message; a network failure has no status.
+export async function deleteCatalogEvent(eventId) {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/admin/events/${encodeURIComponent(eventId)}`,
+    { method: 'DELETE' },
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    const err = new Error(body.detail || `Delete catalog event failed: ${res.status}`)
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
 export async function deleteGroupEvent(groupId, eventId, googleId) {
   const res = await fetchWithTimeout(
     `${BASE_URL}/groups/${encodeURIComponent(groupId)}/events/${encodeURIComponent(eventId)}?google_id=${encodeURIComponent(googleId)}`,

@@ -6,7 +6,7 @@ import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, deleteCatalogEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
@@ -173,6 +173,9 @@ export default function Events() {
   const [searchQuery, setSearchQuery]       = useState('')
   const [searchOpen, setSearchOpen]         = useState(false)
   const [notifToast, setNotifToast]         = useState(null)
+  // Short status line after a founder action (catalog delete). Separate
+  // from notifToast, which is worded for an RSVP confirmation.
+  const [adminToast, setAdminToast]         = useState(null)
   const [kidsFilter, setKidsFilter]         = useState(false)
   // "Só únicos" — hide recurring residencies and multi-day ranges from
   // the list and the per-day pick filter. Default OFF so the catalog
@@ -502,6 +505,33 @@ export default function Events() {
   function closeDetail() {
     setSelectedEventId(null)
     setDetailEvent(null)
+  }
+
+  function showAdminToast(text) {
+    setAdminToast(text)
+    setTimeout(() => setAdminToast(null), 3000)
+  }
+
+  // Founder removes a catalog event for everyone (DELETE /admin/events/:id,
+  // founder-only server-side). On success the row leaves the loaded list,
+  // so the catalog updates without a reload, and the drawer closes.
+  async function handleFounderDelete(ev) {
+    if (!confirm(t.event_admin_delete_confirm)) return
+    try {
+      await deleteCatalogEvent(ev.id)
+    } catch (e) {
+      const msg = e?.status === 403 ? t.event_admin_delete_forbidden
+        : e?.status === 404 ? t.event_admin_delete_gone
+        : !e?.status ? t.event_admin_delete_offline
+        : `${t.event_admin_delete_failed}: ${e.message}`
+      alert(msg)
+      // 404 means it is already gone: drop it locally all the same.
+      if (e?.status !== 404) return
+    }
+    trackEvent('catalog_event_deleted', { event_id: ev.id })
+    setEvents(prev => (prev || []).filter(e => e.id !== ev.id))
+    closeDetail()
+    showAdminToast(t.event_admin_delete_done)
   }
 
   // Esc-to-close lives in EventDetailDrawer now — shared with ChannelDetail.
@@ -1596,6 +1626,25 @@ export default function Events() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {adminToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
+            role="status"
+            style={{
+              position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 100,
+              background: 'var(--charcoal)', color: 'var(--on-light)',
+              borderRadius: 14, padding: '12px 16px',
+              fontSize: 12, fontWeight: 700,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            }}
+          >
+            ✓ {adminToast}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Shared drawer shell — portal, overlay and the sticky nav strip
           all live in components/EventDetail.jsx so ChannelDetail renders
           the identical chrome instead of a second copy. */}
@@ -1747,7 +1796,12 @@ export default function Events() {
                   // group. Group admins still have the full Excluir flow
                   // inside a channel; this button is the catalog-side
                   // shortcut for the same action.
-                  hostsEvent(detailEvent)
+                  // The founder gets a third case: removing a CATALOG
+                  // event for everyone (founder-only endpoint, so it is
+                  // gated on isFounder, not isCurator).
+                  (isFounder && !detailEvent.isGroupEvent)
+                    ? () => handleFounderDelete(detailEvent)
+                    : hostsEvent(detailEvent)
                     ? async () => {
                         if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
                         try {
@@ -1779,6 +1833,11 @@ export default function Events() {
                         }
                       }
                     : null
+                }
+                deleteLabel={
+                  (isFounder && !detailEvent.isGroupEvent)
+                    ? t.event_admin_delete_btn
+                    : undefined
                 }
                 canInvite={
                   // Creator OR co-host, and only on private events.

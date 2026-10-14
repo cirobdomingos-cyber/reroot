@@ -285,7 +285,7 @@ export function EventDetailDrawer({ open, onClose: onCloseProp, idLabel = '', ch
   )
 }
 
-export default function EventDetail({ event: ev, fromChannels = [], googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, userNeighborhood, t }) {
+export default function EventDetail({ event: ev, fromChannels = [], googleId, viewerName, viewerPicture, rsvped, friendsGoing = [], onClose, onRsvp, onDeclined, onFriend, onSourceTap, onAddToGroup, onDelete, canInvite, onInvited, onCoHostsChanged, canEdit, onImageChanged, onEdit, editLabel, deleteLabel, userNeighborhood, t }) {
   const isVenue = VENUE_CATEGORIES.has(ev.category)
   // "Não vou" is offered to invitees of a private event who haven't
   // answered yet. Hosts delete instead of declining.
@@ -1192,8 +1192,10 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
             )}
 
             {/* Delete — only when caller decides the user has authority
-                (personal plan creator). Red text + ghost background so it
-                reads as destructive without a loud full-color button. */}
+                (personal plan creator, or the founder on a catalog event;
+                the caller names which via deleteLabel). Red text + ghost
+                background so it reads as destructive without a loud
+                full-color button. */}
             {onDelete && (
               <button
                 onClick={onDelete}
@@ -1205,7 +1207,7 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
                   fontSize: 13, fontWeight: 600, cursor: 'pointer',
                 }}
               >
-                🗑 Apagar plano
+                {deleteLabel || '🗑 Apagar plano'}
               </button>
             )}
           </details>
