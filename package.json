@@ -12,7 +12,9 @@
     "open:android": "npx cap open android",
     "open:ios": "npx cap open ios",
     "postinstall": "patch-package",
-    "lint": "eslint src",
+    "lint": "eslint src scripts/social",
+    "social:weekend": "node scripts/social/weekend-list.mjs",
+    "test:social": "node --test scripts/social/select.test.mjs",
     "test:e2e": "playwright test",
     "test:unit": "vitest run"
   },
