@@ -8,10 +8,37 @@ import { reportError } from './services/api'
 import { initPushNavigation } from './lib/pushNavigation'
 import App from './App'
 import { initSkin } from './lib/skins'
+import { installStaleChunkReload, unregisterNativeServiceWorkers } from './lib/chunkReload'
 import './styles/globals.css'
 
 // Before anything renders, so the first frame is in the chosen skin.
 initSkin()
+
+// Before any lazy import can fail: a missing chunk reloads the app once
+// instead of breaking the button that asked for it (lib/chunkReload.js).
+installStaleChunkReload()
+
+// ── Service worker: web only ──────────────────────────────
+// The worker is the web app's offline cache and push channel. Inside the
+// Capacitor wrapper it is worse than useless: Android's WebView runs it
+// (iOS's WKWebView has none), so it answered every reload with a cached
+// copy of an older index.html, even after a native or live update had
+// replaced the files on disk. vite.config.js no longer injects the
+// registration (injectRegister: false); it happens here, on the web only,
+// and on native any worker an older build left behind is removed.
+if (Capacitor.isNativePlatform?.()) {
+  unregisterNativeServiceWorkers()
+} else if ('serviceWorker' in navigator) {
+  const register = () => {
+    const url = import.meta.env.DEV ? '/dev-sw.js?dev-sw' : '/sw.js'
+    const options = import.meta.env.DEV ? { scope: '/', type: 'module' } : { scope: '/' }
+    navigator.serviceWorker.register(url, options).catch((err) => {
+      console.warn('Service worker registration failed', err)
+    })
+  }
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register)
+}
 
 // ── iOS / Android Universal Link handler ──────────────────
 // When iOS hands a tapped auecuritiba.com/... URL to the installed app

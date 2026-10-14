@@ -9713,6 +9713,12 @@ def _ota_env() -> tuple[str, str, frozenset[str]]:
     )
 
 
+def _ota_android_published() -> str:
+    """Android's published version, separate from iOS's (ota.py says why).
+    Empty, the default, offers Android nothing."""
+    return (os.environ.get("OTA_ANDROID_BUNDLE_VERSION") or "").strip()
+
+
 def _ota_bundle_zip(version: str) -> Optional[bytes]:
     """Zip of the static dir, built once per process and memoized.
 
@@ -9763,14 +9769,20 @@ async def ota_check(request: Request):
     so nothing about our users reaches a third party.
     """
     published, canary, canary_devices = _ota_env()
-    if not published and not canary:
+    android_published = _ota_android_published()
+    if not published and not canary and not android_published:
         return {"message": "Live updates disabled", "error": "disabled"}
     try:
         body = await request.json()
     except Exception:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
     current = str(body.get("version_name") or body.get("version") or "").strip()
-    offer = ota.decide(current, str(body.get("device_id") or ""), published, canary, canary_devices)
+    offer = ota.decide(
+        current, str(body.get("device_id") or ""), published, canary, canary_devices,
+        platform=str(body.get("platform") or ""), android_published=android_published,
+    )
     if offer.version is None:
         return {"message": offer.reason}
     version = offer.version
@@ -9800,7 +9812,7 @@ def ota_bundle(version: str):
     than whatever happens to be on disk now."""
     from fastapi.responses import Response
     published, canary, _ = _ota_env()
-    if version not in ota.servable_versions(published, canary):
+    if version not in ota.servable_versions(published, canary, _ota_android_published()):
         raise HTTPException(status_code=404, detail="Unknown bundle version")
     data = _ota_bundle_zip(version)
     if data is None:
@@ -9817,10 +9829,13 @@ def ota_status(requesting_email: str = "", session_user: SessionUser = None):
     """Is OTA on, and what would be served? Founder-only."""
     _require_founder(session_user)
     published, canary, canary_devices = _ota_env()
-    data = _ota_bundle_zip(canary or published)
+    android_published = _ota_android_published()
+    data = _ota_bundle_zip(canary or published or android_published)
     return {
-        "enabled": bool(published or canary),
+        "enabled": bool(published or canary or android_published),
         "published_version": published or None,
+        # Empty = Android is offered nothing (ota.py explains why).
+        "android_published_version": android_published or None,
         # While set, only canary_devices are offered anything (ota.py).
         "canary_version": canary or None,
         "canary_devices": len(canary_devices),
