@@ -18,7 +18,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { selectWeekend, comingWeekend, addDays } from './select.mjs'
-import { buildCaption, whenLabel, priceLabel, pitchLine } from './format.mjs'
+import { buildCaption, whenLabel, pitchLine } from './format.mjs'
 import { coverSlide, eventSlide, closingSlide, contactSheet, WIDTH, HEIGHT } from './slides.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -241,7 +241,6 @@ async function main() {
       when: whenLabel(event, opts.from, opts.to),
       venue: event.venue,
       igHandle: event.igHandle,
-      price: priceLabel(event),
       line: pitchLine(event),
       url: event.url,
       score,

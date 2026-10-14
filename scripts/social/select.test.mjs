@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { selectWeekend, overlaps, spanOf, timeOf, comingWeekend, isKids } from './select.mjs'
-import { pitchLine, priceLabel, dayLabel, venueLine, buildCaption } from './format.mjs'
+import { pitchLine, dayLabel, venueLine, buildCaption } from './format.mjs'
 
 const W = { from: '2026-10-16', to: '2026-10-18' }
 
@@ -147,11 +147,7 @@ test('pitch line is only trimmed, never rewritten', () => {
   assert.equal(pitchLine({ pitch: '', vibeSummary: 'Show curto' }), 'Show curto')
 })
 
-test('price, day and venue labels', () => {
-  assert.equal(priceLabel({ priceTier: 'free', price: '' }), 'de graça')
-  assert.equal(priceLabel({ priceTier: 'free', price: 'R$ 0 – 21' }), 'de graça a R$ 21')
-  assert.equal(priceLabel({ priceTier: 'low', price: 'R$ 20 – 40' }), 'R$ 20 a 40')
-  assert.equal(priceLabel({ priceTier: 'medium', price: '' }), 'ingresso no perfil')
+test('day and venue labels', () => {
   assert.equal(dayLabel(ev({ day: '2026-10-17' }), W.from, W.to), 'Sáb 17')
   assert.equal(dayLabel(ev({ day: '2026-10-15', dateEnd: '2026-10-18T23:00:00+00:00' }), W.from, W.to), 'Sex 16 a Dom 18')
   assert.equal(dayLabel(ev({ day: '2026-09-01', dateEnd: '2027-02-28T23:59:59+00:00' }), W.from, W.to), 'Até 28 fev')
@@ -194,4 +190,10 @@ test('drops rows whose own pitch says they are outside Curitiba', () => {
   const { picks, rejected } = selectWeekend([bh, ok], { ...W, count: 2 })
   assert.deepEqual(picks.map((p) => p.event.id), [ok.id])
   assert.equal(rejected['outside Curitiba'], 1)
+})
+
+test('pitch line never carries a price', () => {
+  assert.equal(pitchLine({ pitch: 'Show com ingresso a R$ 30 na porta', vibeSummary: 'Show de rock no Changes' }), 'Show de rock no Changes')
+  assert.equal(pitchLine({ pitch: 'Entrada free até 22h e drinks', vibeSummary: 'Tudo por R$ 20' }), '')
+  assert.equal(pitchLine({ pitch: 'Corrida gratuita de 5km', vibeSummary: 'Corrida de rua de 5 e 10km' }), 'Corrida de rua de 5 e 10km') // no 'free' claims either
 })
