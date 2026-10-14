@@ -221,6 +221,32 @@ async def send_scrape_summary(settings, run_started_iso: str, new_event_ids: lis
         blocks_html = '<p style="color:#888;font-size:13px">Nenhum evento novo nessa rodada.</p>'
         blocks_text = "  (nenhum evento novo)\n"
 
+    # Cancellations the scrape detected in venues' own posts: one line
+    # each, so a wrong match is caught the same morning (undo:
+    # POST /admin/events/{id}/uncancel).
+    cancel_html = ""
+    cancel_text = ""
+    try:
+        cancels = db.list_event_cancellations(run_started_iso, include_undone=False)
+    except Exception:
+        cancels = []
+    if cancels:
+        items = ""
+        for c in cancels:
+            verb = {"postponed": "adiado", "postponed_no_date": "adiado sem data"}.get(
+                c.get("kind") or "", "cancelado")
+            line = f"{c.get('event_name') or c.get('event_id')} ({verb}, @{c.get('ig_handle') or '?'})"
+            items += (f'<li style="font-size:13px">{line} · '
+                      f'<a href="{c.get("source_url") or "#"}">post</a> · '
+                      f'<code>{c.get("event_id")}</code></li>')
+            cancel_text += f"    · {line}  {c.get('source_url') or ''}  [{c.get('event_id')}]\n"
+        cancel_html = f"""
+  <div style="margin-top:14px;padding:10px 14px;background:#FFF8E1;border-radius:6px">
+    <strong style="font-size:13px">Cancelamentos detectados ({len(cancels)}):</strong>
+    <ul style="margin:6px 0 0;padding-left:18px">{items}</ul>
+  </div>"""
+        cancel_text = f"  Cancelamentos detectados ({len(cancels)}):\n" + cancel_text
+
     err_html = ""
     if errors:
         err_lines = "".join(
@@ -240,6 +266,7 @@ async def send_scrape_summary(settings, run_started_iso: str, new_event_ids: lis
     {run_started_iso} · {total_new} novo{'s' if total_new != 1 else ''} de {len(sorted_handles)} fonte{'s' if len(sorted_handles) != 1 else ''} · {err_summary}
   </p>
   {blocks_html}
+  {cancel_html}
   {err_html}
   <p style="font-size:11px;color:#999;margin-top:18px">
     auê · enviado automaticamente após cada refresh · catálogo agora: {total_in_db} eventos
@@ -250,6 +277,7 @@ async def send_scrape_summary(settings, run_started_iso: str, new_event_ids: lis
         f"auê — resumo do scrape\n"
         f"{run_started_iso}  ·  {total_new} novos  ·  {err_summary}\n\n"
         f"{blocks_text}\n"
+        f"{cancel_text}"
         f"Catálogo agora: {total_in_db} eventos\n"
     )
     ok = await send_email(

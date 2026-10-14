@@ -71,10 +71,14 @@ async def run_refresh(settings):
 
     # ── Instagram via Apify (Claude extracts events from public profile posts) ──
     log_id = db.log_refresh_start("instagram")
+    # Cancellation posts found by this scrape, applied after the
+    # persistence loop below (cancellations.apply_pending).
+    pending_cancels: list[dict] = []
     try:
         ig_events = await instagram_fetch(
             anthropic_api_key=settings.anthropic_api_key,
             apify_token=settings.apify_api_token,
+            cancel_out=pending_cancels,
         )
         all_raws.extend(ig_events)
         pending_log_ids["instagram"] = log_id
@@ -84,6 +88,14 @@ async def run_refresh(settings):
         log.error(f"  Instagram (Apify) falhou: {e}")
 
     if not all_raws:
+        # A batch with only cancellation notices still cancels.
+        if pending_cancels:
+            try:
+                import cancellations
+                done = cancellations.apply_pending(pending_cancels)
+                log.info(f"  Cancelamentos: {len(done)} aplicados")
+            except Exception as e:
+                log.warning(f"  Cancelamentos falharam: {e}")
         log.warning("Nenhum evento bruto encontrado — nada para enriquecer.")
         # Finalize remaining (successful but empty) source rows so the email
         # shows them as "ran, 0 new, 0 updated" instead of leaving started_at
@@ -162,6 +174,18 @@ async def run_refresh(settings):
             saved += 1
         except Exception as e:
             log.warning(f"  Erro ao salvar '{ev.name}': {e}")
+
+    # ── Cancellations, now that this batch's events exist ──
+    # A venue's cancellation and the announcement it cancels can arrive
+    # in the same scrape; applied during extraction, the event wasn't
+    # saved yet and the post is never read again.
+    if pending_cancels:
+        try:
+            import cancellations
+            done = await asyncio.to_thread(cancellations.apply_pending, pending_cancels)
+            log.info(f"  Cancelamentos: {len(done)} aplicados de {len(pending_cancels)} posts")
+        except Exception as e:
+            log.warning(f"  Cancelamentos falharam: {e}")
 
     # ── AI gap-fill: generate synthetic events when DB is sparse ──
     upcoming = db.count_upcoming_events(city)
