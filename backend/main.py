@@ -386,7 +386,7 @@ _PRIVACY_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1>auê — Política de Privacidade</h1>
-<small>Última atualização: 28 de abril de 2026</small>
+<small>Última atualização: 14 de outubro de 2026</small>
 
 <p>O <strong>auê</strong> é um catálogo social de eventos em Curitiba.
 Esta política descreve, de forma objetiva, quais dados a gente coleta,
@@ -394,19 +394,25 @@ por quê, e o que você pode pedir pra remover.</p>
 
 <h2>O que a gente coleta</h2>
 <ul>
-  <li><strong>Login Google</strong>: nome, email, foto de perfil e ID Google. Necessário pra
-  RSVPs, lista de amigos e sincronização entre dispositivos.</li>
+  <li><strong>Login Google ou Apple</strong>: nome, email, foto de perfil e o ID da conta. Necessário pra
+  RSVPs, lista de amigos e sincronização entre dispositivos. Dá pra ver o catálogo sem login.</li>
+  <li><strong>Fotos que você envia</strong>: capa de um evento do seu grupo ou foto de perfil,
+  guardadas no nosso servidor pra aparecer no app.</li>
+  <li><strong>Notificações</strong>: se você permitir, o identificador de push do aparelho,
+  usado só pra enviar os avisos que você ativou.</li>
   <li><strong>Atividade no app</strong>: eventos que você confirmou (RSVPs), amizades aceitas,
   grupos que entrou, lugares favoritados. Tudo armazenado vinculado ao seu ID Google.</li>
   <li><strong>Feedback</strong>: mensagens enviadas via "Mandar feedback" no Perfil são
   guardadas com seu email pra que possamos responder.</li>
   <li><strong>Métricas anônimas</strong>: contagem de uso (DAU, WAU) sem identificação
   pessoal, agregada pelo backend.</li>
+  <li><strong>Erros técnicos</strong>: quando o app trava, registramos o erro pra corrigir.</li>
 </ul>
 
 <h2>O que a gente NÃO coleta</h2>
 <ul>
-  <li>Localização precisa (GPS).</li>
+  <li>Localização precisa (GPS). O mapa pode usar sua localização pra centralizar a tela,
+  mas ela fica no aparelho e não é enviada pra gente.</li>
   <li>Lista de contatos do celular.</li>
   <li>Conteúdo de outras redes sociais além do que você publicou publicamente.</li>
   <li>Dados de pagamento — o app não cobra nada nem processa pagamentos.</li>
@@ -446,9 +452,17 @@ e a gente conversa).</p>
 </ul>
 
 <h2>Por quanto tempo a gente guarda</h2>
-<p>Enquanto sua conta estiver ativa. Se você quiser deletar tudo, mande email pra
-<code>ciro.b.domingos@gmail.com</code> com assunto <em>"Deletar minha conta auê"</em> —
-removo seus dados em até 7 dias e te confirmo.</p>
+<p>Enquanto sua conta estiver ativa.</p>
+
+<h2 id="excluir-conta">Como excluir sua conta</h2>
+<p><strong>No app:</strong> Perfil → <em>Deletar conta</em> → Confirmar. Apaga na hora
+sua conta, RSVPs, amigos e histórico.</p>
+<p><strong>Por email:</strong> se não tiver mais o app, mande email pra
+<code>ciro.b.domingos@gmail.com</code> com assunto <em>"Deletar minha conta auê"</em>,
+a partir do email da conta. Removo seus dados em até 7 dias e te confirmo.</p>
+<p>Sua foto de perfil sai junto com a conta. Eventos que você adicionou a um grupo
+continuam visíveis pros membros desse grupo; pra apagá-los, remova antes de excluir a
+conta ou peça no mesmo email.</p>
 
 <h2>Seus direitos</h2>
 <p>Pela <strong>LGPD</strong> (Lei Geral de Proteção de Dados), você tem direito a:</p>
