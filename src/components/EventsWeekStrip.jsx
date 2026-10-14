@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react'
-import { getAnchorToday } from '../lib/dateAnchor'
+import { getAnchorToday, eventCoversDay } from '../lib/dateAnchor'
 
 const DAY_LABELS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const MONTH_LABELS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 function getWeekDays(offset = 0) {
-  // Rolling 7-day window anchored on the 6am-adjusted "today"
+  // Rolling 7-day window starting on today in Curitiba
   // (today + 6). offset slides by full weeks. Matches Home's
   // WeekCalendar so the user sees a consistent frame across both.
   const start = getAnchorToday()
@@ -22,8 +22,7 @@ function dateKey(d) {
 }
 
 function isToday(d) {
-  // Compare against 6am-anchored today so the highlighted column
-  // matches the strip's rolling logic.
+  // Today in Curitiba (lib/dateAnchor), whatever the device timezone.
   const t = getAnchorToday()
   return d.getDate() === t.getDate() && d.getMonth() === t.getMonth() && d.getFullYear() === t.getFullYear()
 }
@@ -48,80 +47,21 @@ export default function EventsWeekStrip({
   const [weekOffset, setWeekOffset] = useState(0)
   const days = getWeekDays(weekOffset)
 
-  // Bucket events by LOCAL day. Each day gets +1 for every event covering
-  // it: one-offs on their single day, multi-day ranges on every day in
-  // the run, recurring residencies on every matching weekday in a
-  // 60-day forward window.
-  //
-  // Why local not UTC: the strip's day cells are computed in local time
-  // (getAnchorToday + dateKey return local YYYY-MM-DD). If we walk in
-  // UTC, after ~21:00 BRT the UTC date flips to "tomorrow" and the
-  // recurring loop starts from tomorrow, skipping today's bucket. Then
-  // today's count comes out wrong (only multi-day ranges match, not
-  // recurring events). Walking in local fixes it across timezones.
-  //
-  // 60-day cap on each event's loop protects against malformed
-  // multi-year ranges. Users who want only the time-sensitive stuff
-  // toggle "Só únicos" upstream to drop residencies + ranges from
-  // both the strip events feed AND the list.
-  const todayIso = useMemo(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }, [])
+  // Count per visible day with the same eventCoversDay the list filter
+  // uses, so the badge on a day always matches the list that day opens:
+  // one-offs on their day, ranges on every day of the run, recurring
+  // residencies on matching weekdays from today on, and anything still
+  // running (last night's show at 03:00) on today.
+  const dayKeysSig = days.map(dateKey).join(',')
   const countsByDay = useMemo(() => {
-    const localKey = (d) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    const today0 = new Date()
-    today0.setHours(0, 0, 0, 0)
-    const horizon = new Date(today0)
-    horizon.setDate(horizon.getDate() + 60)
-
-    const parseLocal = (yyyy_mm_dd) => {
-      const [y, m, d] = yyyy_mm_dd.split('-').map(Number)
-      if (!y || !m || !d) return null
-      return new Date(y, m - 1, d)
-    }
-
     const map = {}
-    for (const ev of events) {
-      // Recurring branch: walk forward 60 days from today, count every
-      // matching ISO weekday. JS getDay() is 0=Sun..6=Sat — convert to
-      // ISO 1=Mon..7=Sun to match the backend's recurrenceDays encoding.
-      if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
-        const cursor = new Date(today0)
-        let n = 0
-        while (cursor <= horizon && n < 60) {
-          const isoDow = ((cursor.getDay() + 6) % 7) + 1
-          if (ev.recurrenceDays.includes(isoDow)) {
-            const k = localKey(cursor)
-            map[k] = (map[k] || 0) + 1
-          }
-          cursor.setDate(cursor.getDate() + 1)
-          n += 1
-        }
-        continue
-      }
-      // One-off / multi-day branch: walk every day from start to end.
-      const isoStart = ev.dateStart || ev.date_start || ''
-      if (!isoStart) continue
-      const startKey = isoStart.slice(0, 10)
-      const isoEnd = ev.dateEnd || ev.date_end || ''
-      const endKey = isoEnd ? isoEnd.slice(0, 10) : startKey
-      const start = parseLocal(startKey)
-      const end = parseLocal(endKey)
-      if (!start) continue
-      const finalEnd = (!end || end < start) ? start : end
-      const cursor = new Date(start)
+    for (const key of dayKeysSig.split(',')) {
       let n = 0
-      while (cursor <= finalEnd && n < 60) {
-        const k = localKey(cursor)
-        map[k] = (map[k] || 0) + 1
-        cursor.setDate(cursor.getDate() + 1)
-        n += 1
-      }
+      for (const ev of events) if (eventCoversDay(ev, key)) n += 1
+      map[key] = n
     }
     return map
-  }, [events, todayIso])
+  }, [events, dayKeysSig])
 
   const monthLabel = `${MONTH_LABELS_PT[days[0].getMonth()]} ${days[0].getFullYear()}`
 
@@ -170,6 +110,9 @@ export default function EventsWeekStrip({
           return (
             <button
               key={key}
+              data-day={key}
+              aria-current={today ? 'date' : undefined}
+              aria-pressed={selected}
               onClick={() => handleTap(key)}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',

@@ -6,7 +6,7 @@
  * e mescla com os dados locais.
  */
 import { EVENTS } from '../data/events'
-import { getAnchorToday } from '../lib/dateAnchor'
+import { cityTodayStartWallTs, wallTs, eventEndWallTs, isOngoing } from '../lib/dateAnchor'
 import { Capacitor } from '@capacitor/core'
 import { getPublicOrigin, NATIVE_PUBLIC_ORIGIN } from '../lib/share'
 
@@ -77,34 +77,26 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   }
 }
 
-// Drop events whose date is before today (in the user's local timezone).
-// "Today" is 6am-anchored — see lib/dateAnchor. So an event from 22:00
-// yesterday is still in-window until 06:00 today, which is what users
-// expect for late shows that run past midnight. After 06:00 the cutoff
-// rolls forward to today and yesterday's late events drop off.
-// Evergreen entries (no dateStart) are kept.
+// Drop events that are over before today (Curitiba calendar day).
 function dropPastEvents(events) {
-  // Cutoff: an event is "past" only if its LAST relevant moment is before
-  // today's anchor. The previous version checked dateStart alone, which
-  // dropped:
-  //   - Multi-day events (festivals / month-long programs) whose
-  //     dateStart was before today but dateEnd was in the future. They
-  //     vanished from the "Tudo" list even though they covered today.
-  //   - Recurring events whose stored dateStart hadn't been rolled
-  //     forward to the next occurrence.
-  // Now: keep when isRecurring (those are evergreen by definition), OR
-  // when dateEnd is in the future, OR when dateStart is in the future.
+  // An event is "past" only once its LAST relevant moment is before
+  // today's midnight in Curitiba (lib/dateAnchor):
+  //   - Multi-day events (festivals, month-long programs) stay while
+  //     dateEnd is today or later.
+  //   - Recurring events are evergreen.
+  //   - Last night's show stays while it is still running (isOngoing),
+  //     so a 22:00 show is still listed at 03:00.
+  // Comparisons are in wall-clock ms: the feed's "+00:00" strings carry
+  // Curitiba wall-clock time, and Date.parse would shift them.
   // Evergreen entries (no dateStart) are still kept.
-  const cutoff = getAnchorToday().getTime()
+  const cutoff = cityTodayStartWallTs()
   return events.filter(ev => {
     if (ev.isRecurring) return true
-    if (ev.dateEnd) {
-      const tEnd = Date.parse(ev.dateEnd)
-      if (!Number.isNaN(tEnd) && tEnd >= cutoff) return true
-    }
     if (!ev.dateStart) return true
-    const t = Date.parse(ev.dateStart)
-    return Number.isNaN(t) || t >= cutoff
+    const t = wallTs(ev.dateStart)
+    if (Number.isNaN(t) || t >= cutoff) return true
+    if (ev.dateEnd && eventEndWallTs(ev) >= cutoff) return true
+    return isOngoing(ev)
   })
 }
 
