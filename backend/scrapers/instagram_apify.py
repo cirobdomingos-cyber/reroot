@@ -351,6 +351,7 @@ async def fetch_events(
     apify_token: str,
     posts_per_account: int = 5,
     handles: Optional[list[str]] = None,
+    cancel_out: Optional[list] = None,
 ) -> list[RawEvent]:
     """
     Run the Apify Instagram scraper for every enabled tracked account
@@ -367,6 +368,10 @@ async def fetch_events(
          differs from what we have stored. New handles get a full scrape.
 
     Never raises — failures degrade gracefully to an empty list.
+
+    `cancel_out`: cancellation posts found in this batch are appended to it
+    for the caller to apply AFTER saving the events
+    (cancellations.apply_pending). Without it they are not applied.
     """
     if not apify_token:
         log.warning("Instagram (Apify): APIFY_API_TOKEN não configurado — pulando")
@@ -622,7 +627,8 @@ async def fetch_events(
     async def _bounded_extract(post):
         async with sem:
             return await _extract_events(
-                client, post, today_str, failed_out=failed_shortcodes
+                client, post, today_str, failed_out=failed_shortcodes,
+                cancel_out=cancel_out,
             )
 
     results = await asyncio.gather(
@@ -894,6 +900,7 @@ async def _extract_events(
     today_str: str,
     failed_out: Optional[set] = None,
     debug_out: Optional[dict] = None,
+    cancel_out: Optional[list] = None,
 ) -> list[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
@@ -1018,20 +1025,29 @@ async def _extract_events(
     # A later post calling off a night this venue announced earlier: mark
     # that catalog row cancelled (or move its date). Runs before the
     # is_event gate — a cancellation notice is usually "not an event".
-    cancelled_rows: list[dict] = []
+    #
+    # Not applied here: the scrape collects it (`cancel_out`) and applies
+    # it after the batch's events are saved, because the announcement it
+    # cancels may be in this same batch (cancellations.apply_pending).
+    # The admin debugger gets a dry run; a caller passing neither (the
+    # user-submission extractor) never touches the catalog.
+    # The model ran, so its `cancels` answer is the only verdict.
+    llm_cancels = data.get("cancels") if isinstance(data, dict) else None
     if maybe_cancel and isinstance(data, dict):
-        try:
-            cancelled_rows = cancellations.apply(
-                handle, caption=caption, post_url=post_url, post_date=post_date,
-                shortcode=shortcode, llm_cancels=data.get("cancels"),
-                llm_answered="cancels" in data,
-                # The admin debugger reads a post; it must not change the catalog.
-                dry_run=debug_out is not None, db=db,
-            )
-        except Exception as e:
-            log.warning(f"IG: cancellation check failed for @{handle}/{shortcode}: {e}")
+        pending = dict(
+            handle=handle, caption=caption, post_url=post_url, post_date=post_date,
+            shortcode=shortcode, llm_cancels=llm_cancels, llm_ran=True,
+        )
         if debug_out is not None:
-            debug_out["cancellations"] = cancelled_rows
+            try:
+                debug_out["cancellations"] = cancellations.apply(dry_run=True, db=db, **pending)
+            except Exception as e:
+                log.warning(f"IG: cancellation dry run failed for @{handle}/{shortcode}: {e}")
+        elif cancel_out is not None:
+            cancel_out.append(pending)
+    cancelled_name = ""
+    if isinstance(llm_cancels, dict) and llm_cancels.get("is_cancellation"):
+        cancelled_name = str(llm_cancels.get("event_name") or "")
 
     if not isinstance(data, dict) or not data.get("is_event", False):
         if debug_out is not None:
@@ -1063,10 +1079,7 @@ async def _extract_events(
         if ev is not None:
             # The night this post just cancelled or moved must not come
             # back as a fresh row under the cancellation post's own id.
-            if cancelled_rows and any(
-                cancellations._name_similarity(r.get("name") or "", ev.name) >= 0.5
-                for r in cancelled_rows
-            ):
+            if cancelled_name and cancellations._name_similarity(ev.name, cancelled_name) >= 0.5:
                 continue
             out.append(ev)
 

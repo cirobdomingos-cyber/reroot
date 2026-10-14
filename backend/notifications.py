@@ -233,7 +233,8 @@ async def send_scrape_summary(settings, run_started_iso: str, new_event_ids: lis
     if cancels:
         items = ""
         for c in cancels:
-            verb = "adiado" if c.get("kind") == "postponed" else "cancelado"
+            verb = {"postponed": "adiado", "postponed_no_date": "adiado sem data"}.get(
+                c.get("kind") or "", "cancelado")
             line = f"{c.get('event_name') or c.get('event_id')} ({verb}, @{c.get('ig_handle') or '?'})"
             items += (f'<li style="font-size:13px">{line} · '
                       f'<a href="{c.get("source_url") or "#"}">post</a> · '

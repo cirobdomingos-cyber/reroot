@@ -7569,12 +7569,14 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = "", sessi
     # scheduler. Returns the count of new RawEvents extracted.
     from scrapers.instagram_apify import fetch_events as ig_fetch
     from enrichment import EnrichmentPipeline
+    pending_cancels: list[dict] = []
     try:
         raw_events = await ig_fetch(
             anthropic_api_key=settings.anthropic_api_key,
             apify_token=settings.apify_api_token,
             handles=[handle],
             posts_per_account=5,
+            cancel_out=pending_cancels,
         )
     except Exception as e:
         log.exception(f"Manual scrape ig_fetch failed for @{handle}")
@@ -7591,6 +7593,15 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = "", sessi
                     new_event_ids.add(enriched.id)
             except Exception as e:
                 log.warning(f"Enrichment failed for @{handle}/{raw.external_id}: {e}")
+
+    # Cancellation posts apply after this handle's events are saved, same
+    # order as the daily scrape (cancellations.apply_pending).
+    if pending_cancels:
+        try:
+            import cancellations
+            cancellations.apply_pending(pending_cancels)
+        except Exception as e:
+            log.warning(f"Manual scrape @{handle}: cancellations failed: {e}")
 
     # Manual scrape is a "rebuild this handle" — wipe stale rows that the
     # re-evaluation didn't reaffirm. This is what cleans up old wrongly-
