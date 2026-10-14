@@ -71,6 +71,8 @@ immutable on the device, so never set a version before step 5 passes.
 4. **Promote:** set `OTA_BUNDLE_VERSION=<same version>` and delete
    `OTA_CANARY_VERSION`. **Abort:** just delete `OTA_CANARY_VERSION`.
 
+Android store builds (Google Play, `android-v*` tags): see [ANDROID_RELEASE.md](ANDROID_RELEASE.md).
+
 ## Sessões (`REQUIRE_SESSION`)
 
 Desde set/2026 o login abre uma sessão no servidor e o app manda o token em

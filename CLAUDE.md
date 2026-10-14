@@ -54,7 +54,7 @@ Don't add per-user LLM calls without a strong reason — it doesn't scale.
 
 ## TWA / PWA distribution
 
-- **Android**: TWA via PWABuilder.com → Play Store Internal Testing (no App Review for ≤100 testers). Backend serves `/.well-known/assetlinks.json` reading `TWA_SHA256_FINGERPRINT` env var.
+- **Android**: Capacitor app `app.aue` (same wrapper as iOS) → Google Play via [.github/workflows/android-play.yml](.github/workflows/android-play.yml) (`android-v*` tag → internal track). New personal Play accounts run a closed test with 12 testers for 14 days before production. Setup: [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md). `/.well-known/assetlinks.json` (env `TWA_SHA256_FINGERPRINT`) is only for verified app links.
 - **iOS**: public on the App Store (id `6765535013`, `APP_STORE_URL` in [backend/main.py](backend/main.py)). `/install` 302s iOS UAs there; Safari also shows Apple's own Smart App Banner via the `apple-itunes-app` meta tag in [index.html](index.html) — no custom JS banner needed anymore (the old `InstallBanner.jsx` DIY version is gone). `settings.testflight_invite_url`, when set, overrides `/install`'s iOS redirect to TestFlight instead — used during occasional version-bump beta windows, otherwise left empty.
 - Privacy policy at `/privacy` (LGPD-compliant, pt-BR).
 
@@ -64,8 +64,7 @@ These are real but not urgent — flag in PRs, don't auto-fix unless the task is
 
 1. **`is_low_pressure` rename** — semantically it's "is_intimate" now (small + conversational format). Field name kept for backward compat across ~12 files; rename touches model, db payload, frontend, prompts.
 2. **Reroot-era voice in seed events** — the 12 auê Originals in [backend/seed_events.py](backend/seed_events.py) still have copy like "primeira saída", "voltando a socializar". Should be rewritten in auê voice.
-3. **Hardcoded `_ASSET_LINKS` block** in [backend/main.py](backend/main.py) (~line 2630) — old hardcoded fingerprint with `com.reroot.app` package, now superseded by the env-driven endpoint at the top of the file. Dead code.
-4. **Inline "Reroot" references in code comments** — many scrapers and module docstrings still mention Reroot. Cosmetic.
+3. **Inline "Reroot" references in code comments** — many scrapers and module docstrings still mention Reroot. Cosmetic.
 
 ## Conventions worth knowing
 
