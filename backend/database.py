@@ -67,6 +67,42 @@ def init_db():
             )
         except sqlite3.OperationalError:
             pass  # column already present
+        # Migration: cancellation status (Oct 2026). A venue announcing a
+        # cancellation in a LATER post used to leave the event live, since
+        # each post is read once: Maite Livros cancelled "Piquenique com
+        # Livros" and it still went into an @auecuritiba post. The row is
+        # kept (cancelled_at set, hidden from every list) so the founder
+        # can undo a wrong match; event_cancellations below is the log.
+        for col_def in (
+            "ADD COLUMN cancelled_at TEXT",
+            "ADD COLUMN cancel_source_url TEXT NOT NULL DEFAULT ''",
+        ):
+            try:
+                conn.execute(f"ALTER TABLE events {col_def}")
+            except sqlite3.OperationalError:
+                pass  # column already present
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS event_cancellations (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id        TEXT NOT NULL,
+                kind            TEXT NOT NULL,      -- 'cancelled' | 'postponed'
+                source_url      TEXT NOT NULL DEFAULT '',
+                ig_handle       TEXT NOT NULL DEFAULT '',
+                caption         TEXT NOT NULL DEFAULT '',
+                score           REAL NOT NULL DEFAULT 0,
+                detector        TEXT NOT NULL DEFAULT '',   -- 'llm' | 'regex'
+                prev_date_start TEXT,
+                prev_date_end   TEXT,
+                new_date_start  TEXT,
+                detected_at     TEXT NOT NULL,
+                undone_at       TEXT,
+                undone_by       TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_event_cancellations_detected "
+            "ON event_cancellations(detected_at)"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS refresh_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1427,6 +1463,7 @@ def count_upcoming_events(city: str) -> int:
             """
             SELECT COUNT(*) as cnt FROM events
             WHERE json_extract(payload, '$.city') = ?
+              AND cancelled_at IS NULL
               AND (json_extract(payload, '$.is_recurring') IS NULL
                    OR json_extract(payload, '$.is_recurring') != 1)
               AND (
@@ -3180,6 +3217,7 @@ def list_events_needing_genre(limit: int = 200) -> list[dict]:
                       json_extract(payload, '$.venue_name')  AS venue_name
                FROM events
                WHERE COALESCE(json_extract(payload, '$.genre'), '') = ''
+                 AND cancelled_at IS NULL
                  AND edited_fields NOT LIKE '%"genre"%'
                  AND NOT EXISTS (SELECT 1 FROM tag_attempts t
                                   WHERE t.event_id = events.id AND t.field = 'genre')
@@ -3210,6 +3248,7 @@ def list_events_needing_tipo(limit: int = 200) -> list[dict]:
                       json_extract(payload, '$.venue_name')  AS venue_name
                FROM events
                WHERE COALESCE(json_extract(payload, '$.tipo'), '') = ''
+                 AND cancelled_at IS NULL
                  AND edited_fields NOT LIKE '%"tipo"%'
                  AND NOT EXISTS (SELECT 1 FROM tag_attempts t
                                   WHERE t.event_id = events.id AND t.field = 'tipo')
@@ -3303,7 +3342,8 @@ def get_events(
     kids_welcome: Optional[bool] = None,
     limit: int = 20,
 ) -> list[EnrichedEvent]:
-    query = "SELECT payload FROM events WHERE 1=1"
+    # Cancelled rows stay in the table (undo) but never reach a list.
+    query = "SELECT payload FROM events WHERE cancelled_at IS NULL"
     params: list = []
 
     if good_only:
@@ -3779,6 +3819,200 @@ def get_latest_daily_digest() -> Optional[dict]:
     }
 
 
+# ── Cancellations ─────────────────────────────────────────
+# A venue that calls a night off says so in a NEW post, and each post is
+# read once, so the event used to stay live. cancellations.py decides
+# which catalog row a cancellation post is about; these are its writes.
+# Rows are never deleted: cancelled_at hides them, undo clears it.
+
+def get_event_cancel_state(event_id: str) -> Optional[dict]:
+    """{'cancelled_at', 'cancel_source_url'} for a catalog row, or None."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT cancelled_at, cancel_source_url FROM events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def list_cancel_candidates(handle: str, start_iso: str, end_iso: str) -> list[dict]:
+    """Live Instagram events of one tracked handle starting in
+    [start_iso, end_iso] (ISO strings, compared on the stored prefix).
+
+    The handle is matched by longest tracked-handle prefix, not by LIKE
+    alone: '_' is a LIKE wildcard and handles nest ("maite" vs
+    "maite_livros"), the same trap find_same_post_under_other_handle
+    documents."""
+    handle = (handle or "").strip().lstrip("@").lower()
+    if not handle:
+        return []
+    with get_conn() as conn:
+        handles = [r["handle"] for r in conn.execute(
+            "SELECT handle FROM tracked_ig_accounts").fetchall()]
+        if handle not in handles:
+            handles.append(handle)
+        rows = conn.execute(
+            """SELECT id, external_id,
+                      json_extract(payload, '$.name')       AS name,
+                      json_extract(payload, '$.date_start') AS date_start,
+                      json_extract(payload, '$.date_end')   AS date_end,
+                      json_extract(payload, '$.url')        AS url
+                 FROM events
+                WHERE source = 'instagram'
+                  AND cancelled_at IS NULL
+                  AND external_id LIKE ?
+                  AND substr(json_extract(payload, '$.date_start'), 1, 19) >= ?
+                  AND substr(json_extract(payload, '$.date_start'), 1, 19) <= ?
+             ORDER BY json_extract(payload, '$.date_start') ASC""",
+            (f"ig_{handle}_%", start_iso[:19], end_iso[:19]),
+        ).fetchall()
+    out = []
+    for r in rows:
+        rest = (r["external_id"] or "")[3:]
+        owner = max((h for h in handles if rest.startswith(h + "_")), key=len, default="")
+        if owner == handle:
+            out.append(dict(r))
+    return out
+
+
+def _log_cancellation(conn, *, event_id: str, kind: str, source_url: str,
+                      ig_handle: str, caption: str, score: float,
+                      detector: str, prev_start: Optional[str] = None,
+                      prev_end: Optional[str] = None,
+                      new_start: Optional[str] = None) -> None:
+    conn.execute(
+        """INSERT INTO event_cancellations
+             (event_id, kind, source_url, ig_handle, caption, score, detector,
+              prev_date_start, prev_date_end, new_date_start, detected_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (event_id, kind, source_url or "", ig_handle or "", (caption or "")[:500],
+         float(score or 0), detector or "", prev_start, prev_end, new_start,
+         datetime.now(timezone.utc).isoformat()),
+    )
+
+
+def cancellation_logged_for(source_url: str) -> bool:
+    """True when this post already produced a cancellation, undone or not.
+    A post is acted on once: re-reading it (a manual rebuild of the
+    handle) must neither pick the runner-up event nor re-cancel one the
+    founder restored."""
+    if not source_url:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM event_cancellations WHERE source_url = ? LIMIT 1",
+            (source_url,),
+        ).fetchone()
+    return row is not None
+
+
+def cancel_event(event_id: str, *, source_url: str, ig_handle: str = "",
+                 caption: str = "", score: float = 0, detector: str = "") -> bool:
+    """Hide a catalog event as cancelled. False when the id is unknown or
+    already cancelled (idempotent: a re-read of the same post is a no-op)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE events SET cancelled_at = ?, cancel_source_url = ? "
+            "WHERE id = ? AND cancelled_at IS NULL",
+            (now, source_url or "", event_id),
+        )
+        if cur.rowcount == 0:
+            return False
+        _log_cancellation(conn, event_id=event_id, kind="cancelled",
+                          source_url=source_url, ig_handle=ig_handle,
+                          caption=caption, score=score, detector=detector)
+        conn.commit()
+    return True
+
+
+def postpone_event(event_id: str, new_start: datetime, *, source_url: str,
+                   ig_handle: str = "", caption: str = "", score: float = 0,
+                   detector: str = "") -> Optional[EnrichedEvent]:
+    """Move a catalog event to the date its venue announced. The dates are
+    pinned (edited_fields) so a later re-read of the ORIGINAL post can't
+    move it back, and the RSVP copies follow so reminders fire on the new
+    day. date_end keeps its distance from date_start."""
+    ev = get_event_by_id(event_id)
+    if ev is None:
+        return None
+    prev_start = ev.date_start.isoformat()
+    prev_end = ev.date_end.isoformat() if ev.date_end else None
+    if new_start.tzinfo is None and ev.date_start.tzinfo is not None:
+        new_start = new_start.replace(tzinfo=ev.date_start.tzinfo)
+    fields = {"date_start": new_start.isoformat()}
+    if ev.date_end:
+        fields["date_end"] = (new_start + (ev.date_end - ev.date_start)).isoformat()
+    updated = update_catalog_event(event_id, fields, pin=True)
+    with get_conn() as conn:
+        conn.execute("UPDATE rsvps SET event_date = ? WHERE event_id = ?",
+                     (fields["date_start"], event_id))
+        conn.execute("UPDATE events SET cancel_source_url = ? WHERE id = ?",
+                     (source_url or "", event_id))
+        _log_cancellation(conn, event_id=event_id, kind="postponed",
+                          source_url=source_url, ig_handle=ig_handle,
+                          caption=caption, score=score, detector=detector,
+                          prev_start=prev_start, prev_end=prev_end,
+                          new_start=fields["date_start"])
+        conn.commit()
+    return updated
+
+
+def list_event_cancellations(since_iso: str, include_undone: bool = True) -> list[dict]:
+    """The cancellation log since `since_iso`, newest first, with the
+    event's current name and date for the founder's review list."""
+    query = """SELECT c.*, json_extract(e.payload, '$.name') AS event_name,
+                      json_extract(e.payload, '$.date_start') AS event_date_start,
+                      e.cancelled_at AS event_cancelled_at
+                 FROM event_cancellations c
+            LEFT JOIN events e ON e.id = c.event_id
+                WHERE c.detected_at >= ?"""
+    if not include_undone:
+        query += " AND c.undone_at IS NULL"
+    query += " ORDER BY c.detected_at DESC, c.id DESC"
+    with get_conn() as conn:
+        rows = conn.execute(query, (since_iso,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def undo_cancellation(event_id: str, undone_by: str = "") -> Optional[dict]:
+    """Reverse the latest live cancellation or postponement of an event:
+    a cancelled row comes back, a postponed one returns to its old date.
+    Returns the log row undone, or None when there is nothing to undo."""
+    with get_conn() as conn:
+        row = conn.execute(
+            """SELECT * FROM event_cancellations
+                WHERE event_id = ? AND undone_at IS NULL
+             ORDER BY id DESC LIMIT 1""",
+            (event_id,),
+        ).fetchone()
+    if not row:
+        return None
+    row = dict(row)
+    if row["kind"] == "postponed" and row.get("prev_date_start"):
+        fields = {"date_start": row["prev_date_start"]}
+        if row.get("prev_date_end"):
+            fields["date_end"] = row["prev_date_end"]
+        update_catalog_event(event_id, fields, pin=True)
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        if row["kind"] == "postponed" and row.get("prev_date_start"):
+            conn.execute("UPDATE rsvps SET event_date = ? WHERE event_id = ?",
+                         (row["prev_date_start"], event_id))
+        else:
+            conn.execute(
+                "UPDATE events SET cancelled_at = NULL, cancel_source_url = '' WHERE id = ?",
+                (event_id,),
+            )
+        conn.execute(
+            "UPDATE event_cancellations SET undone_at = ?, undone_by = ? WHERE id = ?",
+            (now, undone_by or "", row["id"]),
+        )
+        conn.commit()
+    row["undone_at"] = now
+    return row
+
+
 def delete_catalog_event(event_id: str) -> bool:
     """Hard-delete a catalog event from the events table. Used by the
     admin "remove this LLM mis-extraction" endpoint when an IG post
@@ -3810,7 +4044,7 @@ def count_future_events_by_ig_handle() -> dict:
     query = """
         SELECT external_id
         FROM events
-        WHERE source = 'instagram' AND (
+        WHERE source = 'instagram' AND cancelled_at IS NULL AND (
             (json_extract(payload, '$.date_end') IS NULL
                 AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
             OR
@@ -3839,6 +4073,7 @@ def get_future_events_by_source(source: str, ig_handle: Optional[str] = None,
     query = """
         SELECT payload, external_id FROM events
         WHERE source = ?
+        AND cancelled_at IS NULL
         AND (
             json_extract(payload, '$.is_recurring') = 1
             OR (json_extract(payload, '$.date_end') IS NULL
@@ -5071,6 +5306,10 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
                   -- auê channel and painting them magenta.
                   AND g.visibility = 'public'
                   AND substr(ge.date_start, 1, 10) >= ?
+                  -- A fork of a cancelled catalog event goes with it.
+                  AND NOT EXISTS (SELECT 1 FROM events ce
+                                   WHERE ce.id = ge.source_event_id
+                                     AND ce.cancelled_at IS NOT NULL)
              ORDER BY ge.date_start ASC
                 LIMIT ?""",
             (google_id, today, limit),
@@ -5248,6 +5487,7 @@ def list_upcoming_catalog_events_for_routing(limit: int = 2000) -> list[dict]:
                       COALESCE(json_extract(payload, '$.genre'), '') AS genre
                FROM events
                WHERE json_extract(payload, '$.is_curated') = 1
+                 AND cancelled_at IS NULL
                  AND (
                    (json_extract(payload, '$.date_end') IS NULL
                     AND substr(json_extract(payload, '$.date_start'), 1, 10) >= ?)
@@ -5775,7 +6015,15 @@ def get_group_events(group_id: str, viewer_google_id: Optional[str] = None) -> l
         viewer_pattern = f'%"{viewer_google_id}"%'
         params = (group_id, group_pattern, viewer_google_id, viewer_pattern, viewer_pattern)
     else:
-        query = f"SELECT * FROM group_events WHERE {group_match} ORDER BY date_start ASC"
+        # The whole-group view (public channel screen, iCal feed) drops
+        # forks of a catalog event the venue cancelled. A crew member's
+        # own view above keeps them: that is a plan a person made.
+        query = (
+            f"SELECT * FROM group_events WHERE {group_match} "
+            f"AND NOT EXISTS (SELECT 1 FROM events ce WHERE ce.id = group_events.source_event_id "
+            f"AND ce.cancelled_at IS NOT NULL) "
+            f"ORDER BY date_start ASC"
+        )
         params = (group_id, group_pattern)
     with get_conn() as conn:
         rows = conn.execute(query, params).fetchall()
@@ -6343,7 +6591,9 @@ def get_rsvps_for_day(day_iso: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT google_id, event_id, event_name, event_venue, event_date "
-            "FROM rsvps WHERE substr(event_date, 1, 10) = ?",
+            "FROM rsvps WHERE substr(event_date, 1, 10) = ? "
+            # No "amanhã!" for a night the venue called off.
+            "AND event_id NOT IN (SELECT id FROM events WHERE cancelled_at IS NOT NULL)",
             (day_iso,),
         ).fetchall()
     return [dict(r) for r in rows]
