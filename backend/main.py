@@ -39,6 +39,7 @@ import database as db
 import badges
 import image_store
 import ota
+import google_id_token
 import quiet_hours
 from urllib.parse import quote
 from scheduler import start_scheduler, stop_scheduler, run_refresh
@@ -110,6 +111,17 @@ class Settings(BaseSettings):
     # /install to the beta instead of the store's current build.
     testflight_invite_url: str = ""  # https://testflight.apple.com/join/XXXXXX
     play_store_internal_url: str = ""  # https://play.google.com/apps/internaltest/...
+    # Google Play closed test (a new personal Play account needs 12 opted-in
+    # testers for 14 days before production). Testers come from a Google
+    # Group: join the group, accept the test on the opt-in page, install.
+    # Android precedence on /install:
+    #   1. play_store_url set          -> 302 to the public listing
+    #   2. play_beta_group_url set     -> HTML with the 3-step beta section
+    #   3. play_store_internal_url set -> 302 there (legacy internal track)
+    #   4. nothing set                 -> the PWA "Instalar app" walkthrough
+    play_store_url: str = ""  # https://play.google.com/store/apps/details?id=app.aue once public
+    play_beta_group_url: str = ""  # https://groups.google.com/g/<group>
+    play_beta_optin_url: str = "https://play.google.com/apps/testing/app.aue"
     # Deployment environment label. Defaults to "production" so a missing
     # var fails-safe (staging-only behaviors stay off if someone forgets to
     # set it). Set ENV_NAME=staging on the Railway staging service and use
@@ -375,7 +387,7 @@ _PRIVACY_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <h1>auê — Política de Privacidade</h1>
-<small>Última atualização: 28 de abril de 2026</small>
+<small>Última atualização: 14 de outubro de 2026</small>
 
 <p>O <strong>auê</strong> é um catálogo social de eventos em Curitiba.
 Esta política descreve, de forma objetiva, quais dados a gente coleta,
@@ -383,19 +395,25 @@ por quê, e o que você pode pedir pra remover.</p>
 
 <h2>O que a gente coleta</h2>
 <ul>
-  <li><strong>Login Google</strong>: nome, email, foto de perfil e ID Google. Necessário pra
-  RSVPs, lista de amigos e sincronização entre dispositivos.</li>
+  <li><strong>Login Google ou Apple</strong>: nome, email, foto de perfil e o ID da conta. Necessário pra
+  RSVPs, lista de amigos e sincronização entre dispositivos. Dá pra ver o catálogo sem login.</li>
+  <li><strong>Fotos que você envia</strong>: capa de um evento do seu grupo ou foto de perfil,
+  guardadas no nosso servidor pra aparecer no app.</li>
+  <li><strong>Notificações</strong>: se você permitir, o identificador de push do aparelho,
+  usado só pra enviar os avisos que você ativou.</li>
   <li><strong>Atividade no app</strong>: eventos que você confirmou (RSVPs), amizades aceitas,
   grupos que entrou, lugares favoritados. Tudo armazenado vinculado ao seu ID Google.</li>
   <li><strong>Feedback</strong>: mensagens enviadas via "Mandar feedback" no Perfil são
   guardadas com seu email pra que possamos responder.</li>
   <li><strong>Métricas anônimas</strong>: contagem de uso (DAU, WAU) sem identificação
   pessoal, agregada pelo backend.</li>
+  <li><strong>Erros técnicos</strong>: quando o app trava, registramos o erro pra corrigir.</li>
 </ul>
 
 <h2>O que a gente NÃO coleta</h2>
 <ul>
-  <li>Localização precisa (GPS).</li>
+  <li>Localização precisa (GPS). O mapa pode usar sua localização pra centralizar a tela,
+  mas ela fica no aparelho e não é enviada pra gente.</li>
   <li>Lista de contatos do celular.</li>
   <li>Conteúdo de outras redes sociais além do que você publicou publicamente.</li>
   <li>Dados de pagamento — o app não cobra nada nem processa pagamentos.</li>
@@ -435,9 +453,17 @@ e a gente conversa).</p>
 </ul>
 
 <h2>Por quanto tempo a gente guarda</h2>
-<p>Enquanto sua conta estiver ativa. Se você quiser deletar tudo, mande email pra
-<code>ciro.b.domingos@gmail.com</code> com assunto <em>"Deletar minha conta auê"</em> —
-removo seus dados em até 7 dias e te confirmo.</p>
+<p>Enquanto sua conta estiver ativa.</p>
+
+<h2 id="excluir-conta">Como excluir sua conta</h2>
+<p><strong>No app:</strong> Perfil → <em>Deletar conta</em> → Confirmar. Apaga na hora
+sua conta, RSVPs, amigos e histórico.</p>
+<p><strong>Por email:</strong> se não tiver mais o app, mande email pra
+<code>ciro.b.domingos@gmail.com</code> com assunto <em>"Deletar minha conta auê"</em>,
+a partir do email da conta. Removo seus dados em até 7 dias e te confirmo.</p>
+<p>Sua foto de perfil sai junto com a conta. Eventos que você adicionou a um grupo
+continuam visíveis pros membros desse grupo; pra apagá-los, remova antes de excluir a
+conta ou peça no mesmo email.</p>
 
 <h2>Seus direitos</h2>
 <p>Pela <strong>LGPD</strong> (Lei Geral de Proteção de Dados), você tem direito a:</p>
@@ -938,6 +964,104 @@ _INSTALL_HTML = """<!DOCTYPE html>
 """
 
 
+# In-app webviews where Google sign-in is blocked (Play's opt-in page needs
+# it), so the beta page sends them to Chrome first. "; wv)" is the generic
+# Android WebView token. Matched against the lowercased UA.
+_ANDROID_IN_APP_RE = re.compile(r"instagram|fban|fbav|fb_iab|whatsapp|tiktok|musical_ly|; wv\)")
+
+
+def _safe_http_url(url: str) -> str:
+    """The URL if it is http(s), else "" — env values land in an href, and
+    escaping alone would not stop a `javascript:` value."""
+    url = (url or "").strip()
+    return url if url.lower().startswith(("https://", "http://")) else ""
+
+
+_ANDROID_BETA_CSS = """
+  .beta-step { flex-direction: column; gap: 10px; }
+  .beta-step .beta-head { display: flex; gap: 14px; align-items: flex-start; }
+  .beta-btn {
+    display: block; width: 100%; text-align: center; text-decoration: none;
+    background: #FF2BD6; color: #0A0510 !important;
+    padding: 15px 18px; border-radius: 14px; font-size: 15px; font-weight: 800;
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .beta-btn:active { transform: translateY(1px); }
+  .beta-note { font-size: 13px; color: #B8A8D8; line-height: 1.55; margin: 6px 0 0; }
+  .beta-note strong { color: #F4ECFF; }
+  .beta-chrome { margin-bottom: 22px; }
+  .beta-chrome .iab-cta { margin-top: 12px; }
+  .beta-chrome .copy-btn {
+    background: none; color: #00E5FF; box-shadow: none;
+    border: 1px solid rgba(0, 229, 255, 0.45);
+  }
+"""
+
+
+def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str, in_app: bool) -> str:
+    """/install for Android while the Play closed test is running.
+
+    Built from _INSTALL_HTML (same palette, share block, intent:// helper)
+    by inserting one section; the default page stays byte-identical. The
+    URLs come from env, so they are escaped for an attribute here.
+    """
+    from html import escape
+
+    g, o, st = (escape(u, quote=True) for u in (group_url, optin_url, store_url))
+    chrome_block = "" if not in_app else """
+    <div class="warning beta-chrome" id="beta-open-chrome">
+      <strong>⚠️ Abre no Chrome primeiro</strong>
+      Aqui dentro do app (Instagram, WhatsApp...) o Google não deixa entrar na conta,
+      e os passos abaixo precisam dela. Toca no botão e segue no Chrome.
+      <button class="iab-cta" onclick="iabAction()">Abrir no Chrome</button>
+      <button class="copy-btn" onclick="copyLink('Link copiado! Abre o Chrome e cola na barra de endereço.')">Copiar link</button>
+    </div>"""
+    section = f"""  <!-- ── Android: Google Play closed test ── -->
+  <section id="android-beta" hidden>
+    <h1>Testa o auê no Android antes de todo mundo</h1>
+    <p class="sub">O auê tá chegando na Play Store. Entra no teste fechado em três toques — é grátis.</p>{chrome_block}
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">1</div>
+        <div class="sc"><div class="st">Entra no grupo de testers</div>
+        <div class="sd">Abre o grupo do Google e toca "Participar do grupo".</div></div></div>
+      <a class="beta-btn" id="beta-step-1" href="{g}" target="_blank" rel="noopener">Entrar no grupo de testers</a>
+    </div>
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">2</div>
+        <div class="sc"><div class="st">Aceita o teste</div>
+        <div class="sd">Na página do Google Play, toca "Become a tester" (Quero ser testador).</div></div></div>
+      <a class="beta-btn" id="beta-step-2" href="{o}" target="_blank" rel="noopener">Aceitar o teste</a>
+    </div>
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">3</div>
+        <div class="sc"><div class="st">Instala na Play Store</div>
+        <div class="sd">Pronto, é só tocar "Instalar".</div></div></div>
+      <a class="beta-btn" id="beta-step-3" href="{st}" target="_blank" rel="noopener">Instalar na Play Store</a>
+    </div>
+    <p class="beta-note">Usa <strong>a mesma conta Google</strong> nos três passos.
+      Depois do passo 2, o passo 3 pode levar uns minutinhos pra liberar — se a Play Store
+      disser que não achou o app, espera um pouco e tenta de novo.</p>
+    <div class="done"><strong>🎉 Valeu por testar</strong>Achou bug ou tem ideia? Manda pro Ciro pelo link aqui embaixo.</div>
+  </section>
+
+"""
+    out = _INSTALL_HTML
+    replacements = (
+        ("</style>", _ANDROID_BETA_CSS + "</style>"),
+        ("  <!-- ── Android Chrome / Edge / Brave / Samsung ── -->", section + "  <!-- ── Android Chrome / Edge / Brave / Samsung ── -->"),
+        ('    else if (isAndroid) which = inApp ? "android-inapp" : "android-chrome";',
+         '    else if (isAndroid) which = "android-beta";'),
+        # The beta section carries its own inline "Abre no Chrome" block, so
+        # the full-screen blocker stays for iOS/desktop only.
+        ("    if (inApp) {", "    if (inApp && !isAndroid) {"),
+    )
+    for old, new in replacements:
+        assert out.count(old) == 1, old
+        out = out.replace(old, new)
+    return out
+
+
 def _event_deep_link(event_id: str) -> str:
     """The one in-app URL that opens an event.
 
@@ -1125,7 +1249,11 @@ def install_page(request: Request):
                         version-bump testing window — see settings.
                         testflight_invite_url); otherwise the public App
                         Store listing.
-      - Android       → Play Store internal-testing link
+      - Android       → public Play listing (play_store_url); else the
+                        closed-test page (play_beta_group_url: join group,
+                        opt in, install; in-app webviews get "Abre no
+                        Chrome" first); else the legacy internal-testing
+                        link; else the HTML walkthrough
       - Anything else → existing HTML walkthrough (PWA install + manual
                         Add-to-Home-Screen instructions for both platforms)
 
@@ -1151,8 +1279,21 @@ def install_page(request: Request):
     if is_ios:
         url = settings.testflight_invite_url or APP_STORE_URL
         return RedirectResponse(url=url, status_code=302)
-    if is_android and settings.play_store_internal_url:
-        return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
+    if is_android:
+        # Precedence documented next to the settings (play_store_url first).
+        if _safe_http_url(settings.play_store_url):
+            return RedirectResponse(url=settings.play_store_url, status_code=302)
+        if _safe_http_url(settings.play_beta_group_url):
+            html = _install_android_beta_html(
+                group_url=settings.play_beta_group_url,
+                optin_url=_safe_http_url(settings.play_beta_optin_url)
+                or f"https://play.google.com/apps/testing/{settings.twa_package_name}",
+                store_url=f"https://play.google.com/store/apps/details?id={settings.twa_package_name}",
+                in_app=bool(_ANDROID_IN_APP_RE.search(ua)),
+            )
+            return PlainTextResponse(html, media_type="text/html; charset=utf-8")
+        if settings.play_store_internal_url:
+            return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
     return PlainTextResponse(_INSTALL_HTML, media_type="text/html; charset=utf-8")
 
 
@@ -2247,7 +2388,14 @@ def get_event(event_id: str, google_id: str = "", session_user: SessionUser = No
     # Catalog events first.
     ev = db.get_event_by_id(event_id)
     if ev:
-        return _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
+        out = _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
+        # A cancelled night still opens (RSVPs and shared links point at
+        # it) but says so; every list already leaves it out.
+        state = db.get_event_cancel_state(event_id) or {}
+        if state.get("cancelled_at"):
+            out["cancelledAt"] = state["cancelled_at"]
+            out["cancelSourceUrl"] = state.get("cancel_source_url") or ""
+        return out
 
     # Fallback: private events (ids start with "grp_ev_"). After the May
     # 2026 model unification, every private event — group-tagged or not
@@ -7088,6 +7236,29 @@ def _price_tier_for(price_min: float) -> str:
     return "high"
 
 
+@app.get("/admin/cancellations")
+def admin_list_cancellations(days: int = 14, session_user: SessionUser = None):
+    """Cancellations and postponements the scrape detected from venues'
+    own later posts (cancellations.py), newest first. Founder-only: a
+    detection hides an event from everyone, so whoever can see the list
+    is the one who can undo a wrong match."""
+    _require_founder(session_user)
+    days = max(1, min(int(days or 14), 90))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return {"days": days, "cancellations": db.list_event_cancellations(since)}
+
+
+@app.post("/admin/events/{event_id}/uncancel")
+def admin_uncancel_event(event_id: str, session_user: SessionUser = None):
+    """Undo the latest detected cancellation (the event is listed again)
+    or postponement (the event returns to its old date)."""
+    email = _require_founder(session_user)
+    undone = db.undo_cancellation(event_id, undone_by=email)
+    if undone is None:
+        raise HTTPException(status_code=404, detail="Nenhum cancelamento para desfazer")
+    return {"ok": True, "event_id": event_id, "kind": undone["kind"]}
+
+
 @app.patch("/admin/events/{event_id}")
 def admin_edit_catalog_event(event_id: str, req: CatalogEventUpdate, session_user: SessionUser = None):
     """Correct a catalog event's facts by hand.
@@ -7399,12 +7570,14 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = "", sessi
     # scheduler. Returns the count of new RawEvents extracted.
     from scrapers.instagram_apify import fetch_events as ig_fetch
     from enrichment import EnrichmentPipeline
+    pending_cancels: list[dict] = []
     try:
         raw_events = await ig_fetch(
             anthropic_api_key=settings.anthropic_api_key,
             apify_token=settings.apify_api_token,
             handles=[handle],
             posts_per_account=5,
+            cancel_out=pending_cancels,
         )
     except Exception as e:
         log.exception(f"Manual scrape ig_fetch failed for @{handle}")
@@ -7421,6 +7594,15 @@ async def admin_scrape_ig_account(handle: str, requesting_email: str = "", sessi
                     new_event_ids.add(enriched.id)
             except Exception as e:
                 log.warning(f"Enrichment failed for @{handle}/{raw.external_id}: {e}")
+
+    # Cancellation posts apply after this handle's events are saved, same
+    # order as the daily scrape (cancellations.apply_pending).
+    if pending_cancels:
+        try:
+            import cancellations
+            cancellations.apply_pending(pending_cancels)
+        except Exception as e:
+            log.warning(f"Manual scrape @{handle}: cancellations failed: {e}")
 
     # Manual scrape is a "rebuild this handle" — wipe stale rows that the
     # re-evaluation didn't reaffirm. This is what cleans up old wrongly-
@@ -9532,6 +9714,12 @@ def _ota_env() -> tuple[str, str, frozenset[str]]:
     )
 
 
+def _ota_android_published() -> str:
+    """Android's published version, separate from iOS's (ota.py says why).
+    Empty, the default, offers Android nothing."""
+    return (os.environ.get("OTA_ANDROID_BUNDLE_VERSION") or "").strip()
+
+
 def _ota_bundle_zip(version: str) -> Optional[bytes]:
     """Zip of the static dir, built once per process and memoized.
 
@@ -9582,14 +9770,20 @@ async def ota_check(request: Request):
     so nothing about our users reaches a third party.
     """
     published, canary, canary_devices = _ota_env()
-    if not published and not canary:
+    android_published = _ota_android_published()
+    if not published and not canary and not android_published:
         return {"message": "Live updates disabled", "error": "disabled"}
     try:
         body = await request.json()
     except Exception:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
     current = str(body.get("version_name") or body.get("version") or "").strip()
-    offer = ota.decide(current, str(body.get("device_id") or ""), published, canary, canary_devices)
+    offer = ota.decide(
+        current, str(body.get("device_id") or ""), published, canary, canary_devices,
+        platform=str(body.get("platform") or ""), android_published=android_published,
+    )
     if offer.version is None:
         return {"message": offer.reason}
     version = offer.version
@@ -9619,7 +9813,7 @@ def ota_bundle(version: str):
     than whatever happens to be on disk now."""
     from fastapi.responses import Response
     published, canary, _ = _ota_env()
-    if version not in ota.servable_versions(published, canary):
+    if version not in ota.servable_versions(published, canary, _ota_android_published()):
         raise HTTPException(status_code=404, detail="Unknown bundle version")
     data = _ota_bundle_zip(version)
     if data is None:
@@ -9636,10 +9830,13 @@ def ota_status(requesting_email: str = "", session_user: SessionUser = None):
     """Is OTA on, and what would be served? Founder-only."""
     _require_founder(session_user)
     published, canary, canary_devices = _ota_env()
-    data = _ota_bundle_zip(canary or published)
+    android_published = _ota_android_published()
+    data = _ota_bundle_zip(canary or published or android_published)
     return {
-        "enabled": bool(published or canary),
+        "enabled": bool(published or canary or android_published),
         "published_version": published or None,
+        # Empty = Android is offered nothing (ota.py explains why).
+        "android_published_version": android_published or None,
         # While set, only canary_devices are offered anything (ota.py).
         "canary_version": canary or None,
         "canary_devices": len(canary_devices),
@@ -9859,22 +10056,44 @@ def fetch_google_userinfo(access_token: str) -> Optional[dict]:
 
 
 class GoogleSignInBody(BaseModel):
-    access_token: str
+    # Exactly one of the two. access_token: web (GSI) and iOS (PKCE).
+    # id_token: Android, from Credential Manager (google_id_token.py).
+    access_token: str = ""
+    id_token: str = ""
     device: str = ""
+
+
+def verify_google_id_token(id_token: str) -> Optional[dict]:
+    """Claims of a verified Google ID token, or None when it fails any
+    check. Module-level so tests can replace it, like fetch_google_userinfo."""
+    try:
+        return google_id_token.verify(id_token)
+    except ValueError as exc:
+        log.info(f"Google ID token refused: {exc}")
+        return None
 
 
 @app.post("/auth/google")
 def auth_google_sign_in(body: GoogleSignInBody):
-    """Verify a Google access token with Google and return the profile
-    plus a session token. Same shape as /auth/apple, plus `given_name`
-    (the app greets people by first name)."""
-    token = (body.access_token or "").strip()
-    if not token:
+    """Verify a Google access token (with Google's userinfo) or ID token
+    (signature + aud = our web client) and return the profile plus a
+    session token. Same shape as /auth/apple, plus `given_name` (the app
+    greets people by first name). Both paths key the account on Google's
+    `sub`, so a person who signed in on the web lands on the same row
+    when they sign in on Android."""
+    access_token = (body.access_token or "").strip()
+    id_token = (body.id_token or "").strip()
+    if id_token:
+        info = verify_google_id_token(id_token)
+        verified = bool(info) and google_id_token.email_verified(info)
+    elif access_token:
+        info = fetch_google_userinfo(access_token)
+        verified = bool(info) and bool(info.get("email_verified"))
+    else:
         raise HTTPException(status_code=401, detail="Token inválido")
-    info = fetch_google_userinfo(token)
     if not info or not info.get("sub"):
         raise HTTPException(status_code=401, detail="Token inválido")
-    if not info.get("email_verified"):
+    if not verified:
         raise HTTPException(status_code=401, detail="E-mail do Google não verificado")
 
     google_sub = str(info["sub"])
@@ -9919,17 +10138,6 @@ def auth_logout(authorization: Annotated[str, Header()] = ""):
 # ── Static files + SPA fallback ──
 # Must be registered AFTER all API routes so /events, /health etc. take priority
 
-_ASSET_LINKS = [{
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-        "namespace": "android_app",
-        "package_name": "com.reroot.app",
-        "sha256_cert_fingerprints": [
-            "4F:AA:60:AE:A0:F9:23:1A:B6:B3:19:01:C4:7C:15:48:A2:6F:49:ED:55:BE:42:C0:24:D8:A2:50:7E:B3:0B:75"
-        ]
-    }
-}]
-
 # Rehosted IG event images live on the persistent volume (IMAGES_DIR
 # in image_store.py — defaults to a sibling of DB_PATH so the same
 # Railway volume holds both). Mounted before the SPA fallback so the
@@ -9952,7 +10160,10 @@ if STATIC_DIR.exists():
         """
         from fastapi.responses import JSONResponse
         if path == ".well-known/assetlinks.json":
-            return JSONResponse(content=_ASSET_LINKS)
+            # Same env-driven answer as the explicit route above
+            # (TWA_PACKAGE_NAME / TWA_SHA256_FINGERPRINT), in case this
+            # catch-all ever gets the request first.
+            return JSONResponse(content=asset_links())
         if path in ("apple-app-site-association",
                     ".well-known/apple-app-site-association"):
             return JSONResponse(content=APPLE_APP_SITE_ASSOCIATION)

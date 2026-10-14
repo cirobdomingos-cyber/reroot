@@ -17,7 +17,7 @@ export default function Aue() {
       fontFamily: "'Space Grotesk', sans-serif",
       fontWeight: 700,
       letterSpacing: '-0.04em',
-      textShadow: '0 0 10px rgba(255, 43, 214, 0.6)',
+      textShadow: '0 0 10px rgb(var(--magenta-rgb) / 0.6)',
     }}>
       auê
     </span>

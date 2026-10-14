@@ -5,21 +5,31 @@
 //            with prompt='select_account' so the account picker always shows.
 //            The library is loaded in index.html via <script src="...gsi/client" async>.
 //
-//   NATIVE — Custom OAuth 2.0 + PKCE flow using @capacitor/browser
+//   ANDROID — Google's Credential Manager through @capgo/capacitor-social-login
+//            (the native account sheet). It returns an ID token issued for
+//            our WEB client id (serverClientId), which the backend verifies
+//            (signature, aud, email_verified) in google_id_token.py. The iOS
+//            PKCE flow below cannot work here: the iOS client and its
+//            reversed-client-id redirect are bound to the iOS bundle.
+//
+//   iOS    — Custom OAuth 2.0 + PKCE flow using @capacitor/browser
 //            (SFSafariViewController on iOS) + @capacitor/app deep link
 //            listener. Required because Google blocks embedded webview OAuth
 //            as of 2021 — GSI inside Capacitor's WKWebView silently fails.
 //            We can't use community Google-Auth plugins because they all
 //            require CocoaPods, and this project is Capacitor 8 SPM-only.
 //
-// Both branches end with a Google access token and hand it to
-// profileFromAccessToken, which asks OUR backend (/auth/google) to verify
-// it with Google and open a session. Both end up calling
+// Web and iOS end with a Google access token and hand it to
+// profileFromAccessToken; Android ends with an ID token and hands it to
+// profileFromIdToken. Either way OUR backend (/auth/google) verifies it
+// and opens a session, keyed on the same Google `sub`. All end up calling
 // onSuccess({id, name, givenName, email, picture}) with the same shape, so
 // callers never need to know which platform is active.
 //
 // Build-time env vars:
-//   VITE_GOOGLE_CLIENT_ID — web OAuth client ID (used by GSI on web)
+//   VITE_GOOGLE_CLIENT_ID — web OAuth client ID (used by GSI on web, and
+//                           as the serverClientId on Android; falls back to
+//                           WEB_CLIENT_ID below there)
 //
 // The iOS OAuth client ID and reversed-client-ID redirect URI are hardcoded
 // below — they're non-secret (the URL scheme is already in Info.plist).
@@ -27,6 +37,7 @@
 import { Capacitor } from '@capacitor/core'
 import { API_BASE } from './apiBase'
 import { setSessionToken, clearSessionToken } from './session'
+import { isReloadingForStaleChunk } from './chunkReload'
 
 // iOS OAuth client ID + reversed-client-ID redirect URI. The URL scheme
 // suffix `:/oauth2redirect/google` is what Google's iOS OAuth flow expects.
@@ -35,6 +46,15 @@ const IOS_CLIENT_ID =
   '511485926685-irun1c38rluvso37l9lqhbh03e35gms5.apps.googleusercontent.com'
 const IOS_REDIRECT_URI =
   'com.googleusercontent.apps.511485926685-irun1c38rluvso37l9lqhbh03e35gms5:/oauth2redirect/google'
+
+// The WEB OAuth client. On Android it is the serverClientId: Credential
+// Manager issues the ID token for it, and the backend checks aud against
+// it (GOOGLE_WEB_CLIENT_ID). Non-secret: it ships in every web bundle.
+// The Android OAuth clients (package app.aue + signing SHA-1s) are never
+// named in code; Google matches them by the installed app's certificate.
+const WEB_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '511485926685-9a6hihg5dn4g4qtdgs4c6i2tjscih2m6.apps.googleusercontent.com'
 
 export function isGoogleConfigured() {
   // On native (iOS/Android), config lives in this file (IOS_CLIENT_ID etc.)
@@ -75,17 +95,15 @@ export function parseGoogleCredential(credential) {
 }
 
 /**
- * Turn a Google access token into the app's user shape.
+ * Ask OUR backend to verify a Google token and open a session.
  *
- * The backend goes first: it asks Google who the token belongs to and
- * answers with the profile and a session token, so from here on the API
- * can hold this device to that account. When the backend cannot be
- * reached (the app is offline-first; the catalog still works without
- * it) we fall back to what the client always did — ask Google directly —
- * and sign in without a session. A backend that answers and REFUSES the
- * token is not "unreachable": that is a failed sign-in.
+ * Returns the app's user shape on success, throws when the backend
+ * answers and REFUSES the token (that is a failed sign-in), and returns
+ * null when the backend cannot be reached: the app is offline-first (the
+ * catalog still works without it), so callers then fall back to a
+ * profile without a session, as the client always did.
  */
-export async function profileFromAccessToken(accessToken) {
+async function signInWithBackend(tokenFields) {
   let res = null
   try {
     const controller = new AbortController()
@@ -95,7 +113,7 @@ export async function profileFromAccessToken(accessToken) {
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
       body: JSON.stringify({
-        access_token: accessToken,
+        ...tokenFields,
         device: Capacitor.getPlatform?.() || 'web',
       }),
     })
@@ -120,9 +138,16 @@ export async function profileFromAccessToken(accessToken) {
     try { detail = (await res.json())?.detail || '' } catch { /* not JSON */ }
     throw new Error(detail || `Login recusado (${res.status})`)
   }
+  clearSessionToken()
+  return null
+}
+
+/** Turn a Google access token (web, iOS) into the app's user shape. */
+export async function profileFromAccessToken(accessToken) {
+  const user = await signInWithBackend({ access_token: accessToken })
+  if (user) return user
 
   // Backend unreachable: the pre-session path, no token.
-  clearSessionToken()
   const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
@@ -137,6 +162,17 @@ export async function profileFromAccessToken(accessToken) {
   }
 }
 
+/** Turn a Google ID token (Android) into the app's user shape. Offline,
+ *  the token's own claims stand in for userinfo, without a session, the
+ *  same trade the access-token path makes. */
+export async function profileFromIdToken(idToken) {
+  const user = await signInWithBackend({ id_token: idToken })
+  if (user) return user
+  const claims = parseGoogleCredential(idToken)
+  if (!claims?.id) throw new Error('Token do Google ilegível')
+  return claims
+}
+
 /**
  * Mount a "Continue with Google" button that signs in via the right path
  * for the current platform. Returns a cleanup function (clears any pending
@@ -144,9 +180,52 @@ export async function profileFromAccessToken(accessToken) {
  */
 export function mountGoogleButton(containerRef, onSuccess) {
   const isNative = Capacitor.isNativePlatform?.() ?? false
+  if (isNative && Capacitor.getPlatform?.() === 'android') {
+    return mountAndroidGoogleButton(containerRef, onSuccess)
+  }
   return isNative
     ? mountNativeGoogleButton(containerRef, onSuccess)
     : mountWebGoogleButton(containerRef, onSuccess)
+}
+
+// ── Native (Android) ──────────────────────────────────────
+// Credential Manager shows Google's own account sheet; no browser, no
+// redirect scheme. 'online' mode returns the ID token directly (offline
+// mode would need a server auth code and a modified MainActivity).
+let androidInitialized = null
+
+function mountAndroidGoogleButton(containerRef, onSuccess) {
+  if (!containerRef.current) return () => {}
+
+  renderCustomButton(containerRef.current, async () => {
+    try {
+      onSuccess(await signInWithGoogleAndroid())
+    } catch (err) {
+      if (isReloadingForStaleChunk()) return
+      // Closing the account sheet is a choice, not an error.
+      if (err?.code === 'USER_CANCELLED' || /cancel/i.test(err?.message || '')) return
+      alert(`Login com Google falhou: ${err?.message || err}`)
+    }
+  })
+
+  return () => {}
+}
+
+async function signInWithGoogleAndroid() {
+  const { SocialLogin } = await import('@capgo/capacitor-social-login')
+  if (!androidInitialized) {
+    androidInitialized = SocialLogin.initialize({
+      google: { webClientId: WEB_CLIENT_ID, mode: 'online' },
+    }).catch((err) => {
+      androidInitialized = null // let the next tap try again
+      throw err
+    })
+  }
+  await androidInitialized
+  const res = await SocialLogin.login({ provider: 'google', options: {} })
+  const idToken = res?.result?.idToken
+  if (!idToken) throw new Error('O Google não devolveu o token de login')
+  return profileFromIdToken(idToken)
 }
 
 // ── Native (iOS) ──────────────────────────────────────────
@@ -162,6 +241,7 @@ function mountNativeGoogleButton(containerRef, onSuccess) {
       const user = await signInWithGoogleNative()
       onSuccess(user)
     } catch (err) {
+      if (isReloadingForStaleChunk()) return
       // Show user-visible feedback — there's no console on iOS for non-Mac users.
       const msg = err?.message || String(err)
       alert(`Login com Google falhou: ${msg}`)
@@ -325,7 +405,7 @@ function mountWebGoogleButton(containerRef, onSuccess) {
  * invisibly on it. That exact problem on the Apple button is what
  * Apple Review flagged under Guideline 4, and this button previously
  * had a worse version of it: background was `var(--white)`, which the
- * Neon Boteco theme remaps to #14081E, under #3C4043 text.
+ * Neon Boteco theme remaps to var(--bg2), under #3C4043 text.
  *
  * Replaces the container's children.
  */

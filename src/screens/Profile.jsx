@@ -13,11 +13,12 @@ import { usePushNotifications, isPushSupported } from '../lib/usePushNotificatio
 import Avatar from '../components/Avatar'
 import Aue from '../components/Aue'
 import { apiFetch } from '../lib/session'
+import SkinPicker from '../components/SkinPicker'
 
 const heroPillStyle = {
   padding: '7px 14px', borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.35)',
-  background: 'rgba(255,255,255,0.08)', color: 'white',
+  border: '1px solid rgb(var(--fg-rgb) / 0.35)',
+  background: 'rgb(var(--fg-rgb) / 0.08)', color: 'var(--text)',
   fontSize: 12, fontWeight: 600, cursor: 'pointer',
 }
 
@@ -102,8 +103,8 @@ export default function Profile() {
           card on Home, the event hero in Detail). */}
       <div style={{
         background:
-          'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%),' +
-          ' radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%),' +
+          'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%),' +
+          ' radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%),' +
           ' var(--bg2)',
         borderBottom: '1px solid var(--line)',
         padding: '20px 24px 28px', textAlign: 'center', color: 'var(--text)',
@@ -136,7 +137,7 @@ export default function Profile() {
               style={{
                 position: 'absolute', right: -2, bottom: -2,
                 width: 30, height: 30, borderRadius: '50%',
-                background: 'var(--cyan)', color: '#14081E',
+                background: 'var(--cyan)', color: 'var(--on-lime)',
                 border: '2px solid var(--bg2)', fontSize: 14,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', padding: 0,
@@ -166,8 +167,8 @@ export default function Profile() {
               autoFocus maxLength={30}
               placeholder="Seu nome"
               style={{
-                fontSize: 18, fontWeight: 700, color: 'white',
-                background: 'rgba(255,255,255,0.12)',
+                fontSize: 18, fontWeight: 700, color: 'var(--text)',
+                background: 'rgb(var(--fg-rgb) / 0.12)',
                 border: '1.5px solid var(--cyan)',
                 borderRadius: 10, padding: '6px 12px',
                 outline: 'none', textAlign: 'center', width: 180,
@@ -177,7 +178,7 @@ export default function Profile() {
               onClick={saveName}
               style={{
                 padding: '8px 12px', borderRadius: 10, border: 'none',
-                background: 'var(--cyan)', color: '#14081E',
+                background: 'var(--cyan)', color: 'var(--on-lime)',
                 fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}
             >Salvar</button>
@@ -210,7 +211,7 @@ export default function Profile() {
                       dispatch({ type: 'SET_CUSTOM_PICTURE', payload: '' })
                     }
                   }}
-                  style={{ ...heroPillStyle, borderColor: 'transparent', color: 'rgba(255,255,255,0.55)' }}
+                  style={{ ...heroPillStyle, borderColor: 'transparent', color: 'rgb(var(--fg-rgb) / 0.55)' }}
                 >
                   remover foto
                 </button>
@@ -221,7 +222,7 @@ export default function Profile() {
 
         {state.googleUser?.email && (
           <div style={{
-            fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2,
+            fontSize: 11, color: 'rgb(var(--fg-rgb) / 0.4)', marginTop: 2,
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
             {state.googleUser.email}
@@ -234,18 +235,18 @@ export default function Profile() {
               }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: 'rgba(255,255,255,0.55)', fontSize: 11, padding: 0,
+                color: 'rgb(var(--fg-rgb) / 0.55)', fontSize: 11, padding: 0,
                 textDecoration: 'underline',
               }}
             >
               sair
             </button>
-            <span style={{ color: 'rgba(255,255,255,0.25)' }}>·</span>
+            <span style={{ color: 'rgb(var(--fg-rgb) / 0.25)' }}>·</span>
             <button
               onClick={openDeleteConfirm}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: 'rgba(255,255,255,0.55)', fontSize: 11, padding: 0,
+                color: 'rgb(var(--fg-rgb) / 0.55)', fontSize: 11, padding: 0,
                 textDecoration: 'underline',
               }}
             >
@@ -308,6 +309,9 @@ export default function Profile() {
           ))}
         </div>
       </div>
+
+      {/* Skin picker */}
+      <SkinPicker t={t} lang={state.language ?? 'pt'} />
 
       {/* Accessibility mode toggle */}
       <div style={{ margin: '0 16px 12px' }} className="card">
@@ -580,7 +584,7 @@ function NotificationsCard({ t, state, dispatch }) {
             style={{
               fontSize: 12, fontWeight: 700,
               padding: '10px 14px', borderRadius: 10, border: 'none',
-              background: 'var(--sage)', color: '#14081E',
+              background: 'var(--sage)', color: 'var(--on-lime)',
               cursor: 'pointer', opacity: loading ? 0.6 : 1, flexShrink: 0,
             }}
           >
@@ -745,7 +749,7 @@ function FeedbackSection({ state }) {
               disabled={text.trim().length < 5 || submitting}
               style={{
                 padding: '8px 16px', borderRadius: 10, border: 'none',
-                background: 'var(--sage)', color: '#14081E',
+                background: 'var(--sage)', color: 'var(--on-lime)',
                 fontSize: 12, fontWeight: 700,
                 cursor: text.trim().length < 5 || submitting ? 'not-allowed' : 'pointer',
                 opacity: text.trim().length < 5 || submitting ? 0.5 : 1,
@@ -918,10 +922,10 @@ function ShareInstallSection() {
           style={{
             width: '100%', padding: '11px 14px',
             border: 'none', borderRadius: 12,
-            background: 'radial-gradient(circle at 20% 20%, rgba(255, 43, 214, 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgba(0, 229, 255, 0.30) 0%, transparent 55%), var(--bg2)',
+            background: 'radial-gradient(circle at 20% 20%, rgb(var(--magenta-rgb) / 0.35) 0%, transparent 55%), radial-gradient(circle at 80% 80%, rgb(var(--cyan-rgb) / 0.30) 0%, transparent 55%), var(--hero-bg)',
             color: 'white', fontWeight: 700, fontSize: 13,
             cursor: 'pointer', fontFamily: 'inherit',
-            boxShadow: '0 4px 14px rgba(255, 43, 214, 0.25)',
+            boxShadow: '0 4px 14px rgb(var(--magenta-rgb) / 0.25)',
           }}
         >
           Compartilhar com amigos

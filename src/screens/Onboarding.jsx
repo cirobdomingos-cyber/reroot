@@ -77,7 +77,7 @@ function LangToggle({ language, dispatch }) {
             cursor: 'pointer', border: 'none', transition: 'all 0.15s',
             // Selected pill was `background: white` + `color: var(--charcoal)`.
             // The Neon Boteco rebrand remapped --charcoal to var(--text)
-            // (#F4ECFF, near-white), so the selected language rendered
+            // (var(--text), near-white), so the selected language rendered
             // white-on-white — invisible. Both sides come from tokens now,
             // so a future palette change can't invert them again.
             background: language === lang ? 'var(--text)' : 'transparent',
@@ -326,9 +326,9 @@ function PushPrimerStep({ dispatch, onDone }) {
           disabled={loading}
           style={{
             width: '100%', padding: '14px 16px', borderRadius: 12, border: 'none',
-            background: 'var(--lime)', color: '#14081E',
+            background: 'var(--lime)', color: 'var(--on-lime)',
             fontSize: 15, fontWeight: 700, cursor: 'pointer',
-            boxShadow: '0 0 18px rgba(198, 255, 0, 0.35)',
+            boxShadow: '0 0 18px rgb(var(--lime-rgb) / 0.35)',
             opacity: loading ? 0.6 : 1, marginBottom: 10,
           }}
         >

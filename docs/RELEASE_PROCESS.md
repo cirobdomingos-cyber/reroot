@@ -71,6 +71,12 @@ immutable on the device, so never set a version before step 5 passes.
 4. **Promote:** set `OTA_BUNDLE_VERSION=<same version>` and delete
    `OTA_CANARY_VERSION`. **Abort:** just delete `OTA_CANARY_VERSION`.
 
+These variables reach **iPhones only**: Android is offered just
+`OTA_ANDROID_BUNDLE_VERSION` (empty by default, so nothing), see
+[ANDROID_RELEASE.md](ANDROID_RELEASE.md) section 7.
+
+Android store builds (Google Play, `android-v*` tags): see [ANDROID_RELEASE.md](ANDROID_RELEASE.md).
+
 ## Sessões (`REQUIRE_SESSION`)
 
 Desde set/2026 o login abre uma sessão no servidor e o app manda o token em
@@ -89,7 +95,7 @@ exigência é uma flag, não código:
    Rotas de fundador/curadoria nunca dependeram da flag: só a sessão vale.
 
    Variável na Railway: pelo dashboard, ou pela API GraphQL com o token de
-   projeto em `C:\repo\.env` (`RAILWAY_TOKEN`, só produção) — `variableUpsert`
+   projeto em `<workspace>\.env` (`RAILWAY_TOKEN`, só produção) — `variableUpsert`
    e em seguida `serviceInstanceRedeploy`. A variável só chega ao container
    num redeploy; mudar o valor sem redeploy não altera nada em produção.
 

@@ -468,7 +468,7 @@ function SuggestAccountForm({ googleId }) {
         disabled={submitting || !handle.trim()}
         style={{
           width: '100%', marginTop: 10, padding: '11px',
-          background: 'var(--cyan)', color: '#14081E',
+          background: 'var(--cyan)', color: 'var(--on-lime)',
           border: 'none', borderRadius: 12,
           fontSize: 13, fontWeight: 700,
           cursor: submitting ? 'wait' : 'pointer',
@@ -502,7 +502,7 @@ function CategoryChip({ label, count, active, onClick }) {
         transition: 'all 0.15s',
         border: active ? 'none' : '1px solid var(--border)',
         background: active ? 'var(--magenta)' : 'transparent',
-        color: active ? 'white' : 'var(--charcoal-light)',
+        color: active ? 'var(--on-magenta)' : 'var(--charcoal-light)',
         whiteSpace: 'nowrap',
       }}
     >
@@ -612,7 +612,7 @@ function SourceRow({ source: s, onOpen, following = true, onToggleFollow = null 
               fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
               border: following ? '1px solid var(--border)' : '1px solid var(--cyan)',
               background: following ? 'transparent' : 'var(--cyan)',
-              color: following ? 'var(--charcoal-light)' : '#14081E',
+              color: following ? 'var(--charcoal-light)' : 'var(--bg2)',
             }}
           >
             {following ? 'Seguindo' : 'Seguir'}

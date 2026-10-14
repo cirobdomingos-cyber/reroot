@@ -14,7 +14,7 @@ Why round 3 now:
   honestly — this round generates fresh Curitiba locals.
 
 Run:
-    cd c:/repo/reroot
+    cd <workspace>/reroot
     py -3.12 scripts/generate_synthetic_round3.py
     # ANTHROPIC_API_KEY is read from backend/.env
 

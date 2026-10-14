@@ -164,7 +164,7 @@ export default function FriendDetail() {
             style={{
               marginTop: 14, width: '100%',
               padding: '12px', borderRadius: 12,
-              background: 'var(--terra)', color: 'white',
+              background: 'var(--terra)', color: 'var(--on-magenta)',
               border: 'none', fontSize: 14, fontWeight: 700,
               cursor: busy ? 'wait' : 'pointer',
               opacity: busy ? 0.7 : 1,
@@ -190,7 +190,7 @@ export default function FriendDetail() {
               disabled={busy}
               style={{
                 flex: 1, padding: '12px', borderRadius: 12,
-                background: 'var(--terra)', color: 'white',
+                background: 'var(--terra)', color: 'var(--on-magenta)',
                 border: 'none', fontSize: 14, fontWeight: 700,
                 cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1,
               }}

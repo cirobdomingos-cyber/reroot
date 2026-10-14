@@ -28,6 +28,11 @@ __pycache__/
 # Signing keys — NEVER commit
 *.keystore
 android.keystore
+*.jks
+keystore.properties
+# Android build outputs and Firebase config (CI writes it from a secret)
+*.aab
+google-services.json
 # VAPID / Web Push keys — generated locally, set in Railway env vars only
 *.pem
 
@@ -51,3 +56,6 @@ playwright-report/
 # scratch files from local debugging
 b.tmp
 *.tmp
+
+# Instagram carousel renders (scripts/social): review locally, never commit
+social/out/

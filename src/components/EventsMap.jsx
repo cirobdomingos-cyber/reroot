@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { nearestEvents, formatDistance } from '../lib/nearby'
 
 // Leaflet caches the container size, so a map whose box changed keeps
 // drawing at the old dimensions (grey bands, pins in the wrong place)
@@ -88,19 +89,19 @@ function userIcon() {
   return L.divIcon({
     className: 'aue-user-pin',
     html: `<style>${userLocationCss}</style>
-      <div style="position:relative;width:20px;height:20px">
+      <div style="position:relative;width:24px;height:24px">
         <div style="
           position:absolute;inset:0;border-radius:50%;
           background:#3B82F6;animation:aue-pulse 1.6s ease-out infinite;
         "></div>
         <div style="
-          position:absolute;inset:0;width:20px;height:20px;
-          background:#3B82F6;border:3px solid white;border-radius:50%;
-          box-shadow:0 1px 4px rgba(0,0,0,0.4);
+          position:absolute;inset:0;width:24px;height:24px;
+          background:#3B82F6;border:4px solid white;border-radius:50%;
+          box-shadow:0 1px 6px rgba(0,0,0,0.5);
         "></div>
       </div>`,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   })
 }
 
@@ -120,6 +121,22 @@ function FitToMarkers({ points }) {
   return null
 }
 
+// When "Perto de mim" resolves, centre on the person at neighbourhood
+// zoom instead of fitting every pin: one out-of-town event used to pull
+// the frame out to the whole metro area and bury the blue dot.
+function FlyToUser({ pos }) {
+  const map = useMap()
+  useEffect(() => {
+    if (pos) map.flyTo(pos, USER_ZOOM, { duration: 0.6 })
+  }, [pos, map])
+  return null
+}
+const USER_ZOOM = 14
+
+// The map shares the screen with the list of what is nearby, so it stops
+// at this share of the viewport instead of running to the tab bar.
+const MAP_MAX_VH = 0.45
+
 export default function EventsMap({ events, onPinTap }) {
   // The map used to be calc(100vh - 220px) — a guess at how much sat
   // above it. With the filter rows open that guess was ~100px short, so
@@ -137,7 +154,8 @@ export default function EventsMap({ events, onPinTap }) {
       const top = el.getBoundingClientRect().top
       const vh = window.visualViewport?.height || window.innerHeight
       // BOTTOM_NAV + the wrapper's own bottom margin.
-      setMapHeight(Math.max(260, Math.round(vh - top - 72 - 12)))
+      const available = vh - top - 72 - 12
+      setMapHeight(Math.max(260, Math.round(Math.min(available, vh * MAP_MAX_VH))))
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -181,27 +199,39 @@ export default function EventsMap({ events, onPinTap }) {
   // never ship coords anywhere; pin is local-only.
   const [userPos, setUserPos] = useState(null)
   const [geoError, setGeoError] = useState(null)
+  const [locating, setLocating] = useState(false)
   function requestLocation() {
     if (!navigator.geolocation) {
-      setGeoError('Seu navegador não suporta geolocalização')
+      setGeoError('Seu aparelho não deixa o app ver a localização.')
       return
     }
     setGeoError(null)
+    setLocating(true)
     navigator.geolocation.getCurrentPosition(
-      (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
-      (err) => setGeoError(err?.message || 'Não consegui pegar sua localização'),
+      (pos) => {
+        setLocating(false)
+        // A new array each time, so tapping again re-centres (FlyToUser).
+        setUserPos([pos.coords.latitude, pos.coords.longitude])
+      },
+      (err) => {
+        setLocating(false)
+        setGeoError(err?.code === 1
+          ? 'Localização bloqueada. Libere nos ajustes do aparelho para ver o que rola perto de você.'
+          : 'Não consegui achar sua localização. Tenta de novo.')
+      },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
     )
   }
 
-  // FitToMarkers gets every pin position PLUS the user when present, so
-  // "fit bounds" zooms out to include both you and the catalog.
-  const fitPoints = useMemo(
-    () => [...clusters.map(c => [c.lat, c.lng]), ...(userPos ? [userPos] : [])],
-    [clusters, userPos],
+  // Pins only: the person is framed by FlyToUser, not by fitting bounds.
+  const fitPoints = useMemo(() => clusters.map(c => [c.lat, c.lng]), [clusters])
+  const nearby = useMemo(
+    () => (userPos ? nearestEvents(pinned, userPos, 5) : []),
+    [pinned, userPos],
   )
 
   return (
+    <>
     <div ref={wrapRef} style={{
       position: 'relative',
       height: mapHeight,
@@ -221,6 +251,7 @@ export default function EventsMap({ events, onPinTap }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <FitToMarkers points={fitPoints} />
+        <FlyToUser pos={userPos} />
         <InvalidateOnResize height={mapHeight} />
         {clusters.map(c => {
           const single = c.events.length === 1
@@ -292,7 +323,7 @@ export default function EventsMap({ events, onPinTap }) {
           )
         })}
         {userPos && (
-          <Marker position={userPos} icon={userIcon()}>
+          <Marker position={userPos} icon={userIcon()} zIndexOffset={1000}>
             <Popup>
               <div style={{ fontSize: 12, fontWeight: 700 }}>📍 Você está aqui</div>
             </Popup>
@@ -300,27 +331,33 @@ export default function EventsMap({ events, onPinTap }) {
         )}
       </MapContainer>
 
-      {/* "Onde estou" button — hovers the bottom-right of the map, asks
-          for geolocation on tap. Single-press flow; if denied, we surface
-          the error inline so the user knows what happened. */}
+      {/* "Perto de mim": a labelled pill in the primary colour at the top
+          right, where the eye already is. It used to be a 📍 on a dark
+          circle in the bottom corner, the same colour as the pins. */}
       <button
+        data-testid="map-locate"
         onClick={requestLocation}
-        title="Mostrar minha localização"
+        disabled={locating}
+        aria-label="Mostrar eventos perto de mim"
         style={{
-          position: 'absolute', bottom: 16, right: 16,
-          width: 44, height: 44, borderRadius: '50%',
-          background: 'var(--white)', border: 'none',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-          fontSize: 18, cursor: 'pointer', zIndex: 500,
+          position: 'absolute', top: 12, right: 12,
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '9px 14px', borderRadius: 999,
+          background: 'var(--magenta)', color: 'var(--on-magenta)',
+          border: 'none', boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+          fontSize: 13, fontWeight: 700, cursor: locating ? 'wait' : 'pointer',
+          zIndex: 500,
         }}
       >
-        📍
+        <span aria-hidden="true">◎</span>
+        {locating ? 'Localizando…' : userPos ? 'Recentralizar' : 'Perto de mim'}
       </button>
       {geoError && (
-        <div style={{
-          position: 'absolute', bottom: 70, right: 16, left: 16,
-          padding: '8px 12px', background: '#FFEBEE', color: '#B71C1C',
-          borderRadius: 8, fontSize: 11, zIndex: 500,
+        <div role="alert" style={{
+          position: 'absolute', top: 60, right: 12, left: 12,
+          padding: '10px 12px', background: 'var(--bg2)', color: 'var(--text)',
+          border: '1px solid var(--hot)', borderRadius: 10, fontSize: 12,
+          zIndex: 500,
         }}>
           {geoError}
         </div>
@@ -340,5 +377,54 @@ export default function EventsMap({ events, onPinTap }) {
         </div>
       )}
     </div>
+
+    {/* What is closest, once we know where you are. The map answers
+        "where", this answers "what can I get to" without hunting pins. */}
+    {!userPos && !locating && pinned.length > 0 && (
+      <div style={{ margin: '0 16px 16px', fontSize: 12, color: 'var(--text2)', textAlign: 'center' }}>
+        Toque em <b style={{ color: 'var(--magenta)' }}>◎ Perto de mim</b> para ver o que rola mais perto de você.
+      </div>
+    )}
+    {nearby.length > 0 && (
+      <div data-testid="map-nearby" style={{ margin: '0 16px 16px' }}>
+        <div className="neon-mono" style={{
+          fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+          color: 'var(--text2)', marginBottom: 8,
+        }}>
+          Mais perto de você
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {nearby.map(({ event: ev, km }) => (
+            <button
+              key={ev.id}
+              onClick={() => onPinTap?.(ev)}
+              className="card"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                padding: '10px 12px', cursor: 'pointer', width: '100%',
+              }}
+            >
+              <span style={{ fontSize: 18 }} aria-hidden="true">{ev.categoryEmoji || ev.icon || '📍'}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{
+                  display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>{ev.name}</span>
+                <span style={{
+                  display: 'block', fontSize: 11, color: 'var(--text2)', marginTop: 2,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {ev.venue}{ev.time ? ` · ${ev.time}` : ''}
+                </span>
+              </span>
+              <span className="neon-mono" style={{ fontSize: 12, fontWeight: 700, color: 'var(--cyan)', flexShrink: 0 }}>
+                {formatDistance(km)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
+    </>
   )
 }

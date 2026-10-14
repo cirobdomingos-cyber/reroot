@@ -306,7 +306,7 @@ export default function MyRsvps({ embedded = false }) {
             onClick={() => navigate('/events')}
             style={{
               padding: '12px 24px', borderRadius: 12, border: 'none',
-              background: 'var(--sage)', color: '#14081E',
+              background: 'var(--sage)', color: 'var(--on-lime)',
               fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}
           >

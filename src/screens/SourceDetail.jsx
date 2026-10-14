@@ -52,7 +52,7 @@ export default function SourceDetail() {
           onClick={goBack}
           style={{
             padding: '10px 22px', borderRadius: 12, border: 'none',
-            background: 'var(--sage)', color: '#14081E',
+            background: 'var(--sage)', color: 'var(--on-lime)',
             fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}
         >

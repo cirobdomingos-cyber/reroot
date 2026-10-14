@@ -274,7 +274,7 @@ export default function EditCatalogEventSheet({ open, onClose: onCloseProp, even
                 style={{
                   flex: 1.4, padding: '12px', borderRadius: 12,
                   background: 'var(--terra)', border: 'none',
-                  color: 'white', fontSize: 14, fontWeight: 700,
+                  color: 'var(--on-magenta)', fontSize: 14, fontWeight: 700,
                   cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1,
                 }}
               >

@@ -59,7 +59,7 @@ export default function Avatar({ src, name, size = 42, bordered = false, expanda
     // the ui-avatars fallback below so the swap doesn't flash to a
     // different color mid-load.
     background: 'var(--magenta)',
-    border: bordered ? '3px solid rgba(255, 43, 214, 0.3)' : undefined,
+    border: bordered ? '3px solid rgb(var(--magenta-rgb) / 0.3)' : undefined,
   }
 
   if (primarySrc && !failed) {

@@ -94,7 +94,7 @@ The pivot dropped wellness framing but the visual still has some carry-over:
 
 ## 7. Deliverables
 
-Produce the same handoff structure that worked for [`c:/repo/aura`](../../aura/) (a sister project we briefed you on previously). Specifically:
+Produce the same handoff structure that worked for [`<workspace>/aura`](../../aura/) (a sister project we briefed you on previously). Specifically:
 
 ### Brand
 1. **Wordmark / logotype** for "auê" (lowercase is non-negotiable — it's the brand) — primary, stacked, monogram (single glyph) variants

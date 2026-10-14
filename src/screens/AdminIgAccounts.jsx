@@ -1373,7 +1373,7 @@ const inputStyle = {
 
 const primaryBtn = (disabled) => ({
   padding: '8px 16px', borderRadius: 8, border: 'none',
-  background: 'var(--sage)', color: '#14081E', fontWeight: 700,
+  background: 'var(--sage)', color: 'var(--on-lime)', fontWeight: 700,
   cursor: disabled ? 'not-allowed' : 'pointer', fontSize: 13,
   opacity: disabled ? 0.5 : 1,
 })

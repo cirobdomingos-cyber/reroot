@@ -22,9 +22,9 @@ function _dayLabels(iso) {
 }
 
 const _ACCENT_GLOW = {
-  'var(--cyan)':    'rgba(0, 229, 255, 0.7)',
-  'var(--magenta)': 'rgba(255, 43, 214, 0.7)',
-  'var(--lime)':    'rgba(198, 255, 0, 0.7)',
+  'var(--cyan)':    'rgb(var(--cyan-rgb) / 0.7)',
+  'var(--magenta)': 'rgb(var(--magenta-rgb) / 0.7)',
+  'var(--lime)':    'rgb(var(--lime-rgb) / 0.7)',
 }
 
 export default function HomeEventRow({

@@ -55,15 +55,15 @@ function PushBannerInner({ state, dispatch }) {
     <div style={{
       margin: '12px 18px 0',
       padding: '10px 12px',
-      background: 'rgba(198, 255, 0, 0.06)',
-      border: '1px solid rgba(198, 255, 0, 0.35)',
+      background: 'rgb(var(--lime-rgb) / 0.06)',
+      border: '1px solid rgb(var(--lime-rgb) / 0.35)',
       borderRadius: 12,
       display: 'flex', alignItems: 'center', gap: 10,
     }}>
       <span style={{
         fontSize: 16, lineHeight: 1, flexShrink: 0,
         color: 'var(--lime)',
-        filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+        filter: 'drop-shadow(0 0 4px rgb(var(--lime-rgb) / 0.5))',
       }}>🔔</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="neon-mono" style={{
@@ -94,7 +94,7 @@ function PushBannerInner({ state, dispatch }) {
         style={{
           flexShrink: 0,
           padding: '6px 10px', borderRadius: 8,
-          background: 'var(--lime)', color: '#14081E',
+          background: 'var(--lime)', color: 'var(--on-lime)',
           border: 'none',
           fontSize: 10, fontWeight: 700, letterSpacing: '0.18em',
           textTransform: 'uppercase', cursor: 'pointer',

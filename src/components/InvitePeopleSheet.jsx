@@ -226,7 +226,7 @@ export default function InvitePeopleSheet({
                 style={{
                   flex: 2, padding: '12px 14px', borderRadius: 12,
                   border: 'none',
-                  background: 'var(--terra)', color: 'white',
+                  background: 'var(--terra)', color: 'var(--on-magenta)',
                   fontSize: 13, fontWeight: 700,
                   cursor: submitting ? 'wait' : 'pointer',
                   opacity: (submitting || selected.size === 0) ? 0.55 : 1,

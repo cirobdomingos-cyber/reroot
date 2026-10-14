@@ -33,6 +33,7 @@ import httpx
 from anthropic import AsyncAnthropic
 from models import RawEvent
 
+import cancellations
 import database as db
 
 
@@ -350,6 +351,7 @@ async def fetch_events(
     apify_token: str,
     posts_per_account: int = 5,
     handles: Optional[list[str]] = None,
+    cancel_out: Optional[list] = None,
 ) -> list[RawEvent]:
     """
     Run the Apify Instagram scraper for every enabled tracked account
@@ -366,6 +368,10 @@ async def fetch_events(
          differs from what we have stored. New handles get a full scrape.
 
     Never raises — failures degrade gracefully to an empty list.
+
+    `cancel_out`: cancellation posts found in this batch are appended to it
+    for the caller to apply AFTER saving the events
+    (cancellations.apply_pending). Without it they are not applied.
     """
     if not apify_token:
         log.warning("Instagram (Apify): APIFY_API_TOKEN não configurado — pulando")
@@ -618,10 +624,14 @@ async def fetch_events(
     # concurrent manual scrape can't clobber it.
     failed_shortcodes: set[str] = set()
 
+    # cancel_out only when a caller collects cancellations, so the
+    # extractor's long-standing call shape is unchanged otherwise.
+    extra = {"cancel_out": cancel_out} if cancel_out is not None else {}
+
     async def _bounded_extract(post):
         async with sem:
             return await _extract_events(
-                client, post, today_str, failed_out=failed_shortcodes
+                client, post, today_str, failed_out=failed_shortcodes, **extra
             )
 
     results = await asyncio.gather(
@@ -893,6 +903,7 @@ async def _extract_events(
     today_str: str,
     failed_out: Optional[set] = None,
     debug_out: Optional[dict] = None,
+    cancel_out: Optional[list] = None,
 ) -> list[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
@@ -932,7 +943,11 @@ async def _extract_events(
     likes = post.get("likesCount") or 0
     shortcode = _extract_shortcode(post_url) or post.get("id", "")
 
-    prompt = EXTRACTION_PROMPT.format(
+    # Cancellation pre-filter: only a caption with cancellation words gets
+    # the extra prompt section (and the `cancels` answer field), so an
+    # ordinary announcement costs exactly what it did before.
+    maybe_cancel = cancellations.looks_like_cancellation(caption)
+    prompt = (EXTRACTION_PROMPT + (cancellations.PROMPT_ADDENDUM if maybe_cancel else "")).format(
         today=today_str,
         handle=handle,
         post_date=post_date,
@@ -1010,7 +1025,34 @@ async def _extract_events(
             log.warning(f"IG Claude error for @{handle}/{shortcode}: {e}")
         return []
 
-    if not data.get("is_event", False):
+    # A later post calling off a night this venue announced earlier: mark
+    # that catalog row cancelled (or move its date). Runs before the
+    # is_event gate — a cancellation notice is usually "not an event".
+    #
+    # Not applied here: the scrape collects it (`cancel_out`) and applies
+    # it after the batch's events are saved, because the announcement it
+    # cancels may be in this same batch (cancellations.apply_pending).
+    # The admin debugger gets a dry run; a caller passing neither (the
+    # user-submission extractor) never touches the catalog.
+    # The model ran, so its `cancels` answer is the only verdict.
+    llm_cancels = data.get("cancels") if isinstance(data, dict) else None
+    if maybe_cancel and isinstance(data, dict):
+        pending = dict(
+            handle=handle, caption=caption, post_url=post_url, post_date=post_date,
+            shortcode=shortcode, llm_cancels=llm_cancels, llm_ran=True,
+        )
+        if debug_out is not None:
+            try:
+                debug_out["cancellations"] = cancellations.apply(dry_run=True, db=db, **pending)
+            except Exception as e:
+                log.warning(f"IG: cancellation dry run failed for @{handle}/{shortcode}: {e}")
+        elif cancel_out is not None:
+            cancel_out.append(pending)
+    cancelled_name = ""
+    if isinstance(llm_cancels, dict) and llm_cancels.get("is_cancellation"):
+        cancelled_name = str(llm_cancels.get("event_name") or "")
+
+    if not isinstance(data, dict) or not data.get("is_event", False):
         if debug_out is not None:
             debug_out.setdefault("drops", []).append({
                 "name": "—",
@@ -1038,6 +1080,10 @@ async def _extract_events(
             drops=None if debug_out is None else debug_out.setdefault("drops", []),
         )
         if ev is not None:
+            # The night this post just cancelled or moved must not come
+            # back as a fresh row under the cancellation post's own id.
+            if cancelled_name and cancellations._name_similarity(ev.name, cancelled_name) >= 0.5:
+                continue
             out.append(ev)
 
     # Stable ids across runs: the earliest event keeps the post's own id,

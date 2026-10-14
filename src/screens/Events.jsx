@@ -6,11 +6,11 @@ import { unfollowedSet, hiddenByFollows } from '../lib/follows'
 import { eventCardVariant } from '../lib/cardVariant'
 import { useT } from '../i18n'
 import { CATEGORY_META, CATEGORY_ORDER, INST_CATEGORY } from '../data/categories'
-import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
+import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, fetchUserGroupEvents, fetchSources, deletePersonalPlan, deleteGroupEvent, deleteCatalogEvent, uploadEventImage, deleteEventImage, requestEventInvite, fetchChannelFeed, BASE_URL } from '../services/api'
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
-import { getAnchorToday, getAnchorTodayIso } from '../lib/dateAnchor'
+import { getAnchorTodayIso, cityNowWallTs, cityTodayStartWallTs, wallTs, eventEndWallTs, eventCoversDay, isOngoing } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
 import { createPortal } from 'react-dom'
 import { compressImageForUpload } from '../lib/image-compress'
@@ -86,36 +86,6 @@ function getPersonalChip(ev, rsvps) {
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
-// True when `dayIso` (YYYY-MM-DD) falls within an event's coverage:
-//   - One-off: strict equality on dateStart's day.
-//   - Range:   dateStart ≤ dayIso ≤ dateEnd (inclusive both ends).
-//   - Recurring: dayIso's weekday matches one of recurrenceDays
-//     (ISO 1=Mon..7=Sun) AND dayIso isn't before the next occurrence.
-//
-// Used by both the per-day pick filter and the week-strip count so a
-// "Quinta, sexta e sábado" residency shows up on each Thu/Fri/Sat in
-// view, not just the next single occurrence the backend computed.
-function eventCoversDay(ev, dayIso) {
-  if (!dayIso) return false
-  // Recurring branch — week-strip should highlight every covered weekday
-  // from today onward, not just the rolled-forward "next occurrence".
-  if (ev.isRecurring && Array.isArray(ev.recurrenceDays) && ev.recurrenceDays.length) {
-    const d = new Date(`${dayIso}T00:00:00Z`)
-    if (Number.isNaN(d.getTime())) return false
-    // JS getUTCDay: 0=Sun..6=Sat. Convert to ISO 1=Mon..7=Sun.
-    const isoDow = ((d.getUTCDay() + 6) % 7) + 1
-    if (!ev.recurrenceDays.includes(isoDow)) return false
-    // Hide past days even for recurring — we don't want Saturday to
-    // light up before the user's "today" gets there. 6am-anchored so
-    // late-night sessions stay surfaced until morning.
-    return dayIso >= getAnchorTodayIso()
-  }
-  const start = (ev.dateStart || '').slice(0, 10)
-  if (!start) return false
-  const end = (ev.dateEnd || '').slice(0, 10) || start
-  return dayIso >= start && dayIso <= end
-}
-
 // True when the event's [dateStart..dateEnd] interval overlaps with the
 // time window [startTs, endTs). Used by the date-range pills (Hoje, Fim
 // de semana, Próx 7d) so a multi-day festival surfaces in every range
@@ -124,9 +94,13 @@ function eventCoversDay(ev, dayIso) {
 function eventOverlapsRange(ev, startTs, endTs) {
   if (ev.isRecurring) return true
   if (!ev.dateStart) return false
-  const evStart = Date.parse(ev.dateStart)
+  const evStart = wallTs(ev.dateStart)
   if (Number.isNaN(evStart)) return false
-  const evEnd = ev.dateEnd ? Date.parse(ev.dateEnd) : evStart
+  // Still running right now and the range holds "now": last night's
+  // show is part of "Hoje" until it ends.
+  const nowTs = cityNowWallTs()
+  if (startTs <= nowTs && nowTs < endTs && isOngoing(ev)) return true
+  const evEnd = ev.dateEnd ? eventEndWallTs(ev) : evStart
   const evEndSafe = Number.isNaN(evEnd) || evEnd < evStart ? evStart : evEnd
   return evStart < endTs && evEndSafe >= startTs
 }
@@ -199,6 +173,9 @@ export default function Events() {
   const [searchQuery, setSearchQuery]       = useState('')
   const [searchOpen, setSearchOpen]         = useState(false)
   const [notifToast, setNotifToast]         = useState(null)
+  // Short status line after a founder action (catalog delete). Separate
+  // from notifToast, which is worded for an RSVP confirmation.
+  const [adminToast, setAdminToast]         = useState(null)
   const [kidsFilter, setKidsFilter]         = useState(false)
   // "Só únicos" — hide recurring residencies and multi-day ranges from
   // the list and the per-day pick filter. Default OFF so the catalog
@@ -530,6 +507,33 @@ export default function Events() {
     setDetailEvent(null)
   }
 
+  function showAdminToast(text) {
+    setAdminToast(text)
+    setTimeout(() => setAdminToast(null), 3000)
+  }
+
+  // Founder removes a catalog event for everyone (DELETE /admin/events/:id,
+  // founder-only server-side). On success the row leaves the loaded list,
+  // so the catalog updates without a reload, and the drawer closes.
+  async function handleFounderDelete(ev) {
+    if (!confirm(t.event_admin_delete_confirm)) return
+    try {
+      await deleteCatalogEvent(ev.id)
+    } catch (e) {
+      const msg = e?.status === 403 ? t.event_admin_delete_forbidden
+        : e?.status === 404 ? t.event_admin_delete_gone
+        : !e?.status ? t.event_admin_delete_offline
+        : `${t.event_admin_delete_failed}: ${e.message}`
+      alert(msg)
+      // 404 means it is already gone: drop it locally all the same.
+      if (e?.status !== 404) return
+    }
+    trackEvent('catalog_event_deleted', { event_id: ev.id })
+    setEvents(prev => (prev || []).filter(e => e.id !== ev.id))
+    closeDetail()
+    showAdminToast(t.event_admin_delete_done)
+  }
+
   // Esc-to-close lives in EventDetailDrawer now — shared with ChannelDetail.
 
   function handleCategoryChange(id) {
@@ -575,7 +579,9 @@ export default function Events() {
   // "Tributo Bowie SEX" recurring event with dateStart pinned to the
   // next Friday would render as "DOM 03" today but sort by Friday,
   // landing in the middle of the Friday block.
-  const sortFloor = getAnchorToday().getTime()
+  // Wall-clock ms on both sides (lib/dateAnchor): Date.parse would
+  // shift the feed's "+00:00" wall-clock strings by the device offset.
+  const sortFloor = cityTodayStartWallTs()
   const todayIsoForSort = getAnchorTodayIso()
 
   // Which day of a run the reader is looking at.
@@ -598,7 +604,7 @@ export default function Events() {
     return eventCoversDay(ev, todayIso) ? todayIso : null
   }
   function effectiveStartTs(ev) {
-    const raw = ev.dateStart ? Date.parse(ev.dateStart) : NaN
+    const raw = wallTs(ev.dateStart)
     if (Number.isNaN(raw)) return Number.MAX_SAFE_INTEGER
     const isMultiDay = !!(ev.dateEnd && ev.dateStart && ev.dateEnd.slice(0, 10) > ev.dateStart.slice(0, 10))
     if ((ev.isRecurring || isMultiDay) && eventCoversDay(ev, todayIsoForSort)) {
@@ -684,31 +690,27 @@ export default function Events() {
   // range filter — they're evergreen by definition and the next
   // occurrence is always rolled forward upstream.
   if (dateRange !== 'all') {
-    const startOfToday = getAnchorToday()
-    let rangeEnd  // Date — events strictly before this survive
+    // Day arithmetic in wall-clock ms (lib/dateAnchor), so the range
+    // lines up with the feed's Curitiba wall-clock strings.
+    const DAY = 86_400_000
+    const startTs = cityTodayStartWallTs()
+    let endTs = null  // events strictly before this survive
     if (dateRange === 'today') {
-      rangeEnd = new Date(startOfToday)
-      rangeEnd.setDate(rangeEnd.getDate() + 1)
+      endTs = startTs + DAY
     } else if (dateRange === 'weekend') {
       // Sat 00:00 → Mon 00:00 of the upcoming weekend (or this one if
       // today is already Sat/Sun).
-      const dow = startOfToday.getDay()  // 0=Sun … 6=Sat
+      const dow = new Date(startTs).getUTCDay()  // 0=Sun … 6=Sat
       const daysUntilSat = (6 - dow + 7) % 7
-      const sat = new Date(startOfToday)
-      sat.setDate(sat.getDate() + daysUntilSat)
-      const monAfter = new Date(sat)
-      monAfter.setDate(monAfter.getDate() + 2)
+      const sat = startTs + daysUntilSat * DAY
+      const monAfter = sat + 2 * DAY
       filteredEvents = filteredEvents.filter(ev =>
-        eventOverlapsRange(ev, sat.getTime(), monAfter.getTime())
+        eventOverlapsRange(ev, sat, monAfter)
       )
-      rangeEnd = null  // already filtered above
     } else if (dateRange === 'week') {
-      rangeEnd = new Date(startOfToday)
-      rangeEnd.setDate(rangeEnd.getDate() + 7)
+      endTs = startTs + 7 * DAY
     }
-    if (rangeEnd) {
-      const endTs = rangeEnd.getTime()
-      const startTs = startOfToday.getTime()
+    if (endTs) {
       filteredEvents = filteredEvents.filter(ev =>
         eventOverlapsRange(ev, startTs, endTs)
       )
@@ -1070,7 +1072,7 @@ export default function Events() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 15, cursor: 'pointer', transition: 'all 0.15s',
                 color: searchOpen ? 'var(--bg)' : 'var(--text2)',
-                boxShadow: searchOpen ? '0 0 12px rgba(255, 43, 214, 0.4)' : 'none',
+                boxShadow: searchOpen ? '0 0 12px rgb(var(--magenta-rgb) / 0.4)' : 'none',
               }}
             >🔍</button>
           </div>
@@ -1125,15 +1127,15 @@ export default function Events() {
           <div style={{
             margin: '0 16px 8px',
             padding: '10px 12px',
-            background: 'rgba(198, 255, 0, 0.06)',
-            border: '1px solid rgba(198, 255, 0, 0.35)',
+            background: 'rgb(var(--lime-rgb) / 0.06)',
+            border: '1px solid rgb(var(--lime-rgb) / 0.35)',
             borderRadius: 12,
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <span style={{
               fontSize: 14, lineHeight: 1, flexShrink: 0,
               color: 'var(--lime)',
-              filter: 'drop-shadow(0 0 4px rgba(198, 255, 0, 0.5))',
+              filter: 'drop-shadow(0 0 4px rgb(var(--lime-rgb) / 0.5))',
             }}>✨</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="neon-mono" style={{
@@ -1234,7 +1236,7 @@ export default function Events() {
                       transition: 'all 0.15s',
                       border: active ? 'none' : '1px solid var(--border)',
                       background: active ? 'var(--magenta)' : 'transparent',
-                      color: active ? '#14081E' : 'var(--text2)',
+                      color: active ? 'var(--on-lime)' : 'var(--text2)',
                     }}
                   >
                     {chip.emoji} {chip.label}{chip.count > 0 ? ` · ${chip.count}` : ''}
@@ -1286,7 +1288,7 @@ export default function Events() {
                     border: 'none', cursor: 'pointer',
                     fontSize: 12, fontWeight: 600,
                     background: active ? 'var(--terra)' : 'transparent',
-                    color: active ? '#14081E' : 'var(--text2)',
+                    color: active ? 'var(--on-lime)' : 'var(--text2)',
                     transition: 'all 0.15s',
                   }}
                 >
@@ -1322,7 +1324,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: venueSubFilter === sub.id ? 'none' : '1px solid var(--border)',
                 background: venueSubFilter === sub.id ? 'var(--terra)' : 'transparent',
-                color: venueSubFilter === sub.id ? '#14081E' : 'var(--text2)',
+                color: venueSubFilter === sub.id ? 'var(--on-lime)' : 'var(--text2)',
               }}
             >
               {sub.label}
@@ -1400,7 +1402,7 @@ export default function Events() {
                 transition: 'all 0.15s',
                 border: isAllActive ? 'none' : '1px solid var(--border)',
                 background: isAllActive ? 'var(--sage)' : 'transparent',
-                color: isAllActive ? '#14081E' : 'var(--text2)',
+                color: isAllActive ? 'var(--on-lime)' : 'var(--text2)',
               }}
             >
               {t.filter_all_prices}
@@ -1419,7 +1421,7 @@ export default function Events() {
             fontSize: 11, fontWeight: 600, flexShrink: 0, cursor: 'pointer',
             transition: 'all 0.15s',
             border: oneOffOnly ? 'none' : '1px solid var(--border)',
-            background: oneOffOnly ? '#7E57C2' : 'transparent',
+            background: oneOffOnly ? 'var(--from-catalog)' : 'transparent',
             color: oneOffOnly ? '#FFFFFF' : 'var(--text2)',
           }}
         >
@@ -1437,7 +1439,7 @@ export default function Events() {
             // terra orange.
             border: kidsFilter ? 'none' : '1px solid var(--border)',
             background: kidsFilter ? '#EC407A' : 'transparent',
-            color: kidsFilter ? '#14081E' : 'var(--text2)',
+            color: kidsFilter ? 'var(--on-lime)' : 'var(--text2)',
           }}
         >
           👶 {t.filter_kids_welcome}
@@ -1482,7 +1484,7 @@ export default function Events() {
                   transition: 'all 0.15s',
                   border: active ? 'none' : '1px solid var(--border)',
                   background: active ? 'var(--terra)' : 'transparent',
-                  color: active ? '#14081E' : 'var(--text2)',
+                  color: active ? 'var(--on-lime)' : 'var(--text2)',
                 }}
               >
                 {label}
@@ -1560,7 +1562,7 @@ export default function Events() {
                   onClick={() => { setSearchQuery(''); setSearchOpen(false) }}
                   style={{
                     marginTop: 18, padding: '8px 20px', borderRadius: 12,
-                    background: 'var(--terra)', color: 'white',
+                    background: 'var(--terra)', color: 'var(--on-magenta)',
                     fontSize: 13, fontWeight: 600, cursor: 'pointer', border: 'none',
                   }}
                 >
@@ -1618,8 +1620,27 @@ export default function Events() {
             <span style={{ fontSize: 18 }}>🔔</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700 }}>✓ Confirmado</div>
-              <div style={{ fontSize: 11, color: 'rgba(10, 5, 16, 0.65)', marginTop: 1 }}>{notifToast}</div>
+              <div style={{ fontSize: 11, color: 'rgb(var(--bg-rgb) / 0.65)', marginTop: 1 }}>{notifToast}</div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {adminToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.2 }}
+            role="status"
+            style={{
+              position: 'absolute', bottom: 16, left: 16, right: 16, zIndex: 100,
+              background: 'var(--charcoal)', color: 'var(--on-light)',
+              borderRadius: 14, padding: '12px 16px',
+              fontSize: 12, fontWeight: 700,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            }}
+          >
+            ✓ {adminToast}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1665,7 +1686,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: '#14081E',
+                    background: 'var(--sage)', color: 'var(--on-lime)',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     marginTop: 12,
                   }}
@@ -1692,7 +1713,7 @@ export default function Events() {
                     onClick={() => openDetail(detailEvent.id)}
                     style={{
                       padding: '10px 22px', borderRadius: 12, border: 'none',
-                      background: 'var(--terra)', color: 'white',
+                      background: 'var(--terra)', color: 'var(--on-magenta)',
                       fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}
                   >
@@ -1724,7 +1745,7 @@ export default function Events() {
                   onClick={closeDetail}
                   style={{
                     padding: '10px 22px', borderRadius: 12, border: 'none',
-                    background: 'var(--sage)', color: '#14081E',
+                    background: 'var(--sage)', color: 'var(--on-lime)',
                     fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   }}
                 >
@@ -1775,7 +1796,12 @@ export default function Events() {
                   // group. Group admins still have the full Excluir flow
                   // inside a channel; this button is the catalog-side
                   // shortcut for the same action.
-                  hostsEvent(detailEvent)
+                  // The founder gets a third case: removing a CATALOG
+                  // event for everyone (founder-only endpoint, so it is
+                  // gated on isFounder, not isCurator).
+                  (isFounder && !detailEvent.isGroupEvent)
+                    ? () => handleFounderDelete(detailEvent)
+                    : hostsEvent(detailEvent)
                     ? async () => {
                         if (!confirm(`Apagar o plano "${detailEvent.name}"? Os convidados também perdem acesso.`)) return
                         try {
@@ -1807,6 +1833,11 @@ export default function Events() {
                         }
                       }
                     : null
+                }
+                deleteLabel={
+                  (isFounder && !detailEvent.isGroupEvent)
+                    ? t.event_admin_delete_btn
+                    : undefined
                 }
                 canInvite={
                   // Creator OR co-host, and only on private events.
@@ -2435,7 +2466,7 @@ function RequestInviteButton({ eventId, googleId, canRequest, initialStatus }) {
         disabled={submitting}
         style={{
           padding: '10px 22px', borderRadius: 12, border: 'none',
-          background: 'var(--terra)', color: 'white',
+          background: 'var(--terra)', color: 'var(--on-magenta)',
           fontSize: 13, fontWeight: 700,
           cursor: submitting ? 'wait' : 'pointer',
           opacity: submitting ? 0.7 : 1,

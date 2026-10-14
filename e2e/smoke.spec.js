@@ -157,3 +157,28 @@ test('the landing copy does not stack sign-in prompts', async ({ page }) => {
   const prompts = await page.getByText(/Entr[ae] com/i).count()
   expect(prompts).toBeLessThanOrEqual(1)
 })
+
+// The day strip opens on today in Curitiba, including after midnight.
+// 2026-10-14 03:20 BRT once opened on Tuesday 13 (a 06:00 rollover in
+// device-local time). Runs with the device in UTC on purpose: at 23:00
+// BRT the UTC date is already tomorrow.
+for (const { label, instant } of [
+  { label: '03:00 BRT', instant: '2026-10-14T06:00:00Z' },
+  { label: '23:00 BRT', instant: '2026-10-15T02:00:00Z' },
+]) {
+  test.describe(`day strip at ${label}`, () => {
+    test.use({ timezoneId: 'UTC', locale: 'pt-BR' })
+    test('opens on Wednesday 14', async ({ page, baseURL }) => {
+      await page.clock.setFixedTime(new Date(instant))
+      await page.goto(baseURL)
+      await page.evaluate(() =>
+        localStorage.setItem('aue_state', JSON.stringify({ hasJoined: true })))
+      await page.goto('/#/events')
+      const today = page.locator('button[aria-current="date"]')
+      await expect(today).toHaveCount(1)
+      await expect(today).toHaveAttribute('data-day', '2026-10-14')
+      await expect(today).toContainText('Qua')
+      await expect(page.locator('button[data-day="2026-10-13"]')).toHaveCount(0)
+    })
+  })
+}
