@@ -56,3 +56,6 @@ playwright-report/
 # scratch files from local debugging
 b.tmp
 *.tmp
+
+# Instagram carousel renders (scripts/social): review locally, never commit
+social/out/
