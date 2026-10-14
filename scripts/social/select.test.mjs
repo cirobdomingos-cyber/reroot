@@ -194,6 +194,8 @@ test('drops rows whose own pitch says they are outside Curitiba', () => {
 
 test('pitch line never carries a price', () => {
   assert.equal(pitchLine({ pitch: 'Show com ingresso a R$ 30 na porta', vibeSummary: 'Show de rock no Changes' }), 'Show de rock no Changes')
+  assert.equal(pitchLine({ pitch: 'Bora porque rola rock ao vivo', vibeSummary: '' }), '') // the old "Bora porque" line is gone from the app
+  assert.equal(pitchLine({ pitch: 'Três shows seguidos no Dizzy', vibeSummary: 'Show com R$ 10 de entrada' }), 'Três shows seguidos no Dizzy')
   assert.equal(pitchLine({ pitch: 'Entrada free até 22h e drinks', vibeSummary: 'Tudo por R$ 20' }), '')
   assert.equal(pitchLine({ pitch: 'Corrida gratuita de 5km', vibeSummary: 'Corrida de rua de 5 e 10km' }), 'Corrida de rua de 5 e 10km') // no 'free' claims either
 })

@@ -52,6 +52,7 @@ export function whenLabel(event, from, to) {
 // No price and no "free" on the posts (Ciro, 2026-10-14): the feed's price is
 // often a guess from a flyer, it changes, and a wrong "de graça" costs trust.
 // The caption sends people to the venue's profile for the ticket.
+const SALES_OPENER = /^(bora|vai|bom|vale)\b[^.]*\bporque\b|^bora\b/i
 const MENTIONS_PRICE = /R\$\s*\d|\d+\s*reais|gr[aá]tis|gratuit|de gra[cç]a|\bfree\b|ingresso|entrada franca/i
 
 /**
@@ -60,8 +61,11 @@ const MENTIONS_PRICE = /R\$\s*\d|\d+\s*reais|gr[aá]tis|gratuit|de gra[cç]a|\bf
  * `min` characters, otherwise at a word with an ellipsis. Never adds words.
  */
 export function pitchLine(event, max = 110, min = 40) {
-  // First of pitch / vibeSummary that names no price; neither -> no line.
-  const pick = [event.pitch, event.vibeSummary].map((t) => (t || '').trim()).find((t) => t && !MENTIONS_PRICE.test(t))
+  // The descriptive vibeSummary first ("Show de rock no Changes"); the pitch
+  // only when it is not the old "Bora porque..." line, which the app no
+  // longer shows. Neither usable (or both name a price) -> no line.
+  const pick = [event.vibeSummary, event.pitch].map((t) => (t || '').trim())
+    .find((t) => t && !MENTIONS_PRICE.test(t) && !SALES_OPENER.test(t))
   const raw = (pick || '').replace(/\s+/g, ' ')
   if (!raw) return ''
   const clean = (s) => s.replace(/[\s,;:—–-]+$/, '')
