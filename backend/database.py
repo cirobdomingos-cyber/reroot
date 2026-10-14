@@ -28,6 +28,10 @@ _db_env = os.environ.get("DB_PATH", "").strip()
 DB_PATH = Path(_db_env) if _db_env else (Path(__file__).parent / "reroot_events.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+# Catalog ids a venue cancelled (cancellations.py). RSVP readers exclude
+# them so no one sees "vou" or gets a push for a night that won't happen.
+_CANCELLED_IDS = "(SELECT id FROM events WHERE cancelled_at IS NOT NULL)"
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -85,7 +89,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS event_cancellations (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id        TEXT NOT NULL,
-                kind            TEXT NOT NULL,      -- 'cancelled' | 'postponed'
+                kind            TEXT NOT NULL,      -- 'cancelled' | 'postponed' | 'postponed_no_date'
                 source_url      TEXT NOT NULL DEFAULT '',
                 ig_handle       TEXT NOT NULL DEFAULT '',
                 caption         TEXT NOT NULL DEFAULT '',
@@ -1607,8 +1611,10 @@ def rsvps_as_state_map(google_id: str) -> dict:
         return {}
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT event_id, event_name, event_venue, event_date
-                 FROM rsvps WHERE google_id = ?""",
+            # A cancelled night is not a "vou" (cancellations.py).
+            f"""SELECT event_id, event_name, event_venue, event_date
+                 FROM rsvps WHERE google_id = ?
+                  AND event_id NOT IN {_CANCELLED_IDS}""",
             (google_id,),
         ).fetchall()
     return {
@@ -3856,7 +3862,8 @@ def list_cancel_candidates(handle: str, start_iso: str, end_iso: str) -> list[di
                       json_extract(payload, '$.name')       AS name,
                       json_extract(payload, '$.date_start') AS date_start,
                       json_extract(payload, '$.date_end')   AS date_end,
-                      json_extract(payload, '$.url')        AS url
+                      json_extract(payload, '$.url')        AS url,
+                      json_extract(payload, '$.venue_name') AS venue_name
                  FROM events
                 WHERE source = 'instagram'
                   AND cancelled_at IS NULL
@@ -3907,7 +3914,8 @@ def cancellation_logged_for(source_url: str) -> bool:
 
 
 def cancel_event(event_id: str, *, source_url: str, ig_handle: str = "",
-                 caption: str = "", score: float = 0, detector: str = "") -> bool:
+                 caption: str = "", score: float = 0, detector: str = "",
+                 kind: str = "cancelled") -> bool:
     """Hide a catalog event as cancelled. False when the id is unknown or
     already cancelled (idempotent: a re-read of the same post is a no-op)."""
     now = datetime.now(timezone.utc).isoformat()
@@ -3919,7 +3927,7 @@ def cancel_event(event_id: str, *, source_url: str, ig_handle: str = "",
         )
         if cur.rowcount == 0:
             return False
-        _log_cancellation(conn, event_id=event_id, kind="cancelled",
+        _log_cancellation(conn, event_id=event_id, kind=kind,
                           source_url=source_url, ig_handle=ig_handle,
                           caption=caption, score=score, detector=detector)
         conn.commit()
@@ -4224,7 +4232,8 @@ def get_rsvps_for_user(google_id: str) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT event_id, event_name, event_venue, event_date, event_url, created_at "
-            "FROM rsvps WHERE google_id = ? ORDER BY event_date ASC",
+            f"FROM rsvps WHERE google_id = ? AND event_id NOT IN {_CANCELLED_IDS} "
+            "ORDER BY event_date ASC",
             (google_id,),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -4238,7 +4247,8 @@ def get_rsvps_for_users(google_ids: list[str]) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
             f"SELECT google_id, event_id, event_name, event_venue, event_date, event_url, created_at "
-            f"FROM rsvps WHERE google_id IN ({placeholders}) ORDER BY event_date ASC",
+            f"FROM rsvps WHERE google_id IN ({placeholders}) "
+            f"AND event_id NOT IN {_CANCELLED_IDS} ORDER BY event_date ASC",
             google_ids,
         ).fetchall()
     return [dict(r) for r in rows]
@@ -4327,7 +4337,9 @@ def get_event_rsvp_ids(event_id: str) -> list[str]:
     """
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT google_id FROM rsvps WHERE event_id = ?", (event_id,),
+            # Nobody is notified about, or counted for, a cancelled night.
+            f"SELECT google_id FROM rsvps WHERE event_id = ? "
+            f"AND event_id NOT IN {_CANCELLED_IDS}", (event_id,),
         ).fetchall()
     return [r["google_id"] for r in rows]
 
@@ -6593,7 +6605,7 @@ def get_rsvps_for_day(day_iso: str) -> list[dict]:
             "SELECT google_id, event_id, event_name, event_venue, event_date "
             "FROM rsvps WHERE substr(event_date, 1, 10) = ? "
             # No "amanhã!" for a night the venue called off.
-            "AND event_id NOT IN (SELECT id FROM events WHERE cancelled_at IS NOT NULL)",
+            f"AND event_id NOT IN {_CANCELLED_IDS}",
             (day_iso,),
         ).fetchall()
     return [dict(r) for r in rows]
