@@ -2387,7 +2387,14 @@ def get_event(event_id: str, google_id: str = "", session_user: SessionUser = No
     # Catalog events first.
     ev = db.get_event_by_id(event_id)
     if ev:
-        return _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
+        out = _to_frontend(ev, detail=True, venue_coords=db.get_venue_coords_map())
+        # A cancelled night still opens (RSVPs and shared links point at
+        # it) but says so; every list already leaves it out.
+        state = db.get_event_cancel_state(event_id) or {}
+        if state.get("cancelled_at"):
+            out["cancelledAt"] = state["cancelled_at"]
+            out["cancelSourceUrl"] = state.get("cancel_source_url") or ""
+        return out
 
     # Fallback: private events (ids start with "grp_ev_"). After the May
     # 2026 model unification, every private event — group-tagged or not
@@ -7226,6 +7233,29 @@ def _price_tier_for(price_min: float) -> str:
     if price_min <= 150:
         return "medium"
     return "high"
+
+
+@app.get("/admin/cancellations")
+def admin_list_cancellations(days: int = 14, session_user: SessionUser = None):
+    """Cancellations and postponements the scrape detected from venues'
+    own later posts (cancellations.py), newest first. Founder-only: a
+    detection hides an event from everyone, so whoever can see the list
+    is the one who can undo a wrong match."""
+    _require_founder(session_user)
+    days = max(1, min(int(days or 14), 90))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return {"days": days, "cancellations": db.list_event_cancellations(since)}
+
+
+@app.post("/admin/events/{event_id}/uncancel")
+def admin_uncancel_event(event_id: str, session_user: SessionUser = None):
+    """Undo the latest detected cancellation (the event is listed again)
+    or postponement (the event returns to its old date)."""
+    email = _require_founder(session_user)
+    undone = db.undo_cancellation(event_id, undone_by=email)
+    if undone is None:
+        raise HTTPException(status_code=404, detail="Nenhum cancelamento para desfazer")
+    return {"ok": True, "event_id": event_id, "kind": undone["kind"]}
 
 
 @app.patch("/admin/events/{event_id}")
