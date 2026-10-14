@@ -67,14 +67,14 @@ function baseCss(fontCss) {
   `
 }
 
-function page(fontCss, body, extraCss = '') {
+export function page(fontCss, body, extraCss = '') {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><style>${baseCss(fontCss)}${extraCss}</style></head><body>${body}</body></html>`
 }
 
 // A title dash stays at the end of its line ("Renato Russo –" / "O Musical").
 const keepDashWithWord = (s) => s.replace(/ ([–—-]) /g, '\u00A0$1 ')
 
-const top = (right) => `<div class="top"><div class="mark">auê<span class="spark"></span></div><div class="meta">${esc(right)}</div></div>`
+export const top = (right) => `<div class="top"><div class="mark">auê<span class="spark"></span></div><div class="meta">${esc(right)}</div></div>`
 
 export function coverSlide({ fontCss, from, to, picks }) {
   const t = TOKENS
@@ -150,7 +150,7 @@ export function eventSlide({ fontCss, pick, index, total, from, to, image }) {
   </div>`, css)
 }
 
-export function closingSlide({ fontCss, from, to, icon }) {
+export function closingSlide({ fontCss, from, to, icon, footRight }) {
   const t = TOKENS
   const css = `
   .hero { flex: 1; display: flex; flex-direction: column; justify-content: center; }
@@ -181,11 +181,11 @@ export function closingSlide({ fontCss, from, to, icon }) {
       <div class="store">${icon ? `<img src="${icon}" alt="">` : '<div class="glyph">📱</div>'}<div><div class="a">iPhone</div><div class="b">já na App Store</div></div></div>
       <div class="store"><div class="glyph">🤖</div><div><div class="a">Android</div><div class="b">beta: entra antes de todo mundo</div></div></div>
     </div>
-    <div class="foot"><b>@auecuritiba</b><span>${esc(windowLabel(from, to))}</span></div>
+    <div class="foot"><b>@auecuritiba</b><span>${esc(footRight ?? windowLabel(from, to))}</span></div>
   </div>`, css)
 }
 
-export function contactSheet({ fontCss, slides, from, to }) {
+export function contactSheet({ fontCss, slides, from, to, title = 'Rola esse fim de semana', subtitle }) {
   const t = TOKENS
   const cols = 3
   const w = 330, h = Math.round((w * HEIGHT) / WIDTH)
@@ -203,6 +203,6 @@ export function contactSheet({ fontCss, slides, from, to }) {
   .cell div { height: 44px; padding-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 18px; color: ${t.text3}; }
   `
   const cells = slides.map((s) => `<div class="cell"><img src="${s.src}"><div>${esc(s.label)}</div></div>`).join('')
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${fontCss}*{margin:0;padding:0;box-sizing:border-box}${css}</style></head><body><div class="sheet"><div class="head">Rola esse fim de semana<span>${esc(windowLabel(from, to))} · ${slides.length} slides · revisar antes de postar</span></div><div class="grid">${cells}</div></div></body></html>`
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${fontCss}*{margin:0;padding:0;box-sizing:border-box}${css}</style></head><body><div class="sheet"><div class="head">${esc(title)}<span>${esc(subtitle ?? windowLabel(from, to))} · ${slides.length} slides · revisar antes de postar</span></div><div class="grid">${cells}</div></div></body></html>`
   return { html, width: sheetW, height: sheetH }
 }
