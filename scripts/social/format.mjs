@@ -93,8 +93,11 @@ export const venueLine = (event) => {
   return venue ? `${venue} · ${bairro}` : bairro
 }
 
-export const CTA_ANDROID = 'Tem Android? Testa o auê antes de todo mundo — link na bio'
-export const CTA_IPHONE = 'No iPhone: auê na App Store'
+// Both stores, iPhone first: the App Store app is live for everyone; Android
+// is the closed beta. One link in the bio (/install) serves both.
+export const CTA_DOWNLOAD = '📲 Baixa o auê de graça — link na bio'
+export const CTA_IPHONE = 'iPhone: já na App Store'
+export const CTA_ANDROID = 'Android: entra no beta antes de todo mundo'
 export const HASHTAGS = ['#curitiba', '#agendacuritiba', '#oquefazeremcuritiba', '#curitibacultural', '#fimdesemanacuritiba']
 
 /** Instagram caption. One line per pick so every venue handle is tagged. */
@@ -117,8 +120,8 @@ export function buildCaption(picks, from, to) {
     '',
     'Horário e ingresso podem mudar: confere no perfil de cada lugar antes de sair.',
     '',
-    CTA_ANDROID,
-    `${CTA_IPHONE}.`,
+    CTA_DOWNLOAD,
+    `${CTA_IPHONE} · ${CTA_ANDROID}`,
     '',
     HASHTAGS.slice(0, 5).join(' '),
   ]

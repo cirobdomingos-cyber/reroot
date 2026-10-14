@@ -8,7 +8,7 @@
 // Flyer rights: every slide is our own layout. A venue's flyer appears only
 // as a small thumbnail next to its "@handle" credit, never as the slide.
 
-import { pitchLine, priceLabel, venueLine, whenLabel, windowLabel, shortDay, timeLabel, CTA_IPHONE } from './format.mjs'
+import { pitchLine, priceLabel, venueLine, whenLabel, windowLabel, shortDay, timeLabel } from './format.mjs'
 
 export const WIDTH = 1080
 export const HEIGHT = 1350
@@ -164,22 +164,27 @@ export function closingSlide({ fontCss, from, to, icon }) {
   h2 em { font-style: normal; color: ${t.magenta}; text-shadow: 0 0 26px rgba(255, 43, 214, 0.55); }
   .sub { margin-top: 30px; font-size: 36px; line-height: 1.35; color: ${t.text2}; max-width: 860px; }
   .cta { margin-top: 52px; }
-  .ios { margin-top: auto; display: flex; align-items: center; gap: 30px; padding: 28px; border: 2px solid ${t.line}; border-radius: 28px; background: rgba(10,5,16,0.55); }
-  .ios img { width: 112px; height: 112px; border-radius: 26px; }
-  .ios .a { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 42px; }
-  .ios .b { margin-top: 6px; font-size: 28px; color: ${t.text3}; }
+  .stores { margin-top: auto; display: flex; flex-direction: column; gap: 22px; }
+  .store { display: flex; align-items: center; gap: 30px; padding: 28px; border: 2px solid ${t.line}; border-radius: 28px; background: rgba(10,5,16,0.55); }
+  .store img, .store .glyph { width: 104px; height: 104px; border-radius: 24px; flex: none; }
+  .store .glyph { display: grid; place-items: center; font-size: 60px; background: rgba(255,255,255,0.06); }
+  .store .a { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 42px; }
+  .store .b { margin-top: 6px; font-size: 28px; color: ${t.text3}; }
   .foot { margin-top: 40px; }
   `
   return page(fontCss, `<div class="slide">
-    ${top('beta android')}
+    ${top('baixa o app')}
     <div class="hero">
       <div class="kicker">o app da agenda de Curitiba</div>
-      <h1>Tem Android?</h1>
-      <h2>Testa o <em>auê</em> antes de todo mundo</h2>
-      <div class="sub">Todos os rolês da cidade num lugar só, com a galera junto.</div>
+      <h1>Baixa o <em>auê</em></h1>
+      <h2>Todos os rolês da cidade num lugar só</h2>
+      <div class="sub">Com a galera junto. De graça, atualizado todo dia.</div>
       <div class="cta"><span class="pill lime">link na bio</span></div>
     </div>
-    <div class="ios">${icon ? `<img src="${icon}" alt="">` : ''}<div><div class="a">${esc(CTA_IPHONE)}</div><div class="b">já disponível</div></div></div>
+    <div class="stores">
+      <div class="store">${icon ? `<img src="${icon}" alt="">` : '<div class="glyph">📱</div>'}<div><div class="a">iPhone</div><div class="b">já na App Store</div></div></div>
+      <div class="store"><div class="glyph">🤖</div><div><div class="a">Android</div><div class="b">beta: entra antes de todo mundo</div></div></div>
+    </div>
     <div class="foot"><b>@auecuritiba</b><span>${esc(windowLabel(from, to))}</span></div>
   </div>`, css)
 }
