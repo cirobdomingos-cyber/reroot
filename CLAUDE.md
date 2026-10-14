@@ -64,8 +64,7 @@ These are real but not urgent — flag in PRs, don't auto-fix unless the task is
 
 1. **`is_low_pressure` rename** — semantically it's "is_intimate" now (small + conversational format). Field name kept for backward compat across ~12 files; rename touches model, db payload, frontend, prompts.
 2. **Reroot-era voice in seed events** — the 12 auê Originals in [backend/seed_events.py](backend/seed_events.py) still have copy like "primeira saída", "voltando a socializar". Should be rewritten in auê voice.
-3. **Hardcoded `_ASSET_LINKS` block** in [backend/main.py](backend/main.py) (~line 2630) — old hardcoded fingerprint with `com.reroot.app` package, now superseded by the env-driven endpoint at the top of the file. Dead code.
-4. **Inline "Reroot" references in code comments** — many scrapers and module docstrings still mention Reroot. Cosmetic.
+3. **Inline "Reroot" references in code comments** — many scrapers and module docstrings still mention Reroot. Cosmetic.
 
 ## Conventions worth knowing
 

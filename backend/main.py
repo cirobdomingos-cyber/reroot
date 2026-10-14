@@ -9919,17 +9919,6 @@ def auth_logout(authorization: Annotated[str, Header()] = ""):
 # ── Static files + SPA fallback ──
 # Must be registered AFTER all API routes so /events, /health etc. take priority
 
-_ASSET_LINKS = [{
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-        "namespace": "android_app",
-        "package_name": "com.reroot.app",
-        "sha256_cert_fingerprints": [
-            "4F:AA:60:AE:A0:F9:23:1A:B6:B3:19:01:C4:7C:15:48:A2:6F:49:ED:55:BE:42:C0:24:D8:A2:50:7E:B3:0B:75"
-        ]
-    }
-}]
-
 # Rehosted IG event images live on the persistent volume (IMAGES_DIR
 # in image_store.py — defaults to a sibling of DB_PATH so the same
 # Railway volume holds both). Mounted before the SPA fallback so the
@@ -9952,7 +9941,10 @@ if STATIC_DIR.exists():
         """
         from fastapi.responses import JSONResponse
         if path == ".well-known/assetlinks.json":
-            return JSONResponse(content=_ASSET_LINKS)
+            # Same env-driven answer as the explicit route above
+            # (TWA_PACKAGE_NAME / TWA_SHA256_FINGERPRINT), in case this
+            # catch-all ever gets the request first.
+            return JSONResponse(content=asset_links())
         if path in ("apple-app-site-association",
                     ".well-known/apple-app-site-association"):
             return JSONResponse(content=APPLE_APP_SITE_ASSOCIATION)
