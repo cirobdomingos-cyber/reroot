@@ -66,7 +66,9 @@ export function pitchLine(event, max = 110, min = 40) {
   // longer shows. Neither usable (or both name a price) -> no line.
   const pick = [event.vibeSummary, event.pitch].map((t) => (t || '').trim())
     .find((t) => t && !MENTIONS_PRICE.test(t) && !SALES_OPENER.test(t))
-  const raw = (pick || '').replace(/\s+/g, ' ')
+  // Attendance is the app's live counter, not a description ("auditório de
+  // 648 lugares confirmados"): drop any clause that talks about it.
+  const raw = (pick || '').replace(/\s+/g, ' ').split(/,\s+/).filter((c, i) => i === 0 || !/confirmad/i.test(c)).join(', ')
   if (!raw) return ''
   const clean = (s) => s.replace(/[\s,;:—–-]+$/, '')
   if (raw.length <= max) return clean(raw)

@@ -199,3 +199,8 @@ test('pitch line never carries a price', () => {
   assert.equal(pitchLine({ pitch: 'Entrada free até 22h e drinks', vibeSummary: 'Tudo por R$ 20' }), '')
   assert.equal(pitchLine({ pitch: 'Corrida gratuita de 5km', vibeSummary: 'Corrida de rua de 5 e 10km' }), 'Corrida de rua de 5 e 10km') // no 'free' claims either
 })
+
+test('pitch line drops the attendance clause', () => {
+  assert.equal(pitchLine({ vibeSummary: 'Show de João Bosco no Teatro Guaíra, auditório de 648 lugares confirmados' }), 'Show de João Bosco no Teatro Guaíra')
+  assert.equal(pitchLine({ vibeSummary: 'Show de rock no Bar Crossroads, público confirmado e animado' }), 'Show de rock no Bar Crossroads')
+})
