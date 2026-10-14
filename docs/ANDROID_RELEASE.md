@@ -90,6 +90,21 @@ Android App Links. The Capacitor app needs neither: leave
 `TWA_SHA256_FINGERPRINT` empty unless a TWA ships, then set it to the Play
 app-signing SHA-256.
 
+## 6. Closed-test testers via `/install`
+
+`auecuritiba.com/install` (the Instagram bio link) recruits the 12 closed-test
+testers. Railway env vars, read in this order for Android: set
+`PLAY_BETA_GROUP_URL` (the Google Group join link the closed test uses) while
+the closed test runs, and `/install` serves a three-step page (join the group,
+accept the test at `PLAY_BETA_OPTIN_URL`, install from the Play listing), with
+an "Abre no Chrome" step first for Instagram/WhatsApp/TikTok webviews, where
+Google sign-in is blocked. `PLAY_BETA_OPTIN_URL` defaults to
+`https://play.google.com/apps/testing/app.aue`; change it only if the package
+changes. Set `PLAY_STORE_URL` once the app is public on Play: `/install` then
+302s Android straight to the listing and the beta page is skipped. With none
+set, the old `PLAY_STORE_INTERNAL_URL` redirect (if set) or the PWA walkthrough
+applies, as before.
+
 ## Going public
 
 While the app has never been released to production, Play only accepts

@@ -110,6 +110,17 @@ class Settings(BaseSettings):
     # /install to the beta instead of the store's current build.
     testflight_invite_url: str = ""  # https://testflight.apple.com/join/XXXXXX
     play_store_internal_url: str = ""  # https://play.google.com/apps/internaltest/...
+    # Google Play closed test (a new personal Play account needs 12 opted-in
+    # testers for 14 days before production). Testers come from a Google
+    # Group: join the group, accept the test on the opt-in page, install.
+    # Android precedence on /install:
+    #   1. play_store_url set          -> 302 to the public listing
+    #   2. play_beta_group_url set     -> HTML with the 3-step beta section
+    #   3. play_store_internal_url set -> 302 there (legacy internal track)
+    #   4. nothing set                 -> the PWA "Instalar app" walkthrough
+    play_store_url: str = ""  # https://play.google.com/store/apps/details?id=app.aue once public
+    play_beta_group_url: str = ""  # https://groups.google.com/g/<group>
+    play_beta_optin_url: str = "https://play.google.com/apps/testing/app.aue"
     # Deployment environment label. Defaults to "production" so a missing
     # var fails-safe (staging-only behaviors stay off if someone forgets to
     # set it). Set ENV_NAME=staging on the Railway staging service and use
@@ -938,6 +949,104 @@ _INSTALL_HTML = """<!DOCTYPE html>
 """
 
 
+# In-app webviews where Google sign-in is blocked (Play's opt-in page needs
+# it), so the beta page sends them to Chrome first. "; wv)" is the generic
+# Android WebView token. Matched against the lowercased UA.
+_ANDROID_IN_APP_RE = re.compile(r"instagram|fban|fbav|fb_iab|whatsapp|tiktok|musical_ly|; wv\)")
+
+
+def _safe_http_url(url: str) -> str:
+    """The URL if it is http(s), else "" — env values land in an href, and
+    escaping alone would not stop a `javascript:` value."""
+    url = (url or "").strip()
+    return url if url.lower().startswith(("https://", "http://")) else ""
+
+
+_ANDROID_BETA_CSS = """
+  .beta-step { flex-direction: column; gap: 10px; }
+  .beta-step .beta-head { display: flex; gap: 14px; align-items: flex-start; }
+  .beta-btn {
+    display: block; width: 100%; text-align: center; text-decoration: none;
+    background: #FF2BD6; color: #0A0510 !important;
+    padding: 15px 18px; border-radius: 14px; font-size: 15px; font-weight: 800;
+    box-shadow: 0 0 18px rgba(255, 43, 214, 0.35);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .beta-btn:active { transform: translateY(1px); }
+  .beta-note { font-size: 13px; color: #B8A8D8; line-height: 1.55; margin: 6px 0 0; }
+  .beta-note strong { color: #F4ECFF; }
+  .beta-chrome { margin-bottom: 22px; }
+  .beta-chrome .iab-cta { margin-top: 12px; }
+  .beta-chrome .copy-btn {
+    background: none; color: #00E5FF; box-shadow: none;
+    border: 1px solid rgba(0, 229, 255, 0.45);
+  }
+"""
+
+
+def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str, in_app: bool) -> str:
+    """/install for Android while the Play closed test is running.
+
+    Built from _INSTALL_HTML (same palette, share block, intent:// helper)
+    by inserting one section; the default page stays byte-identical. The
+    URLs come from env, so they are escaped for an attribute here.
+    """
+    from html import escape
+
+    g, o, st = (escape(u, quote=True) for u in (group_url, optin_url, store_url))
+    chrome_block = "" if not in_app else """
+    <div class="warning beta-chrome" id="beta-open-chrome">
+      <strong>⚠️ Abre no Chrome primeiro</strong>
+      Aqui dentro do app (Instagram, WhatsApp...) o Google não deixa entrar na conta,
+      e os passos abaixo precisam dela. Toca no botão e segue no Chrome.
+      <button class="iab-cta" onclick="iabAction()">Abrir no Chrome</button>
+      <button class="copy-btn" onclick="copyLink('Link copiado! Abre o Chrome e cola na barra de endereço.')">Copiar link</button>
+    </div>"""
+    section = f"""  <!-- ── Android: Google Play closed test ── -->
+  <section id="android-beta" hidden>
+    <h1>Testa o auê no Android antes de todo mundo</h1>
+    <p class="sub">O auê tá chegando na Play Store. Entra no teste fechado em três toques — é grátis.</p>{chrome_block}
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">1</div>
+        <div class="sc"><div class="st">Entra no grupo de testers</div>
+        <div class="sd">Abre o grupo do Google e toca "Participar do grupo".</div></div></div>
+      <a class="beta-btn" id="beta-step-1" href="{g}" target="_blank" rel="noopener">Entrar no grupo de testers</a>
+    </div>
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">2</div>
+        <div class="sc"><div class="st">Aceita o teste</div>
+        <div class="sd">Na página do Google Play, toca "Become a tester" (Quero ser testador).</div></div></div>
+      <a class="beta-btn" id="beta-step-2" href="{o}" target="_blank" rel="noopener">Aceitar o teste</a>
+    </div>
+    <div class="step beta-step">
+      <div class="beta-head"><div class="num">3</div>
+        <div class="sc"><div class="st">Instala na Play Store</div>
+        <div class="sd">Pronto, é só tocar "Instalar".</div></div></div>
+      <a class="beta-btn" id="beta-step-3" href="{st}" target="_blank" rel="noopener">Instalar na Play Store</a>
+    </div>
+    <p class="beta-note">Usa <strong>a mesma conta Google</strong> nos três passos.
+      Depois do passo 2, o passo 3 pode levar uns minutinhos pra liberar — se a Play Store
+      disser que não achou o app, espera um pouco e tenta de novo.</p>
+    <div class="done"><strong>🎉 Valeu por testar</strong>Achou bug ou tem ideia? Manda pro Ciro pelo link aqui embaixo.</div>
+  </section>
+
+"""
+    out = _INSTALL_HTML
+    replacements = (
+        ("</style>", _ANDROID_BETA_CSS + "</style>"),
+        ("  <!-- ── Android Chrome / Edge / Brave / Samsung ── -->", section + "  <!-- ── Android Chrome / Edge / Brave / Samsung ── -->"),
+        ('    else if (isAndroid) which = inApp ? "android-inapp" : "android-chrome";',
+         '    else if (isAndroid) which = "android-beta";'),
+        # The beta section carries its own inline "Abre no Chrome" block, so
+        # the full-screen blocker stays for iOS/desktop only.
+        ("    if (inApp) {", "    if (inApp && !isAndroid) {"),
+    )
+    for old, new in replacements:
+        assert out.count(old) == 1, old
+        out = out.replace(old, new)
+    return out
+
+
 def _event_deep_link(event_id: str) -> str:
     """The one in-app URL that opens an event.
 
@@ -1125,7 +1234,11 @@ def install_page(request: Request):
                         version-bump testing window — see settings.
                         testflight_invite_url); otherwise the public App
                         Store listing.
-      - Android       → Play Store internal-testing link
+      - Android       → public Play listing (play_store_url); else the
+                        closed-test page (play_beta_group_url: join group,
+                        opt in, install; in-app webviews get "Abre no
+                        Chrome" first); else the legacy internal-testing
+                        link; else the HTML walkthrough
       - Anything else → existing HTML walkthrough (PWA install + manual
                         Add-to-Home-Screen instructions for both platforms)
 
@@ -1151,8 +1264,21 @@ def install_page(request: Request):
     if is_ios:
         url = settings.testflight_invite_url or APP_STORE_URL
         return RedirectResponse(url=url, status_code=302)
-    if is_android and settings.play_store_internal_url:
-        return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
+    if is_android:
+        # Precedence documented next to the settings (play_store_url first).
+        if _safe_http_url(settings.play_store_url):
+            return RedirectResponse(url=settings.play_store_url, status_code=302)
+        if _safe_http_url(settings.play_beta_group_url):
+            html = _install_android_beta_html(
+                group_url=settings.play_beta_group_url,
+                optin_url=_safe_http_url(settings.play_beta_optin_url)
+                or f"https://play.google.com/apps/testing/{settings.twa_package_name}",
+                store_url=f"https://play.google.com/store/apps/details?id={settings.twa_package_name}",
+                in_app=bool(_ANDROID_IN_APP_RE.search(ua)),
+            )
+            return PlainTextResponse(html, media_type="text/html; charset=utf-8")
+        if settings.play_store_internal_url:
+            return RedirectResponse(url=settings.play_store_internal_url, status_code=302)
     return PlainTextResponse(_INSTALL_HTML, media_type="text/html; charset=utf-8")
 
 
