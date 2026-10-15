@@ -34,12 +34,19 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 // Capability detection across both runtimes.
-// - Native (Capacitor): always supported — the plugin is installed and
-//   handles APNs registration. Permission is requested at subscribe time.
+// - Native iOS: always supported — the plugin handles APNs registration.
+//   Permission is requested at subscribe time.
+// - Native Android: off until the build ships google-services.json and the
+//   backend sends FCM. Without Firebase, PushNotifications.register() kills
+//   the app natively (FirebaseApp not initialized), so never offer it.
+//   VITE_ANDROID_PUSH=1 turns it on once both exist.
 // - Browser: gate on Web Push APIs being present.
 export function isPushSupported() {
   if (typeof window === 'undefined') return false
-  if (IS_NATIVE) return true
+  if (IS_NATIVE) {
+    if (Capacitor.getPlatform() !== 'android') return true
+    return import.meta.env.VITE_ANDROID_PUSH === '1'
+  }
   return 'serviceWorker' in navigator
     && 'PushManager' in window
     && 'Notification' in window
