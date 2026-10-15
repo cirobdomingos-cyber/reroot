@@ -277,6 +277,16 @@ def init_db():
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id)"
         )
+        # One-time tickets for the Android browser sign-in: the callback
+        # page (in Chrome) cannot hand a session to the app directly, so it
+        # leaves a ticket the app trades for one. Only the sha256 is stored.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS google_login_tickets (
+                ticket_hash  TEXT PRIMARY KEY,
+                payload_json TEXT NOT NULL,
+                expires_at   TEXT NOT NULL
+            )
+        """)
         # Backfill: for every legacy user_state row, ensure there's a
         # matching users + auth_providers row (provider='google').
         # Idempotent — INSERT OR IGNORE so re-running on each boot is
@@ -3499,6 +3509,51 @@ def get_user_profile(user_id: str) -> Optional[dict]:
     if not row:
         return None
     return dict(row)
+
+
+# ── Google browser-login tickets (Android) ────────────────
+
+LOGIN_TICKET_TTL_S = 60
+
+
+def create_login_ticket(payload: dict) -> str:
+    """Store a verified sign-in's payload and return a single-use ticket
+    (32 random bytes) valid for LOGIN_TICKET_TTL_S seconds."""
+    ticket = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM google_login_tickets WHERE expires_at <= ?",
+                     (now.isoformat(),))
+        conn.execute(
+            "INSERT INTO google_login_tickets (ticket_hash, payload_json, expires_at) "
+            "VALUES (?, ?, ?)",
+            (_session_hash(ticket), json.dumps(payload),
+             (now + timedelta(seconds=LOGIN_TICKET_TTL_S)).isoformat()),
+        )
+        conn.commit()
+    return ticket
+
+
+def redeem_login_ticket(ticket: str) -> Optional[dict]:
+    """The payload behind a ticket, or None when it is unknown, used or
+    expired. The row is deleted first, so a ticket works exactly once."""
+    if not ticket:
+        return None
+    h = _session_hash(ticket)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT payload_json, expires_at FROM google_login_tickets WHERE ticket_hash = ?",
+            (h,),
+        ).fetchone()
+        if not row:
+            return None
+        deleted = conn.execute(
+            "DELETE FROM google_login_tickets WHERE ticket_hash = ?", (h,)
+        ).rowcount
+        conn.commit()
+    if deleted != 1 or row["expires_at"] <= datetime.now(timezone.utc).isoformat():
+        return None
+    return json.loads(row["payload_json"])
 
 
 # ── Sessions ──────────────────────────────────────────────
