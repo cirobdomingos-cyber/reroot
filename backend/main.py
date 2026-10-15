@@ -18,6 +18,8 @@ import hashlib
 import re
 import unicodedata
 import secrets
+import hmac
+import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -30,7 +32,7 @@ from fastapi import (
     Depends, Header,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -41,7 +43,7 @@ import image_store
 import ota
 import google_id_token
 import quiet_hours
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -141,6 +143,10 @@ class Settings(BaseSettings):
     catalog_sync_token: str = ""
     # Where staging pulls from. Only read when env_name != "production".
     catalog_sync_origin: str = "https://reroot-production.up.railway.app"
+    # Secret of the Google WEB OAuth client (the one GOOGLE_WEB_CLIENT_ID
+    # names). Only the Android browser sign-in needs it, to trade the
+    # authorization code for an ID token. Empty = that flow answers 503.
+    google_web_client_secret: str = ""
 
 
 settings = Settings()
@@ -10096,6 +10102,16 @@ def auth_google_sign_in(body: GoogleSignInBody):
     if not verified:
         raise HTTPException(status_code=401, detail="E-mail do Google não verificado")
 
+    profile = _register_google_user(info)
+    profile["token"] = db.create_session(profile["user_id"], body.device)
+    return profile
+
+
+def _register_google_user(info: dict) -> dict:
+    """Find-or-create the account for verified Google claims and return the
+    sign-in response WITHOUT the session token (shared by /auth/google and
+    the Android browser flow, which mints the token when the ticket is
+    redeemed)."""
     google_sub = str(info["sub"])
     # New = never signed in by either path: no provider row and no state
     # blob (Google users predating /auth/google only have the blob).
@@ -10121,8 +10137,137 @@ def auth_google_sign_in(body: GoogleSignInBody):
         "email": (info.get("email") or "").strip(),
         "picture": (info.get("picture") or "").strip(),
         "is_new_user": is_new_user,
-        "token": db.create_session(google_sub, body.device),
     }
+
+
+# ── Google sign-in in the system browser (Android) ──
+#
+# Credential Manager fails on some devices ("[16] Account reauth failed"),
+# so the Android app opens /auth/google/android/start in a Custom Tab. That
+# is a plain server-side OAuth code flow with the WEB client: Google sends
+# the browser back to /callback, which exchanges the code, verifies the ID
+# token with the same code as /auth/google, and bounces to app.aue://auth
+# with a one-time ticket the app trades for the session at /ticket.
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+ANDROID_APP_SCHEME_URL = "app.aue://auth"
+_ANDROID_STATE_TTL_S = 600
+
+
+def _android_redirect_uri(request: Request) -> str:
+    return f"{_request_origin(request)}/auth/google/android/callback"
+
+
+def _android_state_sign(nonce: str, exp: int) -> str:
+    key = settings.google_web_client_secret.encode()
+    return hmac.new(key, f"{nonce}.{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def _android_state_make() -> str:
+    """Signed, expiring `state` (stateless: nonce.exp.hmac). Keyed on the
+    client secret, so only this server can mint one."""
+    nonce = secrets.token_urlsafe(16)
+    exp = int(time.time()) + _ANDROID_STATE_TTL_S
+    return f"{nonce}.{exp}.{_android_state_sign(nonce, exp)}"
+
+
+def _android_state_ok(state: str) -> bool:
+    nonce, _, rest = (state or "").partition(".")
+    exp_s, _, sig = rest.partition(".")
+    if not (nonce and exp_s.isdigit() and sig):
+        return False
+    return (
+        hmac.compare_digest(sig, _android_state_sign(nonce, int(exp_s)))
+        and int(exp_s) >= time.time()
+    )
+
+
+def _android_back(**params) -> RedirectResponse:
+    return RedirectResponse(f"{ANDROID_APP_SCHEME_URL}?{urlencode(params)}", status_code=302)
+
+
+def _require_android_google_secret() -> None:
+    if not settings.google_web_client_secret:
+        raise HTTPException(status_code=503, detail="Login com Google no Android não está configurado.")
+
+
+def exchange_google_code(code: str, redirect_uri: str) -> Optional[str]:
+    """Trade an authorization code for Google's ID token, or None when
+    Google refuses it. Module-level so tests can replace it."""
+    try:
+        resp = httpx.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": google_id_token.web_client_id(),
+                "client_secret": settings.google_web_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            },
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        log.warning(f"Google token endpoint unreachable: {exc}")
+        raise HTTPException(status_code=502, detail="Não consegui falar com o Google agora.")
+    if resp.status_code != 200:
+        log.info(f"Google token exchange refused: {resp.status_code}")
+        return None
+    data = resp.json()
+    token = data.get("id_token") if isinstance(data, dict) else None
+    return token if isinstance(token, str) and token else None
+
+
+@app.get("/auth/google/android/start")
+def auth_google_android_start(request: Request):
+    _require_android_google_secret()
+    params = {
+        "client_id": google_id_token.web_client_id(),
+        "redirect_uri": _android_redirect_uri(request),
+        "response_type": "code",
+        "scope": "openid email profile",
+        "prompt": "select_account",
+        "state": _android_state_make(),
+    }
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}", status_code=302)
+
+
+@app.get("/auth/google/android/callback")
+def auth_google_android_callback(
+    request: Request, code: str = "", state: str = "", error: str = ""
+):
+    _require_android_google_secret()
+    if not _android_state_ok(state):
+        return _android_back(error="bad_state")
+    if error or not code:
+        return _android_back(error="cancelled" if error == "access_denied" else "denied")
+    try:
+        id_token = exchange_google_code(code, _android_redirect_uri(request))
+    except HTTPException:
+        return _android_back(error="google_unreachable")
+    if not id_token:
+        return _android_back(error="exchange_failed")
+    info = verify_google_id_token(id_token)
+    if not info or not info.get("sub"):
+        return _android_back(error="invalid_token")
+    if not google_id_token.email_verified(info):
+        return _android_back(error="email_unverified")
+    ticket = db.create_login_ticket(_register_google_user(info))
+    return _android_back(ticket=ticket)
+
+
+class GoogleTicketBody(BaseModel):
+    ticket: str = ""
+
+
+@app.post("/auth/google/android/ticket")
+def auth_google_android_ticket(body: GoogleTicketBody):
+    """Trade the one-time ticket for the same JSON /auth/google returns."""
+    payload = db.redeem_login_ticket((body.ticket or "").strip())
+    if not payload:
+        raise HTTPException(status_code=400, detail="Ticket inválido ou expirado")
+    payload["token"] = db.create_session(payload["user_id"], "android")
+    return payload
 
 
 @app.post("/auth/logout")

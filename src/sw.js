@@ -53,6 +53,7 @@ registerRoute(new NavigationRoute(navigationHandler, {
     /^\/install(\/|$|\?)/,     // /install universal walkthrough (server HTML)
     /^\/ios(\/|$|\?)/,         // /ios → /install redirect (back-compat)
     /^\/privacy(\/|$|\?)/,     // /privacy LGPD policy (server HTML)
+    /^\/auth\/google\/android\//, // Android Google sign-in: start 302s to Google, callback to app.aue://
     /^\/\.well-known\//,       // assetlinks.json + apple-app-site-association
     /^\/apple-app-site-association/,  // legacy AASA path (some iOS versions)
     /^\/e\//,                  // short event-link → backend 302 to hash route
