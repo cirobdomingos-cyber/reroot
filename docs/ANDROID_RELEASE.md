@@ -69,31 +69,40 @@ uses a code the workflow has not reached yet.
 
 ## 4. Google sign-in on Android
 
-Android signs in with Google's **Credential Manager** (the native account
-sheet) through `@capgo/capacitor-social-login`, not the browser PKCE flow
-iOS uses. The plugin asks Google for an **ID token** whose `aud` is the
-**web** OAuth client (`511485926685-9a6hihg5...`, `VITE_GOOGLE_CLIENT_ID` in
-the workflow); the app posts it to `/auth/google` as `id_token`, and the
-backend verifies signature, issuer, `aud` (env `GOOGLE_WEB_CLIENT_ID`,
-defaulting to that client), expiry and `email_verified`
-(`backend/google_id_token.py`). The account is keyed on Google's `sub`, so
-web, iOS and Android land on the same user.
+Android signs in through the **system browser**, driven by the backend
+(Credential Manager via `@capgo/capacitor-social-login` failed with
+"[16] Account reauth failed" on every device, and was removed). iOS keeps
+its PKCE flow and the web keeps GSI.
 
-Google only issues the token if an **Android OAuth client** (Google Cloud →
-APIs & Services → Credentials) matches the installed app's certificate:
-package `app.aue` with
+1. The app opens `{VITE_API_URL}/auth/google/android/start` in a Custom Tab.
+   The backend 302s to Google's code flow with the **web** OAuth client
+   (`GOOGLE_WEB_CLIENT_ID`, default `511485926685-9a6hihg5...`), a signed
+   10-minute `state` and `redirect_uri = {request origin}/auth/google/android/callback`
+   (origin from `x-forwarded-proto`/`x-forwarded-host`).
+2. Google returns to `/auth/google/android/callback`. The backend checks
+   `state`, trades the code for an ID token (needs the client secret),
+   verifies it with the same code as `/auth/google` (`google_id_token.py`),
+   finds or creates the user (keyed on Google's `sub`) and 302s to
+   `app.aue://auth?ticket=...` (or `?error=<code>`).
+3. The manifest's `app.aue://auth` intent-filter reopens the app; the app
+   posts the ticket to `/auth/google/android/ticket` and gets the same JSON
+   as `/auth/google`. A ticket is 32 random bytes, single use, 60 s.
 
-- the SHA-1 of the **Play app-signing key** (Play Console → Test and
-  release → App integrity), for builds installed from Play;
-- the SHA-1 of the **upload key** (`keytool -list -v -keystore
-  aue-upload.jks -alias aue-upload`), for local builds signed with it.
+Setup, once per environment:
 
-Both clients must be in the **same Google Cloud project** as the web client.
-No secret is involved. The plugin is Android-only: `ios.includePlugins` in
-`capacitor.config.json` keeps it (and the Google/Facebook iOS SDKs it would
-pull in) out of the iOS build, so **a new Capacitor plugin that iOS needs
-must be added to that list**. Its other providers are off
-(`plugins.SocialLogin.providers`), so no Facebook SDK ships on Android.
+- Env **`GOOGLE_WEB_CLIENT_SECRET`** on the Railway service (the web
+  client's secret, Google Cloud → Credentials). Unset = the flow answers 503.
+- Add these **Authorized redirect URIs** to the web client (exact match):
+  - `https://auecuritiba.com/auth/google/android/callback` (production; the
+    Play build's `VITE_API_URL`, see `.github/workflows/android-play.yml`)
+  - `https://aue-staging.up.railway.app/auth/google/android/callback` (staging)
+  - `https://reroot-production.up.railway.app/auth/google/android/callback`
+    only if a build ever points `VITE_API_URL` at the Railway domain.
+- No Android OAuth client or SHA-1 is needed for this flow.
+
+The plugin was Android-only; `ios.includePlugins` in `capacitor.config.json`
+still lists exactly the plugins iOS needs, so **a new Capacitor plugin that
+iOS needs must be added to that list**.
 
 ## 5. Asset links
 

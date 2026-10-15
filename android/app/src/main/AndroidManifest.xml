@@ -22,6 +22,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Return leg of the Google browser sign-in: the backend callback
+                 302s to app.aue://auth?ticket=... (see src/lib/google-auth.js). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="app.aue" android:host="auth" />
+            </intent-filter>
+
         </activity>
 
         <provider
