@@ -138,6 +138,31 @@ but publish an Android bundle only after testing it on an Android device
 (canary first: an Android device id in `OTA_CANARY_DEVICES` does get the
 canary). A new AAB resets downloaded bundles (`resetWhenUpdate`).
 
+## 8. Push notifications (FCM)
+
+Native push on Android goes through Firebase Cloud Messaging; iOS stays on
+APNs and browsers on Web Push. The backend routes by the `platform` stored
+with each device token (`ios` or `android`).
+
+Two secrets, both needed:
+
+| Secret | Where | What |
+|---|---|---|
+| `GOOGLE_SERVICES_JSON_BASE64` | GitHub (Actions) | base64 of `google-services.json` from the Firebase console (app `app.aue`). The workflow writes it into `android/app/` and turns the push UI on (`VITE_ANDROID_PUSH=1`) only when it is set. |
+| `FIREBASE_SERVICE_ACCOUNT_B64` | Railway, staging **and** prod | base64 of a Firebase service-account JSON (Project settings, Service accounts, Generate new private key). The backend mints an OAuth2 token from it and calls the FCM HTTP v1 API. Unset = Android tokens are skipped with one log line. |
+
+The Firebase project is separate from the OAuth Cloud project that holds the
+Google sign-in clients. Do **not** add the app's SHA-1 in Firebase against the
+OAuth project: it conflicts with the Android OAuth client. FCM does not need
+the SHA-1.
+
+To test: install a build made with both secrets, open Perfil, Notificações,
+turn push on and accept the Android 13+ permission prompt. Check the token
+landed (`apns_device_tokens` row with `platform = 'android'`), then trigger a
+push, for instance `POST /push/send-daily-digest` as the founder. Tapping the
+notification must open the deep link in `data.url`. A token FCM reports as
+`UNREGISTERED` is deleted on the next send.
+
 ## Going public
 
 While the app has never been released to production, Play only accepts

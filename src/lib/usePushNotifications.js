@@ -36,10 +36,10 @@ function urlBase64ToUint8Array(base64String) {
 // Capability detection across both runtimes.
 // - Native iOS: always supported — the plugin handles APNs registration.
 //   Permission is requested at subscribe time.
-// - Native Android: off until the build ships google-services.json and the
-//   backend sends FCM. Without Firebase, PushNotifications.register() kills
-//   the app natively (FirebaseApp not initialized), so never offer it.
-//   VITE_ANDROID_PUSH=1 turns it on once both exist.
+// - Native Android: FCM. Without google-services.json,
+//   PushNotifications.register() kills the app natively (FirebaseApp not
+//   initialized), so it is only offered when the build has the Firebase
+//   file: android-play.yml sets VITE_ANDROID_PUSH=1 exactly then.
 // - Browser: gate on Web Push APIs being present.
 export function isPushSupported() {
   if (typeof window === 'undefined') return false
@@ -151,11 +151,21 @@ export function usePushNotifications() {
           PushNotifications.addListener('registrationError', err => {
             regHandle?.remove?.()
             errHandle?.remove?.()
-            reject(new Error(`APNs registration falhou: ${err?.error || 'unknown'}`))
+            reject(new Error(`Push registration falhou: ${err?.error || 'unknown'}`))
           }).then(h => { errHandle = h })
           // Safety timeout — APNs registration usually completes in <1s.
-          setTimeout(() => reject(new Error('APNs registration timeout (15s).')), 15_000)
+          setTimeout(() => reject(new Error('Push registration timeout (15s).')), 15_000)
         })
+
+        // Android 8+ needs the channel the FCM payload names (fcm.py
+        // ANDROID_CHANNEL_ID) to exist, or the tray falls back to a generic one.
+        if (Capacitor.getPlatform() === 'android') {
+          try {
+            await PushNotifications.createChannel({
+              id: 'default', name: 'auê', importance: 4, visibility: 1,
+            })
+          } catch {}
+        }
 
         await PushNotifications.register()
         const token = await tokenPromise
@@ -172,6 +182,8 @@ export function usePushNotifications() {
             token,
             google_id: state.googleUser?.id || '',
             bundle_id: 'app.aue',
+            // android = FCM registration token (backend routes by platform).
+            platform: Capacitor.getPlatform() === 'android' ? 'android' : 'ios',
             // production = TestFlight + App Store. The aps-environment
             // entitlement value we ship with (production) only routes
             // there; sandbox is for Xcode-built debug installs.

@@ -525,7 +525,7 @@ function NotificationsCard({ t, state, dispatch }) {
           🔔 {t.notifications_title ?? 'Notificações'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
-          {/* The Android app has no push yet (isPushSupported, no Firebase):
+          {/* Android builds without the Firebase file (isPushSupported false):
               the browser advice below would be wrong inside the app. */}
           {Capacitor.getPlatform() === 'android'
             ? (t.notif_android_soon
