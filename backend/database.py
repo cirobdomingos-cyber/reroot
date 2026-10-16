@@ -158,6 +158,12 @@ def init_db():
                 created_at  TEXT NOT NULL
             )
         """)
+        # Android (FCM) tokens share this table: `platform` says which
+        # sender owns the row. Rows from before the column existed are iOS.
+        try:
+            conn.execute("ALTER TABLE apns_device_tokens ADD COLUMN platform TEXT NOT NULL DEFAULT 'ios'")
+        except sqlite3.OperationalError:
+            pass  # already migrated
         # Daily digest snapshots — when the scheduler fires the daily
         # push, it inserts a row here with the full set of new event ids
         # for that scrape. The push payload only carries the digest_id
@@ -1550,43 +1556,49 @@ def delete_push_subscription_by_endpoint(endpoint: str) -> None:
 # ── APNs device tokens (iOS native push) ──────────────────
 
 def upsert_apns_token(token: str, google_id: str = "",
-                      bundle_id: str = "", env: str = "production") -> None:
-    """Insert or replace an APNs device token. The token is the unique key —
-    same device re-installing the app gets a new token, old one becomes dead.
-    Backend prunes dead tokens lazily on 410 BadDeviceToken responses from APNs."""
+                      bundle_id: str = "", env: str = "production",
+                      platform: str = "ios") -> None:
+    """Insert or replace a native device token ('ios' = APNs, 'android' = FCM).
+    The token is the unique key — same device re-installing the app gets a
+    new token, old one becomes dead. Backend prunes dead tokens lazily when
+    APNs returns 410 BadDeviceToken or FCM returns UNREGISTERED."""
+    platform = platform if platform in ("ios", "android") else "ios"
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.execute("""
-            INSERT INTO apns_device_tokens (token, google_id, bundle_id, env, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO apns_device_tokens (token, google_id, bundle_id, env, created_at, platform)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(token) DO UPDATE SET
                 google_id  = excluded.google_id,
                 bundle_id  = excluded.bundle_id,
                 env        = excluded.env,
-                created_at = excluded.created_at
-        """, (token, google_id, bundle_id, env, now))
+                created_at = excluded.created_at,
+                platform   = excluded.platform
+        """, (token, google_id, bundle_id, env, now, platform))
         conn.commit()
 
 
-def get_all_apns_tokens() -> list[dict]:
-    """All registered iOS device tokens. Used by the daily digest fanout."""
+def get_all_apns_tokens(platform: str = "ios") -> list[dict]:
+    """All registered device tokens of one platform. Used by the digest fanout."""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT token, google_id, bundle_id, env FROM apns_device_tokens"
+            "SELECT token, google_id, bundle_id, env FROM apns_device_tokens WHERE platform = ?",
+            (platform,),
         ).fetchall()
     return [{"token": r["token"], "google_id": r["google_id"] or "",
              "bundle_id": r["bundle_id"], "env": r["env"]} for r in rows]
 
 
-def get_apns_tokens_for_user(google_id: str) -> list[dict]:
-    """All iOS tokens for a single user. A user can have multiple devices
-    (iPhone + iPad)."""
+def get_apns_tokens_for_user(google_id: str, platform: str = "ios") -> list[dict]:
+    """A user's device tokens for one platform. A user can have multiple
+    devices (iPhone + iPad)."""
     if not google_id:
         return []
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT token, bundle_id, env FROM apns_device_tokens WHERE google_id = ?",
-            (google_id,),
+            "SELECT token, bundle_id, env FROM apns_device_tokens"
+            " WHERE google_id = ? AND platform = ?",
+            (google_id, platform),
         ).fetchall()
     return [{"token": r["token"], "bundle_id": r["bundle_id"], "env": r["env"]} for r in rows]
 

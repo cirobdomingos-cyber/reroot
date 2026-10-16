@@ -23,7 +23,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 import httpx
 from anthropic import Anthropic
@@ -9186,6 +9186,7 @@ class ApnsRegisterBody(BaseModel):
     google_id: str = ""   # links to a logged-in user (anonymous = "")
     bundle_id: str = ""   # iOS app bundle id, used for cross-app safety
     env: str = "production"  # "production" (TestFlight/App Store) or "sandbox" (Xcode debug)
+    platform: Literal["ios", "android"] = "ios"  # android = FCM registration token
 
 
 @app.post("/push/register-device-token")
@@ -9199,8 +9200,9 @@ def push_register_device_token(body: ApnsRegisterBody, session_user: SessionUser
     google_id (a single user can also have multiple devices: iPhone +
     iPad)."""
     _assert_caller(body.google_id, session_user)
-    db.upsert_apns_token(body.token, body.google_id, body.bundle_id, body.env)
-    log.info(f"APNs token saved (user={body.google_id or 'anon'}, env={body.env}): {body.token[:16]}…")
+    db.upsert_apns_token(body.token, body.google_id, body.bundle_id, body.env, body.platform)
+    log.info(f"{'FCM' if body.platform == 'android' else 'APNs'} token saved "
+             f"(user={body.google_id or 'anon'}, env={body.env}): {body.token[:16]}…")
     return {"status": "registered"}
 
 
@@ -9234,11 +9236,12 @@ def _send_push_to_user(
     url: str = "/",
     tag: str = "default",
 ) -> int:
-    """Returns total devices (web + APNs) that received the push."""
+    """Returns total devices (web + APNs + FCM) that received the push."""
     if not google_id:
         return 0
     sent = _send_webpush_to_user(google_id, title, body, url, tag)
     sent += _send_apns_to_user(google_id, title, body, url, tag)
+    sent += _send_fcm_to_user(google_id, title, body, url, tag)
     return sent
 
 
@@ -9296,6 +9299,26 @@ def _send_apns_to_user(google_id: str, title: str, body: str,
             db.delete_apns_token(t["token"])
         elif reason:
             log.warning(f"apns to {google_id} failed: {reason}")
+    return sent
+
+
+def _send_fcm_to_user(google_id: str, title: str, body: str,
+                      url: str, tag: str) -> int:
+    """Android native channel — FCM HTTP v1. Skipped (one log line) when
+    FIREBASE_SERVICE_ACCOUNT_B64 is unset."""
+    tokens = db.get_apns_tokens_for_user(google_id, platform="android")
+    if not tokens:
+        return 0
+    import fcm
+    sent = 0
+    for t in tokens:
+        ok, reason = fcm.send_to_token(t["token"], title, body, url=url, tag=tag)
+        if ok:
+            sent += 1
+        elif fcm.is_dead_token_reason(reason):
+            db.delete_apns_token(t["token"])
+        elif reason and reason != "FCM not configured":
+            log.warning(f"fcm to {google_id} failed: {reason}")
     return sent
 
 
@@ -9521,7 +9544,8 @@ async def send_weekly_digest() -> dict:
 
     web_subs = db.get_all_push_subscriptions()
     apns_tokens = db.get_all_apns_tokens()
-    if not web_subs and not apns_tokens:
+    fcm_tokens = db.get_all_apns_tokens(platform="android")
+    if not web_subs and not apns_tokens and not fcm_tokens:
         return {"sent": 0, "skipped": 0, "reason": "no subscribers"}
 
     # Group both channels by google_id so opt-out runs once per user.
@@ -9531,7 +9555,10 @@ async def send_weekly_digest() -> dict:
     by_user_apns: dict[str, list[dict]] = {}
     for tok in apns_tokens:
         by_user_apns.setdefault(tok.get("google_id") or "", []).append(tok)
-    all_users = set(by_user_web) | set(by_user_apns)
+    by_user_fcm: dict[str, list[dict]] = {}
+    for tok in fcm_tokens:
+        by_user_fcm.setdefault(tok.get("google_id") or "", []).append(tok)
+    all_users = set(by_user_web) | set(by_user_apns) | set(by_user_fcm)
 
     # #91 (20 Sep) dropped this line and kept its use below, so every
     # digest since raised NameError at the first web-push subscriber and
@@ -9576,6 +9603,11 @@ async def send_weekly_digest() -> dict:
     except ImportError:
         has_apns = False
 
+    import fcm
+    has_fcm = fcm._is_configured()
+    if fcm_tokens and not has_fcm:
+        log.info("digest: FCM not configured, skipping Android tokens")
+
     sent = 0
     skipped = 0
     failed = 0
@@ -9583,6 +9615,7 @@ async def send_weekly_digest() -> dict:
         if not _user_daily_digest_opted_in(google_id):
             skipped += len(by_user_web.get(google_id, []))
             skipped += len(by_user_apns.get(google_id, []))
+            skipped += len(by_user_fcm.get(google_id, []))
             continue
         u_title, u_body = _copy_for(google_id)
         web_payload = json.dumps(
@@ -9621,6 +9654,18 @@ async def send_weekly_digest() -> dict:
                         db.delete_apns_token(tok["token"])
                     elif reason:
                         log.warning(f"digest apns failed: {reason}")
+        # FCM channel (Android)
+        if has_fcm:
+            for tok in by_user_fcm.get(google_id, []):
+                ok, reason = fcm.send_to_token(tok["token"], u_title, u_body, url=url, tag=tag)
+                if ok:
+                    sent += 1
+                else:
+                    failed += 1
+                    if fcm.is_dead_token_reason(reason):
+                        db.delete_apns_token(tok["token"])
+                    elif reason:
+                        log.warning(f"digest fcm failed: {reason}")
 
     log.info(f"Weekly digest: {sent} sent, {skipped} opted-out, {failed} failed (events={n})")
     return {"sent": sent, "skipped": skipped, "failed": failed, "events": n}
