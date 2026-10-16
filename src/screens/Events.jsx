@@ -1575,7 +1575,7 @@ export default function Events() {
               {myChannelEvents.length > 0 && (
                 <>
                   <ListSectionHeading
-                    label="Dos teus canais"
+                    label="Dos seus canais"
                     count={myChannelEvents.length}
                     // Takes the strongest colour in the section, so the
                     // heading and the rows under it agree. A section of

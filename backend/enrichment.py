@@ -44,7 +44,7 @@ Curitiba (PR, Brasil), pra qualquer pessoa que mora aqui e quer saber o que \
 rola na cidade. A voz do app é casual e festiva: "bora", "vai", "rola", \
 "acontece". É catálogo cultural/social/recreativo da cidade — não guia de \
 bem-estar, nem app pra introvertido. Sem moralismo, sem julgar a vibe da \
-pessoa.
+pessoa. Português do Brasil: "você / seu / sua", nunca "tu / teu / tua".
 
 EVENTO:
 Nome: {name}

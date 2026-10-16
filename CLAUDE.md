@@ -36,6 +36,7 @@ The product pivoted from **Reroot** (wellness "social re-entry" framing) to **au
 
 - ✅ Casual, festive: "bora", "vai", "rola", "acontece"
 - ✅ Descriptive over prescriptive: "show da Terno Rei na Pedreira, abertura 21h"
+- ✅ Brazilian "você / seu / sua"; ❌ never "tu / teu / tua" (reads as Portugal; Ciro, 2026-10-16). The casual imperative stays ("baixa", "segue", "bora")
 - ❌ No "recomendado" / "não recomendado" — just descriptive or "Bora porque..."
 - ❌ No "baixa pressão", "introvertido", "ambiente acolhedor", "social re-entry"
 - ❌ No moralism — auê doesn't judge whether the user "should" go

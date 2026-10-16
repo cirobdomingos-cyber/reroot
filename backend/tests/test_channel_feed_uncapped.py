@@ -5,7 +5,7 @@ come from a channel you follow — so it has to be complete.
 Context (23 Sep 2026): the default limit was 40, capped at 100, from
 when the feed drew a horizontal band. Once the rule fill put ~30 nights
 into each channel, following three of them overflowed the cap and every
-row past it lost its "Dos teus canais" mark — reported as "muito evento
+row past it lost its "Dos seus canais" mark — reported as "muito evento
 não aparece como taggado".
 
 What must hold:

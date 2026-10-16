@@ -449,7 +449,7 @@ export default function Profile() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--bg2)', borderRadius: 10, border: '1px solid var(--line)' }}>
             <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.4 }}>
-              Apaga teus RSVPs, amigos e histórico permanentemente.
+              Apaga seus RSVPs, amigos e histórico permanentemente.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button

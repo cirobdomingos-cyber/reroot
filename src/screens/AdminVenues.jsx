@@ -82,7 +82,7 @@ export default function AdminVenues() {
 
   if (!email) {
     return <Shell onBack={goBack}>
-      <Empty>Entra com a tua conta pra ver esta tela.</Empty>
+      <Empty>Entra com a sua conta pra ver esta tela.</Empty>
     </Shell>
   }
   if (allowed === false) {

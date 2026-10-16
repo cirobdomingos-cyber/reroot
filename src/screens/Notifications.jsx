@@ -127,7 +127,7 @@ export default function Notifications() {
           }}>
             {googleId
               ? 'Nada esperando por você. Bora ver o que tá rolando?'
-              : 'Entra na tua conta pra ver convites e pedidos.'}
+              : 'Entra na sua conta pra ver convites e pedidos.'}
           </div>
         )}
 
