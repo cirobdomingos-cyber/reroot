@@ -525,8 +525,13 @@ function NotificationsCard({ t, state, dispatch }) {
           🔔 {t.notifications_title ?? 'Notificações'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--charcoal-mid)', lineHeight: 1.5 }}>
-          {t.notif_unsupported
-            ?? 'Push não funciona neste navegador. Instale o auê na tela inicial (Adicionar à Tela de Início) ou use Chrome/Firefox.'}
+          {/* Android builds without the Firebase file (isPushSupported false):
+              the browser advice below would be wrong inside the app. */}
+          {Capacitor.getPlatform() === 'android'
+            ? (t.notif_android_soon
+              ?? 'As notificações no app Android chegam em breve. Até lá, os rolês continuam aqui no app.')
+            : (t.notif_unsupported
+              ?? 'Push não funciona neste navegador. Instale o auê na tela inicial (Adicionar à Tela de Início) ou use Chrome/Firefox.')}
         </div>
       </div>
     )
