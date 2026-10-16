@@ -27,7 +27,7 @@ export const FEATURES = [
   { shot: 'events', kicker: 'todo dia', title: 'Tudo que rola na cidade, por dia', sub: 'Shows, expos, bares, comédia e teatro de mais de 80 perfis de Curitiba.' },
   { shot: 'map', kicker: 'no mapa', title: 'Vê o que tá perto de você', sub: 'Abre o mapa e escolhe o rolê pelo bairro.' },
   { shot: 'event', kicker: 'num toque', title: 'Lugar, horário e o post original', sub: 'Cada evento leva direto pro perfil de quem organiza.' },
-  { shot: 'channels', kicker: 'canais', title: 'Segue os canais que são a tua cara', sub: 'Rock, samba, eletrônica, comédia, livros: a gente separa por gênero e vibe.' },
+  { shot: 'channels', kicker: 'canais', title: 'Segue os canais que são a sua cara', sub: 'Rock, samba, eletrônica, comédia, livros: a gente separa por gênero e vibe.' },
 ]
 
 export function buildTourCaption() {
@@ -39,7 +39,7 @@ export function buildTourCaption() {
     '🗺️ No mapa, perto de você',
     '📸 O post original do lugar, a um toque',
     '📢 Canais por vibe: rock, samba, eletrônica, comédia, livros',
-    '🔒 Cria o teu canal com os amigos e combina o rolê ali',
+    '🔒 Cria o seu canal com os amigos e combina o rolê ali',
     '',
     CTA_DOWNLOAD,
     `${CTA_IPHONE} · ${CTA_ANDROID}`,
@@ -126,7 +126,7 @@ export function tourSocial({ fontCss, index, total }) {
     ${top(`${index} / ${total}`)}
     <div class="hero">
       <div class="kicker">canal privado</div>
-      <h1 data-fit>Cria o teu canal com a <em>galera</em></h1>
+      <h1 data-fit>Cria o seu canal com a <em>galera</em></h1>
       <div class="sub">Só entra quem você convidar. Sem rede social nova pra cuidar: só primeiro nome.</div>
       <div class="steps">${steps}</div>
     </div>
