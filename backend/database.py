@@ -3073,6 +3073,33 @@ def get_funnel_counts() -> list[dict]:
     return [{"event_name": row["event_name"], "total": row["total"]} for row in rows]
 
 
+def get_funnel_daily(days: int, steps: tuple) -> list[dict]:
+    """Counts per (day, step, platform, client, src) for the last `days`
+    days, UTC day. platform/client come from the server stamp (`_platform`,
+    `_client`) on app events and from the row itself on install_visit;
+    rows older than the stamp read as ''."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    marks = ",".join("?" for _ in steps)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT substr(created_at, 1, 10) AS day, event_name AS step,
+                   COALESCE(json_extract(properties_json, '$._platform'),
+                            json_extract(properties_json, '$.platform'), '') AS platform,
+                   COALESCE(json_extract(properties_json, '$._client'),
+                            json_extract(properties_json, '$.client'), '') AS client,
+                   COALESCE(json_extract(properties_json, '$.src'), '') AS src,
+                   COUNT(*) AS n
+            FROM analytics_events
+            WHERE created_at >= ? AND event_name IN ({marks})
+            GROUP BY day, step, platform, client, src
+            ORDER BY day, step
+            """,
+            (since, *steps),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_client_error_summary(limit: int = 50) -> list[dict]:
     """Group client_error:* analytics rows by (error_type, message) — count,
     first/last seen, one sample url + user per group. /analytics/funnel
