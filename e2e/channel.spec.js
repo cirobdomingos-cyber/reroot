@@ -412,7 +412,7 @@ const FROM_CHANNEL = [{
 
 test('the list splits into your channels and the rest of the city', async ({ page }) => {
   await openEvents(page, FROM_CHANNEL)
-  await expect(page.getByText('Dos teus canais')).toBeVisible()
+  await expect(page.getByText('Dos seus canais')).toBeVisible()
   await expect(page.getByText('Explorar')).toBeVisible()
 })
 
@@ -446,7 +446,7 @@ test('nothing is marked or split when you follow no channel', async ({ page }) =
   await openEvents(page, [])
   // No headings at all, rather than an "Explorar" heading over the whole
   // catalog — a section label with nothing to contrast against is noise.
-  await expect(page.getByText('Dos teus canais')).toHaveCount(0)
+  await expect(page.getByText('Dos seus canais')).toHaveCount(0)
   await expect(page.getByText('Explorar')).toHaveCount(0)
   await expect(page.getByText(/auê Rockzera/i)).toHaveCount(0)
 })

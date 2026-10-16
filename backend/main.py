@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     play_store_url: str = ""  # https://play.google.com/store/apps/details?id=app.aue once public
     play_beta_group_url: str = ""  # https://groups.google.com/g/<group>
     play_beta_optin_url: str = "https://play.google.com/apps/testing/app.aue"
+    # App Store Connect provider token (App Analytics > Campaigns). With it,
+    # /install sends iPhones to the store with pt=<token>&ct=<src>, and
+    # App Store Connect counts views and installs per campaign. Not secret:
+    # it rides in every campaign link Apple generates.
+    app_store_provider_token: str = ""
     # Deployment environment label. Defaults to "production" so a missing
     # var fails-safe (staging-only behaviors stay off if someone forgets to
     # set it). Set ENV_NAME=staging on the Railway staging service and use
@@ -744,7 +749,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
     <p class="sub">"Adicionar à Tela de Início" só aparece no Safari de verdade — aqui no app de mensagem não dá.</p>
     <div class="warning">
       <strong>⚠️ Como fazer</strong>
-      Toca no botão abaixo pra copiar o link, abre o app Safari (azul) no teu iPhone, cola na barra de endereço e segue o passo a passo de instalação.
+      Toca no botão abaixo pra copiar o link, abre o app Safari (azul) no seu iPhone, cola na barra de endereço e segue o passo a passo de instalação.
       <button onclick="copyLink('Link copiado! Abra o Safari e cole na barra de endereço.')">Copiar link</button>
     </div>
   </section>
@@ -787,7 +792,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
     <p class="sub">A opção "Instalar app" só aparece no Chrome (ou Edge / Samsung Browser) — não funciona dentro do app de mensagem.</p>
     <div class="warning">
       <strong>⚠️ Como fazer</strong>
-      Toca pra copiar o link, abre o Chrome no teu Android, cola na barra de endereço e segue.
+      Toca pra copiar o link, abre o Chrome no seu Android, cola na barra de endereço e segue.
       <button onclick="copyLink('Link copiado! Abra o Chrome e cole na barra de endereço.')">Copiar link</button>
     </div>
   </section>
@@ -795,7 +800,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
   <!-- ── Desktop ── -->
   <section id="desktop" hidden>
     <h1>Instalar no computador</h1>
-    <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na tua área de trabalho.</p>
+    <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na sua área de trabalho.</p>
     <a href="/" class="open-app">1. Abrir o auê →</a>
     <div class="open-hint">
       Os passos abaixo precisam ser feitos <strong>dentro do auê</strong>, não nesta página.
@@ -974,6 +979,50 @@ _INSTALL_HTML = """<!DOCTYPE html>
 # it), so the beta page sends them to Chrome first. "; wv)" is the generic
 # Android WebView token. Matched against the lowercased UA.
 _ANDROID_IN_APP_RE = re.compile(r"instagram|fban|fbav|fb_iab|whatsapp|tiktok|musical_ly|; wv\)")
+_IN_APP_BROWSER_RE = re.compile(r"instagram|fban|fbav|fb_iab|whatsapp|tiktok|musical_ly")
+_SRC_RE = re.compile(r"[^a-z0-9_-]")
+# Link previews and crawlers fetch /install too (Instagram and WhatsApp
+# unfurl the bio link); they are not people and would inflate the step.
+_BOT_UA_RE = re.compile(r"bot\b|bot/|crawler|spider|facebookexternalhit|^whatsapp/|preview|curl|python-requests|headless")
+
+
+def _client_of(user_agent: str) -> dict:
+    """Which phone and which shell a request came from, from its UA alone.
+
+    platform: ios | android | desktop
+    client:   app (our Capacitor wrapper) | in_app (Instagram, WhatsApp,
+              TikTok browsers) | browser
+
+    The funnel needs both: a tap on the bio link arrives as in_app, a
+    visit from the installed app as app. The wrapper sets no UA of its
+    own, so it is told apart by what WebViews leave out: iOS WKWebView
+    sends no "Safari/" token, Android WebView adds "; wv)". In-app
+    browsers are WebViews too, so they are matched first by name. Read
+    on the server, so both store builds already installed report it with
+    no new release."""
+    ua = (user_agent or "").lower()
+    if "iphone" in ua or "ipad" in ua or "ipod" in ua:
+        platform = "ios"
+    elif "android" in ua:
+        platform = "android"
+    else:
+        platform = "desktop"
+    if _IN_APP_BROWSER_RE.search(ua):
+        client = "in_app"
+    elif (platform == "ios" and "safari/" not in ua) or (platform == "android" and "; wv)" in ua):
+        client = "app"
+    else:
+        client = "browser"
+    return {"platform": platform, "client": client}
+
+
+class _SkipVisit(Exception):
+    """A /install hit that is not a person (see _BOT_UA_RE)."""
+
+
+def _clean_src(raw: str) -> str:
+    """?src= tag for a campaign link: lowercase letters, digits, - and _."""
+    return _SRC_RE.sub("", (raw or "").strip().lower())[:40]
 
 
 def _safe_http_url(url: str) -> str:
@@ -1282,8 +1331,30 @@ def install_page(request: Request):
         # and tap the Add-to-Home-Screen walkthrough.
     )
     is_android = "android" in ua
+    # The step between "tapped the link in the bio" and "opened the store":
+    # without it a boost's clicks and its installs can't be compared.
+    src = _clean_src(request.query_params.get("src", ""))
+    try:
+        if _BOT_UA_RE.search(ua):
+            raise _SkipVisit
+        referer = (request.headers.get("referer") or "").split("/")[2:3]
+        db.insert_analytics_event(
+            event_name="install_visit",
+            properties_json=json.dumps({
+                **_client_of(ua), "src": src,
+                "referer_host": referer[0][:80] if referer else "",
+            }),
+            session_id="",
+        )
+    except _SkipVisit:
+        pass
+    except Exception as e:  # never cost a visitor the redirect
+        log.warning(f"install_visit insert failed (non-fatal): {e}")
     if is_ios:
         url = settings.testflight_invite_url or APP_STORE_URL
+        pt = _SRC_RE.sub("", settings.app_store_provider_token or "")
+        if not settings.testflight_invite_url and pt:
+            url = f"{APP_STORE_URL}?pt={pt}&ct={src or 'install'}&mt=8"
         return RedirectResponse(url=url, status_code=302)
     if is_android:
         # Precedence documented next to the settings (play_store_url first).
@@ -3790,7 +3861,7 @@ def list_notifications(google_id: str = "", email: str = "", session_user: Sessi
                 "ref_id": req.get("google_id"),
                 # get_incoming_friend_requests returns `name`, not `display_name`.
                 "title": req.get("name") or "Alguém",
-                "body": "quer ser teu amigo no auê",
+                "body": "quer ser seu amigo no auê",
                 "at": req.get("created_at") or "",
             })
 
@@ -4487,17 +4558,34 @@ class AnalyticsEventRequest(BaseModel):
 
 
 @app.post("/analytics/event", status_code=200)
-def track_event(req: AnalyticsEventRequest):
-    """Fire-and-forget analytics ingestion. Never raises to the client."""
+def track_event(req: AnalyticsEventRequest, request: Request):
+    """Fire-and-forget analytics ingestion. Never raises to the client.
+
+    The server stamps `_platform` and `_client` (see _client_of) on every
+    event, so sign-ins and follows split by iPhone / Android / web without
+    an app release; the underscore keeps them apart from the client's own
+    properties, which can't overwrite them."""
     try:
+        client = _client_of(request.headers.get("user-agent") or "")
         db.insert_analytics_event(
             event_name=req.event_name,
-            properties_json=json.dumps(req.properties),
+            properties_json=json.dumps({
+                **req.properties,
+                "_platform": client["platform"],
+                "_client": client["client"],
+            }),
             session_id=req.session_id,
         )
     except Exception as e:
         log.warning(f"Analytics insert failed (non-fatal): {e}")
     return {"ok": True}
+
+
+# The funnel from a post to a person using the app, in order.
+FUNNEL_STEPS = (
+    "install_visit", "onboarding_started", "onboarding_signed_in",
+    "channel_followed", "first_rsvp",
+)
 
 
 @app.get("/analytics/funnel")
@@ -4509,6 +4597,21 @@ def analytics_funnel():
         log.error(f"Analytics funnel query failed: {e}")
         raise HTTPException(status_code=500, detail="Analytics query failed")
     return {"funnel": rows, "total_rows": sum(r["total"] for r in rows)}
+
+
+@app.get("/analytics/funnel/daily")
+def analytics_funnel_daily(days: int = 14):
+    """The acquisition funnel per day: /install visits, onboarding,
+    sign-ins, follows and first RSVPs, split by platform, client and the
+    install link's ?src=. Counts only, like /analytics/funnel; read by
+    scripts/funnel_report.py."""
+    days = max(1, min(days, 90))
+    try:
+        rows = db.get_funnel_daily(days, FUNNEL_STEPS)
+    except Exception as e:
+        log.error(f"Analytics daily funnel query failed: {e}")
+        raise HTTPException(status_code=500, detail="Analytics query failed")
+    return {"days": days, "steps": list(FUNNEL_STEPS), "rows": rows}
 
 
 # ── AI Companion ──
@@ -4878,7 +4981,7 @@ class ChannelNotify(BaseModel):
 @app.get("/channels/feed")
 def channel_feed(google_id: str = "", limit: int = 400, session_user: SessionUser = None):
     """Upcoming events from the channels this person follows. Eventos
-    reads it as a lookup — which catalog rows get the "Dos teus canais"
+    reads it as a lookup — which catalog rows get the "Dos seus canais"
     section and the channel's name — not as a list to render.
 
     The limit was 40 (capped at 100) from when this fed a horizontal
@@ -5151,7 +5254,7 @@ def set_channel_prioritize(group_id: str, req: ChannelPrioritize, session_user: 
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta")
+        raise HTTPException(status_code=401, detail="Entra na sua conta")
     if not db.set_channel_prioritize(group_id, req.google_id, req.prioritize):
         raise HTTPException(status_code=409, detail="Segue o canal primeiro")
     return {"ok": True, "prioritize": req.prioritize}
@@ -5167,7 +5270,7 @@ def set_channel_notify(group_id: str, req: ChannelNotify, session_user: SessionU
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta")
+        raise HTTPException(status_code=401, detail="Entra na sua conta")
     if not db.set_channel_notify(group_id, req.google_id, req.notify):
         raise HTTPException(status_code=409, detail="Segue o canal primeiro")
     return {"ok": True, "notify": req.notify}
@@ -5180,7 +5283,7 @@ def follow_channel(group_id: str, req: ChannelFollow, session_user: SessionUser 
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta pra seguir")
+        raise HTTPException(status_code=401, detail="Entra na sua conta pra seguir")
     db.follow_channel(group_id, req.google_id)
     return {"ok": True, "following": True}
 
@@ -9588,7 +9691,7 @@ async def send_weekly_digest() -> dict:
         else:
             # Three channel names in a notification is a list, not a
             # headline — the names are on the screen it opens.
-            head = f"✨ {mine} dos teus {len(picks)} canais"
+            head = f"✨ {mine} dos seus {len(picks)} canais"
         return head, f"+{n} novos em CWB esta semana · {preview}"
 
     try:
