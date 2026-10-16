@@ -57,3 +57,17 @@ test('evening events and spread days win; excluded and out-of-town events never 
   assert.deepEqual(picks.map((e) => e.dateStart.slice(0, 10)), ['2026-10-16', '2026-10-17', '2026-10-18'])
   assert.ok(!picks.some((e) => e.id === gone.id || e.id === morning.id || /Londrina/.test(e.name)))
 })
+
+test('a night is grouped by place or by name, but one shared word across venues is not enough', () => {
+  const { slides } = selectChannels([ch('MPB', [
+    ev({ handle: 'teatro', name: 'Roberto Carlos no Teatro', time: '20:00' }),
+    ev({ handle: 'curitibacult', venue: 'Curitiba', name: 'Roberto Carlos', time: '21:00' }),
+    ev({ handle: 'cine', name: 'Temporada do Terror - Carrie', time: '19:00', day: '2026-10-17' }),
+    ev({ handle: 'lala', name: 'A Casa do Terror', time: '19:00', day: '2026-10-17' }),
+    ev({ handle: 'tork', name: 'Black Bulls', time: '22:00' }),
+    ev({ handle: 'tork', name: 'Texas Experience — Jack Vermouth', day: '2026-10-17', time: '00:30' }),
+    ev({ handle: 'tork', name: 'Texas Experience', time: '20:30' }),
+  ])], W)
+  // Roberto Carlos x2 -> 1, Carrie and Casa do Terror -> 2, the Tork night -> 1
+  assert.equal(slides[0].total, 4)
+})

@@ -77,7 +77,7 @@ async function main() {
   const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const total = slides.length
   const pages = [
-    { name: '01-capa.png', label: 'capa', html: channelCoverSlide({ fontCss, from: opts.from, to: opts.to, slides }) },
+    { name: '01-capa.png', label: 'capa', html: channelCoverSlide({ fontCss, from: opts.from, to: opts.to, slides, icon }) },
     ...slides.map((slide, i) => ({
       name: `${String(i + 2).padStart(2, '0')}-${slug(slide.title)}.png`,
       label: `${i + 1}/${total} ${slide.title}`,

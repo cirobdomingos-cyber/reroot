@@ -4,7 +4,7 @@
 // Pure and deterministic, like select.mjs. Input is the GET /channels/{id}
 // payload per channel; nothing here fetches.
 
-import { rejectReason, spanOf, timeOf, venueKey } from './select.mjs'
+import { rejectReason, spanOf, timeOf, venueKey, AGGREGATOR_HANDLES } from './select.mjs'
 
 export const CHANNEL_DEFAULTS = {
   perChannel: 3,     // events shown on one channel slide
@@ -20,11 +20,69 @@ export const handleOf = (e) => (e.igHandle || e.sourceIgHandle || '').replace(/_
 /** "auê Samba e Pagode" -> "Samba e Pagode" */
 export const channelTitle = (name) => (name || '').replace(/^au[eê]\s+/i, '').trim()
 
-// The same show arrives once per post that announced it ("Texas
-// Experience", "Pay In Cash", "Texas Experience com Pay In Cash"): one
-// venue at one start time is one rolê. Two sessions of a comedy club on
-// the same night stay two.
-const rolêKey = (e) => `${handleOf(e) || venueKey(e)}|${(e.dateStart || '').slice(0, 16)}`
+// One night out arrives once per post that announced it: Tork n' Roll's
+// "Texas Experience" came as ten rows (one per band, per repost, per
+// handle). Two rows of the same night are one rolê when
+//  - they are at the same place and start under 2h apart or share a
+//    word of their names (two comedy sessions 3h apart stay two), or
+//  - they start within 1h and share 2+ name words, wherever the scrape
+//    put them ("Roberto Carlos" with the venue "Curitiba"); one shared
+//    word is not enough ("Carrie" and "A Casa do Terror" at 19h).
+const SAME_PLACE_MINUTES = 120
+const ANY_PLACE_MINUTES = 60
+const STOPWORDS = new Set(['show', 'com', 'para', 'festa', 'noite', 'especial', 'edicao', 'curitiba', 'apresenta', 'final', 'semana', 'sabado', 'domingo', 'sexta', 'temporada'])
+const fold = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+const words = (e) => new Set(fold(e.name).split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOPWORDS.has(w)))
+// A place is its own handle or its venue text: "Changes" and "Changes
+// Bar" share @changes.cwb, "Teatro Guaíra – Auditório Bento Munhoz" and
+// "Teatro Guaira" share the text. An aggregator handle (@curitibacult)
+// posts for many places, so only its venue text counts.
+const placesOf = (e) => {
+  const keys = []
+  const venue = venueKey(e).split(' ').slice(0, 2).join(' ')
+  if (venue) keys.push(`v:${venue}`)
+  const h = handleOf(e)
+  if (h && !AGGREGATOR_HANDLES.has(h)) keys.push(`h:${h}`)
+  return keys
+}
+const minutesOf = (e) => Date.parse(e.dateStart) / 60000
+// A night runs to 06h: a 00h30 set belongs to the evening before.
+// dateStart carries the -03:00 offset, so shift to Curitiba time first.
+const nightOf = (e) => new Date(Date.parse(e.dateStart) - 9 * 3600000).toISOString().slice(0, 10)
+
+/** Group rows into rolês; returns arrays of rows, each array one rolê. */
+export function groupRolês(events) {
+  const byNight = new Map()
+  for (const e of events) {
+    const k = nightOf(e)
+    if (!byNight.has(k)) byNight.set(k, [])
+    byNight.get(k).push(e)
+  }
+  const groups = []
+  for (const rows of byNight.values()) {
+    const parent = rows.map((_, i) => i)
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+    const w = rows.map(words)
+    const p = rows.map(placesOf)
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const gap = Math.abs(minutesOf(rows[i]) - minutesOf(rows[j]))
+        const shared = [...w[i]].filter((x) => w[j].has(x)).length
+        const samePlace = p[i].some((k) => p[j].includes(k))
+        if ((samePlace && (gap < SAME_PLACE_MINUTES || shared > 0)) || (gap <= ANY_PLACE_MINUTES && shared >= 2)) parent[find(i)] = find(j)
+      }
+    }
+    const byRoot = new Map()
+    rows.forEach((e, i) => { const r = find(i); if (!byRoot.has(r)) byRoot.set(r, []); byRoot.get(r).push(e) })
+    groups.push(...byRoot.values())
+  }
+  return groups
+}
+
+// The row that stands for its rolê: a real time first, then the shortest
+// name (the headline, not the lineup).
+const representative = (rows) => [...rows].sort((a, b) => (timeOf(a) ? 0 : 1) - (timeOf(b) ? 0 : 1) || a.name.length - b.name.length)[0]
+const rolêKey = (e) => `${placesOf(e)[0] || e.id}|${nightOf(e)}`
 
 /**
  * @param channels [{ channel, events }] as GET /channels/{id} answers
@@ -34,18 +92,10 @@ export function selectChannels(channels, { from, to, excludeIds = [], ...overrid
   const opts = { ...CHANNEL_DEFAULTS, ...overrides }
   const excluded = new Set(excludeIds)
   const prepared = channels.map(({ channel, events }) => {
-    const seen = new Map()
-    for (const raw of events || []) {
-      const e = { ...raw, igHandle: handleOf(raw) }
-      if (excluded.has(e.id) || excluded.has(e.sourceEventId)) continue
-      if (rejectReason(e, from, to)) continue
-      const key = rolêKey(e)
-      // Keep the copy with a real time, then the shortest name (the
-      // headline, not the lineup).
-      const prev = seen.get(key)
-      if (!prev || (!timeOf(prev) && timeOf(e)) || (Boolean(timeOf(prev)) === Boolean(timeOf(e)) && e.name.length < prev.name.length)) seen.set(key, e)
-    }
-    return { channel, title: channelTitle(channel.name), rolês: [...seen.values()] }
+    const rows = (events || [])
+      .map((raw) => ({ ...raw, igHandle: handleOf(raw) }))
+      .filter((e) => !excluded.has(e.id) && !excluded.has(e.sourceEventId) && !rejectReason(e, from, to))
+    return { channel, title: channelTitle(channel.name), rolês: groupRolês(rows).map(representative) }
   })
 
   // Small channels claim their events first, so a night tagged both

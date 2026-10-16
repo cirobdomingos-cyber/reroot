@@ -22,30 +22,39 @@ export const moreLabel = (slide) => {
   return more > 0 ? `+${more} no canal` : 'tudo no canal'
 }
 
-export function channelCoverSlide({ fontCss, from, to, slides }) {
+// The cover's first job is to say "this is an app, install it": people saw
+// the earlier posts and never tapped through (2026-10-15), so the app,
+// its icon and both stores sit above the headline, not on the last slide.
+export function channelCoverSlide({ fontCss, from, to, slides, icon }) {
   const t = TOKENS
   const css = `
-  .hero { flex: 1; display: flex; flex-direction: column; justify-content: center; }
-  .kicker { font-family: 'JetBrains Mono', monospace; font-size: 28px; letter-spacing: 0.14em; text-transform: uppercase; color: ${t.cyan}; margin-bottom: 30px; }
-  h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 128px; line-height: 0.95; letter-spacing: -0.045em; text-wrap: balance; }
+  .app { margin-top: 44px; display: flex; align-items: center; gap: 28px; padding: 26px 30px; border-radius: 30px;
+    border: 3px solid ${t.lime}; background: rgba(198,255,0,0.07); box-shadow: 0 0 34px rgba(198,255,0,0.18); flex: none; }
+  .app img, .app .glyph { width: 112px; height: 112px; border-radius: 26px; flex: none; }
+  .app .glyph { display: grid; place-items: center; font-size: 64px; background: rgba(255,255,255,0.06); }
+  .app .a { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 46px; line-height: 1.05; letter-spacing: -0.02em; color: ${t.lime}; }
+  .app .b { margin-top: 8px; font-size: 28px; color: ${t.text2}; }
+  .hero { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  .kicker { font-family: 'JetBrains Mono', monospace; font-size: 28px; letter-spacing: 0.14em; text-transform: uppercase; color: ${t.cyan}; margin-bottom: 26px; }
+  h1 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 112px; line-height: 0.95; letter-spacing: -0.045em; text-wrap: balance; }
   h1 em { font-style: normal; color: ${t.magenta}; text-shadow: 0 0 30px rgba(255, 43, 214, 0.55); }
-  .sub { margin-top: 36px; font-size: 38px; line-height: 1.3; color: ${t.text2}; max-width: 880px; }
-  .when { margin-top: 44px; }
-  .chips { margin-top: 56px; display: flex; flex-wrap: wrap; gap: 16px; }
-  .chip { display: inline-flex; align-items: center; gap: 12px; height: 62px; padding: 0 26px; border-radius: 999px;
-    border: 2px solid ${t.line}; background: rgba(10,5,16,0.55); font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 30px; white-space: nowrap; }
+  .chips { margin-top: 44px; display: flex; flex-wrap: wrap; gap: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 10px; height: 56px; padding: 0 22px; border-radius: 999px;
+    border: 2px solid ${t.line}; background: rgba(10,5,16,0.55); font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 27px; white-space: nowrap; }
+  .stores { flex: none; display: flex; gap: 16px; margin-top: 30px; }
+  .foot { margin-top: 30px; }
   `
   const chips = slides.map((s) => `<span class="chip">${emojiOf(s.title)} ${esc(s.title)}</span>`).join('')
   return page(fontCss, `<div class="slide">
-    ${top('novo: canais')}
+    ${top(windowLabel(from, to))}
+    <div class="app">${icon ? `<img src="${icon}" alt="">` : '<div class="glyph">📲</div>'}<div><div class="a">Baixa o app auê</div><div class="b">a agenda de Curitiba no teu celular</div></div></div>
     <div class="hero">
-      <div class="kicker">no app auê</div>
+      <div class="kicker">novo no app: canais</div>
       <h1 data-fit>Segue um <em>canal</em>, recebe o fim de semana dele</h1>
-      <div class="sub">Escolhe o teu som ou tua vibe. Os rolês de Curitiba chegam sozinhos.</div>
-      <div class="when"><span class="pill lime">${esc(windowLabel(from, to))}</span></div>
       <div class="chips">${chips}</div>
     </div>
-    <div class="foot"><b style="color:${t.lime}">📲 canais no app auê · link na bio</b><span class="swipe">arrasta →</span></div>
+    <div class="stores"><span class="pill lime">📱 iPhone · App Store</span><span class="pill outline">🤖 Android · beta</span></div>
+    <div class="foot"><b style="color:${t.lime}">baixa de graça · link na bio</b><span class="swipe">arrasta →</span></div>
   </div>`, css)
 }
 
