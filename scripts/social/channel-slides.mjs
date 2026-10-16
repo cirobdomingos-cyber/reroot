@@ -15,6 +15,10 @@ export const CHANNEL_EMOJI = {
   'Cultura': '🎭', 'Eletrônica': '🪩', 'Samba e Pagode': '🥁', 'Gastronomia': '🍽️',
   'Livros': '📚', 'MPB & Jazz': '🎷', 'Rock': '🎸', 'Comédia': '😂',
 }
+// "Teatro Guaíra – Auditório Bento Munhoz da Rocha Netto · Centro" -> "Teatro Guaíra":
+// the room and the bairro push the @handle, the part that gets tagged, off the line.
+const shortVenue = (e) => (e.venue || '').split(/\s+[–—-]\s+|·/)[0].trim()
+
 export const emojiOf = (title) => CHANNEL_EMOJI[title] || '📍'
 
 export const moreLabel = (slide) => {
@@ -78,7 +82,7 @@ export function channelSlide({ fontCss, slide, index, total }) {
   `
   const rows = slide.picks.map((e) => {
     const when = [shortDay(spanOf(e).start), timeLabel(e)].filter(Boolean).join(' · ')
-    return `<div class="ev"><div class="w">${esc(when)}</div><div class="n" data-fit>${esc(keepDashWithWord(e.name.trim()))}</div><div class="v" data-fit>${esc((e.venue || '').split('·')[0].trim())} · <b>@${esc(e.igHandle)}</b></div></div>`
+    return `<div class="ev"><div class="w">${esc(when)}</div><div class="n" data-fit>${esc(keepDashWithWord(e.name.trim()))}</div><div class="v" data-fit>${esc(shortVenue(e))} · <b>@${esc(e.igHandle)}</b></div></div>`
   }).join('')
   return page(fontCss, `<div class="slide">
     ${top(`canal ${index} / ${total}`)}

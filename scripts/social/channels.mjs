@@ -35,11 +35,12 @@ function parseCli(argv) {
       out: { type: 'string' },
       exclude: { type: 'string', default: '' },
       'per-channel': { type: 'string', default: '3' },
+      order: { type: 'string', default: '' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
   if (values.help) {
-    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3]')
+    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3] [--order "MPB & Jazz,Rock"]')
     process.exit(0)
   }
   const week = comingWeekend(todayInCuritiba())
@@ -52,6 +53,8 @@ function parseCli(argv) {
     api: values.api.replace(/\/+$/, ''),
     out: path.resolve(values.out || path.join(ROOT, 'social', 'out', `channels-${from}`)),
     excludeIds: values.exclude.split(',').map((s) => s.trim()).filter(Boolean),
+    // Channel titles to show first, in this order; the rest keep theirs.
+    order: values.order.split(',').map((s) => s.trim()).filter(Boolean),
   }
 }
 
@@ -67,6 +70,9 @@ async function main() {
   const details = await Promise.all(channels.filter((c) => c.visibility !== 'private').map((c) => getJson(`${opts.api}/channels/${c.id}`)))
   const { slides, skipped } = selectChannels(details, { from: opts.from, to: opts.to, excludeIds: opts.excludeIds, perChannel: opts.perChannel })
   if (!slides.length) throw new Error(`no channel has events for ${opts.from}..${opts.to}`)
+  for (const t of opts.order) if (!slides.some((s) => s.title === t)) console.warn(`! --order: no slide titled "${t}"`)
+  const rank = (s) => { const i = opts.order.indexOf(s.title); return i < 0 ? opts.order.length : i }
+  slides.sort((a, b) => rank(a) - rank(b))
 
   await mkdir(opts.out, { recursive: true })
   for (const f of await readdir(opts.out)) if (/\.png$/.test(f)) await unlink(path.join(opts.out, f))
