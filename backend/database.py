@@ -10,6 +10,8 @@ import secrets
 import sqlite3
 import json
 import unicodedata
+
+from event_match import handle_from_catalog_id, same_event
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
@@ -5635,34 +5637,21 @@ def excluded_source_ids(group_id: str) -> set[str]:
 
 def _ig_handle_from_catalog_id(event_id: str) -> str:
     """`instagram_ig_<handle>_<post>` → handle. Same parse as main's
-    _handle_from_event_id; here so routing has no import back into main."""
-    eid = (event_id or "").strip()
-    if not eid.startswith("instagram_ig_"):
-        return ""
-    rest = eid[len("instagram_ig_"):]
-    idx = rest.rfind("_")
-    return rest[:idx].lower() if idx > 0 else ""
+    _handle_from_event_id (both are event_match.handle_from_catalog_id);
+    kept under this name for the routing callers."""
+    return handle_from_catalog_id(event_id)
 
 
-def _night_key(name: str, date_start: str) -> str:
-    """One night, one row: the same name on the same day is the same
-    event whatever post it came from. Case-, accent- and punctuation-
-    insensitive on the name, day-granular on the date, so "Angra – Holy
-    Land" at 19h (portões) and 21h (show) from five posts collapse."""
-    folded = unicodedata.normalize("NFKD", (name or "").lower())
-    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    folded = "".join(ch for ch in folded if ch.isalnum())
-    return f"{folded[:40]}|{(date_start or '')[:10]}"
-
-
-def channel_night_keys(group_id: str) -> set[str]:
+def channel_nights(group_id: str) -> list[tuple[str, str, str]]:
+    """(name, venue, date_start) of every night a channel holds, for
+    event_match.same_event."""
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT name, date_start FROM group_events
+            """SELECT name, venue, date_start FROM group_events
                 WHERE group_id = ? OR group_ids LIKE '%"' || ? || '"%'""",
             (group_id, group_id),
         ).fetchall()
-    return {_night_key(r["name"], r["date_start"]) for r in rows}
+    return [(r["name"] or "", r["venue"] or "", r["date_start"] or "") for r in rows]
 
 
 def dedupe_channel_forks() -> dict[str, int]:
@@ -5671,9 +5660,11 @@ def dedupe_channel_forks() -> dict[str, int]:
 
     The catalog holds the same night several times when several posts
     announce it (a collab under two handles, the venue and the ticket
-    seller, "faltam 15 dias" reposts), and the fill forked each row. The
-    fill skips a night the channel already names now; this cleans up
-    what it wrote before it did."""
+    seller, one post per band of the lineup), and the fill forked each
+    row. Same rule as the fill (event_match.same_event). RSVPs on a
+    removed fork move to the kept one, so nobody loses a "vou". Also
+    repairs fork handles cut at a "_" inside the post code (see
+    event_match.handle_from_catalog_id). Runs after every channel fill."""
     removed: dict[str, int] = {}
     with get_conn() as conn:
         channels = conn.execute(
@@ -5681,21 +5672,30 @@ def dedupe_channel_forks() -> dict[str, int]:
         ).fetchall()
         for ch in channels:
             rows = conn.execute(
-                """SELECT id, name, date_start FROM group_events
+                """SELECT id, name, venue, date_start, source_event_id, source_ig_handle
+                     FROM group_events
                     WHERE (group_id = ? OR group_ids LIKE '%"' || ? || '"%')
                       AND source_event_id != ''
                     ORDER BY created_at ASC""",
                 (ch["id"], ch["id"]),
             ).fetchall()
-            seen: set[str] = set()
+            kept: list = []
             for r in rows:
-                key = _night_key(r["name"], r["date_start"])
-                if key in seen:
-                    conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
-                    conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
-                    removed[ch["name"]] = removed.get(ch["name"], 0) + 1
-                else:
-                    seen.add(key)
+                twin = next((k for k in kept if same_event(
+                    r["name"] or "", r["venue"] or "", r["date_start"] or "",
+                    k["name"] or "", k["venue"] or "", k["date_start"] or "",
+                )), None)
+                if twin is None:
+                    kept.append(r)
+                    handle = handle_from_catalog_id(r["source_event_id"])
+                    if handle and handle != (r["source_ig_handle"] or ""):
+                        conn.execute("UPDATE group_events SET source_ig_handle = ? WHERE id = ?", (handle, r["id"]))
+                    continue
+                # A person with an RSVP on both keeps the kept one's row.
+                conn.execute("UPDATE OR IGNORE rsvps SET event_id = ? WHERE event_id = ?", (twin["id"], r["id"]))
+                conn.execute("DELETE FROM rsvps WHERE event_id = ?", (r["id"],))
+                conn.execute("DELETE FROM group_events WHERE id = ?", (r["id"],))
+                removed[ch["name"]] = removed.get(ch["name"], 0) + 1
         conn.commit()
     return removed
 
@@ -5754,17 +5754,19 @@ def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
         excluded = excluded_source_ids(ch["id"])
         # One night, one row per channel: the catalog carries the same
         # night several times when several posts announce it, and each
-        # row matches the rule. See _night_key.
-        nights = channel_night_keys(ch["id"])
+        # row matches the rule. Same rule as the catalog feed
+        # (event_match.same_event), not an exact-name match: "Pay In
+        # Cash" and "Texas Experience — Black Bulls" are one night.
+        nights = channel_nights(ch["id"])
         for ev in events:
             if not rule_matches(ch["rule_tipos"], ch["rule_genres"], ev["tipo"], ev["genre"]):
                 continue
             if ev["id"] in excluded or channel_holds_source(ch["id"], ev["id"]):
                 continue
-            key = _night_key(ev.get("name") or "", ev.get("date_start") or "")
-            if key in nights:
+            night = (ev.get("name") or "", ev.get("venue_name") or "", ev.get("date_start") or "")
+            if any(same_event(*night, *kept) for kept in nights):
                 continue
-            nights.add(key)
+            nights.append(night)
             description = (ev.get("description") or "").strip()
             url = (ev.get("url") or "").strip()
             if url.startswith("https://www.instagram.com/") or url.startswith("https://instagram.com/"):

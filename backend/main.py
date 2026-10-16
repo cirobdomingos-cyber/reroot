@@ -1553,35 +1553,9 @@ def list_events(
     }
 
 
-# Portuguese stopwords + connectors that don't carry meaning for event-name
-# similarity. Tuned for the typical Curitiba event title — short, descriptive,
-# often uses "no/do/da/de/em" articles and edition markers ("3ª edição").
-_PT_STOPWORDS = frozenset({
-    "a", "o", "as", "os", "um", "uma", "uns", "umas",
-    "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
-    "para", "pra", "por", "com", "sem",
-    "e", "ou", "mas",
-    "ao", "aos", "à", "às",
-    "the", "of", "in", "at", "and", "to", "for",
-    "edicao", "edição", "edition", "ed",
-})
-
-def _name_tokens(name: str) -> frozenset[str]:
-    """
-    Normalize a name to a token set for fuzzy matching:
-      lowercase, strip accents, drop punctuation, split on whitespace,
-      drop stopwords + tokens shorter than 3 chars (a/no/de/etc.).
-    """
-    if not name:
-        return frozenset()
-    # NFKD strips combining marks (à → a, ç → c, é → e)
-    folded = unicodedata.normalize("NFKD", name)
-    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    folded = folded.lower()
-    # Replace anything non-alphanumeric with whitespace
-    folded = re.sub(r"[^a-z0-9]+", " ", folded)
-    tokens = folded.split()
-    return frozenset(t for t in tokens if len(t) >= 3 and t not in _PT_STOPWORDS)
+# Name tokens and the same-event rule live in event_match (shared with
+# the channel fill in database.py).
+from event_match import _PT_STOPWORDS, _name_tokens, same_event, handle_from_catalog_id  # noqa: E402,F401
 
 
 def _dedupe_events(events):
@@ -1609,71 +1583,17 @@ def _dedupe_events(events):
     Three of the four callers never pre-sorted at all, so they used to
     inherit whatever order SQLite returned.
     """
-    NAME_JACCARD = 0.6
-    # When venue already matches, accept lower Jaccard but require at
-    # least 2 shared distinctive tokens. Pure Jaccard at 0.3 would
-    # false-positive on "Show de Música" vs "Workshop de Música" (1
-    # shared token); requiring ≥ 2 shared tokens fixes that.
-    NAME_VENUE_SHARED_MIN = 2
-    NAME_VENUE_JACCARD = 0.3
-    VENUE_JACCARD = 0.4
     events = sorted(events, key=lambda ev: (
         _source_rank(ev),
         ev.date_start or datetime.max.replace(tzinfo=timezone.utc),
     ))
     out = []
     for ev in events:
-        ev_day = ev.date_start.date().isoformat() if ev.date_start else ""
-        ev_hour = ev.date_start.strftime("%H:%M") if ev.date_start else ""
-        ev_name_tokens = _name_tokens(ev.name)
-        ev_venue_tokens = _name_tokens(ev.venue_name or "")
-        is_dup = False
-        for kept in out:
-            kept_day = kept.date_start.date().isoformat() if kept.date_start else ""
-            if ev_day != kept_day:
-                continue
-
-            kept_venue_tokens = _name_tokens(kept.venue_name or "")
-            venue_match = False
-            if ev_venue_tokens and kept_venue_tokens:
-                vinter = len(ev_venue_tokens & kept_venue_tokens)
-                vunion = len(ev_venue_tokens | kept_venue_tokens)
-                if (vunion and vinter / vunion >= VENUE_JACCARD) \
-                   or ev_venue_tokens.issubset(kept_venue_tokens) \
-                   or kept_venue_tokens.issubset(ev_venue_tokens):
-                    venue_match = True
-
-            # Tier 2: same hour + venue overlap
-            if ev_day and ev_hour and venue_match:
-                kept_hour = kept.date_start.strftime("%H:%M") if kept.date_start else ""
-                if ev_hour == kept_hour:
-                    is_dup = True
-                    break
-
-            # Tier 2.5: venue overlap + name share — different hours OK
-            if venue_match and ev_name_tokens:
-                kept_name_tokens = _name_tokens(kept.name)
-                if kept_name_tokens:
-                    inter = len(ev_name_tokens & kept_name_tokens)
-                    union = len(ev_name_tokens | kept_name_tokens)
-                    if union and inter >= NAME_VENUE_SHARED_MIN \
-                       and inter / union >= NAME_VENUE_JACCARD:
-                        is_dup = True
-                        break
-
-            # Tier 3: name fuzzy on the same day, no venue requirement
-            kept_name_tokens = _name_tokens(kept.name)
-            if not ev_name_tokens or not kept_name_tokens:
-                if ev.name.strip().lower() == kept.name.strip().lower():
-                    is_dup = True
-                    break
-                continue
-            inter = len(ev_name_tokens & kept_name_tokens)
-            union = len(ev_name_tokens | kept_name_tokens)
-            if union and inter / union >= NAME_JACCARD:
-                is_dup = True
-                break
-        if not is_dup:
+        if not any(
+            same_event(ev.name, ev.venue_name or "", ev.date_start,
+                       kept.name, kept.venue_name or "", kept.date_start)
+            for kept in out
+        ):
             out.append(ev)
     return out
 
@@ -1982,15 +1902,9 @@ def _handle_from_event_id(event_id: str) -> str:
     """Extract IG handle from a frontend-shaped catalog event id of the
     form `instagram_ig_<handle>_<post>`. Returns '' for non-IG ids
     (aue_original, group events, anything malformed). Used to attribute
-    forked group events back to their source venue's Painel."""
-    eid = (event_id or "").strip()
-    if not eid.startswith("instagram_ig_"):
-        return ""
-    rest = eid[len("instagram_ig_"):]
-    idx = rest.rfind("_")
-    if idx <= 0:
-        return ""
-    return rest[:idx].lower()
+    forked group events back to their source venue's Painel. See
+    event_match.handle_from_catalog_id for why it isn't the last "_"."""
+    return handle_from_catalog_id(event_id)
 
 
 def _is_curator_event(ev) -> bool:
@@ -7253,6 +7167,15 @@ def fill_channels_from_catalog() -> dict:
     One push a day carries all of it; the fill only has to run before
     the digest so channel_picks_by_follower sees the new forks."""
     added = db.route_catalog_events_to_channels()
+    # The fill skips a night a channel already holds; this sweeps what
+    # an older, looser fill wrote, and repairs cut handles. Cheap and
+    # idempotent, so it runs every time rather than as a one-off.
+    try:
+        swept = db.dedupe_channel_forks()
+        if swept:
+            log.info(f"Channel dedupe removed {sum(swept.values())} repeated night(s): {swept}")
+    except Exception as exc:
+        log.warning(f"Channel dedupe failed (non-fatal): {exc}")
     report = {}
     for gid, n in added.items():
         ch = db.get_group(gid) or {}
