@@ -38,11 +38,12 @@ function parseCli(argv) {
       order: { type: 'string', default: '' },
       featured: { type: 'string', default: '0' },
       first: { type: 'string', default: '' },
+      credit: { type: 'string', default: '' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
   if (values.help) {
-    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3] [--order "MPB & Jazz,Rock"] [--featured 4] [--first <event id>,...]')
+    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3] [--order "MPB & Jazz,Rock"] [--featured 4] [--first <event id>,...] [--credit <event id>=<handle>,...]')
     process.exit(0)
   }
   const week = comingWeekend(todayInCuritiba())
@@ -62,6 +63,11 @@ function parseCli(argv) {
     featured: Number.parseInt(values.featured, 10) || 0,
     // Events to list first on their channel's slide (by event id).
     firstIds: values.first.split(',').map((s) => s.trim()).filter(Boolean),
+    // The venue to credit and tag when the scrape came from an agenda
+    // account or a ticket seller (@curitibacult, @bilheteriadigital):
+    // they don't repost, the venue does. Checked by hand on the venue's profile.
+    credits: Object.fromEntries(values.credit.split(',').map((s) => s.trim()).filter(Boolean)
+      .map((pair) => pair.split('=').map((x) => x.trim().replace(/^@/, '')))),
   }
 }
 
@@ -80,6 +86,8 @@ async function main() {
   for (const t of opts.order) if (!slides.some((s) => s.title === t)) console.warn(`! --order: no slide titled "${t}"`)
   const rank = (s) => { const i = opts.order.indexOf(s.title); return i < 0 ? opts.order.length : i }
   slides.sort((a, b) => rank(a) - rank(b))
+  for (const s of slides) for (const e of s.picks) if (opts.credits[e.id]) e.igHandle = opts.credits[e.id]
+  for (const id of Object.keys(opts.credits)) if (!slides.some((s) => s.picks.some((e) => e.id === id))) console.warn(`! --credit: ${id} is not on any slide`)
   for (const id of opts.firstIds) {
     const slide = slides.find((s) => s.picks.some((e) => e.id === id))
     if (!slide) { console.warn(`! --first: ${id} is not on any slide`); continue }
