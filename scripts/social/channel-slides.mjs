@@ -51,7 +51,7 @@ export function channelCoverSlide({ fontCss, from, to, slides, icon }) {
   const chips = slides.map((s) => `<span class="chip">${emojiOf(s.title)} ${esc(s.title)}</span>`).join('')
   return page(fontCss, `<div class="slide">
     ${top(windowLabel(from, to))}
-    <div class="app">${icon ? `<img src="${icon}" alt="">` : '<div class="glyph">📲</div>'}<div><div class="a">Baixa o app auê</div><div class="b">a agenda de Curitiba no teu celular</div></div></div>
+    <div class="app">${icon ? `<img src="${icon}" alt="">` : '<div class="glyph">📲</div>'}<div><div class="a">Baixa o app auê</div><div class="b">a agenda de Curitiba no seu celular</div></div></div>
     <div class="hero">
       <div class="kicker">novo no app: canais</div>
       <h1 data-fit>Segue um <em>canal</em>, recebe o fim de semana dele</h1>
@@ -131,7 +131,7 @@ export function moreChannelsSlide({ fontCss, slides, index, total }) {
       <h2>Mais <em>canais</em></h2>
     </div>
     <div class="list">${rows}</div>
-    <div class="cta"><span class="pill lime">segue o teu no app</span></div>
+    <div class="cta"><span class="pill lime">segue o seu no app</span></div>
     <div class="foot"><b style="color:${t.lime}">📲 app auê · link na bio</b><span class="swipe">baixa →</span></div>
   </div>`, css)
 }
@@ -139,7 +139,7 @@ export function moreChannelsSlide({ fontCss, slides, index, total }) {
 /** Caption: every channel and every venue handle, so each one is tagged. */
 export function buildChannelCaption(slides, from, to, more = []) {
   const lines = [
-    `Agora tem canais no auê 📲 Segue o teu e recebe os rolês dele em Curitiba (${windowLabel(from, to)}) 👇`,
+    `Agora tem canais no auê 📲 Segue o seu e recebe os rolês dele em Curitiba (${windowLabel(from, to)}) 👇`,
     'Escolhe o canal no app auê, de graça. Link na bio.',
     '',
   ]

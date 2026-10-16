@@ -29,7 +29,7 @@ Selection (`scripts/social/select.mjs`, pure and deterministic): events overlapp
 - Check every pick on the venue's own profile: date, time and whether it still happens. The feed is scraped from Instagram and can be wrong (an out-of-town race geocoded onto a Curitiba bairro, a past date). Drop a bad one with `--exclude` and re-run.
 - The description line is the feed's own text (vibeSummary first), only trimmed; text that names a price, a free entry or attendance is skipped. If it reads off, exclude the event; do not rewrite it on the slide.
 - Flyers appear only as a small thumbnail next to the "@handle" credit. If a venue asks, re-run with `--no-images`.
-- Voice: casual and descriptive ("bora", "rola", "acontece"); never "recomendado", "baixa pressão", "introvertido", "ambiente acolhedor".
+- Voice: casual and descriptive ("bora", "rola", "acontece"), Brazilian "você / seu", never "tu / teu / tua" (reads as Portugal; Ciro, 2026-10-16); never "recomendado", "baixa pressão", "introvertido", "ambiente acolhedor".
 - Post from the @auecuritiba account (check the logged-in username), paste `caption.txt`, and tag each venue on its slide too: tagged venues are the ones that repost.
 
 ## Weekly rhythm
