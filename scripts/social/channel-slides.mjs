@@ -96,8 +96,48 @@ export function channelSlide({ fontCss, slide, index, total }) {
   </div>`, css)
 }
 
+const whenOf = (e) => [shortDay(spanOf(e).start), timeLabel(e)].filter(Boolean).join(' · ')
+
+// One slide for the channels that do not get their own: each with its
+// weekend count and one headline, so the carousel stays short and every
+// channel is still named (and its venue still tagged).
+export function moreChannelsSlide({ fontCss, slides, index, total }) {
+  const t = TOKENS
+  const css = `
+  .head { margin-top: 40px; flex: none; }
+  .kicker { font-family: 'JetBrains Mono', monospace; font-size: 26px; letter-spacing: 0.14em; text-transform: uppercase; color: ${t.text3}; }
+  h2 { margin-top: 14px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 104px; line-height: 1.0; letter-spacing: -0.04em; }
+  h2 em { font-style: normal; color: ${t.magenta}; text-shadow: 0 0 28px rgba(255, 43, 214, 0.5); }
+  .list { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 20px; min-height: 0; }
+  .ch { display: flex; gap: 24px; align-items: center; padding: 22px 26px; border: 2px solid ${t.line}; border-radius: 26px; background: rgba(10,5,16,0.55); }
+  .ch .e { font-size: 64px; flex: none; width: 80px; text-align: center; }
+  .ch .txt { min-width: 0; flex: 1; }
+  .ch .t { display: flex; align-items: baseline; gap: 18px; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 46px; letter-spacing: -0.02em; white-space: nowrap; }
+  .ch .t span { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 24px; letter-spacing: 0.06em; text-transform: uppercase; color: ${t.lime}; }
+  .ch .x { margin-top: 6px; font-size: 27px; color: ${t.text2}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ch .y { margin-top: 4px; font-size: 25px; color: ${t.text3}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ch .y b { color: ${t.cyan}; font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 23px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .cta { flex: none; margin-top: 24px; }
+  .foot { margin-top: 40px; }
+  `
+  const rows = slides.map((s) => {
+    const e = s.picks[0]
+    return `<div class="ch"><div class="e">${emojiOf(s.title)}</div><div class="txt"><div class="t">${esc(s.title)}<span>${s.total} rolê${s.total === 1 ? '' : 's'}</span></div><div class="x" data-fit>${esc(e.name.trim())}</div><div class="y"><b>${esc(whenOf(e))}</b> · @${esc(e.igHandle)}</div></div></div>`
+  }).join('')
+  return page(fontCss, `<div class="slide">
+    ${top(`canais ${index} / ${total}`)}
+    <div class="head">
+      <div class="kicker">e tem mais no app</div>
+      <h2>Mais <em>canais</em></h2>
+    </div>
+    <div class="list">${rows}</div>
+    <div class="cta"><span class="pill lime">segue o teu no app</span></div>
+    <div class="foot"><b style="color:${t.lime}">📲 app auê · link na bio</b><span class="swipe">baixa →</span></div>
+  </div>`, css)
+}
+
 /** Caption: every channel and every venue handle, so each one is tagged. */
-export function buildChannelCaption(slides, from, to) {
+export function buildChannelCaption(slides, from, to, more = []) {
   const lines = [
     `Agora tem canais no auê 📲 Segue o teu e recebe os rolês dele em Curitiba (${windowLabel(from, to)}) 👇`,
     'Escolhe o canal no app auê, de graça. Link na bio.',
@@ -106,6 +146,11 @@ export function buildChannelCaption(slides, from, to) {
   for (const s of slides) {
     lines.push(`${emojiOf(s.title)} ${s.title} (${moreLabel(s)})`)
     for (const e of s.picks) lines.push(`· ${[shortDay(spanOf(e).start), timeLabel(e)].filter(Boolean).join(' ')} — ${e.name.trim()} @${e.igHandle}`)
+    lines.push('')
+  }
+  if (more.length) {
+    lines.push('E mais canais no app:')
+    for (const s of more) lines.push(`${emojiOf(s.title)} ${s.title} (${s.total} rolê${s.total === 1 ? '' : 's'}) · ${[shortDay(spanOf(s.picks[0]).start), timeLabel(s.picks[0])].filter(Boolean).join(' ')} — ${s.picks[0].name.trim()} @${s.picks[0].igHandle}`)
     lines.push('')
   }
   lines.push(

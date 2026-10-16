@@ -17,7 +17,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { comingWeekend, addDays, spanOf } from './select.mjs'
 import { selectChannels } from './channel-select.mjs'
-import { channelCoverSlide, channelSlide, buildChannelCaption, moreLabel } from './channel-slides.mjs'
+import { channelCoverSlide, channelSlide, moreChannelsSlide, buildChannelCaption, moreLabel } from './channel-slides.mjs'
 import { closingSlide, contactSheet } from './slides.mjs'
 import { timeLabel, shortDay } from './format.mjs'
 import { ROOT, loadFontCss, launchChromium, renderPng } from './render.mjs'
@@ -36,11 +36,13 @@ function parseCli(argv) {
       exclude: { type: 'string', default: '' },
       'per-channel': { type: 'string', default: '3' },
       order: { type: 'string', default: '' },
+      featured: { type: 'string', default: '0' },
+      first: { type: 'string', default: '' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
   if (values.help) {
-    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3] [--order "MPB & Jazz,Rock"]')
+    console.log('Usage: channels.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--api URL] [--out dir] [--exclude id,id] [--per-channel 3] [--order "MPB & Jazz,Rock"] [--featured 4] [--first <event id>,...]')
     process.exit(0)
   }
   const week = comingWeekend(todayInCuritiba())
@@ -55,6 +57,11 @@ function parseCli(argv) {
     excludeIds: values.exclude.split(',').map((s) => s.trim()).filter(Boolean),
     // Channel titles to show first, in this order; the rest keep theirs.
     order: values.order.split(',').map((s) => s.trim()).filter(Boolean),
+    // How many channels get a slide of their own; the rest share one
+    // "Mais canais" slide. 0 = every channel gets its own.
+    featured: Number.parseInt(values.featured, 10) || 0,
+    // Events to list first on their channel's slide (by event id).
+    firstIds: values.first.split(',').map((s) => s.trim()).filter(Boolean),
   }
 }
 
@@ -73,6 +80,13 @@ async function main() {
   for (const t of opts.order) if (!slides.some((s) => s.title === t)) console.warn(`! --order: no slide titled "${t}"`)
   const rank = (s) => { const i = opts.order.indexOf(s.title); return i < 0 ? opts.order.length : i }
   slides.sort((a, b) => rank(a) - rank(b))
+  for (const id of opts.firstIds) {
+    const slide = slides.find((s) => s.picks.some((e) => e.id === id))
+    if (!slide) { console.warn(`! --first: ${id} is not on any slide`); continue }
+    slide.picks.sort((a, b) => (b.id === id) - (a.id === id))
+  }
+  const featured = opts.featured > 0 && opts.featured < slides.length - 1 ? slides.slice(0, opts.featured) : slides
+  const more = featured === slides ? [] : slides.slice(opts.featured)
 
   await mkdir(opts.out, { recursive: true })
   for (const f of await readdir(opts.out)) if (/\.png$/.test(f)) await unlink(path.join(opts.out, f))
@@ -81,14 +95,19 @@ async function main() {
   const iconFile = path.join(ROOT, 'public', 'icon-192x192.png')
   const icon = existsSync(iconFile) ? `data:image/png;base64,${(await readFile(iconFile)).toString('base64')}` : null
   const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  const total = slides.length
+  const total = featured.length + (more.length ? 1 : 0)
   const pages = [
     { name: '01-capa.png', label: 'capa', html: channelCoverSlide({ fontCss, from: opts.from, to: opts.to, slides, icon }) },
-    ...slides.map((slide, i) => ({
+    ...featured.map((slide, i) => ({
       name: `${String(i + 2).padStart(2, '0')}-${slug(slide.title)}.png`,
       label: `${i + 1}/${total} ${slide.title}`,
       html: channelSlide({ fontCss, slide, index: i + 1, total }),
     })),
+    ...(more.length ? [{
+      name: `${String(featured.length + 2).padStart(2, '0')}-mais-canais.png`,
+      label: `${total}/${total} mais canais`,
+      html: moreChannelsSlide({ fontCss, slides: more, index: total, total }),
+    }] : []),
     { name: `${String(total + 2).padStart(2, '0')}-baixa.png`, label: 'fechamento', html: closingSlide({ fontCss, from: opts.from, to: opts.to, icon }) },
   ]
 
@@ -106,14 +125,14 @@ async function main() {
     await browser.close()
   }
 
-  await writeFile(path.join(opts.out, 'caption.txt'), buildChannelCaption(slides, opts.from, opts.to))
+  await writeFile(path.join(opts.out, 'caption.txt'), buildChannelCaption(featured, opts.from, opts.to, more))
   await writeFile(path.join(opts.out, 'picks.json'), `${JSON.stringify({
     window: { from: opts.from, to: opts.to },
     source: `${opts.api}/channels`,
     excluded: opts.excludeIds,
     skipped,
     slides: slides.map((s, i) => ({
-      slide: pages[i + 1].name,
+      slide: i < featured.length ? pages[i + 1].name : pages[featured.length + 1].name,
       channel: s.channel.id,
       title: s.title,
       total: s.total,
