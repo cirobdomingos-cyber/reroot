@@ -15,7 +15,8 @@
     "lint": "eslint src scripts/social",
     "social:weekend": "node scripts/social/weekend-list.mjs",
     "social:tour": "node scripts/social/app-tour.mjs",
-    "test:social": "node --test scripts/social/select.test.mjs",
+    "social:channels": "node scripts/social/channels.mjs",
+    "test:social": "node --test scripts/social/select.test.mjs scripts/social/channel-select.test.mjs",
     "test:e2e": "playwright test",
     "test:unit": "vitest run"
   },

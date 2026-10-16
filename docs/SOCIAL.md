@@ -5,7 +5,9 @@ Two carousels, rendered from code; a person reviews and posts them.
 - **Weekend list** (`npm run social:weekend`): "Rola esse fim de semana em Curitiba", a cover, one slide per event and a closing "Baixa o auê" slide (iPhone: App Store, Android: beta).
 - **App tour** (`npm run social:tour`): "O que é o auê?", real screenshots of auecuritiba.com in a phone frame, one per feature, plus the same closing slide. Options: `--day Dom` (day selected in the list), `--event "Renato Russo"` (card opened for the detail screen). Output in `social/out/app-tour/`.
 
-Rules for both (Ciro, 2026-10-14): no price and no "grátis / de graça" about events (the feed's values are guesses from flyers; the tour hides the "Custo" row); no "Bora porque" lines; the app is named on every slide ("link na bio"), not only on the last one.
+- **Canais** (`npm run social:channels`): "Segue um canal, recebe o fim de semana dele", a cover with every public channel, one slide per channel (up to 3 of its events in the window, "+N no canal", "segue no app") and the same closing slide. Selection in `scripts/social/channel-select.mjs`: duplicate posts of one show (same venue, same start) count once, a night in two channels goes to the smaller one, evenings first and days spread, channels with under 2 events get no slide. `--exclude id,id` as below; output in `social/out/channels-<from>/`.
+
+Rules for all three (Ciro, 2026-10-14): no price and no "grátis / de graça" about events (the feed's values are guesses from flyers; the tour hides the "Custo" row); no "Bora porque" lines; the app is named on every slide ("link na bio"), not only on the last one.
 
 ## Run
 
