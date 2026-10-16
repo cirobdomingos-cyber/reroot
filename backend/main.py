@@ -749,7 +749,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
     <p class="sub">"Adicionar à Tela de Início" só aparece no Safari de verdade — aqui no app de mensagem não dá.</p>
     <div class="warning">
       <strong>⚠️ Como fazer</strong>
-      Toca no botão abaixo pra copiar o link, abre o app Safari (azul) no teu iPhone, cola na barra de endereço e segue o passo a passo de instalação.
+      Toca no botão abaixo pra copiar o link, abre o app Safari (azul) no seu iPhone, cola na barra de endereço e segue o passo a passo de instalação.
       <button onclick="copyLink('Link copiado! Abra o Safari e cole na barra de endereço.')">Copiar link</button>
     </div>
   </section>
@@ -792,7 +792,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
     <p class="sub">A opção "Instalar app" só aparece no Chrome (ou Edge / Samsung Browser) — não funciona dentro do app de mensagem.</p>
     <div class="warning">
       <strong>⚠️ Como fazer</strong>
-      Toca pra copiar o link, abre o Chrome no teu Android, cola na barra de endereço e segue.
+      Toca pra copiar o link, abre o Chrome no seu Android, cola na barra de endereço e segue.
       <button onclick="copyLink('Link copiado! Abra o Chrome e cole na barra de endereço.')">Copiar link</button>
     </div>
   </section>
@@ -800,7 +800,7 @@ _INSTALL_HTML = """<!DOCTYPE html>
   <!-- ── Desktop ── -->
   <section id="desktop" hidden>
     <h1>Instalar no computador</h1>
-    <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na tua área de trabalho.</p>
+    <p class="sub">Funciona em Chrome, Edge, Brave, Opera. Vira um app de verdade na sua área de trabalho.</p>
     <a href="/" class="open-app">1. Abrir o auê →</a>
     <div class="open-hint">
       Os passos abaixo precisam ser feitos <strong>dentro do auê</strong>, não nesta página.
@@ -3861,7 +3861,7 @@ def list_notifications(google_id: str = "", email: str = "", session_user: Sessi
                 "ref_id": req.get("google_id"),
                 # get_incoming_friend_requests returns `name`, not `display_name`.
                 "title": req.get("name") or "Alguém",
-                "body": "quer ser teu amigo no auê",
+                "body": "quer ser seu amigo no auê",
                 "at": req.get("created_at") or "",
             })
 
@@ -4981,7 +4981,7 @@ class ChannelNotify(BaseModel):
 @app.get("/channels/feed")
 def channel_feed(google_id: str = "", limit: int = 400, session_user: SessionUser = None):
     """Upcoming events from the channels this person follows. Eventos
-    reads it as a lookup — which catalog rows get the "Dos teus canais"
+    reads it as a lookup — which catalog rows get the "Dos seus canais"
     section and the channel's name — not as a list to render.
 
     The limit was 40 (capped at 100) from when this fed a horizontal
@@ -5254,7 +5254,7 @@ def set_channel_prioritize(group_id: str, req: ChannelPrioritize, session_user: 
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta")
+        raise HTTPException(status_code=401, detail="Entra na sua conta")
     if not db.set_channel_prioritize(group_id, req.google_id, req.prioritize):
         raise HTTPException(status_code=409, detail="Segue o canal primeiro")
     return {"ok": True, "prioritize": req.prioritize}
@@ -5270,7 +5270,7 @@ def set_channel_notify(group_id: str, req: ChannelNotify, session_user: SessionU
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta")
+        raise HTTPException(status_code=401, detail="Entra na sua conta")
     if not db.set_channel_notify(group_id, req.google_id, req.notify):
         raise HTTPException(status_code=409, detail="Segue o canal primeiro")
     return {"ok": True, "notify": req.notify}
@@ -5283,7 +5283,7 @@ def follow_channel(group_id: str, req: ChannelFollow, session_user: SessionUser 
     if not db.is_channel(group_id):
         raise HTTPException(status_code=404, detail="Canal não encontrado")
     if not req.google_id:
-        raise HTTPException(status_code=401, detail="Entra na tua conta pra seguir")
+        raise HTTPException(status_code=401, detail="Entra na sua conta pra seguir")
     db.follow_channel(group_id, req.google_id)
     return {"ok": True, "following": True}
 
@@ -9691,7 +9691,7 @@ async def send_weekly_digest() -> dict:
         else:
             # Three channel names in a notification is a list, not a
             # headline — the names are on the screen it opens.
-            head = f"✨ {mine} dos teus {len(picks)} canais"
+            head = f"✨ {mine} dos seus {len(picks)} canais"
         return head, f"+{n} novos em CWB esta semana · {preview}"
 
     try:

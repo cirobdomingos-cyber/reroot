@@ -57,7 +57,7 @@ export default function ChannelsIntro({ followedCount, loading }) {
         badge="🔒 privado"
         badgeBg="var(--cyan)"
         title="Canais privados"
-        body="Pra tua turma combinar o que fazer. Só entra quem for convidado."
+        body="Pra sua turma combinar o que fazer. Só entra quem for convidado."
       />
 
     </div>

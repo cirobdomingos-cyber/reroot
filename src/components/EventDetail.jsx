@@ -788,7 +788,7 @@ export default function EventDetail({ event: ev, fromChannels = [], googleId, vi
             // catalog event added to a channel can still say who
             // published it instead of dropping the row.
             : ev.sourceIgHandle ? `@${ev.sourceIgHandle}`
-            : ev.isPersonalPlan ? 'Plano teu'
+            : ev.isPersonalPlan ? 'Seu plano'
             : ev.isGroupEvent ? null
             : (ev.isCustom ? 'auê plano' : (ev.categoryLabel || null))
           // CANAL is the other half of that question: not who published

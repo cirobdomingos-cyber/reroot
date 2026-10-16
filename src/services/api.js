@@ -1359,7 +1359,7 @@ export async function removeChannelCurator(channelId, requestingEmail, googleId)
 // Read by Eventos as a lookup (which rows are from a channel you
 // follow), so it has to be complete: the server's old default of 40
 // truncated it once channels held ~30 nights each, and rows past the
-// cap lost their "Dos teus canais" mark.
+// cap lost their "Dos seus canais" mark.
 export async function fetchChannelFeed(googleId, limit = 500) {
   if (!googleId) return []
   try {

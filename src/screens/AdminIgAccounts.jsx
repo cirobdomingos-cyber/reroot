@@ -262,7 +262,7 @@ export default function AdminIgAccounts() {
     if (!confirm(
       'Puxar pessoas, amizades, canais e RSVPs da produção?\n\n' +
       'Os dados vêm ANONIMIZADOS: nomes, e-mails e fotos reais são ' +
-      'trocados na produção, antes de sair. A tua conta vem intacta ' +
+      'trocados na produção, antes de sair. A sua conta vem intacta ' +
       'pra você conseguir entrar.\n\n' +
       'Isso APAGA todo o grafo social deste ambiente antes de escrever. ' +
       'Push e tokens de aparelho nunca são copiados.'
