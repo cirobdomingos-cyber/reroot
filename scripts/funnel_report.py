@@ -17,6 +17,11 @@ from collections import defaultdict
 
 STEP_LABELS = {
     "install_visit": "/install",
+    "install_tap_chrome": "chrome",
+    "install_tap_group": "group",
+    "install_tap_optin": "optin",
+    "install_tap_store": "store",
+    "install_tap_web": "web",
     "onboarding_started": "onboard",
     "onboarding_signed_in": "login",
     "channel_followed": "follow",
