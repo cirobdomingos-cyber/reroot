@@ -34,6 +34,18 @@ Selection (`scripts/social/select.mjs`, pure and deterministic): events overlapp
 - Voice: casual and descriptive ("bora", "rola", "acontece"), Brazilian "você / seu", never "tu / teu / tua" (reads as Portugal; Ciro, 2026-10-16); never "recomendado", "baixa pressão", "introvertido", "ambiente acolhedor".
 - Post from the @auecuritiba account (check the logged-in username), paste `caption.txt`, and tag each venue on its slide too: tagged venues are the ones that repost.
 
+## Posting: the `social-poster` cron, never a chat
+
+Posts go out from the Railway cron service `social-poster` (project auê): `node scripts/social/post-next.mjs`, every day at 21:00 UTC (18h BRT), at most one post per run, ported from template-niche-brand. It reads `queue.json` and each folder's slides and `caption.txt` from the `social-assets` branch (`SOCIAL_BASE`), so scheduling a post is a push to that branch, with no app release:
+
+1. Render and review (`npm run social:weekend`, `social:beta`, ...).
+2. On `social-assets`: `<date>-<name>/` with the JPEG slides (`convert x.png -quality 92 x.jpg`) and `caption.txt`, and an item in `queue.json`: `{"folder", "slides": [...], "tags": {"<slide>": "<venue handle>"}, "not_before": "<ISO UTC>", "not_after": "<ISO UTC>"}`. Tags put the venue on its own slide (the ones that repost); `not_after` drops a weekend list that missed its weekend.
+3. Check: `COMPOSIO_CONSUMER_KEY=... COMPOSIO_ACCOUNT=auecuritiba IG_USER_ID=28551068557868082 npm run -s social:post -- --plan` lists every item as published / held / due / expired; `--dry-run --now <iso>` names what a run at that time would post.
+
+A post counts as published when a caption on the profile starts with the item's first caption line, so re-runs never double-post and a post made by hand is skipped. One scheduler per date: never post the same item from a chat too. Stories with a link sticker stay manual (the API cannot add stickers).
+
+Railway variables: `COMPOSIO_CONSUMER_KEY` (ck_), `COMPOSIO_ACCOUNT=auecuritiba`, `IG_USER_ID=28551068557868082`; start command `node scripts/social/post-next.mjs`, cron `0 21 * * *`, restart policy never, source GitHub `main`.
+
 ## Weekly rhythm
 
 Post at least twice a week so a new visitor finds an active profile (Ciro, 2026-10-21): the weekend list on Thursday, and one more feed post early in the week (the beta call while the closed test runs, the channels carousel or the app tour), with a story on most days.
