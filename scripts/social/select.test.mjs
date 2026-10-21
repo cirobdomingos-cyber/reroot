@@ -198,6 +198,8 @@ test('pitch line never carries a price', () => {
   assert.equal(pitchLine({ pitch: 'Três shows seguidos no Dizzy', vibeSummary: 'Show com R$ 10 de entrada' }), 'Três shows seguidos no Dizzy')
   assert.equal(pitchLine({ pitch: 'Entrada free até 22h e drinks', vibeSummary: 'Tudo por R$ 20' }), '')
   assert.equal(pitchLine({ pitch: 'Corrida gratuita de 5km', vibeSummary: 'Corrida de rua de 5 e 10km' }), 'Corrida de rua de 5 e 10km') // no 'free' claims either
+  assert.equal(pitchLine({ vibeSummary: 'Festa house com DJ set e drink com desconto', pitch: 'Festa house no Portal Kirin com DJ set' }), 'Festa house no Portal Kirin com DJ set') // a discount is a price claim too
+  assert.equal(pitchLine({ vibeSummary: 'Open bar de chopp até meia-noite' }), '')
 })
 
 test('pitch line drops the attendance clause', () => {

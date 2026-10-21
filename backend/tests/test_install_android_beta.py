@@ -13,6 +13,8 @@ What must hold:
   4. PLAY_STORE_URL set -> 302 to the public listing, beating the beta.
   5. iOS is unchanged (App Store 302).
   6. Env URLs are escaped and non-http values are refused.
+  7. Every tap (chrome, group, opt-in, store, web) is tagged for the funnel
+     with the visit's ?src=, and the Chrome hand-off keeps the ?src=.
 """
 import sys
 from pathlib import Path
@@ -136,3 +138,37 @@ def test_urls_are_escaped_and_non_http_refused(api):
     _, client = api(PLAY_BETA_GROUP_URL="javascript:alert(1)")
     r = _get(client, ANDROID_CHROME_UA)
     assert 'id="android-beta"' not in r.text
+
+
+def test_each_tap_is_tagged_and_carries_the_src(api):
+    _, client = api(PLAY_BETA_GROUP_URL=GROUP)
+    r = client.get("/install?src=IG_Canais", headers={"user-agent": ANDROID_INSTAGRAM_UA})
+    for step in ("chrome", "group", "optin", "store", "web"):
+        assert f'data-tap="{step}"' in r.text
+    assert 'var __aueSrcQuery = "?src=ig_canais";' in r.text
+    assert '"install_tap_" + step' in r.text and '{src: "ig_canais"}' in r.text
+    # Chrome and the copied link reopen /install with the same tag.
+    assert 'origin + "/install" + __aueSrcQuery;' in r.text
+    assert r.text.index("var __aueSrcQuery") < r.text.index("function iabAction")
+
+
+def test_no_src_reopens_plain_install(api):
+    _, client = api(PLAY_BETA_GROUP_URL=GROUP)
+    r = _get(client, ANDROID_CHROME_UA)
+    assert 'var __aueSrcQuery = "";' in r.text
+
+
+def test_taps_show_up_in_the_daily_funnel(api):
+    _, client = api()
+    for step in ("chrome", "group", "store"):
+        client.post("/analytics/event", headers={"user-agent": ANDROID_CHROME_UA},
+                    json={"event_name": f"install_tap_{step}", "properties": {"src": "ig_canais"}})
+    data = client.get("/analytics/funnel/daily?days=7").json()
+    got = {(r["step"], r["platform"], r["src"]): r["n"] for r in data["rows"]}
+    assert got == {
+        ("install_tap_chrome", "android", "ig_canais"): 1,
+        ("install_tap_group", "android", "ig_canais"): 1,
+        ("install_tap_store", "android", "ig_canais"): 1,
+    }
+    assert data["steps"][:6] == ["install_visit", "install_tap_chrome", "install_tap_group",
+                                 "install_tap_optin", "install_tap_store", "install_tap_web"]
