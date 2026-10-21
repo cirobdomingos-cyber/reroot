@@ -53,7 +53,7 @@ export function whenLabel(event, from, to) {
 // often a guess from a flyer, it changes, and a wrong "de graça" costs trust.
 // The caption sends people to the venue's profile for the ticket.
 const SALES_OPENER = /^(bora|vai|bom|vale)\b[^.]*\bporque\b|^bora\b/i
-const MENTIONS_PRICE = /R\$\s*\d|\d+\s*reais|gr[aá]tis|gratuit|de gra[cç]a|\bfree\b|ingresso|entrada franca/i
+const MENTIONS_PRICE = /R\$\s*\d|\d+\s*reais|gr[aá]tis|gratuit|de gra[cç]a|\bfree\b|ingresso|entrada franca|desconto|promo[cç][aã]o|\bpromo\b|open bar|pre[cç]o/i
 
 /**
  * The feed's pitch, trimmed to fit one or two lines on the slide.
