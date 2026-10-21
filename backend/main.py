@@ -1051,15 +1051,23 @@ _ANDROID_BETA_CSS = """
     background: none; color: #00E5FF; box-shadow: none;
     border: 1px solid rgba(0, 229, 255, 0.45);
   }
+  #beta-web a { color: #00E5FF; font-weight: 600; }
 """
 
 
-def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str, in_app: bool) -> str:
+def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str, in_app: bool,
+                               src: str = "") -> str:
     """/install for Android while the Play closed test is running.
 
     Built from _INSTALL_HTML (same palette, share block, intent:// helper)
     by inserting one section; the default page stays byte-identical. The
     URLs come from env, so they are escaped for an attribute here.
+
+    Each tap (Chrome, group, opt-in, store, web) is logged as
+    install_tap_<step> with the visit's ?src=, and the Chrome hand-off keeps
+    the ?src=: the closed test loses people between the bio link and the
+    app, and without these the drop has no step to point at.
+    `src` is already cleaned by _clean_src, so it is safe inside the JS.
     """
     from html import escape
 
@@ -1069,8 +1077,8 @@ def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str
       <strong>⚠️ Abre no Chrome primeiro</strong>
       Aqui dentro do app (Instagram, WhatsApp...) o Google não deixa entrar na conta,
       e os passos abaixo precisam dela. Toca no botão e segue no Chrome.
-      <button class="iab-cta" onclick="iabAction()">Abrir no Chrome</button>
-      <button class="copy-btn" onclick="copyLink('Link copiado! Abre o Chrome e cola na barra de endereço.')">Copiar link</button>
+      <button class="iab-cta" data-tap="chrome" onclick="iabAction()">Abrir no Chrome</button>
+      <button class="copy-btn" data-tap="chrome" onclick="copyLink('Link copiado! Abre o Chrome e cola na barra de endereço.')">Copiar link</button>
     </div>"""
     section = f"""  <!-- ── Android: Google Play closed test ── -->
   <section id="android-beta" hidden>
@@ -1080,25 +1088,41 @@ def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str
       <div class="beta-head"><div class="num">1</div>
         <div class="sc"><div class="st">Entra no grupo de testers</div>
         <div class="sd">Abre o grupo do Google e toca "Participar do grupo".</div></div></div>
-      <a class="beta-btn" id="beta-step-1" href="{g}" target="_blank" rel="noopener">Entrar no grupo de testers</a>
+      <a class="beta-btn" id="beta-step-1" href="{g}" data-tap="group" target="_blank" rel="noopener">Entrar no grupo de testers</a>
     </div>
     <div class="step beta-step">
       <div class="beta-head"><div class="num">2</div>
         <div class="sc"><div class="st">Aceita o teste</div>
         <div class="sd">Na página do Google Play, toca "Become a tester" (Quero ser testador).</div></div></div>
-      <a class="beta-btn" id="beta-step-2" href="{o}" target="_blank" rel="noopener">Aceitar o teste</a>
+      <a class="beta-btn" id="beta-step-2" href="{o}" data-tap="optin" target="_blank" rel="noopener">Aceitar o teste</a>
     </div>
     <div class="step beta-step">
       <div class="beta-head"><div class="num">3</div>
         <div class="sc"><div class="st">Instala na Play Store</div>
         <div class="sd">Pronto, é só tocar "Instalar".</div></div></div>
-      <a class="beta-btn" id="beta-step-3" href="{st}" target="_blank" rel="noopener">Instalar na Play Store</a>
+      <a class="beta-btn" id="beta-step-3" href="{st}" data-tap="store" target="_blank" rel="noopener">Instalar na Play Store</a>
     </div>
     <p class="beta-note">Usa <strong>a mesma conta Google</strong> nos três passos.
       Depois do passo 2, o passo 3 pode levar uns minutinhos pra liberar — se a Play Store
       disser que não achou o app, espera um pouco e tenta de novo.</p>
     <div class="done"><strong>🎉 Valeu por testar</strong>Achou bug ou tem ideia? Manda pro Ciro pelo link aqui embaixo.</div>
+    <p class="beta-note" id="beta-web">Não quer esperar? <a href="/" data-tap="web">Usa o auê no navegador agora →</a></p>
   </section>
+  <script>
+    var __aueSrcQuery = {json.dumps("?src=" + src if src else "")};
+    (function() {{
+      function tap(step) {{
+        try {{
+          var body = JSON.stringify({{event_name: "install_tap_" + step, properties: {{src: {json.dumps(src)}}}}});
+          var sent = navigator.sendBeacon && navigator.sendBeacon("/analytics/event", new Blob([body], {{type: "application/json"}}));
+          if (!sent) fetch("/analytics/event", {{method: "POST", headers: {{"Content-Type": "application/json"}}, body: body, keepalive: true}});
+        }} catch (e) {{ /* never cost the visitor the tap */ }}
+      }}
+      document.querySelectorAll("#android-beta [data-tap]").forEach(function(el) {{
+        el.addEventListener("click", function() {{ tap(el.getAttribute("data-tap")); }});
+      }});
+    }})();
+  </script>
 
 """
     out = _INSTALL_HTML
@@ -1110,6 +1134,11 @@ def _install_android_beta_html(*, group_url: str, optin_url: str, store_url: str
         # The beta section carries its own inline "Abre no Chrome" block, so
         # the full-screen blocker stays for iOS/desktop only.
         ("    if (inApp) {", "    if (inApp && !isAndroid) {"),
+        # Chrome and the copied link reopen /install with the same ?src=.
+        ('    var canonical = window.location.origin + "/install";',
+         '    var canonical = window.location.origin + "/install" + __aueSrcQuery;'),
+        ('    var url = window.location.origin + "/install";\n    if (navigator.clipboard',
+         '    var url = window.location.origin + "/install" + __aueSrcQuery;\n    if (navigator.clipboard'),
     )
     for old, new in replacements:
         assert out.count(old) == 1, old
@@ -1367,6 +1396,7 @@ def install_page(request: Request):
                 or f"https://play.google.com/apps/testing/{settings.twa_package_name}",
                 store_url=f"https://play.google.com/store/apps/details?id={settings.twa_package_name}",
                 in_app=bool(_ANDROID_IN_APP_RE.search(ua)),
+                src=src,
             )
             return PlainTextResponse(html, media_type="text/html; charset=utf-8")
         if settings.play_store_internal_url:
@@ -4583,7 +4613,11 @@ def track_event(req: AnalyticsEventRequest, request: Request):
 
 # The funnel from a post to a person using the app, in order.
 FUNNEL_STEPS = (
-    "install_visit", "onboarding_started", "onboarding_signed_in",
+    "install_visit",
+    # Android closed-test page taps, in page order (_install_android_beta_html).
+    "install_tap_chrome", "install_tap_group", "install_tap_optin",
+    "install_tap_store", "install_tap_web",
+    "onboarding_started", "onboarding_signed_in",
     "channel_followed", "first_rsvp",
 )
 
