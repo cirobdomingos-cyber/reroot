@@ -615,7 +615,12 @@ def init_db():
         # meaning "no rule on this axis". A channel with neither is
         # hand-filled only, exactly as before. See route_catalog_events_
         # to_channels for the matching semantics.
-        for col in ("rule_tipos", "rule_genres"):
+        # Third axis (Oct 2026): the tracked handle's `category`. A
+        # Carnaval channel is "everything the blocos post", and no tipo
+        # or genre says that — the model files a bloco as festa, show
+        # or outro depending on the caption. The source's category is a
+        # fact we wrote ourselves, so routing on it is deterministic.
+        for col in ("rule_tipos", "rule_genres", "rule_categories"):
             try:
                 conn.execute(
                     f"ALTER TABLE groups ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
@@ -761,6 +766,16 @@ def init_db():
             # chopp grátis", "10% off na entrada").
             "ADD COLUMN promo_code TEXT NOT NULL DEFAULT ''",
             "ADD COLUMN promo_perk TEXT NOT NULL DEFAULT ''",
+            # Caption-first extraction (Oct 2026, Carnaval blocos). The
+            # extractor normally sends every slide of a post to the model
+            # (~2.2k tokens each) because venues put the date on the
+            # flyer. A handle we have a deal with — "write the date,
+            # place and time in the caption" — doesn't need that: the
+            # caption alone is judged, no image is fetched, and a
+            # "não é evento" on it is final. Per handle, not per
+            # category, so one bloco that keeps posting flyer-only can
+            # be flipped back without touching the rest.
+            "ADD COLUMN caption_only INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -1878,15 +1893,29 @@ def list_ig_accounts() -> list[dict]:
 def get_enabled_ig_accounts() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT handle, label, category FROM tracked_ig_accounts WHERE enabled = 1"
+            "SELECT handle, label, category, caption_only FROM tracked_ig_accounts WHERE enabled = 1"
         ).fetchall()
     return [dict(r) for r in rows]
 
 
+def ig_category_by_handle() -> dict[str, str]:
+    """handle → category for every tracked account, enabled or not. The
+    channel fill routes catalog events by their source's category, and
+    an event scraped from a since-disabled handle is still its event."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT handle, category FROM tracked_ig_accounts").fetchall()
+    return {r["handle"]: (r["category"] or "").strip().lower() for r in rows}
+
+
 def upsert_ig_account(handle: str, label: str = "", category: str = "",
                       enabled: bool = True, notes: str = "",
-                      added_by_email: str = "") -> dict:
-    """Insert or update a tracked account. Handle is normalized to lowercase, no '@'."""
+                      added_by_email: str = "",
+                      caption_only: Optional[bool] = None) -> dict:
+    """Insert or update a tracked account. Handle is normalized to lowercase, no '@'.
+
+    `caption_only` None leaves the flag as it is (off on a new row): the
+    admin screen's enable/disable toggle re-posts the row and must not
+    silently reset a flag it doesn't show."""
     handle = handle.strip().lstrip("@").lower()
     if not handle:
         raise ValueError("handle is required")
@@ -1904,6 +1933,11 @@ def upsert_ig_account(handle: str, label: str = "", category: str = "",
                 notes    = excluded.notes
                 -- preserve original added_by_email; don't overwrite on edits
         """, (handle, label, category, 1 if enabled else 0, now, notes, added_by))
+        if caption_only is not None:
+            conn.execute(
+                "UPDATE tracked_ig_accounts SET caption_only = ? WHERE handle = ?",
+                (1 if caption_only else 0, handle),
+            )
         conn.commit()
         row = conn.execute(
             "SELECT * FROM tracked_ig_accounts WHERE handle = ?", (handle,)
@@ -5527,25 +5561,31 @@ def _shape_channel_rules(d: dict) -> dict:
     """Comma-separated columns → lists, on any group/channel dict."""
     d["rule_tipos"] = _split_rule(d.get("rule_tipos"))
     d["rule_genres"] = _split_rule(d.get("rule_genres"))
+    d["rule_categories"] = _split_rule(d.get("rule_categories"))
     return d
 
 
-def rule_matches(rule_tipos, rule_genres, tipo: str, genre: str) -> bool:
-    """Whether an event with this (tipo, genre) belongs in a channel with
-    these rules. No rule at all never matches — an empty rule is "hand-
+def rule_matches(rule_tipos, rule_genres, tipo: str, genre: str,
+                 rule_categories=None, category: str = "") -> bool:
+    """Whether an event with this (tipo, genre, source category) belongs
+    in a channel with these rules. Axes AND together; values within an
+    axis OR. No rule at all never matches — an empty rule is "hand-
     filled", not "everything"."""
-    if not rule_tipos and not rule_genres:
+    if not rule_tipos and not rule_genres and not rule_categories:
         return False
     if rule_tipos and (tipo or "") not in rule_tipos:
         return False
     if rule_genres and (genre or "") not in rule_genres:
         return False
+    if rule_categories and (category or "") not in rule_categories:
+        return False
     return True
 
 
 def set_channel_rules(group_id: str, tipos: Optional[list[str]] = None,
-                      genres: Optional[list[str]] = None) -> bool:
-    """Write one or both rule axes. None leaves that axis as it is; an
+                      genres: Optional[list[str]] = None,
+                      categories: Optional[list[str]] = None) -> bool:
+    """Write any of the rule axes. None leaves that axis as it is; an
     empty list clears it. Values are already validated by the caller."""
     updates, params = [], []
     if tipos is not None:
@@ -5554,6 +5594,9 @@ def set_channel_rules(group_id: str, tipos: Optional[list[str]] = None,
     if genres is not None:
         updates.append("rule_genres = ?")
         params.append(",".join(dict.fromkeys(g for g in genres if g)))
+    if categories is not None:
+        updates.append("rule_categories = ?")
+        params.append(",".join(dict.fromkeys(c for c in categories if c)))
     if not updates:
         return False
     params.append(group_id)
@@ -5569,15 +5612,25 @@ def list_rule_channels() -> list[dict]:
         rows = conn.execute(
             """SELECT * FROM groups
                 WHERE visibility = 'public'
-                  AND (rule_tipos != '' OR rule_genres != '')
+                  AND (rule_tipos != '' OR rule_genres != '' OR rule_categories != '')
                 ORDER BY name ASC"""
         ).fetchall()
     return [_shape_channel_rules(dict(r)) for r in rows]
 
 
+def _event_matches_channel(ch: dict, ev: dict) -> bool:
+    """rule_matches over a routing row — the three axes read off the row."""
+    return rule_matches(
+        ch["rule_tipos"], ch["rule_genres"], ev.get("tipo") or "", ev.get("genre") or "",
+        ch.get("rule_categories"), ev.get("category") or "",
+    )
+
+
 def list_upcoming_catalog_events_for_routing(limit: int = 2000) -> list[dict]:
     """The catalog rows a rule can pick from: upcoming and in the catalog
-    (is_curated). The fields a fork needs, plus the two tag axes."""
+    (is_curated). The fields a fork needs, plus the three rule axes —
+    tipo and genre off the payload, the source's category off the
+    tracked handle the event id names."""
     today = datetime.now(timezone.utc).date().isoformat()
     with get_conn() as conn:
         rows = conn.execute(
@@ -5604,7 +5657,13 @@ def list_upcoming_catalog_events_for_routing(limit: int = 2000) -> list[dict]:
                LIMIT ?""",
             (today, today, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    categories = ig_category_by_handle()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["category"] = categories.get(_ig_handle_from_catalog_id(d["id"]), "")
+        out.append(d)
+    return out
 
 
 def add_channel_exclusion(group_id: str, source_event_id: str, removed_by: str = "") -> bool:
@@ -5757,7 +5816,7 @@ def route_catalog_events_to_channels(event_ids: Optional[list[str]] = None,
         # row matches the rule. See _night_key.
         nights = channel_night_keys(ch["id"])
         for ev in events:
-            if not rule_matches(ch["rule_tipos"], ch["rule_genres"], ev["tipo"], ev["genre"]):
+            if not _event_matches_channel(ch, ev):
                 continue
             if ev["id"] in excluded or channel_holds_source(ch["id"], ev["id"]):
                 continue
@@ -5822,6 +5881,10 @@ def rebalance_rule_channels() -> list[dict]:
                     (ch["id"],),
                 ).fetchall()
             }
+        categories = {
+            r["handle"]: (r["category"] or "").strip().lower()
+            for r in conn.execute("SELECT handle, category FROM tracked_ig_accounts").fetchall()
+        }
         plan: list[tuple] = []  # (row, from, to, drop)
         for ch in channels:
             rows = conn.execute(
@@ -5838,12 +5901,15 @@ def rebalance_rule_channels() -> list[dict]:
                 ).fetchone()
                 if not tags:
                     continue
-                if rule_matches(ch["rule_tipos"], ch["rule_genres"], tags["tipo"], tags["genre"]):
+                ev = {
+                    "tipo": tags["tipo"], "genre": tags["genre"],
+                    "category": categories.get(_ig_handle_from_catalog_id(r["source_event_id"]), ""),
+                }
+                if _event_matches_channel(ch, ev):
                     continue
                 targets = [
                     c for c in channels
-                    if c["id"] != ch["id"]
-                    and rule_matches(c["rule_tipos"], c["rule_genres"], tags["tipo"], tags["genre"])
+                    if c["id"] != ch["id"] and _event_matches_channel(c, ev)
                 ]
                 if len(targets) != 1:
                     continue

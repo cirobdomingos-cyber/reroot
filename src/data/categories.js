@@ -21,6 +21,7 @@ export const CATEGORY_META = {
   parque:          { label: 'Parques',           emoji: '🌿' },
   esporte:         { label: 'Esportes',          emoji: '🏃' },
   infantil:        { label: 'Família',           emoji: '👨‍👩‍👧' },
+  bloco:           { label: 'Blocos',            emoji: '🥁' },
   comercial:       { label: 'Shoppings',         emoji: '🏬' },
   cultural:        { label: 'Cultural',          emoji: '✨' },
   outro:           { label: 'Outros',            emoji: '🔗' },
