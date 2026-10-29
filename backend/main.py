@@ -43,7 +43,7 @@ import image_store
 import ota
 import google_id_token
 import quiet_hours
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -1230,6 +1230,31 @@ def _preview_html(*, title: str, description: str, image: str, url: str,
 </html>"""
 
 
+# Instagram's CDN URLs carry an expiry (`oe=`) and refuse most non-browser
+# fetchers — the same reason the scraper proxies flyers for Claude. A card
+# pointing at one renders blank in WhatsApp as often as not, and a blank
+# where a photo should be reads worse than no photo. Rehosted images live
+# under /event-images/ on our own volume and are what the card should use.
+_UNRELIABLE_IMAGE_HOST = re.compile(r"(^|\.)(cdninstagram\.com|fbcdn\.net|instagram\.com)$", re.I)
+
+
+def _card_image(image: str, origin: str) -> str:
+    """An image URL a preview crawler can actually fetch, or "".
+
+    Our own paths become absolute on the request's origin; an Instagram
+    CDN link is dropped; anything else is passed through as given."""
+    image = (image or "").strip()
+    if not image:
+        return ""
+    if image.startswith("/"):
+        return f"{origin}{image}"
+    try:
+        host = urlsplit(image).hostname or ""
+    except ValueError:
+        return ""
+    return "" if _UNRELIABLE_IMAGE_HOST.search(host) else image
+
+
 def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
     """Title/description/image for a shared event link, or None.
 
@@ -1271,9 +1296,7 @@ def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
     extra = (ev.vibe_summary or ev.description or "").strip()
     if extra:
         description = f"{description} — {extra}" if description else extra
-    image = (ev.image_url or "").strip()
-    if image.startswith("/"):
-        image = f"{origin}{image}"
+    image = _card_image(ev.image_url or "", origin)
     return {
         "title": f"{ev.name} · auê",
         "description": description[:200] or "Curitiba que acontece",
@@ -1344,9 +1367,9 @@ def _channel_preview_card(group_id: str, origin: str) -> Optional[dict]:
              else f"{n} rolês marcados")
     description = (channel.get("description") or "").strip()
     description = f"{description} — {count}" if description else count
-    image = next(((e.get("image_url") or "").strip() for e in upcoming if e.get("image_url")), "")
-    if image.startswith("/"):
-        image = f"{origin}{image}"
+    # The first upcoming night with a cover a crawler can fetch; the
+    # others may only have an Instagram CDN link, which _card_image drops.
+    image = next((img for img in (_card_image(e.get("image_url") or "", origin) for e in upcoming) if img), "")
     return {
         "title": f"{channel.get('name') or 'Canal'} · auê",
         "description": description[:200],
