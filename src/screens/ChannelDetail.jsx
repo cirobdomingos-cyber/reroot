@@ -8,7 +8,8 @@ import {
   CatalogPickerSheet, MembersSheet, BottomSheet, SheetButton,
 } from '../components/GroupSheets'
 import PersonalPlanSheet from '../components/PersonalPlanSheet'
-import { appLink } from '../lib/share'
+import { appLink, shortChannelLink } from '../lib/share'
+import InstallStrip from '../components/InstallStrip'
 import { GENRE_META, GENRE_ORDER } from '../data/genres'
 import { TIPO_META, TIPO_ORDER } from '../data/tipos'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
@@ -102,7 +103,7 @@ export default function ChannelDetail() {
     // separate ➕ beside it. Passing the link along IS the invitation.
     const url = isPrivate && channel.invite_code
       ? appLink(`/join/${channel.invite_code}`)
-      : appLink(`/channels/${channelId}`)
+      : shortChannelLink(channelId)
     const text = isPrivate
       ? `Bora pro ${channel.name} no auê?`
       : `Olha esse canal no auê: ${channel.name}`
@@ -247,6 +248,13 @@ export default function ChannelDetail() {
           {channel.description}
         </p>
       )}
+
+      {/* A shared channel link is where people who don't have auê land.
+          The App Store gate never fires on this route (deep links skip
+          it on purpose), so without this strip a public channel is the
+          one page a newcomer sees with no way to the app. Web only; the
+          installed app and the native wrappers never render it. */}
+      {!isPrivate && <InstallStrip src="channel" />}
 
       {/* The rule the scrape fills this channel by. Shown to everyone:
           a follower deserves to know the feed is "every comedy night in

@@ -1319,6 +1319,71 @@ def short_event_link(event_id: str, request: Request):
     ))
 
 
+def _channel_preview_card(group_id: str, origin: str) -> Optional[dict]:
+    """Title/description/image for a shared PUBLIC channel link, or None.
+
+    A private channel gets nothing: its link is the invite code, and this
+    route only ever carries a channel id, so a private id here is a
+    forwarded URL to a locked door. Name, count and cover stay out.
+
+    The cover is the next upcoming event's flyer — a channel has no
+    image of its own, and "what's coming" is also the most honest thing
+    to put on the card. Falls back to the auê icon."""
+    channel = db.get_group(group_id)
+    if not channel or channel.get("visibility") != "public":
+        return None
+    today = datetime.now(timezone.utc).date().isoformat()
+    upcoming = [
+        _merge_source_event(e) for e in db.get_group_events(group_id, viewer_google_id=None)
+        if (e.get("date_start") or "")[:10] >= today
+    ]
+    upcoming.sort(key=lambda e: e.get("date_start") or "")
+    n = len(upcoming)
+    count = ("nada marcado ainda" if n == 0
+             else "1 rolê marcado" if n == 1
+             else f"{n} rolês marcados")
+    description = (channel.get("description") or "").strip()
+    description = f"{description} — {count}" if description else count
+    image = next(((e.get("image_url") or "").strip() for e in upcoming if e.get("image_url")), "")
+    if image.startswith("/"):
+        image = f"{origin}{image}"
+    return {
+        "title": f"{channel.get('name') or 'Canal'} · auê",
+        "description": description[:200],
+        "image": image or f"{origin}/icon-512x512.png",
+    }
+
+
+@app.get("/c/{group_id}")
+def short_channel_link(group_id: str, request: Request):
+    """Short link for a shared channel — the /e/ pattern, for channels.
+
+    The app shares `/#/channels/<id>`, and everything after `#` never
+    reaches the server, so every channel previewed in WhatsApp as the
+    same homepage card. Humans get a plain 302 into that hash route;
+    preview crawlers get a card with the channel's name, what's coming
+    up and a flyer. The service worker's navigation denylist has to name
+    this path too (src/sw.js), or an installed PWA renders the shell."""
+    from fastapi.responses import RedirectResponse, HTMLResponse
+    if not group_id:
+        return RedirectResponse(url="/", status_code=302)
+    target = f"/#/channels/{group_id}"
+    ua = request.headers.get("user-agent") or ""
+    if not _LINK_PREVIEW_UA.search(ua):
+        return RedirectResponse(url=target, status_code=302)
+    origin = _request_origin(request)
+    card = _channel_preview_card(group_id, origin) or {
+        "title": "auê — Curitiba que acontece",
+        "description": "Todos os eventos da cidade num lugar só, com a galera junto.",
+        "image": f"{origin}/icon-512x512.png",
+    }
+    return HTMLResponse(_preview_html(
+        title=card["title"], description=card["description"],
+        image=card["image"], url=f"{origin}/c/{group_id}",
+        redirect_to=target,
+    ))
+
+
 # auê's public App Store listing. The id is permanent (unlike a TestFlight
 # invite link, which rotates), so it's a constant rather than an env var.
 APP_STORE_URL = "https://apps.apple.com/app/id6765535013"
