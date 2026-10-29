@@ -102,11 +102,28 @@ def test_the_cover_skips_instagram_cdn_links_for_a_rehosted_one(api):
     assert 'property="og:image" content="https://auecuritiba.com/event-images/rehosted.jpg"' in r.text
 
 
-def test_a_channel_with_only_instagram_covers_falls_back_to_the_icon(api):
+def test_a_channel_with_only_instagram_covers_keeps_the_nearest_one(api):
+    """No rehosted copy anywhere: the Instagram link is still a flyer, and
+    on WhatsApp it renders. The icon is only for a channel with no cover."""
     _db, _main, client = api
     _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco")
     _event(_db, "instagram_ig_siribloco_1", tipo="festa",
            image="https://scontent.cdninstagram.com/v/t51/x.jpg")
+    _event(_db, "instagram_ig_siribloco_2", tipo="festa", when=SOON + timedelta(days=3),
+           image="https://scontent.cdninstagram.com/v/t51/later.jpg")
+    r = client.post("/admin/channels", json={
+        "requesting_email": FOUNDER, "name": "auê Carnaval", "rule_categories": ["bloco"],
+    })
+    cid = r.json()["channel"]["id"]
+    r = client.get(f"/c/{cid}", headers={"user-agent": WHATSAPP_UA, "host": "auecuritiba.com"},
+                   follow_redirects=False)
+    assert 'property="og:image" content="https://scontent.cdninstagram.com/v/t51/x.jpg"' in r.text
+
+
+def test_a_channel_with_no_covers_uses_the_icon(api):
+    _db, _main, client = api
+    _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco")
+    _event(_db, "instagram_ig_siribloco_1", tipo="festa", image="")
     r = client.post("/admin/channels", json={
         "requesting_email": FOUNDER, "name": "auê Carnaval", "rule_categories": ["bloco"],
     })
