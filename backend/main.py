@@ -43,7 +43,7 @@ import image_store
 import ota
 import google_id_token
 import quiet_hours
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode
 from scheduler import start_scheduler, stop_scheduler, run_refresh
 
 # Static files directory (built React app, copied by Dockerfile)
@@ -1230,29 +1230,28 @@ def _preview_html(*, title: str, description: str, image: str, url: str,
 </html>"""
 
 
-# Instagram's CDN URLs carry an expiry (`oe=`) and refuse most non-browser
-# fetchers — the same reason the scraper proxies flyers for Claude. A card
-# pointing at one renders blank in WhatsApp as often as not, and a blank
-# where a photo should be reads worse than no photo. Rehosted images live
-# under /event-images/ on our own volume and are what the card should use.
-_UNRELIABLE_IMAGE_HOST = re.compile(r"(^|\.)(cdninstagram\.com|fbcdn\.net|instagram\.com)$", re.I)
+# Which cover a card should carry. Instagram CDN URLs expire (`oe=`) and
+# refuse most server-side fetchers, so a rehosted copy under /event-images/
+# on our own volume is the safer choice when the event has one. They are
+# NOT dropped when it doesn't: WhatsApp — the channel that matters here —
+# builds the preview on the sender's phone at send time and embeds the
+# image in the message, and a bloco's flyer rendered that way on 29 Oct.
+# An earlier version dropped them and would have traded that flyer for
+# the auê icon.
+def _is_rehosted(image: str) -> bool:
+    return (image or "").strip().startswith("/")
 
 
 def _card_image(image: str, origin: str) -> str:
-    """An image URL a preview crawler can actually fetch, or "".
-
-    Our own paths become absolute on the request's origin; an Instagram
-    CDN link is dropped; anything else is passed through as given."""
+    """The cover URL as a crawler should receive it, or "". Our own
+    paths become absolute on the request's origin; anything else is
+    passed through as given."""
     image = (image or "").strip()
     if not image:
         return ""
     if image.startswith("/"):
         return f"{origin}{image}"
-    try:
-        host = urlsplit(image).hostname or ""
-    except ValueError:
-        return ""
-    return "" if _UNRELIABLE_IMAGE_HOST.search(host) else image
+    return image
 
 
 def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
@@ -1367,9 +1366,11 @@ def _channel_preview_card(group_id: str, origin: str) -> Optional[dict]:
              else f"{n} rolês marcados")
     description = (channel.get("description") or "").strip()
     description = f"{description} — {count}" if description else count
-    # The first upcoming night with a cover a crawler can fetch; the
-    # others may only have an Instagram CDN link, which _card_image drops.
-    image = next((img for img in (_card_image(e.get("image_url") or "", origin) for e in upcoming) if img), "")
+    # The nearest night with a rehosted cover; failing that, the nearest
+    # with any cover at all. See _is_rehosted for why the order.
+    covers = [e.get("image_url") or "" for e in upcoming if (e.get("image_url") or "").strip()]
+    chosen = next((c for c in covers if _is_rehosted(c)), covers[0] if covers else "")
+    image = _card_image(chosen, origin)
     return {
         "title": f"{channel.get('name') or 'Canal'} · auê",
         "description": description[:200],
