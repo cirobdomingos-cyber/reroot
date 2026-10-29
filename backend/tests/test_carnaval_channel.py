@@ -203,3 +203,56 @@ def test_the_scrape_passes_caption_only_for_flagged_handles_only(monkeypatch, ap
     asyncio.run(ig.fetch_events(anthropic_api_key="k", apify_token="t", posts_per_account=5))
     assert seen["BLOCO1"] == {"caption_only": True}
     assert seen["BAR1"] == {}
+
+
+# -- 6. the debug tool judges a post the way the scrape would ----------
+
+def test_extract_debug_honours_caption_only_and_the_tracked_handle(monkeypatch, api):
+    """/admin/ig-extract-debug fetches a post by URL, so Apify names no
+    profile and the post is the author's. Debugging a bloco repost sent
+    the flyer the scrape never sends and named the author instead of the
+    bloco. `handle` makes the tool judge the post as the scrape would."""
+    _db, _main, client = api
+    import importlib
+    sys.modules.pop("scrapers.instagram_apify", None)
+    ig = importlib.import_module("scrapers.instagram_apify")
+    _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco",
+                          caption_only=True)
+    monkeypatch.setattr(_main.settings, "apify_api_token", "t")
+    monkeypatch.setattr(_main.settings, "anthropic_api_key", "k")
+    seen = {}
+
+    async def fake_scrape(token, urls, posts_per_account):
+        return [{"inputUrl": urls[0], "ownerUsername": "mst_parana",
+                 "url": urls[0], "id": "ABC", "timestamp": "2026-11-01T18:00:00Z",
+                 "caption": "x" * 40, "displayUrl": "https://cdn.example/f.jpg"}]
+
+    async def extract(client_, post, today, debug_out=None, **kw):
+        seen["kwargs"] = kw
+        seen["tracked_handle"] = ig._tracked_handle(post)
+        return []
+
+    monkeypatch.setattr(ig, "_run_apify_scrape", fake_scrape)
+    monkeypatch.setattr(ig, "_extract_events", extract)
+
+    r = client.get("/admin/ig-extract-debug", params={
+        "url": "https://www.instagram.com/p/ABC/", "handle": "@siribloco",
+        "requesting_email": FOUNDER,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["handle"] == "siribloco"
+    assert body["tracked"] is True
+    assert body["caption_only"] is True
+    assert seen["kwargs"] == {"caption_only": True}
+    assert seen["tracked_handle"] == "siribloco"
+
+    # Without `handle`, the post is the author's: untracked, flyer read.
+    r = client.get("/admin/ig-extract-debug", params={
+        "url": "https://www.instagram.com/p/ABC/", "requesting_email": FOUNDER,
+    })
+    body = r.json()
+    assert body["handle"] == "mst_parana"
+    assert body["tracked"] is False
+    assert body["caption_only"] is False
+    assert seen["kwargs"] == {}

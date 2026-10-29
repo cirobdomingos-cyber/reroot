@@ -1392,6 +1392,10 @@ const ghostBtn = (color) => ({
 // reason each event was rejected.
 function PostDebugSection({ email }) {
   const [url, setUrl] = useState('')
+  // The tracked profile to judge the post as. A collab or repost is
+  // authored by someone else, and a caption-only handle (blocos) is
+  // judged without the flyer — both follow the handle, not the author.
+  const [asHandle, setAsHandle] = useState('')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [running, setRunning] = useState(false)
@@ -1402,8 +1406,10 @@ function PostDebugSection({ email }) {
     if (!link) return
     setRunning(true); setError(null); setResult(null)
     try {
+      const handle = asHandle.trim().replace(/^@/, '')
       const r = await apiFetch(
         `${API_BASE}/admin/ig-extract-debug?url=${encodeURIComponent(link)}`
+        + (handle ? `&handle=${encodeURIComponent(handle)}` : '')
         + `&requesting_email=${encodeURIComponent(email)}`
       )
       const body = await r.json().catch(() => ({}))
@@ -1446,6 +1452,12 @@ function PostDebugSection({ email }) {
             placeholder="https://www.instagram.com/p/..."
             style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
           />
+          <input
+            value={asHandle}
+            onChange={e => setAsHandle(e.target.value)}
+            placeholder="Como qual conta? (opcional — ex: @siribloco, pra collab ou conta só legenda)"
+            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
+          />
           <button onClick={run} disabled={running || !url.trim()} style={ghostBtn('var(--sage)')}>
             {running ? 'Analisando…' : '▶ Analisar post'}
           </button>
@@ -1486,10 +1498,11 @@ function PostDebugResult({ result }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={line}>
-        <b>@{result.handle}</b> · postado {result.posted_at || '—'}<br />
+        <b>@{result.handle}</b>{result.tracked === false ? ' (não rastreada)' : ''}
+        {' '}· postado {result.posted_at || '—'}<br />
         Flyer enviado pro modelo:{' '}
         <b style={{ color: result.image_sent_to_model ? 'var(--sage)' : 'var(--terra)' }}>
-          {result.image_sent_to_model ? 'sim' : 'não'}
+          {result.image_sent_to_model ? 'sim' : result.caption_only ? 'não — conta só legenda' : 'não'}
         </b>
       </div>
 
