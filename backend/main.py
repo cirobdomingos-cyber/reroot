@@ -4928,20 +4928,26 @@ class ChannelCreate(BaseModel):
     requesting_email: str
     name: str
     description: str = ""
-    # The rule the scrape fills this channel by. Either axis may be
-    # empty; both empty is a hand-filled channel. See db.rule_matches.
+    # The rule the scrape fills this channel by. Any axis may be
+    # empty; all empty is a hand-filled channel. See db.rule_matches.
     rule_tipos: list[str] = []
     rule_genres: list[str] = []
+    # Source categories (`tracked_ig_accounts.category`): "every event
+    # the blocos post", whatever the model called it.
+    rule_categories: list[str] = []
 
 
-def _validated_rules(tipos: Optional[list[str]], genres: Optional[list[str]]) -> tuple:
-    """Lower-case, dedupe and check both axes against the closed
-    vocabularies. 400 names the bad value — a rule with a word the
-    enrichment never emits would be a channel that never fills, and
-    nothing else would say why."""
+def _validated_rules(tipos: Optional[list[str]], genres: Optional[list[str]],
+                     categories: Optional[list[str]] = None) -> tuple:
+    """Lower-case, dedupe and check each axis against its vocabulary.
+    400 names the bad value — a rule with a word the enrichment never
+    emits (or a category no tracked handle carries) would be a channel
+    that never fills, and nothing else would say why."""
     from enrichment import GENRES, TIPOS
+    known_categories = {c for c in db.ig_category_by_handle().values() if c}
     out = []
-    for values, vocab, label in ((tipos, TIPOS, "Tipo"), (genres, GENRES, "Gênero")):
+    for values, vocab, label in ((tipos, TIPOS, "Tipo"), (genres, GENRES, "Gênero"),
+                                 (categories, known_categories, "Categoria")):
         if values is None:
             out.append(None)
             continue
@@ -4989,7 +4995,7 @@ def create_channel(req: ChannelCreate, session_user: SessionUser = None):
             status_code=409,
             detail="A conta do auê ainda não entrou no app — entra uma vez e tenta de novo.",
         )
-    tipos, genres = _validated_rules(req.rule_tipos, req.rule_genres)
+    tipos, genres, categories = _validated_rules(req.rule_tipos, req.rule_genres, req.rule_categories)
     channel = db.create_group(
         google_id=founder_id,
         name=name,
@@ -5001,8 +5007,8 @@ def create_channel(req: ChannelCreate, session_user: SessionUser = None):
     # that matches is forked in right now, the same way the next scrape
     # will keep doing. No push for this first fill — nobody follows yet.
     added = 0
-    if tipos or genres:
-        db.set_channel_rules(channel["id"], tipos, genres)
+    if tipos or genres or categories:
+        db.set_channel_rules(channel["id"], tipos, genres, categories)
         added = db.route_catalog_events_to_channels(group_ids=[channel["id"]]).get(channel["id"], 0)
     return {"channel": db.get_group(channel["id"]), "added": added}
 
@@ -5156,6 +5162,7 @@ class ChannelUpdate(BaseModel):
     # None leaves the axis alone; [] clears it. See ChannelCreate.
     rule_tipos: Optional[list[str]] = None
     rule_genres: Optional[list[str]] = None
+    rule_categories: Optional[list[str]] = None
 
 
 class ChannelCuratorAdd(BaseModel):
@@ -5223,7 +5230,7 @@ def update_channel(group_id: str, req: ChannelUpdate, session_user: SessionUser 
     name = (req.name or "").strip()[:80] if req.name is not None else None
     if req.name is not None and not name:
         raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
-    tipos, genres = _validated_rules(req.rule_tipos, req.rule_genres)
+    tipos, genres, categories = _validated_rules(req.rule_tipos, req.rule_genres, req.rule_categories)
     db.update_group(
         group_id,
         name=name,
@@ -5234,8 +5241,8 @@ def update_channel(group_id: str, req: ChannelUpdate, session_user: SessionUser 
     # next scrape: the curator is looking at the screen and expects the
     # events to be there when it reloads.
     added = 0
-    if tipos is not None or genres is not None:
-        db.set_channel_rules(group_id, tipos, genres)
+    if tipos is not None or genres is not None or categories is not None:
+        db.set_channel_rules(group_id, tipos, genres, categories)
         added = db.route_catalog_events_to_channels(group_ids=[group_id]).get(group_id, 0)
     return {"ok": True, "channel": db.get_group(group_id), "added": added}
 
@@ -6880,6 +6887,8 @@ class IgAccountUpsert(BaseModel):
     category: str = ""
     enabled: bool = True
     notes: str = ""
+    # None keeps the stored flag. See db.upsert_ig_account.
+    caption_only: Optional[bool] = None
     requesting_email: str = ""  # logged-in user's email — checked against curators
 
 
@@ -7023,7 +7032,7 @@ def admin_upsert_ig_account(req: IgAccountUpsert, session_user: SessionUser = No
     account = db.upsert_ig_account(
         handle=handle, label=req.label.strip(), category=req.category.strip(),
         enabled=req.enabled, notes=req.notes.strip(),
-        added_by_email=email,
+        added_by_email=email, caption_only=req.caption_only,
     )
     _bust_handle_cache()
     return {"account": account}
