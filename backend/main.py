@@ -1230,6 +1230,30 @@ def _preview_html(*, title: str, description: str, image: str, url: str,
 </html>"""
 
 
+# Which cover a card should carry. Instagram CDN URLs expire (`oe=`) and
+# refuse most server-side fetchers, so a rehosted copy under /event-images/
+# on our own volume is the safer choice when the event has one. They are
+# NOT dropped when it doesn't: WhatsApp — the channel that matters here —
+# builds the preview on the sender's phone at send time and embeds the
+# image in the message, and a bloco's flyer rendered that way on 29 Oct.
+# An earlier version dropped them and would have traded that flyer for
+# the auê icon.
+def _is_rehosted(image: str) -> bool:
+    return (image or "").strip().startswith("/")
+
+
+def _card_image(image: str, origin: str) -> str:
+    """The cover URL as a crawler should receive it, or "". Our own
+    paths become absolute on the request's origin; anything else is
+    passed through as given."""
+    image = (image or "").strip()
+    if not image:
+        return ""
+    if image.startswith("/"):
+        return f"{origin}{image}"
+    return image
+
+
 def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
     """Title/description/image for a shared event link, or None.
 
@@ -1271,9 +1295,7 @@ def _event_preview_card(event_id: str, origin: str) -> Optional[dict]:
     extra = (ev.vibe_summary or ev.description or "").strip()
     if extra:
         description = f"{description} — {extra}" if description else extra
-    image = (ev.image_url or "").strip()
-    if image.startswith("/"):
-        image = f"{origin}{image}"
+    image = _card_image(ev.image_url or "", origin)
     return {
         "title": f"{ev.name} · auê",
         "description": description[:200] or "Curitiba que acontece",
@@ -1344,9 +1366,11 @@ def _channel_preview_card(group_id: str, origin: str) -> Optional[dict]:
              else f"{n} rolês marcados")
     description = (channel.get("description") or "").strip()
     description = f"{description} — {count}" if description else count
-    image = next(((e.get("image_url") or "").strip() for e in upcoming if e.get("image_url")), "")
-    if image.startswith("/"):
-        image = f"{origin}{image}"
+    # The nearest night with a rehosted cover; failing that, the nearest
+    # with any cover at all. See _is_rehosted for why the order.
+    covers = [e.get("image_url") or "" for e in upcoming if (e.get("image_url") or "").strip()]
+    chosen = next((c for c in covers if _is_rehosted(c)), covers[0] if covers else "")
+    image = _card_image(chosen, origin)
     return {
         "title": f"{channel.get('name') or 'Canal'} · auê",
         "description": description[:200],
