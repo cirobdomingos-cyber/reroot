@@ -339,6 +339,19 @@ Curitiba, ou no passado → simplesmente não entra na lista. Se nenhum \
 sobrar, responda {{"is_event": false}}.
 """
 
+# Appended for a caption_only handle (see _extract_events). The prompt
+# above tells the model the flyer is where the date lives; for these
+# handles there is no flyer attached, on purpose, and the caption is the
+# whole announcement. Without this the model would hedge toward "não é
+# evento" because it was told to look at an image it never got.
+CAPTION_ONLY_ADDENDUM = """
+
+⚠️ ESTE POST VEM SEM IMAGEM, DE PROPÓSITO. Essa conta combinou de \
+escrever data, local e horário na própria legenda. Julgue só pela \
+legenda: se ela traz uma data concreta, é EVENTO; se não traz, NÃO É \
+EVENTO — não suponha que a data estaria num flyer.
+"""
+
 
 # Debug capture — top-level keys + a sample of values from the first post
 # of the most recent scrape. Surfaced via /admin/apify-debug so we can see
@@ -628,10 +641,18 @@ async def fetch_events(
     # extractor's long-standing call shape is unchanged otherwise.
     extra = {"cancel_out": cancel_out} if cancel_out is not None else {}
 
+    # Handles whose captions carry the facts: judged without the flyer.
+    # Passed only when it applies, like cancel_out, so the extractor's
+    # call shape is unchanged for every other handle.
+    caption_only_handles = {a["handle"] for a in accounts if a.get("caption_only")}
+
     async def _bounded_extract(post):
+        kwargs = dict(extra)
+        if _tracked_handle(post) in caption_only_handles:
+            kwargs["caption_only"] = True
         async with sem:
             return await _extract_events(
-                client, post, today_str, failed_out=failed_shortcodes, **extra
+                client, post, today_str, failed_out=failed_shortcodes, **kwargs
             )
 
     results = await asyncio.gather(
@@ -904,11 +925,18 @@ async def _extract_events(
     failed_out: Optional[set] = None,
     debug_out: Optional[dict] = None,
     cancel_out: Optional[list] = None,
+    caption_only: bool = False,
 ) -> list[RawEvent]:
     """
     Send a single post's caption to Claude Haiku for structured extraction.
     Returns [] if Claude judges it not an event, or on any error. Async so
     the calling fan-out (asyncio.gather) can run many in parallel.
+
+    `caption_only`: the handle has agreed to put date, place and time in
+    the caption (the Carnaval blocos, Oct 2026), so no slide is fetched
+    or sent — the ~2.2k tokens per image are the bulk of a post's cost —
+    and a "não é evento" reached on the caption is final rather than
+    retried with the flyer. The cover image still comes from the post.
 
     A post can carry SEVERAL events. The weekly-lineup post is a staple of
     every bar in town — "quinta tem X, sexta tem Y, sábado tem Z" — and the
@@ -953,6 +981,8 @@ async def _extract_events(
         post_date=post_date,
         caption=caption[:1500],
     )
+    if caption_only:
+        prompt += CAPTION_ONLY_ADDENDUM
 
     # Build a multimodal user message — the post image is essential when
     # the date is printed on the poster (extremely common on IG event
@@ -962,7 +992,7 @@ async def _extract_events(
     # the image fetch fails.
     # Every slide of a carousel, in order, capped: one flyer per night is
     # how venues post a week, and the model only extracts what it sees.
-    slide_urls = _slide_urls(post)[:_MAX_SLIDES]
+    slide_urls = [] if caption_only else _slide_urls(post)[:_MAX_SLIDES]
     fetched = await asyncio.gather(*[_fetch_image_b64(u) for u in slide_urls])
     slides = [img for img in fetched if img]
     had_image = bool(slides)

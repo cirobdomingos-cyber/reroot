@@ -11,6 +11,7 @@ import PersonalPlanSheet from '../components/PersonalPlanSheet'
 import { appLink } from '../lib/share'
 import { GENRE_META, GENRE_ORDER } from '../data/genres'
 import { TIPO_META, TIPO_ORDER } from '../data/tipos'
+import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 import { apiFetch } from '../lib/session'
 import {
   BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
@@ -251,7 +252,10 @@ export default function ChannelDetail() {
           a follower deserves to know the feed is "every comedy night in
           the catalog", not a person's picks — and a curator sees at a
           glance what will arrive without opening the panel below. */}
-      <RuleLine tipos={channel.rule_tipos} genres={channel.rule_genres} />
+      <RuleLine
+        tipos={channel.rule_tipos} genres={channel.rule_genres}
+        categories={channel.rule_categories}
+      />
 
       {/* Everything about the channel in one line: what's on, who
           else is here, and a couple of faces. The follower strip used
@@ -600,6 +604,7 @@ function ChannelCuration({ channel, email, onChanged }) {
   // the channel on save, so the events are there when the screen reloads.
   const [ruleTipos, setRuleTipos] = useState(channel.rule_tipos || [])
   const [ruleGenres, setRuleGenres] = useState(channel.rule_genres || [])
+  const [ruleCategories, setRuleCategories] = useState(channel.rule_categories || [])
   const [curators, setCurators] = useState(null)
   const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
@@ -623,6 +628,7 @@ function ChannelCuration({ channel, email, onChanged }) {
       await updateChannel(channel.id, email, {
         name: name.trim(), description: description.trim(),
         rule_tipos: ruleTipos, rule_genres: ruleGenres,
+        rule_categories: ruleCategories,
       })
       trackEvent('channel_edited', { channel_id: channel.id })
       onChanged()
@@ -726,8 +732,16 @@ function ChannelCuration({ channel, email, onChanged }) {
         order={GENRE_ORDER} meta={GENRE_META}
         value={ruleGenres} onChange={setRuleGenres}
       />
+      {/* Third axis: who posted it. "Blocos" is a category of tracked
+          handle, not something the model tags, so a Carnaval channel
+          is "every event the blocos post" regardless of tipo. */}
+      <RulePicker
+        label="Entra sozinho: quem posta"
+        order={CATEGORY_ORDER} meta={CATEGORY_META}
+        value={ruleCategories} onChange={setRuleCategories}
+      />
       <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.45, marginTop: -4 }}>
-        {ruleTipos.length || ruleGenres.length
+        {ruleTipos.length || ruleGenres.length || ruleCategories.length
           ? 'Todo scrape coloca aqui o que casar com isso. O que você tirar, não volta.'
           : 'Sem regra: o canal só recebe o que a curadoria adicionar.'}
       </div>
@@ -803,10 +817,11 @@ function ChannelCuration({ channel, email, onChanged }) {
 // One line under the description: what the scrape puts here on its own.
 // Reads "🎤 Comédia" or "🪩 Festa · 🎛️ Eletrônica"; renders nothing on a
 // hand-filled channel, since "sem regra" tells a follower nothing useful.
-function RuleLine({ tipos, genres }) {
+function RuleLine({ tipos, genres, categories }) {
   const parts = [
     ...(tipos || []).map(t => TIPO_META[t]).filter(Boolean),
     ...(genres || []).map(g => GENRE_META[g]).filter(Boolean),
+    ...(categories || []).map(c => CATEGORY_META[c]).filter(Boolean),
   ]
   if (!parts.length) return null
   return (

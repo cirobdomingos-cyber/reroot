@@ -198,6 +198,8 @@ export default function AdminIgAccounts() {
           category: fields.category ?? acc.category ?? '',
           enabled: acc.enabled,
           notes: fields.notes ?? acc.notes ?? '',
+          // Omitted → the server keeps the stored flag.
+          ...(fields.caption_only === undefined ? {} : { caption_only: fields.caption_only }),
           requesting_email: email,
         }),
       })
@@ -1634,9 +1636,10 @@ function AccountRow({ acc, metrics, busy, onToggle, onDelete, onScrape, onOpenSo
   const [label, setLabel] = useState(acc.label || '')
   const [category, setCategory] = useState(acc.category || '')
   const [notes, setNotes] = useState(acc.notes || '')
+  const [captionOnly, setCaptionOnly] = useState(!!acc.caption_only)
 
   async function submit() {
-    const ok = await onSave(acc, { label, category, notes })
+    const ok = await onSave(acc, { label, category, notes, caption_only: captionOnly })
     if (ok) setEditing(false)
   }
 
@@ -1674,6 +1677,21 @@ function AccountRow({ acc, metrics, busy, onToggle, onDelete, onScrape, onOpenSo
           placeholder="Anotação interna (opcional)"
           style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', flex: 'unset' }}
         />
+        {/* Caption-first extraction: the handle agreed to write date,
+            place and time in the caption, so the scrape skips the
+            flyer (the bulk of a post's cost). Off by default — most
+            venues put the date on the art and nowhere else. */}
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+          color: 'var(--charcoal)', cursor: 'pointer',
+        }}>
+          <input
+            type="checkbox"
+            checked={captionOnly}
+            onChange={e => setCaptionOnly(e.target.checked)}
+          />
+          Só legenda (não lê o flyer — a conta escreve data e local no texto)
+        </label>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={submit} disabled={busy} style={{ ...ghostBtn('var(--sage)'), flex: 1 }}>
             {busy ? '…' : '✓ Salvar'}
@@ -1681,7 +1699,8 @@ function AccountRow({ acc, metrics, busy, onToggle, onDelete, onScrape, onOpenSo
           <button
             onClick={() => {
               setLabel(acc.label || ''); setCategory(acc.category || '')
-              setNotes(acc.notes || ''); setEditing(false)
+              setNotes(acc.notes || ''); setCaptionOnly(!!acc.caption_only)
+              setEditing(false)
             }}
             disabled={busy}
             style={{ ...ghostBtn('var(--charcoal-light)'), flex: 1 }}
