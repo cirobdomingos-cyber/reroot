@@ -7647,8 +7647,18 @@ def admin_set_ig_featured(handle: str, req: IgFeaturedToggle, session_user: Sess
 
 
 @app.get("/admin/ig-extract-debug")
-async def admin_ig_extract_debug(url: str, requesting_email: str = "", session_user: SessionUser = None):
+async def admin_ig_extract_debug(url: str, handle: str = "", requesting_email: str = "",
+                                 session_user: SessionUser = None):
     """Run the extractor on ONE Instagram post and report what happened.
+
+    `handle` is the tracked profile to judge the post *as* — the one the
+    scrape would have fetched it for. A post fetched by its own URL
+    carries no profile, so without it the post is judged as its author's
+    (ownerUsername), which for a collab or repost is somebody else. The
+    handle decides two things the scrape also decides by handle: the
+    event id/venue fallback, and whether the flyer is read at all
+    (`caption_only`). Debugging a bloco without this sent the flyer the
+    scrape never sends and reported a verdict the scrape never reaches.
 
     "That post didn't become an event" has been answerable only by reading
     Railway logs, so every investigation started with a guess. This returns
@@ -7672,15 +7682,27 @@ async def admin_ig_extract_debug(url: str, requesting_email: str = "", session_u
     if not posts:
         return {"ok": False, "stage": "apify", "detail": "Apify não devolveu o post"}
 
+    post = posts[0]
+    as_handle = (handle or post.get("ownerUsername") or "").strip().lstrip("@").lower()
+    # Same attribution the scrape uses: _tracked_handle reads the profile
+    # off inputUrl, and Apify set it to the post URL here.
+    if as_handle:
+        post["inputUrl"] = f"https://www.instagram.com/{as_handle}/"
+    account = db.get_ig_account(as_handle) if as_handle else None
+    caption_only = bool(account and account.get("caption_only"))
+
     debug: dict = {}
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    events = await _extract_events(client, posts[0], today_str, debug_out=debug)
+    kwargs = {"caption_only": True} if caption_only else {}
+    events = await _extract_events(client, post, today_str, debug_out=debug, **kwargs)
 
     return {
         "ok": True,
-        "handle": (posts[0].get("ownerUsername") or "").lower(),
-        "posted_at": (posts[0].get("timestamp") or "")[:10],
+        "handle": as_handle,
+        "tracked": account is not None,
+        "caption_only": caption_only,
+        "posted_at": (post.get("timestamp") or "")[:10],
         "caption": debug.get("caption", "")[:1500],
         "image_sent_to_model": bool(debug.get("image_sent_to_model")),
         # A carousel is several flyers; "the image reached the model" is
