@@ -642,14 +642,17 @@ async def fetch_events(
     extra = {"cancel_out": cancel_out} if cancel_out is not None else {}
 
     # Handles whose captions carry the facts: judged without the flyer.
+    # Passed only when it applies, like cancel_out, so the extractor's
+    # call shape is unchanged for every other handle.
     caption_only_handles = {a["handle"] for a in accounts if a.get("caption_only")}
 
     async def _bounded_extract(post):
+        kwargs = dict(extra)
+        if _tracked_handle(post) in caption_only_handles:
+            kwargs["caption_only"] = True
         async with sem:
             return await _extract_events(
-                client, post, today_str, failed_out=failed_shortcodes,
-                caption_only=_tracked_handle(post) in caption_only_handles,
-                **extra,
+                client, post, today_str, failed_out=failed_shortcodes, **kwargs
             )
 
     results = await asyncio.gather(

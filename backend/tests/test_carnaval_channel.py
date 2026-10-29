@@ -159,3 +159,47 @@ def test_caption_only_survives_a_re_post_that_omits_it(api):
     assert r.json()["account"]["caption_only"] == 0
     assert [a["handle"] for a in _db.get_enabled_ig_accounts()] == ["siribloco"]
     assert _db.get_enabled_ig_accounts()[0]["caption_only"] == 0
+
+
+# -- 5. the flag reaches the extractor through the scrape -------------
+
+def test_the_scrape_passes_caption_only_for_flagged_handles_only(monkeypatch, api):
+    """The seam that broke in CI (29 Oct): the scrape loop must hand the
+    extractor `caption_only` for a flagged handle and leave the call
+    shape untouched for every other handle — the ledger and probe tests
+    stub `_extract_events` with fakes that know nothing of the flag."""
+    _db, _main, _client = api
+    # The fixture swapped in a fresh `database`; the scraper imported at
+    # module load still holds the old one. Re-import so both see one DB.
+    import importlib
+    sys.modules.pop("scrapers.instagram_apify", None)
+    ig = importlib.import_module("scrapers.instagram_apify")
+    _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco",
+                          caption_only=True)
+    _db.upsert_ig_account(handle="bardosax", label="Bar do Sax", category="bar")
+    feed = [
+        {"inputUrl": "https://www.instagram.com/siribloco/", "ownerUsername": "siribloco",
+         "url": "https://www.instagram.com/p/BLOCO1/", "id": "BLOCO1",
+         "timestamp": "2026-11-01T18:00:00Z", "caption": "x" * 40, "displayUrl": None},
+        {"inputUrl": "https://www.instagram.com/bardosax/", "ownerUsername": "bardosax",
+         "url": "https://www.instagram.com/p/BAR1/", "id": "BAR1",
+         "timestamp": "2026-11-01T18:00:00Z", "caption": "x" * 40, "displayUrl": None},
+    ]
+    seen = {}
+
+    async def fake_scrape(token, urls, posts_per_account):
+        return feed
+
+    async def no_details(*a, **k):
+        return None
+
+    async def extract(client, post, today, failed_out=None, **kw):
+        seen[post["id"]] = kw
+        return []
+
+    monkeypatch.setattr(ig, "_run_apify_scrape", fake_scrape)
+    monkeypatch.setattr(ig, "_enrich_profiles", no_details)
+    monkeypatch.setattr(ig, "_extract_events", extract)
+    asyncio.run(ig.fetch_events(anthropic_api_key="k", apify_token="t", posts_per_account=5))
+    assert seen["BLOCO1"] == {"caption_only": True}
+    assert seen["BAR1"] == {}
