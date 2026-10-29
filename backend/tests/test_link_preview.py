@@ -146,3 +146,13 @@ def test_the_card_url_follows_the_host_it_was_asked_on(env, client):
         "x-forwarded-host": "aue.com.br",
     })
     assert 'property="og:url" content="https://aue.com.br/e/' in r.text
+
+
+def test_an_instagram_cdn_flyer_is_left_off_the_card(env, client):
+    """IG CDN links expire and refuse most non-browser fetchers, so a card
+    pointing at one renders blank. No image beats a broken one."""
+    db, _ = env
+    eid = _catalog_event(db, image="https://scontent-gru1-1.cdninstagram.com/v/t51/abc.jpg?oe=6AE9A173")
+    r = client.get(f"/e/{eid}", headers={"user-agent": WHATSAPP_UA}, follow_redirects=False)
+    assert 'property="og:image"' not in r.text
+    assert 'name="twitter:card" content="summary"' in r.text

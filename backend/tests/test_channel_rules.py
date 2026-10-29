@@ -71,7 +71,7 @@ def api(tmp_path, monkeypatch):
 
 
 def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None,
-           fetched=None, recurring=False):
+           fetched=None, recurring=False, image="/event-images/x.jpg"):
     from models import EnrichedEvent
     # Distinct names by default: the fill keeps one row per (name, day)
     # in a channel, so two fixtures called "Noite" on the same day would
@@ -86,7 +86,7 @@ def _event(_db, ev_id, *, tipo="", genre="", when=SOON, curated=True, name=None,
         has_food=False, is_low_pressure=False, is_curated=curated, pitch="",
         price_tier="free", vibe_summary="", expected_size="medium",
         header_gradient="g", url="https://www.instagram.com/p/abc/",
-        image_url="/event-images/x.jpg",
+        image_url=image,
         fetched_at=fetched or datetime.now(timezone.utc), genre=genre, tipo=tipo,
         is_recurring=recurring,
     ))
