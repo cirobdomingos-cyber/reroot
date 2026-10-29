@@ -83,3 +83,18 @@ export function shortEventLink(eventId) {
   }
   return `${getPublicOrigin()}/e/${encodeURIComponent(eventId)}`
 }
+
+/**
+ * Short link for a PUBLIC channel. Backend `/c/{id}` 302s humans into
+ * `/#/channels/{id}` and hands link-preview crawlers a card with the
+ * channel's name, what's coming up and a cover — the hash URL can't:
+ * the server never sees anything after `#`, so WhatsApp showed the
+ * generic homepage card for every channel. Private channels keep the
+ * `/join/<code>` link, which is the invitation itself.
+ */
+export function shortChannelLink(channelId) {
+  if (!channelId || typeof channelId !== 'string') {
+    return appLink('/community')
+  }
+  return `${getPublicOrigin()}/c/${encodeURIComponent(channelId)}`
+}

@@ -1319,6 +1319,71 @@ def short_event_link(event_id: str, request: Request):
     ))
 
 
+def _channel_preview_card(group_id: str, origin: str) -> Optional[dict]:
+    """Title/description/image for a shared PUBLIC channel link, or None.
+
+    A private channel gets nothing: its link is the invite code, and this
+    route only ever carries a channel id, so a private id here is a
+    forwarded URL to a locked door. Name, count and cover stay out.
+
+    The cover is the next upcoming event's flyer — a channel has no
+    image of its own, and "what's coming" is also the most honest thing
+    to put on the card. Falls back to the auê icon."""
+    channel = db.get_group(group_id)
+    if not channel or channel.get("visibility") != "public":
+        return None
+    today = datetime.now(timezone.utc).date().isoformat()
+    upcoming = [
+        _merge_source_event(e) for e in db.get_group_events(group_id, viewer_google_id=None)
+        if (e.get("date_start") or "")[:10] >= today
+    ]
+    upcoming.sort(key=lambda e: e.get("date_start") or "")
+    n = len(upcoming)
+    count = ("nada marcado ainda" if n == 0
+             else "1 rolê marcado" if n == 1
+             else f"{n} rolês marcados")
+    description = (channel.get("description") or "").strip()
+    description = f"{description} — {count}" if description else count
+    image = next(((e.get("image_url") or "").strip() for e in upcoming if e.get("image_url")), "")
+    if image.startswith("/"):
+        image = f"{origin}{image}"
+    return {
+        "title": f"{channel.get('name') or 'Canal'} · auê",
+        "description": description[:200],
+        "image": image or f"{origin}/icon-512x512.png",
+    }
+
+
+@app.get("/c/{group_id}")
+def short_channel_link(group_id: str, request: Request):
+    """Short link for a shared channel — the /e/ pattern, for channels.
+
+    The app shares `/#/channels/<id>`, and everything after `#` never
+    reaches the server, so every channel previewed in WhatsApp as the
+    same homepage card. Humans get a plain 302 into that hash route;
+    preview crawlers get a card with the channel's name, what's coming
+    up and a flyer. The service worker's navigation denylist has to name
+    this path too (src/sw.js), or an installed PWA renders the shell."""
+    from fastapi.responses import RedirectResponse, HTMLResponse
+    if not group_id:
+        return RedirectResponse(url="/", status_code=302)
+    target = f"/#/channels/{group_id}"
+    ua = request.headers.get("user-agent") or ""
+    if not _LINK_PREVIEW_UA.search(ua):
+        return RedirectResponse(url=target, status_code=302)
+    origin = _request_origin(request)
+    card = _channel_preview_card(group_id, origin) or {
+        "title": "auê — Curitiba que acontece",
+        "description": "Todos os eventos da cidade num lugar só, com a galera junto.",
+        "image": f"{origin}/icon-512x512.png",
+    }
+    return HTMLResponse(_preview_html(
+        title=card["title"], description=card["description"],
+        image=card["image"], url=f"{origin}/c/{group_id}",
+        redirect_to=target,
+    ))
+
+
 # auê's public App Store listing. The id is permanent (unlike a TestFlight
 # invite link, which rotates), so it's a constant rather than an env var.
 APP_STORE_URL = "https://apps.apple.com/app/id6765535013"
@@ -7647,8 +7712,18 @@ def admin_set_ig_featured(handle: str, req: IgFeaturedToggle, session_user: Sess
 
 
 @app.get("/admin/ig-extract-debug")
-async def admin_ig_extract_debug(url: str, requesting_email: str = "", session_user: SessionUser = None):
+async def admin_ig_extract_debug(url: str, handle: str = "", requesting_email: str = "",
+                                 session_user: SessionUser = None):
     """Run the extractor on ONE Instagram post and report what happened.
+
+    `handle` is the tracked profile to judge the post *as* — the one the
+    scrape would have fetched it for. A post fetched by its own URL
+    carries no profile, so without it the post is judged as its author's
+    (ownerUsername), which for a collab or repost is somebody else. The
+    handle decides two things the scrape also decides by handle: the
+    event id/venue fallback, and whether the flyer is read at all
+    (`caption_only`). Debugging a bloco without this sent the flyer the
+    scrape never sends and reported a verdict the scrape never reaches.
 
     "That post didn't become an event" has been answerable only by reading
     Railway logs, so every investigation started with a guess. This returns
@@ -7672,15 +7747,27 @@ async def admin_ig_extract_debug(url: str, requesting_email: str = "", session_u
     if not posts:
         return {"ok": False, "stage": "apify", "detail": "Apify não devolveu o post"}
 
+    post = posts[0]
+    as_handle = (handle or post.get("ownerUsername") or "").strip().lstrip("@").lower()
+    # Same attribution the scrape uses: _tracked_handle reads the profile
+    # off inputUrl, and Apify set it to the post URL here.
+    if as_handle:
+        post["inputUrl"] = f"https://www.instagram.com/{as_handle}/"
+    account = db.get_ig_account(as_handle) if as_handle else None
+    caption_only = bool(account and account.get("caption_only"))
+
     debug: dict = {}
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    events = await _extract_events(client, posts[0], today_str, debug_out=debug)
+    kwargs = {"caption_only": True} if caption_only else {}
+    events = await _extract_events(client, post, today_str, debug_out=debug, **kwargs)
 
     return {
         "ok": True,
-        "handle": (posts[0].get("ownerUsername") or "").lower(),
-        "posted_at": (posts[0].get("timestamp") or "")[:10],
+        "handle": as_handle,
+        "tracked": account is not None,
+        "caption_only": caption_only,
+        "posted_at": (post.get("timestamp") or "")[:10],
         "caption": debug.get("caption", "")[:1500],
         "image_sent_to_model": bool(debug.get("image_sent_to_model")),
         # A carousel is several flyers; "the image reached the model" is
