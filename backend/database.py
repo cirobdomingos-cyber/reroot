@@ -636,6 +636,19 @@ def init_db():
             conn.execute("ALTER TABLE groups ADD COLUMN featured_until TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        # Who left a channel (Oct 2026). A plain follower's membership
+        # row is deleted on unfollow, so "has this person ever taken a
+        # position on this channel" would otherwise be unanswerable —
+        # and the Home band would offer the season's channel again to
+        # someone who just left it.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS channel_unfollows (
+                group_id   TEXT NOT NULL,
+                google_id  TEXT NOT NULL,
+                left_at    TEXT NOT NULL,
+                PRIMARY KEY (group_id, google_id)
+            )
+        """)
         # A curator pulling an auto-filled event out of a channel is a
         # decision, and the next scrape must not put it straight back.
         # This is the record of that decision: (channel, catalog event).
@@ -5292,6 +5305,14 @@ def list_channels(google_id: str = "") -> list[dict]:
                              WHERE group_id = g.id AND google_id = ?
                                AND role IN ('curator', 'admin'))
                         AS can_curate,
+                      -- In it now, or left it: either is a position on
+                      -- the channel, and the Home band is for people who
+                      -- never took one.
+                      (EXISTS(SELECT 1 FROM group_members
+                              WHERE group_id = g.id AND google_id = ?)
+                       OR EXISTS(SELECT 1 FROM channel_unfollows
+                                 WHERE group_id = g.id AND google_id = ?))
+                        AS ever_followed,
                       -- What's actually in it. A channel advertised as
                       -- "12 seguindo" with nothing scheduled is worse
                       -- than one that says so, and the empty state on
@@ -5305,7 +5326,7 @@ def list_channels(google_id: str = "") -> list[dict]:
                -- A featured channel leads whatever its following: the
                -- season is the one thing the list is supposed to say.
                ORDER BY (g.featured_until >= ?) DESC, follower_count DESC, g.name ASC""",
-            (google_id or "", google_id or "", google_id or "",
+            (google_id or "", google_id or "", google_id or "", google_id or "", google_id or "",
              datetime.now(timezone.utc).date().isoformat(),
              local_today()),
         ).fetchall()
@@ -5315,6 +5336,7 @@ def list_channels(google_id: str = "") -> list[dict]:
         d["is_following"] = bool(d["is_following"])
         d["notify"] = bool(d["notify"])
         d["can_curate"] = bool(d["can_curate"])
+        d["ever_followed"] = bool(d["ever_followed"])
         out.append(d)
     return out
 
@@ -5346,6 +5368,10 @@ def unfollow_channel(group_id: str, google_id: str) -> bool:
     theirs with following cleared, because stepping out of the audience
     is not resigning from the job."""
     with get_conn() as conn:
+        was_in = conn.execute(
+            "SELECT 1 FROM group_members WHERE group_id = ? AND google_id = ?",
+            (group_id, google_id),
+        ).fetchone() is not None
         conn.execute(
             "UPDATE group_members SET following = 0 WHERE group_id = ? AND google_id = ?",
             (group_id, google_id),
@@ -5355,6 +5381,14 @@ def unfollow_channel(group_id: str, google_id: str) -> bool:
                WHERE group_id = ? AND google_id = ? AND role = 'follower'""",
             (group_id, google_id),
         )
+        # Remembered after the row is gone: see channel_unfollows. Only
+        # a real leave — a stray unfollow from someone who never
+        # followed is not a position on the channel.
+        if was_in:
+            conn.execute(
+                "INSERT OR REPLACE INTO channel_unfollows (group_id, google_id, left_at) VALUES (?, ?, ?)",
+                (group_id, google_id, datetime.now(timezone.utc).isoformat()),
+            )
         conn.commit()
     return cur.rowcount > 0
 
@@ -5460,7 +5494,8 @@ def get_followed_channel_events(google_id: str, limit: int = 40) -> list[dict]:
     today = datetime.now(timezone.utc).date().isoformat()
     with get_conn() as conn:
         rows = conn.execute(
-            """SELECT ge.*, g.name AS channel_name, g.id AS channel_id
+            """SELECT ge.*, g.name AS channel_name, g.id AS channel_id,
+                    g.featured_until AS channel_featured_until
                  FROM group_events ge
                  JOIN groups g
                    ON (ge.group_id = g.id OR ge.group_ids LIKE '%"' || g.id || '"%')

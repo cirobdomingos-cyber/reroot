@@ -73,7 +73,11 @@ export default function SeasonBand({ googleId }) {
     setNext(null)
     setGone(false)
     fetchChannels(googleId).then(async (list) => {
-      const featured = (list || []).find(c => c.featured && !c.is_following && (c.upcoming_event_count || 0) > 0)
+      // Never followed, not merely "not following now": someone who
+      // followed and left has answered, and the band asking again is
+      // the app not taking no for an answer.
+      const featured = (list || []).find(c => c.featured && !c.is_following && !c.ever_followed
+        && (c.upcoming_event_count || 0) > 0)
       if (!featured || !alive) return
       const detail = await fetchChannel(featured.id, googleId)
       if (!alive) return
