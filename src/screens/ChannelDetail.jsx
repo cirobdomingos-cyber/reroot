@@ -15,7 +15,7 @@ import { TIPO_META, TIPO_ORDER } from '../data/tipos'
 import { CATEGORY_META, CATEGORY_ORDER } from '../data/categories'
 import { apiFetch } from '../lib/session'
 import {
-  BASE_URL, addChannelCurator, fetchChannel, fetchChannelCurators,
+  BASE_URL, absoluteImageUrl, addChannelCurator, fetchChannel, fetchChannelCurators,
   removeChannelCurator, setChannelFollow, setChannelNotify,
   setChannelPrioritize, trackEvent, updateChannel,
   createGroupEvent, leaveGroup,
@@ -58,6 +58,7 @@ export default function ChannelDetail() {
   // public ones and differ by permission, not by existing somewhere
   // else — which is what let GroupDetail go away.
   const [showMembers, setShowMembers] = useState(false)
+  const [showSources, setShowSources] = useState(false)
   const [showNewEvent, setShowNewEvent] = useState(false)
   const [showAddPicker, setShowAddPicker] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -311,6 +312,17 @@ export default function ChannelDetail() {
         </span>
       </button>
 
+      {/* The accounts a category channel draws from. For Carnaval this
+          is the channel's definition — "these blocos, filtered by date"
+          — and the thing a bloco checks first: am I here? Tapping opens
+          the full list; each row is the account's own page. */}
+      <SourcesRow
+        sources={data.sources}
+        categories={channel.rule_categories}
+        accent={accent}
+        onOpen={() => { trackEvent('channel_sources_opened', { channel_id: channelId }); setShowSources(true) }}
+      />
+
       {/* One decision at full width — the only one most people make
           here. Everything else became an icon.
           
@@ -462,6 +474,16 @@ export default function ChannelDetail() {
         ))}
       </div>
 
+      <SourcesSheet
+        open={showSources}
+        onClose={() => setShowSources(false)}
+        sources={data.sources}
+        categories={channel.rule_categories}
+        onOpenSource={(handle) => {
+          setShowSources(false)
+          navigate(`/sources/${encodeURIComponent(`ig:${handle}`)}`)
+        }}
+      />
       <MembersSheet
         open={showMembers}
         onClose={() => setShowMembers(false)}
@@ -613,6 +635,10 @@ function ChannelCuration({ channel, email, onChanged }) {
   const [ruleTipos, setRuleTipos] = useState(channel.rule_tipos || [])
   const [ruleGenres, setRuleGenres] = useState(channel.rule_genres || [])
   const [ruleCategories, setRuleCategories] = useState(channel.rule_categories || [])
+  // Season takeover: the date this channel is featured until. Only the
+  // founder gets the field (the server refuses it from anyone else), so
+  // it is sent only when the founder's roster came back.
+  const [featuredUntil, setFeaturedUntil] = useState(channel.featured_until || '')
   const [curators, setCurators] = useState(null)
   const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
@@ -637,6 +663,10 @@ function ChannelCuration({ channel, email, onChanged }) {
         name: name.trim(), description: description.trim(),
         rule_tipos: ruleTipos, rule_genres: ruleGenres,
         rule_categories: ruleCategories,
+        // Only the founder may carry this field; a curator's save with it
+        // would be refused whole. (`curators` is [] for a curator, not
+        // null — the roster fetch swallows the 403 — so it can't gate.)
+        ...(channel.viewer_is_founder ? { featured_until: featuredUntil } : {}),
       })
       trackEvent('channel_edited', { channel_id: channel.id })
       onChanged()
@@ -767,6 +797,46 @@ function ChannelCuration({ channel, email, onChanged }) {
 
       {/* Roster. Only the founder gets it back from the server, so a
           channel curator sees the edit fields above and nothing here. */}
+      {/* Season takeover. A date, not a switch: the season ends by
+          itself and nobody has to remember Ash Wednesday. While set,
+          this channel leads Canais, gets the band on Home and headlines
+          the weekly digest. Saved with the button above. Founder-only,
+          like placement everywhere else in the app. */}
+      {channel.viewer_is_founder && (
+        <>
+          <div className="neon-mono" style={{
+            fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+            color: 'var(--text2)', marginTop: 4,
+          }}>
+            Temporada
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>Destacar até</span>
+            <input
+              type="date"
+              value={featuredUntil}
+              onChange={e => setFeaturedUntil(e.target.value)}
+              style={{ ...curationInput, flex: 1 }}
+            />
+            {featuredUntil && (
+              <button
+                type="button"
+                onClick={() => setFeaturedUntil('')}
+                style={{
+                  padding: '5px 9px', borderRadius: 8, fontSize: 11,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--text2)', cursor: 'pointer',
+                }}
+              >
+                Tirar
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Roster. Only the founder gets it back from the server, so a
+          channel curator sees the edit fields above and nothing here. */}
       {curators !== null && (
         <>
           <div className="neon-mono" style={{
@@ -825,6 +895,90 @@ function ChannelCuration({ channel, email, onChanged }) {
 // One line under the description: what the scrape puts here on its own.
 // Reads "🎤 Comédia" or "🪩 Festa · 🎛️ Eletrônica"; renders nothing on a
 // hand-filled channel, since "sem regra" tells a follower nothing useful.
+// "28 blocos acompanhados" / "1 conta acompanhada": the noun comes from
+// the category's label for a one-category channel, "contas" otherwise,
+// and the participle agrees with it.
+function sourcesPhrase(categories, n) {
+  const one = (categories || []).length === 1 ? CATEGORY_META[categories[0]] : null
+  const plural = one ? one.label.toLowerCase() : 'contas'
+  const noun = n === 1 && plural.endsWith('s') ? plural.slice(0, -1) : plural
+  const feminine = plural === 'contas'
+  const part = `acompanhad${feminine ? 'a' : 'o'}${n === 1 ? '' : 's'}`
+  return `${n} ${noun} ${part}`
+}
+
+function SourcesRow({ sources, categories, accent, onOpen }) {
+  const list = sources || []
+  if (!list.length) return null
+  const n = list.length
+  const emoji = (categories || []).length === 1 ? CATEGORY_META[categories[0]]?.emoji : '📡'
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginTop: 8,
+        background: 'none', border: 'none', padding: 0, textAlign: 'left',
+        cursor: 'pointer', width: '100%',
+      }}
+    >
+      <div style={{ display: 'flex', flexShrink: 0 }}>
+        {list.slice(0, 4).map((s, i) => (
+          <span key={s.handle} style={{ marginLeft: i === 0 ? 0 : -8 }}>
+            <Avatar name={s.label} src={absoluteImageUrl(s.profile_pic_url)} size={22} expandable={false} />
+          </span>
+        ))}
+      </div>
+      <span className="neon-mono" style={{
+        fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+        color: accent, textDecoration: 'underline', textUnderlineOffset: 3,
+      }}>
+        {emoji} {sourcesPhrase(categories, n)}
+      </span>
+    </button>
+  )
+}
+
+function SourcesSheet({ open, onClose, sources, categories, onOpenSource }) {
+  const list = sources || []
+  const n = list.length
+  return (
+    <BottomSheet open={open} onClose={onClose} title={sourcesPhrase(categories, n)}>
+      <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5, marginBottom: 10 }}>
+        Tudo que essas contas postam com data entra aqui sozinho. Quem já
+        marcou rolê aparece primeiro.
+      </div>
+      {list.map(s => (
+        <button
+          key={s.handle}
+          onClick={() => onOpenSource(s.handle)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            background: 'none', border: 'none', padding: '8px 0', textAlign: 'left',
+            cursor: 'pointer', borderBottom: '1px solid var(--line)',
+          }}
+        >
+          <Avatar name={s.label} src={absoluteImageUrl(s.profile_pic_url)} size={32} expandable={false} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{
+              display: 'block', fontSize: 13.5, fontWeight: 700, color: 'var(--text)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {s.label}
+            </span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--text3)' }}>
+              @{s.handle}{s.event_count ? ` · ${s.event_count} rolê${s.event_count === 1 ? '' : 's'}` : ''}
+            </span>
+          </span>
+          <span style={{ fontSize: 14, color: 'var(--text3)' }}>›</span>
+        </button>
+      ))}
+      <div style={{ fontSize: 11.5, color: 'var(--text3)', lineHeight: 1.5, marginTop: 12 }}>
+        Falta algum? Manda pra gente que a gente acompanha.
+      </div>
+    </BottomSheet>
+  )
+}
+
 function RuleLine({ tipos, genres, categories }) {
   const parts = [
     ...(tipos || []).map(t => TIPO_META[t]).filter(Boolean),

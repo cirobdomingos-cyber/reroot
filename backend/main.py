@@ -5241,6 +5241,11 @@ def get_channel(group_id: str, google_id: str = "", session_user: SessionUser = 
         # schedule.
         "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
         "followers": followers[:12],
+        # The accounts a category-rule channel draws from. For the
+        # Carnaval channel that IS the definition — "these 28 blocos,
+        # filtered by date" — and showing it answers "is my bloco here?"
+        # without scrolling the feed. Empty for every other channel.
+        "sources": db.list_ig_accounts_for_categories(channel.get("rule_categories") or []),
     }
 
 
@@ -5252,6 +5257,9 @@ class ChannelUpdate(BaseModel):
     rule_tipos: Optional[list[str]] = None
     rule_genres: Optional[list[str]] = None
     rule_categories: Optional[list[str]] = None
+    # Season takeover: ISO date the channel is featured until, '' to end
+    # it. Founder-only — placement is a business call, not curation.
+    featured_until: Optional[str] = None
 
 
 class ChannelCuratorAdd(BaseModel):
@@ -5320,6 +5328,20 @@ def update_channel(group_id: str, req: ChannelUpdate, session_user: SessionUser 
     if req.name is not None and not name:
         raise HTTPException(status_code=400, detail="Nome não pode ficar vazio")
     tipos, genres, categories = _validated_rules(req.rule_tipos, req.rule_genres, req.rule_categories)
+    # Checked before anything is written, so a curator's save that
+    # carries the field is refused whole rather than half-applied.
+    featured_until = None
+    if req.featured_until is not None:
+        if not _is_founder_google_id(db.get_user_id_by_email(_session_email(session_user)) or ""):
+            raise HTTPException(status_code=403, detail="Só o auê destaca um canal")
+        if not db.is_public_channel(group_id):
+            raise HTTPException(status_code=400, detail="Só um canal do auê pode ser destacado")
+        featured_until = req.featured_until.strip()
+        if featured_until:
+            try:
+                featured_until = date.fromisoformat(featured_until).isoformat()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Data inválida — use AAAA-MM-DD")
     db.update_group(
         group_id,
         name=name,
@@ -5333,6 +5355,8 @@ def update_channel(group_id: str, req: ChannelUpdate, session_user: SessionUser 
     if tipos is not None or genres is not None or categories is not None:
         db.set_channel_rules(group_id, tipos, genres, categories)
         added = db.route_catalog_events_to_channels(group_ids=[group_id]).get(group_id, 0)
+    if featured_until is not None:
+        db.set_channel_featured(group_id, featured_until)
     return {"ok": True, "channel": db.get_group(group_id), "added": added}
 
 
@@ -9832,6 +9856,10 @@ async def send_weekly_digest() -> dict:
     # city count stays in the body. Two pushes about the same events is
     # the app telling you the same news twice.
     picks_by_user = db.channel_picks_by_follower([e["id"] for e in parsed])
+    # The season's channel headlines over the others while it is
+    # featured: "5 novos no auê Carnaval" is news, "5 dos seus 3 canais"
+    # is a count.
+    featured_names = {c["name"] for c in db.list_channels() if c.get("featured")}
 
     def _copy_for(google_id: str) -> tuple[str, str]:
         """Headline the part this person chose; keep the city in the body."""
@@ -9839,7 +9867,11 @@ async def send_weekly_digest() -> dict:
         mine = sum(picks.values())
         if not mine:
             return title, preview
-        if len(picks) == 1:
+        season = next((c for c in picks if c in featured_names and picks[c]), None)
+        if season:
+            k = picks[season]
+            head = f"🥁 {k} novo{'s' if k != 1 else ''} no {season}"
+        elif len(picks) == 1:
             channel = next(iter(picks))
             head = f"✨ {mine} novo{'s' if mine != 1 else ''} no {channel}"
         else:

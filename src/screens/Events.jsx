@@ -10,6 +10,7 @@ import { fetchEvents, fetchEventDetail, trackEvent, syncRsvp, fetchFriendsFeed, 
 import { scheduleEventReminder, cancelEventReminder } from '../lib/notifications'
 import PostEventAttendees from '../components/PostEventAttendees'
 import EventsWeekStrip from '../components/EventsWeekStrip'
+import SeasonBand from '../components/SeasonBand'
 import { getAnchorTodayIso, cityNowWallTs, cityTodayStartWallTs, wallTs, eventEndWallTs, eventCoversDay, isOngoing } from '../lib/dateAnchor'
 import Avatar from '../components/Avatar'
 import { createPortal } from 'react-dom'
@@ -1298,6 +1299,11 @@ export default function Events() {
             })}
           </div>
         </div>
+      )}
+
+      {/* ── The season's channel, when there is one (see SeasonBand) ── */}
+      {!isVenueMode && viewMode === 'list' && (
+        <SeasonBand googleId={state.googleUser?.id} />
       )}
 
       {/* ── Week strip with per-day event counts (events mode only) ── */}

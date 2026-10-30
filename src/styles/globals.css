@@ -86,6 +86,11 @@
   --from-aue:          var(--magenta);
   --from-aue-glow:     rgb(var(--magenta-rgb) / 0.30);
   --from-aue-soft:     rgb(var(--magenta-rgb) / 0.10);
+  /* The season (a featured channel: Carnaval first). Rides on --hot,
+     which every skin already defines, so the band and the pill follow
+     the skin without a block each. */
+  --season:            var(--hot);
+  --season-soft:       color-mix(in srgb, var(--hot) 12%, transparent);
   --from-catalog:      rgb(var(--catalog-rgb));
 
   --cream:        var(--bg);
