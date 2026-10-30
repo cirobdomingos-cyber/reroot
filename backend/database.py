@@ -1907,6 +1907,32 @@ def get_enabled_ig_accounts() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_ig_accounts_for_categories(categories: list[str]) -> list[dict]:
+    """The enabled handles a category-rule channel draws from — what the
+    channel screen shows as "28 blocos acompanhados". Most active first,
+    so the blocos that post dated nights lead the row."""
+    cats = [c.strip().lower() for c in categories if c and c.strip()]
+    if not cats:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT handle, label, display_name, profile_pic_url, last_event_count
+                FROM tracked_ig_accounts
+                WHERE enabled = 1 AND LOWER(category) IN ({",".join("?" * len(cats))})
+                ORDER BY last_event_count DESC, LOWER(COALESCE(NULLIF(display_name, ''), label, handle)) ASC""",
+            cats,
+        ).fetchall()
+    return [
+        {
+            "handle": r["handle"],
+            "label": r["display_name"] or r["label"] or f"@{r['handle']}",
+            "profile_pic_url": r["profile_pic_url"] or "",
+            "event_count": int(r["last_event_count"] or 0),
+        }
+        for r in rows
+    ]
+
+
 def ig_category_by_handle() -> dict[str, str]:
     """handle → category for every tracked account, enabled or not. The
     channel fill routes catalog events by their source's category, and

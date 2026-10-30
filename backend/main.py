@@ -5241,6 +5241,11 @@ def get_channel(group_id: str, google_id: str = "", session_user: SessionUser = 
         # schedule.
         "past_events": sorted(past, key=lambda e: e.get("dateStart") or "", reverse=True)[:5],
         "followers": followers[:12],
+        # The accounts a category-rule channel draws from. For the
+        # Carnaval channel that IS the definition — "these 28 blocos,
+        # filtered by date" — and showing it answers "is my bloco here?"
+        # without scrolling the feed. Empty for every other channel.
+        "sources": db.list_ig_accounts_for_categories(channel.get("rule_categories") or []),
     }
 
 

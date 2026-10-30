@@ -256,3 +256,29 @@ def test_extract_debug_honours_caption_only_and_the_tracked_handle(monkeypatch, 
     assert body["tracked"] is False
     assert body["caption_only"] is False
     assert seen["kwargs"] == {}
+
+
+# -- 7. the channel names the accounts it draws from --------------------
+
+def test_a_category_channel_lists_its_tracked_handles(api):
+    """"Is my bloco here?" is answered by the channel screen: a channel
+    with a category rule carries its enabled handles, most active first;
+    a tipo/genre channel carries none."""
+    _db, _main, client = api
+    _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco")
+    _db.upsert_ig_account(handle="garibaldisesacis", label="Garibaldis", category="bloco")
+    _db.upsert_ig_account(handle="blocoparado", label="Parado", category="bloco", enabled=False)
+    _db.upsert_ig_account(handle="bardosax", label="Bar do Sax", category="bar")
+    with _db.get_conn() as conn:
+        conn.execute("UPDATE tracked_ig_accounts SET last_event_count = 3 WHERE handle = 'siribloco'")
+        conn.commit()
+    carnaval = client.post("/admin/channels", json={
+        "requesting_email": FOUNDER, "name": "auê Carnaval", "rule_categories": ["bloco"],
+    }).json()["channel"]["id"]
+    comedia = client.post("/admin/channels", json={
+        "requesting_email": FOUNDER, "name": "auê Comédia", "rule_tipos": ["comedia"],
+    }).json()["channel"]["id"]
+    sources = client.get(f"/channels/{carnaval}").json()["sources"]
+    assert [s["handle"] for s in sources] == ["siribloco", "garibaldisesacis"]
+    assert sources[0] == {"handle": "siribloco", "label": "Siribloco", "profile_pic_url": "", "event_count": 3}
+    assert client.get(f"/channels/{comedia}").json()["sources"] == []
