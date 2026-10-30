@@ -23,7 +23,7 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 
-from test_channel_rules import FOUNDER, _channel, api  # noqa: E402,F401
+from test_channel_rules import FOUNDER, _channel, _event, api  # noqa: E402,F401
 
 TODAY = datetime.now(timezone.utc).date()
 NEXT_WEEK = (TODAY + timedelta(days=7)).isoformat()
@@ -111,3 +111,49 @@ def test_a_curator_can_still_save_without_touching_the_season(api):
                                              "description": "Blocos, todo fim de semana."})
     assert r.status_code == 200, r.text
     assert r.json()["channel"]["description"] == "Blocos, todo fim de semana."
+
+
+# -- 5. the band asks once; the feed wears the season's colour ----------
+
+def test_ever_followed_survives_an_unfollow(api):
+    """The Home band is for people who never took a position. Following
+    and leaving is a position, so the list says so even after the
+    follower row is gone."""
+    _db, _main, client = api
+    cid = _channel(client, "auê Carnaval")["channel"]["id"]
+    before = next(c for c in _db.list_channels("u_ana") if c["id"] == cid)
+    assert before["ever_followed"] is False
+    _db.follow_channel(cid, "u_ana")
+    _db.unfollow_channel(cid, "u_ana")
+    after = next(c for c in _db.list_channels("u_ana") if c["id"] == cid)
+    assert after["is_following"] is False
+    assert after["ever_followed"] is True, "a plain follower's row is deleted on unfollow — the flag must not depend on it"
+
+
+def test_the_feed_marks_the_featured_channels_nights(api):
+    _db, _main, client = api
+    _db.upsert_ig_account(handle="siribloco", label="Siribloco", category="bloco")
+    _event(_db, "instagram_ig_siribloco_1", tipo="festa", name="Saída")
+    _event(_db, "instagram_ig_club_1", tipo="comedia", name="Stand-up")
+    carnaval = client.post("/admin/channels", json={
+        "requesting_email": FOUNDER, "name": "auê Carnaval", "rule_categories": ["bloco"],
+    }).json()["channel"]["id"]
+    comedia = client.post("/admin/channels", json={
+        "requesting_email": FOUNDER, "name": "auê Comédia", "rule_tipos": ["comedia"],
+    }).json()["channel"]["id"]
+    _feature(client, carnaval, NEXT_WEEK)
+    for cid in (carnaval, comedia):
+        _db.follow_channel(cid, "u_ana")
+    feed = client.get("/channels/feed", params={"google_id": "u_ana"}).json()["events"]
+    by_name = {e["name"]: e["groupFeatured"] for e in feed}
+    assert by_name == {"Saída": True, "Stand-up": False}
+
+
+def test_a_stray_unfollow_is_not_a_position(api):
+    """DELETE follow from someone who never followed (stale UI, double
+    tap) must not mark them as having answered the season's band."""
+    _db, _main, client = api
+    cid = _channel(client, "auê Carnaval")["channel"]["id"]
+    _db.unfollow_channel(cid, "u_bia")
+    row = next(c for c in _db.list_channels("u_bia") if c["id"] == cid)
+    assert row["ever_followed"] is False
