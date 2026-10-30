@@ -5135,15 +5135,22 @@ def channel_feed(google_id: str = "", limit: int = 400, session_user: SessionUse
     if not google_id:
         return {"events": []}
     rows = db.get_followed_channel_events(google_id, limit=min(limit, 1000))
-    return {"events": [
-        _group_event_to_frontend(
+    today = db.local_today()
+    out = []
+    for e in rows:
+        ev = _group_event_to_frontend(
             e,
             group_name=e.get("channel_name") or "",
             viewer_google_id=google_id,
             prefer_group_id=e.get("channel_id"),
         )
-        for e in rows
-    ]}
+        # The season's nights wear its colour in "Dos seus canais" —
+        # following three channels shouldn't make Carnaval look like
+        # one more rock night. Same date question as the channel list.
+        until = e.get("channel_featured_until") or ""
+        ev["groupFeatured"] = bool(until) and until >= today
+        out.append(ev)
+    return {"events": out}
 
 
 @app.get("/channels/{group_id}")

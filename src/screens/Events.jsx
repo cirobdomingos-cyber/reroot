@@ -285,6 +285,15 @@ export default function Events() {
     return map
   }, [channelEvents])
 
+  // The season's channel(s), by name — their nights are tagged in the
+  // season colour rather than auê magenta, so following Carnaval and
+  // Rock doesn't paint both the same.
+  const featuredChannelNames = useMemo(() => {
+    const set = new Set()
+    for (const ev of channelEvents) if (ev.groupFeatured && ev.groupName) set.add(ev.groupName)
+    return set
+  }, [channelEvents])
+
   // Curator status gates the "corrigir evento" affordance on catalog
   // events. Curator, not founder: the people who notice a wrong venue
   // are the ones already curating handles, and every correction is
@@ -838,7 +847,11 @@ export default function Events() {
     }
     const out = []
     const add = (name, kind) => {
-      if (name && !out.some(o => o.name === name)) out.push({ name, kind })
+      if (!name || out.some(o => o.name === name)) return
+      // An auê channel in season keeps its own colour. The season name
+      // goes first so it's the one shown when two names stack.
+      if (kind === 'aue' && featuredChannelNames.has(name)) out.unshift({ name, kind: 'season' })
+      else out.push({ name, kind })
     }
     if (ev.isGroupEvent) {
       const own = ev.groupNames?.length
@@ -2102,6 +2115,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
   // you know are going to. Each name below keeps its own colour, so
   // the second source is named without being hidden.
   const fromKind = fromChannels.some(c => c.kind === 'private') ? 'private'
+                 : fromChannels.some(c => c.kind === 'season') ? 'season'
                  : fromChannels.length > 0 ? 'aue'
                  : null
 
@@ -2156,6 +2170,8 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
         // stripe" tell, which is what separates it from a one-off.
         boxShadow: fromKind === 'private'
                     ? 'inset 4px 0 0 var(--from-private), -1px 0 14px -6px var(--from-private-glow)'
+                  : fromKind === 'season'
+                    ? 'inset 3px 0 0 var(--season), -1px 0 12px -7px var(--season-soft)'
                   : fromKind === 'aue'
                     ? 'inset 3px 0 0 var(--from-aue), -1px 0 12px -7px var(--from-aue-glow)'
                   : isOngoing ? 'none'
@@ -2214,6 +2230,7 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
             // an auê channel" — so they join the catalog colour and
             // keep the missing stripe as their only tell.
             color: fromKind === 'private' ? 'var(--from-private)'
+                 : fromKind === 'season' ? 'var(--season)'
                  : fromKind === 'aue' ? 'var(--from-aue)'
                  : 'var(--from-catalog)',
             letterSpacing: -0.5,
@@ -2339,7 +2356,9 @@ function EventCard({ ev, rsvped, friendsGoing = [], personalChip = null, onOpen,
               // once, and it answers for the stronger of the two.
               <div key={c.name} className="neon-mono" style={{
                 fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-                color: c.kind === 'private' ? 'var(--from-private)' : 'var(--from-aue)',
+                color: c.kind === 'private' ? 'var(--from-private)'
+                     : c.kind === 'season' ? 'var(--season)'
+                     : 'var(--from-aue)',
                 textAlign: 'right', lineHeight: 1.25,
                 maxWidth: '100%',
                 display: '-webkit-box', WebkitLineClamp: 2,
