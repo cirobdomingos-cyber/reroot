@@ -627,6 +627,15 @@ def init_db():
                 )
             except sqlite3.OperationalError:
                 pass  # column already present
+        # Season takeover (Oct 2026, Carnaval): a public channel can be
+        # featured until a date — listed first, a band on Home, the
+        # digest's headline. A date rather than a flag so the season
+        # ends by itself; nobody has to remember to switch Carnaval off
+        # on Ash Wednesday. ISO date, '' = not featured.
+        try:
+            conn.execute("ALTER TABLE groups ADD COLUMN featured_until TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         # A curator pulling an auto-filled event out of a channel is a
         # decision, and the next scrape must not put it straight back.
         # This is the record of that decision: (channel, catalog event).
@@ -5267,9 +5276,12 @@ def list_channels(google_id: str = "") -> list[dict]:
                         AS upcoming_event_count
                FROM groups g
                WHERE g.visibility = 'public'
-               ORDER BY follower_count DESC, g.name ASC""",
+               -- A featured channel leads whatever its following: the
+               -- season is the one thing the list is supposed to say.
+               ORDER BY (g.featured_until >= ?) DESC, follower_count DESC, g.name ASC""",
             (google_id or "", google_id or "", google_id or "",
-             datetime.now(timezone.utc).date().isoformat()),
+             datetime.now(timezone.utc).date().isoformat(),
+             local_today()),
         ).fetchall()
     out = []
     for r in rows:
@@ -5562,7 +5574,29 @@ def _shape_channel_rules(d: dict) -> dict:
     d["rule_tipos"] = _split_rule(d.get("rule_tipos"))
     d["rule_genres"] = _split_rule(d.get("rule_genres"))
     d["rule_categories"] = _split_rule(d.get("rule_categories"))
+    # Featured is a question with a date in it, answered here once so
+    # the list, the detail and the digest can't disagree about it.
+    until = d.get("featured_until") or ""
+    d["featured"] = bool(until) and until >= local_today()
     return d
+
+
+def local_today() -> str:
+    """Today's date in Curitiba, ISO. The UTC day ends at 21:00 here,
+    and a season that ends "on the 17th" has to last the 17th's night."""
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
+
+
+def set_channel_featured(group_id: str, until: str) -> bool:
+    """Feature a channel until an ISO date; '' ends it now. Validated by
+    the caller."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE groups SET featured_until = ? WHERE id = ?", (until, group_id)
+        )
+        conn.commit()
+    return cur.rowcount > 0
 
 
 def rule_matches(rule_tipos, rule_genres, tipo: str, genre: str,

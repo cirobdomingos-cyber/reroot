@@ -613,6 +613,10 @@ function ChannelCuration({ channel, email, onChanged }) {
   const [ruleTipos, setRuleTipos] = useState(channel.rule_tipos || [])
   const [ruleGenres, setRuleGenres] = useState(channel.rule_genres || [])
   const [ruleCategories, setRuleCategories] = useState(channel.rule_categories || [])
+  // Season takeover: the date this channel is featured until. Only the
+  // founder gets the field (the server refuses it from anyone else), so
+  // it is sent only when the founder's roster came back.
+  const [featuredUntil, setFeaturedUntil] = useState(channel.featured_until || '')
   const [curators, setCurators] = useState(null)
   const [people, setPeople] = useState([])
   const [busy, setBusy] = useState(false)
@@ -637,6 +641,10 @@ function ChannelCuration({ channel, email, onChanged }) {
         name: name.trim(), description: description.trim(),
         rule_tipos: ruleTipos, rule_genres: ruleGenres,
         rule_categories: ruleCategories,
+        // Only the founder may carry this field; a curator's save with it
+        // would be refused whole. (`curators` is [] for a curator, not
+        // null — the roster fetch swallows the 403 — so it can't gate.)
+        ...(channel.viewer_is_founder ? { featured_until: featuredUntil } : {}),
       })
       trackEvent('channel_edited', { channel_id: channel.id })
       onChanged()
@@ -764,6 +772,46 @@ function ChannelCuration({ channel, email, onChanged }) {
       >
         {busy ? '...' : 'Salvar'}
       </button>
+
+      {/* Roster. Only the founder gets it back from the server, so a
+          channel curator sees the edit fields above and nothing here. */}
+      {/* Season takeover. A date, not a switch: the season ends by
+          itself and nobody has to remember Ash Wednesday. While set,
+          this channel leads Canais, gets the band on Home and headlines
+          the weekly digest. Saved with the button above. Founder-only,
+          like placement everywhere else in the app. */}
+      {channel.viewer_is_founder && (
+        <>
+          <div className="neon-mono" style={{
+            fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase',
+            color: 'var(--text2)', marginTop: 4,
+          }}>
+            Temporada
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>Destacar até</span>
+            <input
+              type="date"
+              value={featuredUntil}
+              onChange={e => setFeaturedUntil(e.target.value)}
+              style={{ ...curationInput, flex: 1 }}
+            />
+            {featuredUntil && (
+              <button
+                type="button"
+                onClick={() => setFeaturedUntil('')}
+                style={{
+                  padding: '5px 9px', borderRadius: 8, fontSize: 11,
+                  border: '1px solid var(--line)', background: 'transparent',
+                  color: 'var(--text2)', cursor: 'pointer',
+                }}
+              >
+                Tirar
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Roster. Only the founder gets it back from the server, so a
           channel curator sees the edit fields above and nothing here. */}

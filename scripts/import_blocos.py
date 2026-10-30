@@ -46,8 +46,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 CATEGORY = "bloco"
 
+# "Pré-Carnaval" until the real thing (Ciro, 29 Oct): the blocos are out
+# from November, and the name should say what the season is right now.
+# Renamed by hand on the channel's curation panel when Carnaval arrives;
+# both names match below so re-running never opens a second channel.
 CHANNEL = {
-    "name": "auê Carnaval",
+    "name": "auê Pré-Carnaval",
     "description": "Todos os blocos do pré-Carnaval e do Carnaval de Curitiba, "
                    "direto do Instagram de cada um. Concentração, saída e percurso.",
 }
@@ -160,7 +164,10 @@ def main():
 
     # 2. The channel, once. Rewriting the rule on an existing channel
     #    fills it now rather than at the next scrape.
-    existing = api.channels().get(_norm(CHANNEL["name"]))
+    existing = next(
+        (c for name, c in api.channels().items() if name in (_norm(CHANNEL["name"]), _norm("auê Carnaval"))),
+        None,
+    )
     if existing:
         res = api.set_rule(existing["id"])
         print(f"Channel '{CHANNEL['name']}' already exists — rule set, {res.get('added', 0)} events added")

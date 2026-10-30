@@ -103,11 +103,14 @@ export default function ChannelList() {
     ...channels.filter(c => c.is_following).map(c => ({ ...c, _aue: true })),
     ...mine.map(g => ({ ...g, _aue: false })),
   ].sort((a, b) => (
-    (a._aue === b._aue)
+    // The season's channel leads its pile, whatever else is in it.
+    (!!b.featured - !!a.featured)
+    || ((a._aue === b._aue)
       ? (b.upcoming_event_count || 0) - (a.upcoming_event_count || 0)
-      : (a._aue ? 1 : -1)
+      : (a._aue ? 1 : -1))
   ))
 
+  // The server already lists a featured channel first.
   const explore = channels.filter(c => !c.is_following)
 
   function row(item) {
@@ -216,10 +219,14 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
   // disagree about its colour. auê keeps magenta (the logo, the active
   // nav, auê itself); private takes cyan.
   const accent = aue ? 'var(--from-aue)' : 'var(--from-private)'
+  // Featured: the season's border, so the row reads as the one the
+  // Home band pointed at.
+  const featured = !!channel.featured
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
-      background: 'var(--bg2)', border: '1px solid var(--line)',
+      background: featured ? 'var(--season-soft)' : 'var(--bg2)',
+      border: `1px solid ${featured ? 'var(--season)' : 'var(--line)'}`,
       borderRadius: 14, padding: '12px 14px', marginBottom: 8,
       boxShadow: isMine ? `inset 3px 0 0 ${accent}` : 'none',
     }}>
@@ -257,6 +264,19 @@ function ChannelRow({ channel, aue, canFollow, busy, onOpen, onToggle }) {
               }}
             >
               🔒 privado
+            </span>
+          )}
+          {featured && (
+            <span
+              title="Canal da temporada"
+              style={{
+                flexShrink: 0, fontSize: 10, fontWeight: 800,
+                padding: '2px 7px', borderRadius: 7,
+                background: 'var(--season)', color: 'var(--bg)',
+                letterSpacing: '0.06em',
+              }}
+            >
+              🥁 temporada
             </span>
           )}
         </div>
