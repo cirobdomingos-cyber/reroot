@@ -798,6 +798,11 @@ def init_db():
             # category, so one bloco that keeps posting flyer-only can
             # be flipped back without touching the rest.
             "ADD COLUMN caption_only INTEGER NOT NULL DEFAULT 0",
+            # Adaptive probe frequency (scrape_cadence.py): consecutive
+            # probes of this handle that produced no event, and when it was
+            # last probed. A new event resets quiet_runs to 0.
+            "ADD COLUMN quiet_runs INTEGER NOT NULL DEFAULT 0",
+            "ADD COLUMN last_probed_at TEXT",
         ):
             try:
                 conn.execute(f"ALTER TABLE tracked_ig_accounts {col_def}")
@@ -1915,7 +1920,10 @@ def list_ig_accounts() -> list[dict]:
 def get_enabled_ig_accounts() -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT handle, label, category, caption_only FROM tracked_ig_accounts WHERE enabled = 1"
+            """SELECT handle, label, category, caption_only, featured,
+                      last_details_at, last_post_shortcode,
+                      quiet_runs, last_probed_at
+               FROM tracked_ig_accounts WHERE enabled = 1"""
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -2245,6 +2253,21 @@ def mark_ig_account_scraped(handle: str) -> None:
         conn.execute(
             "UPDATE tracked_ig_accounts SET last_scraped_at = ? WHERE handle = ?",
             (datetime.now(timezone.utc).isoformat(), handle),
+        )
+        conn.commit()
+
+
+def record_ig_probe(handle: str, produced_event: bool) -> None:
+    """Stamp last_probed_at and update the quiet streak that drives
+    scrape_cadence: an event resets it, anything else extends it."""
+    handle = handle.strip().lstrip("@").lower()
+    with get_conn() as conn:
+        conn.execute(
+            """UPDATE tracked_ig_accounts
+               SET last_probed_at = ?,
+                   quiet_runs = CASE WHEN ? THEN 0 ELSE quiet_runs + 1 END
+               WHERE handle = ?""",
+            (datetime.now(timezone.utc).isoformat(), 1 if produced_event else 0, handle),
         )
         conn.commit()
 
