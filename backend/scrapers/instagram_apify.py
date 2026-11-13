@@ -25,7 +25,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional
 
@@ -35,6 +35,7 @@ from models import RawEvent
 
 import cancellations
 import database as db
+import scrape_cadence
 
 
 # Browser-like UA so IG's CDN doesn't 403 us. Anthropic's URL-source vision
@@ -190,6 +191,10 @@ _APIFY_CHUNK_CONCURRENCY = 3
 # least one unpinned post whenever the profile has one. The full scrape
 # already asks for more than this per handle, so chunk timeouts don't move.
 _PROBE_POSTS_PER_ACCOUNT = 4
+
+# How long saved profile metadata (name, avatar, bio) is trusted before the
+# details call runs again for a handle.
+_DETAILS_MAX_AGE = timedelta(days=14)
 
 EXTRACTION_PROMPT = """\
 Você está extraindo informações de eventos a partir de posts do Instagram \
@@ -373,7 +378,7 @@ async def fetch_events(
 
     Cost-aware pipeline:
       1. Profile-details call — only for handles whose `last_details_at`
-         is older than 24h. Skipped entirely when nothing's stale.
+         is older than _DETAILS_MAX_AGE. Skipped entirely when nothing's stale.
       2. Cheap 1-post probe — fetches just the latest post per handle to
          check if there's anything new (compares shortcode to
          last_post_shortcode). Costs ~N results regardless of fanout.
@@ -398,14 +403,22 @@ async def fetch_events(
         wanted = {h.strip().lstrip("@").lower() for h in handles if h.strip()}
         accounts = [a for a in db.get_enabled_ig_accounts() if a["handle"] in wanted]
     else:
-        accounts = db.get_enabled_ig_accounts()
+        # Quiet handles are probed less often (scrape_cadence). The
+        # manual single-handle mode above always bypasses this.
+        enabled = db.get_enabled_ig_accounts()
+        accounts = [a for a in enabled if scrape_cadence.is_due(a)]
+        if len(accounts) < len(enabled):
+            log.info(
+                f"Instagram (Apify): {len(enabled) - len(accounts)}/{len(enabled)} "
+                f"handles quietos, fora do ciclo de hoje"
+            )
     if not accounts:
         log.info("Instagram (Apify): nenhuma conta a scrapear")
         return []
 
     log.info(f"Instagram (Apify): {len(accounts)} accounts no batch...")
 
-    # ── (1) profile-details — only for handles stale > 24h ──
+    # ── (1) profile-details — only for handles stale > _DETAILS_MAX_AGE ──
     stale_details = [
         a for a in accounts
         if _details_is_stale(a.get("last_details_at"))
@@ -419,7 +432,7 @@ async def fetch_events(
         except Exception as e:
             log.warning(f"Apify profile enrichment failed: {e}")
     else:
-        log.info("Instagram (Apify): todos os perfis enriquecidos nas últimas 24h, skip details")
+        log.info("Instagram (Apify): todos os perfis enriquecidos recentemente, skip details")
 
     # ── (2) cheap probe — newest posts per handle to detect new content ──
     probe_urls = [f"https://www.instagram.com/{a['handle']}/" for a in accounts]
@@ -478,6 +491,24 @@ async def fetch_events(
         f"{skipped_same} sem novidade, {skipped_no_data} sem dados"
     )
 
+    def _record_probes(probed: list[str], yielded: dict[str, int], skip: set[str] = frozenset()) -> None:
+        """Feed scrape_cadence: a handle that yielded an event goes back to
+        daily; every other probed handle gets one more quiet run. Manual
+        mode is not a cadence signal. `skip`: handles whose extraction
+        failed, which says nothing about whether they are quiet."""
+        if handles:
+            return
+        for h in probed:
+            if h in skip:
+                continue
+            try:
+                db.record_ig_probe(h, yielded.get(h, 0) > 0)
+            except Exception as e:  # accounting must never break a scrape
+                log.warning(f"IG: cadence update failed for @{h}: {e}")
+
+    fetch_set = set(handles_to_fetch)
+    _record_probes([a["handle"] for a in accounts if a["handle"] not in fetch_set], {})
+
     if not handles_to_fetch:
         log.info("Instagram (Apify): probe encontrou 0 handles com novo conteúdo")
         return []
@@ -491,6 +522,7 @@ async def fetch_events(
     posts = await _run_apify_scrape(apify_token, full_urls, posts_per_account)
     if not posts:
         log.warning("Instagram (Apify): full scrape retornou 0 posts")
+        _record_probes(handles_to_fetch, {})
         return []
 
     # ── Dedup against the extraction ledger ──
@@ -715,6 +747,17 @@ async def fetch_events(
     # as producing nothing. Handles with no new posts keep their last
     # meaningful count; the admin UI's `future_events` column is the live
     # figure either way.
+    failed_handles = {
+        _tracked_handle(p) for p in posts_to_extract
+        if (_extract_shortcode(p.get("url") or "") or p.get("id") or "") in failed_shortcodes
+    } - {""}
+    if failed_handles and not handles:
+        # The latest shortcode was stored before extraction. With the
+        # cheap-skip path working, an unchanged shortcode means "skip", so
+        # a handle whose extraction failed (credits, rate limit) must look
+        # new again or its posts would never be retried.
+        db.reset_ig_shortcodes(sorted(failed_handles))
+    _record_probes(handles_to_fetch, yields_by_handle, skip=failed_handles)
     extracted_handles = {_tracked_handle(p) for p in posts_to_extract} - {""}
     for handle in handles_with_data & extracted_handles:
         db.set_ig_account_last_event_count(handle, yields_by_handle.get(handle, 0))
@@ -1377,7 +1420,10 @@ def _extract_shortcode(url: str) -> str:
 
 
 def _details_is_stale(iso_str: Optional[str]) -> bool:
-    """Profile-details counts as stale when it was never run or > 24h ago."""
+    """Profile-details counts as stale when it was never run or older than
+    _DETAILS_MAX_AGE. Name, avatar and bio change a few times a year; the
+    call bills one Apify result per handle, so it used to cost as much as
+    a third of the probe when it ran daily."""
     if not iso_str:
         return True
     try:
@@ -1387,7 +1433,7 @@ def _details_is_stale(iso_str: Optional[str]) -> bool:
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
     from datetime import timedelta
-    return (datetime.now(timezone.utc) - last) > timedelta(hours=24)
+    return (datetime.now(timezone.utc) - last) > _DETAILS_MAX_AGE
 
 
 # The flyer says "21h" and it means 21h in Curitiba. Stamping that as UTC
