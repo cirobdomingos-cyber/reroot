@@ -9866,7 +9866,9 @@ async def send_weekly_digest() -> dict:
     # The season's channel headlines over the others while it is
     # featured: "5 novos no auê Carnaval" is news, "5 dos seus 3 canais"
     # is a count.
-    featured_names = {c["name"] for c in db.list_channels() if c.get("featured")}
+    all_channels = db.list_channels()
+    channel_names = {c["id"]: c["name"] for c in all_channels}
+    featured_ids = {c["id"] for c in all_channels if c.get("featured")}
 
     def _copy_for(google_id: str) -> tuple[str, str]:
         """Headline the part this person chose; keep the city in the body."""
@@ -9874,12 +9876,12 @@ async def send_weekly_digest() -> dict:
         mine = sum(picks.values())
         if not mine:
             return title, preview
-        season = next((c for c in picks if c in featured_names and picks[c]), None)
-        if season:
-            k = picks[season]
-            head = f"🥁 {k} novo{'s' if k != 1 else ''} no {season}"
+        season_id = next((c for c in picks if c in featured_ids and picks[c]), None)
+        if season_id:
+            k = picks[season_id]
+            head = f"🥁 {k} novo{'s' if k != 1 else ''} no {channel_names.get(season_id, '')}"
         elif len(picks) == 1:
-            channel = next(iter(picks))
+            channel = channel_names.get(next(iter(picks)), "")
             head = f"✨ {mine} novo{'s' if mine != 1 else ''} no {channel}"
         else:
             # Three channel names in a notification is a list, not a

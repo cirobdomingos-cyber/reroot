@@ -59,3 +59,6 @@ b.tmp
 
 # Instagram carousel renders (scripts/social): review locally, never commit
 social/out/
+
+# Apple signing certificates: local only, never commit
+certificates.zip

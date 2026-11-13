@@ -91,13 +91,13 @@ def test_the_digest_headlines_the_featured_channel(api):
     _db, _main, client = api
     carnaval = _channel(client, "auê Carnaval")["channel"]["id"]
     _feature(client, carnaval, NEXT_WEEK)
-    featured_names = {c["name"] for c in _db.list_channels() if c.get("featured")}
-    assert featured_names == {"auê Carnaval"}
+    featured_ids = {c["id"] for c in _db.list_channels() if c.get("featured")}
+    assert featured_ids == {carnaval}
     # The headline rule, lifted from send_weekly_digest: the featured
     # channel wins even when another gave more.
-    picks = {"auê Rock": 5, "auê Carnaval": 2}
-    season = next((c for c in picks if c in featured_names and picks[c]), None)
-    assert season == "auê Carnaval"
+    picks = {"rock-id": 5, carnaval: 2}
+    season = next((c for c in picks if c in featured_ids and picks[c]), None)
+    assert season == carnaval
 
 
 def test_a_curator_can_still_save_without_touching_the_season(api):
@@ -157,3 +157,43 @@ def test_a_stray_unfollow_is_not_a_position(api):
     _db.unfollow_channel(cid, "u_bia")
     row = next(c for c in _db.list_channels("u_bia") if c["id"] == cid)
     assert row["ever_followed"] is False
+
+
+def test_a_channel_sharing_a_name_is_not_the_featured_one(api):
+    """The digest compares ids: a second channel with the same name must
+    neither be featured by accident nor merge into the first's count."""
+    _db, _main, client = api
+    carnaval = _channel(client, "auê Carnaval")["channel"]["id"]
+    twin = _channel(client, "auê Carnaval")["channel"]["id"]
+    _feature(client, carnaval, NEXT_WEEK)
+    featured_ids = {c["id"] for c in _db.list_channels() if c.get("featured")}
+    assert carnaval in featured_ids and twin not in featured_ids
+
+
+def test_leaving_or_being_removed_is_a_position_too(api):
+    """Leaving through the group routes, or being removed, must mark
+    ever_followed just like unfollowing does."""
+    _db, _main, client = api
+    a = _channel(client, "auê A")["channel"]["id"]
+    b = _channel(client, "auê B")["channel"]["id"]
+    for cid in (a, b):
+        _db.follow_channel(cid, "u_ana")
+    assert _db.leave_group(a, "u_ana")
+    assert _db.remove_group_member(b, "u_ana")
+    for cid in (a, b):
+        row = next(c for c in _db.list_channels("u_ana") if c["id"] == cid)
+        assert row["is_following"] is False
+        assert row["ever_followed"] is True
+
+
+def test_deleting_the_account_clears_who_left(api):
+    _db, _main, client = api
+    cid = _channel(client, "auê Carnaval")["channel"]["id"]
+    _db.follow_channel(cid, "u_ana")
+    _db.unfollow_channel(cid, "u_ana")
+    assert _db.delete_user_account("u_ana")
+    with _db.get_conn() as conn:
+        left = conn.execute(
+            "SELECT COUNT(*) FROM channel_unfollows WHERE google_id = 'u_ana'"
+        ).fetchone()[0]
+    assert left == 0

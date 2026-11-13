@@ -400,7 +400,7 @@ def test_fill_sends_no_push_of_its_own(api, monkeypatch):
     assert sent == []
     # The digest is where the follower hears about it, once.
     assert _db.channel_picks_by_follower(["instagram_a", "instagram_b"]) == {
-        "u_ana": {"auê Comédia": 2},
+        "u_ana": {next(c["id"] for c in _db.list_channels() if c["name"] == "auê Comédia"): 2},
     }
     assert main.fill_channels_from_catalog() == {}
 
