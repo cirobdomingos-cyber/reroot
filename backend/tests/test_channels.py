@@ -1211,7 +1211,7 @@ def test_the_digest_headlines_the_channel_you_chose(api, monkeypatch):
     for i in range(3):
         _add_to(client, cid, "u_founder", name=f"Show {i}", src=f"cat_{i}")
     picks = _db.channel_picks_by_follower(["cat_0", "cat_1", "cat_2"])
-    assert picks == {"u_ana": {"Rockzão": 3}}
+    assert picks == {"u_ana": {cid: 3}}
 
 
 def test_someone_who_follows_nothing_is_not_in_it(api):

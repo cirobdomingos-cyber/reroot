@@ -5075,6 +5075,21 @@ def join_group(group_id: str, google_id: str) -> bool:
     return True
 
 
+def _remember_channel_exit(conn, group_id: str, google_id: str) -> None:
+    """Record that someone left or was removed from a channel, however
+    it happened. Leaving through the group routes is as much a position
+    on the channel as unfollowing. No-op for private groups, which the
+    Home band never offers."""
+    is_channel = conn.execute(
+        "SELECT 1 FROM groups WHERE id = ? AND kind = 'channel'", (group_id,)
+    ).fetchone()
+    if is_channel:
+        conn.execute(
+            "INSERT OR REPLACE INTO channel_unfollows (group_id, google_id, left_at) VALUES (?, ?, ?)",
+            (group_id, google_id, datetime.now(timezone.utc).isoformat()),
+        )
+
+
 def leave_group(group_id: str, google_id: str) -> bool:
     """Remove a user from a group. Returns True if removed."""
     with get_conn() as conn:
@@ -5082,6 +5097,8 @@ def leave_group(group_id: str, google_id: str) -> bool:
             "DELETE FROM group_members WHERE group_id = ? AND google_id = ?",
             (group_id, google_id),
         )
+        if cur.rowcount > 0:
+            _remember_channel_exit(conn, group_id, google_id)
         conn.commit()
         return cur.rowcount > 0
 
@@ -5111,6 +5128,8 @@ def remove_group_member(group_id: str, google_id: str) -> bool:
             "DELETE FROM group_members WHERE group_id = ? AND google_id = ?",
             (group_id, google_id),
         )
+        if cur.rowcount > 0:
+            _remember_channel_exit(conn, group_id, google_id)
         conn.commit()
     return cur.rowcount > 0
 
@@ -5564,7 +5583,9 @@ def channel_picks_by_follower(event_ids: list[str]) -> dict[str, dict[str, int]]
     """For a set of catalog event ids, who follows a public channel that
     picked one, and how many.
 
-    Returns {google_id: {channel_name: count}}.
+    Returns {google_id: {channel_id: count}}. Keyed by id, not name: two
+    channels may share a name, and a rename must not change who is
+    featured.
 
     One query rather than one per person: the daily digest fans out to
     every subscriber, and a per-user lookup there turns a single push
@@ -5579,7 +5600,7 @@ def channel_picks_by_follower(event_ids: list[str]) -> dict[str, dict[str, int]]
     placeholders = ",".join("?" for _ in event_ids)
     with get_conn() as conn:
         rows = conn.execute(
-            f"""SELECT gm.google_id AS who, g.name AS channel,
+            f"""SELECT gm.google_id AS who, g.id AS channel,
                        COUNT(DISTINCT ge.source_event_id) AS n
                   FROM group_events ge
                   JOIN groups g
@@ -5590,7 +5611,7 @@ def channel_picks_by_follower(event_ids: list[str]) -> dict[str, dict[str, int]]
                    AND gm.following = 1
                    AND gm.notify = 1
                    AND ge.source_event_id IN ({placeholders})
-              GROUP BY gm.google_id, g.name""",
+              GROUP BY gm.google_id, g.id""",
             event_ids,
         ).fetchall()
     for r in rows:
@@ -7394,6 +7415,10 @@ def delete_user_account(google_id: str) -> bool:
         )
         conn.execute(
             "DELETE FROM group_members WHERE google_id = ?", (google_id,)
+        )
+        # The Google id may not outlive the account (LGPD, Apple 5.1.1v).
+        conn.execute(
+            "DELETE FROM channel_unfollows WHERE google_id = ?", (google_id,)
         )
         try:
             conn.execute(
