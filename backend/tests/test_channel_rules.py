@@ -506,3 +506,18 @@ def test_the_queue_takes_the_most_recently_scraped_first(api):
     _event(_db, "instagram_new", fetched=now)
     assert [e["id"] for e in _db.list_events_needing_genre(limit=1)] == ["instagram_new"]
     assert [e["id"] for e in _db.list_events_needing_tipo(limit=1)] == ["instagram_new"]
+
+
+def test_a_source_category_channel_skips_other_holidays(api):
+    """The blocos also post Réveillon parties; the handle's category must not drag them in."""
+    _db, _main, _client = api
+    ch = {"rule_tipos": [], "rule_genres": [], "rule_categories": ["bloco"]}
+    bloco = {"name": "Bloco Pré-Carnaval", "description": "", "category": "bloco"}
+    reveillon = {"name": "Réveillon 2027", "description": "", "category": "bloco"}
+    virada = {"name": "Festa", "description": "Virada Paradisíaca", "category": "bloco"}
+    assert _db._event_matches_channel(ch, bloco) is True
+    assert _db._event_matches_channel(ch, reveillon) is False
+    assert _db._event_matches_channel(ch, virada) is False
+    # A channel with no category rule keeps its old behaviour.
+    tipo_ch = {"rule_tipos": ["festa"], "rule_genres": [], "rule_categories": []}
+    assert _db._event_matches_channel(tipo_ch, {**reveillon, "tipo": "festa"}) is True

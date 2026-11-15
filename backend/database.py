@@ -5734,8 +5734,23 @@ def list_rule_channels() -> list[dict]:
     return [_shape_channel_rules(dict(r)) for r in rows]
 
 
+# A handle's category says who posted, not what the post is: the blocos also announce Réveillon
+# and New Year parties, which landed in the Carnaval channel (Nov 2026). A channel filled by
+# source category skips an event whose own name or text says it belongs to another holiday.
+_OFF_SEASON_RE = re.compile(
+    r"\b(reveillon|virada|ano novo|natal|natalino|ceia|black friday|halloween|oktoberfest)\b")
+
+
+def _is_off_season(ev: dict) -> bool:
+    text = f"{ev.get('name') or ''} {ev.get('description') or ''}"
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return bool(_OFF_SEASON_RE.search(plain))
+
+
 def _event_matches_channel(ch: dict, ev: dict) -> bool:
     """rule_matches over a routing row — the three axes read off the row."""
+    if ch.get("rule_categories") and _is_off_season(ev):
+        return False
     return rule_matches(
         ch["rule_tipos"], ch["rule_genres"], ev.get("tipo") or "", ev.get("genre") or "",
         ch.get("rule_categories"), ev.get("category") or "",
